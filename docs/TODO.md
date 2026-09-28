@@ -1749,12 +1749,12 @@ first:
 ## Release gates (human, scripted — see the docs named)
 
 **This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s
-outstanding gates; the other half is `docs/SMOKE-TEST.md`, run end-to-end on a clean
-Mac from the distributed dmg, and it grew steps that are visible from nowhere here
-(cold-path 7.4 licences, the PHP update button + its revert, the Adminer update, the
-PHP ini revert, the "exists" row and the serving-vs-pinned line, the blank-PHP starter
-database, and the MCP HOLDs). **A release-day reader works both files, in this order:
-SMOKE-TEST on the built dmg, then PUBLISH-TESTING §A0/§A before publishing.** The rule
+outstanding gates; the other half is `docs/SMOKE-TEST.md` — the clean-Mac main body plus its
+Windows and Linux sections — and each of those three now opens with a **"Still open on
+<OS>"** list (reconciled 28 Sep 2026), which is the SMOKE half of this section: rows that are
+visible from nowhere here (the PHP update button's apply + REVERT, the Adminer revert, the PHP
+ini revert, the MCP HOLDs, …). **A release-day reader works both files, in this order:
+SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publishing.** The rule
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
@@ -1795,11 +1795,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `rexenv/runtimes` and not a release asset — moving it would strand every copy already
   installed. What moves is one `TAP_REPO` variable in the runtimes publisher, and the
   descriptor's `url` field, which is signed data rather than a constant.
-- [ ] **The self-update swap probe (T0) and the first real in-app update (T11)** —
-  `docs/archive/PLAN-self-update.md` §6.5 and §13. Both need a human at a real Mac: T0
-  measures whether an ad-hoc bundle may rename itself under App Management (nothing
-  documents it, and the plan branches on the answer), T11 is the 0.6.0 → 0.6.1
-  update run on this Mac and on a clean account. Neither can be run by any tier.
+- [ ] **The in-app update's remaining human rows (macOS)** — was "the swap probe (T0) and the
+  first real in-app update (T11)", `docs/archive/PLAN-self-update.md` §6.5 and §13. **Both RAN:**
+  T0 measured the swap on the dev Mac; T11 ran 0.6.0 → 0.6.1 there (7 Sep 2026, twice), on the
+  clean 15.6.1 VM (18 Sep, → 0.7.2) and on the 15.8 VM (27 Sep, 0.8.7 → 0.8.8). Open for what is
+  left, reconciled 28 Sep 2026 — `docs/SMOKE-TEST.md` §"In-app self-update": the card when
+  current, the offline leg against #540's fix, the Homebrew consent sentence on a cask-installed
+  copy, and which permissions come back per macOS major. None can be run by any tier.
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
 - [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
@@ -1808,10 +1810,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   that `detail` really is the child job's own label and that the bar FREEZES rather
   than rolls back on a mid-batch failure are 🔨 L2 (ledger #243) and only this pass
   covers them today.
-- [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): first pass
-  10 Jul 2026 green except multisite-convert (UI didn't exist yet — since built);
-  re-verify converted-multisite + onboarding fixes + the TLD v1 Done-when list
-  (`docs/archive/TLD-FEATURE-REPORT.md`) on the next cold run.
+- [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): cold runs on a clean
+  macOS 15.6.1 VM (18 Sep 2026) and a clean 15.8 VM (23 Sep, 0.8.7) since the 10 Jul first
+  pass. Open for the file's own **"Still open on macOS"** list (reconciled 28 Sep 2026) —
+  including what the 23 Sep pass did not reach: multisite (convert included), tunnels, WordPress
+  Manager, Git assets, the MCP parity steps — and the TLD v1 Done-when list
+  (`docs/archive/TLD-FEATURE-REPORT.md`), which no recorded run names.
 - [ ] **Tunnel probe session** (one sitting, real network,
   `scripts/tunnel-measure.sh`): kill -9 death-path timings, wifi-blip recovery,
   the banner→authoritative-DNS gap; plus Bedrock "Log in as" landing in wp-admin
@@ -1881,14 +1885,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
   the real `ServiceManager` and a deliberately broken tree — `docs/SMOKE-TEST.md`.
-- [ ] **SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026.** Run over
-  the raw socket by a hand-rolled client (protocol + server exercised; `rex mcp` pipe
-  proven once by the owner through Claude Code). **Still unrun:** step 1 (a launch that
-  has NEVER been enabled), 9 (Keep), 11 ⚠HOLD (no admin prompt — observed, not checked),
-  13's eyes-only consent copy, 16 and 17 (§M3, eyes-only), and one arm of 21 (deleting a
-  REAL granted site). Step 8's model-facing half ("the refusal survives a model that
-  wants to help") has never had a model in front of it. Evidence for what DID run:
-  `docs/archive/SHIPPED-2026-09.md`.
+- [ ] **SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN.** Runs recorded: 25 Aug 2026
+  (raw socket, a hand-rolled client), 3–4 Sep (the owner's Mac, Claude Code driving) and 18 Sep
+  (clean 15.6.1 VM, a raw JSON-RPC client — steps 1, 16 and 17 ran there). **Still open**
+  (reconciled 28 Sep 2026, `docs/SMOKE-TEST.md` §"AI agents"): 9 (Keep), 11 ⚠HOLD (no admin
+  prompt — observed, not checked), 13's consent copy since D16, 18's real-site arm (the old
+  "one arm of 21"), and every step that exists for a MODEL's half — 8, 14, 44 — which the raw
+  clients could not give. Evidence: `docs/archive/SHIPPED-2026-09.md` and the SMOKE rows.
 
 - [ ] **Install WordPress into an empty LINKED folder** — out of Stage 0 by
   design (`docs/archive/PLAN-linked-sites.md` decision 2): linking is adopt-only. If
@@ -1915,8 +1918,9 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   appears or disappears, so an open menu should update without closing. Fixed 8 Sep 2026
   after the menu was reported closing itself seconds after being opened; the 1 Sep walk
   missed it because a 15s hold on an IDLE stack is the case where nothing moves. Owed:
-  the two `docs/SMOKE-TEST.md` boxes — a ~30s hold during a start (numbers move, menu
-  stays open) and **About rexenv** from the tray with the window CLOSED.
+  the `docs/SMOKE-TEST.md` box for a ~30s hold during a start (numbers move, menu stays
+  open). (**About rexenv** from the tray with the window CLOSED ran ✓ 18 Sep 2026 on the clean
+  VM.)
 
 ## Blocked on external work
 

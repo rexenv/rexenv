@@ -41,39 +41,39 @@ App version **0.8.9** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 - `TODO.md:1766` PUBLISH-TESTING §D
 - `TODO.md:1784` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1798` The self-update swap probe (T0) and the first real in-app update (T11)
-- `TODO.md:1803` PUBLISH-TESTING §K
-- `TODO.md:1804` PUBLISH-TESTING §F
-- `TODO.md:1805` PUBLISH-TESTING §G
-- `TODO.md:1811` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1815` Tunnel probe session
-- `TODO.md:1819` Intel spot-run
-- `TODO.md:1822` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1862` In-app verifies owed
-- `TODO.md:1874` PUBLISH-TESTING §E / §L
+- `TODO.md:1798` The in-app update's remaining human rows (macOS)
+- `TODO.md:1805` PUBLISH-TESTING §K
+- `TODO.md:1806` PUBLISH-TESTING §F
+- `TODO.md:1807` PUBLISH-TESTING §G
+- `TODO.md:1813` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1819` Tunnel probe session
+- `TODO.md:1823` Intel spot-run
+- `TODO.md:1826` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1866` In-app verifies owed
+- `TODO.md:1878` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1880` The live pool swap is still L3
-- `TODO.md:1884` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN 25 Aug 2026
-- `TODO.md:1893` Install WordPress into an empty LINKED folder
-- `TODO.md:1900` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1884` The live pool swap is still L3
+- `TODO.md:1888` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1896` Install WordPress into an empty LINKED folder
+- `TODO.md:1903` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:1913` Hold the tray menu open while the stack MOVES
+- `TODO.md:1916` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 5
 
-- `TODO.md:1923` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:1934` Xdebug on PHP 8.0
-- `TODO.md:1939` SMAppService privileged helper
-- `TODO.md:1941` Developer ID signing + notarization
-- `TODO.md:1943` OpenLiteSpeed override server
+- `TODO.md:1927` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:1938` Xdebug on PHP 8.0
+- `TODO.md:1943` SMAppService privileged helper
+- `TODO.md:1945` Developer ID signing + notarization
+- `TODO.md:1947` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:1957` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1961` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
