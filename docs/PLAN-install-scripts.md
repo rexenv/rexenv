@@ -4,10 +4,10 @@
 (`curl -fsSL … | bash`, `irm … | iex`) on all three OSes, and asked whether it can get past
 Gatekeeper, SmartScreen and "whatever Linux has". The research is §1, the rulings §2 (the
 owner took every recommendation the same day), the design §3, the tasks and their proof §4.
-**T1–T5 built and run the same day** (ledger #738, the runs in §4 and in
-`docs/SMOKE-TEST.md`); what is left is the push (tap first, then the website), the first CI
-run, and the desktop-only SMOKE rows. Tracked as the "One-command install" row in
-`docs/TODO.md`.
+**T1–T5 built, run and shipped the same day** (ledger #738; rexenv/homebrew-tap#1 after its
+first `install-scripts.yml` run went green on 8 runners, then rexenv/website#12 — the URLs
+are live). What is left: the desktop-only SMOKE rows and the website's install page. Tracked
+as the "One-command install" row in `docs/TODO.md`.
 
 ```
 curl -fsSL https://rexenv.rex.bd/install.sh | bash      # macOS, Linux

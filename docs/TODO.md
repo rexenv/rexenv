@@ -53,12 +53,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Win11 24H2 ARM VM as a temporary standard user (fresh install, 20 s, no UAC) + the Dell (the
   already-installed path, the caller's session untouched); Ubuntu 22.04 and 24.04 arm64, 22.04
   amd64 and Fedora (AppImage) in fresh containers; shellcheck, actionlint, PSScriptAnalyzer clean.
-  **Open:** (1) push the tap, THEN the website — its lychee run checks the raw URLs, so the tap
-  goes first (the owner's go); (2) the first `install-scripts.yml` run, which also answers
-  whether the `macos-15-intel` runner label exists; (3) the SMOKE rows it added — the literal
-  command on a Mac that never had rexenv, the SmartScreen dialog's absence SEEN from the Win11
-  desktop, the Linux desktop launch; (4) the website's install page naming the command (its own
-  `update-website` routine).
+  **Shipped 28 Sep (owner's go):** rexenv/homebrew-tap#1 merged after `install-scripts.yml` run
+  36460033263 installed rexenv on 8 fresh runners — macOS arm64 AND Intel (`macos-15-intel`
+  exists), Ubuntu 22.04 amd64, 24.04 arm64, Fedora (AppImage), Windows PowerShell 5.1 and 7, each
+  twice; rexenv/website#12 merged, so `rexenv.rex.bd/install.sh` / `.ps1` answer 302 to the raw
+  files (byte-identical to the tap's main). The literal commands ran on the dev Mac and the Dell
+  (both already installed → stopped, nothing changed). **Found on the way:** the website's own
+  Actions never START — "recent account payments have failed or your spending limit needs to be
+  increased" — so its CI and its scheduled Release sync have failed since at least 27 Sep 22:34
+  UTC (the site still says 0.8.7); the tap and `rexenv/runtimes` are public and unaffected.
+  #12 merged on the local `pnpm verify` (green) and the Cloudflare preview build.
+  **Open:** (1) the SMOKE rows it added — a GUI Mac that never had rexenv, the SmartScreen
+  dialog's absence SEEN from the Win11 desktop, the Linux desktop launch; (2) the website's
+  install page naming the command (its own `update-website` routine — blocked on the billing
+  above for its automation, not for a hand edit).
 - [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
   2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
   server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link

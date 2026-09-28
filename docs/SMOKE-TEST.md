@@ -32,8 +32,7 @@ split into their own rows, every open row ending with **Open:** and what it wait
 recorded" where nothing was found).
 
 **Still open on macOS, by section** (the rows say why):
-- *Install:* the one command through the live `rexenv.rex.bd` redirect, on a Mac that never
-  had rexenv.
+- *Install:* the one command on a GUI Mac that never had rexenv (onboarding after it).
 - *Onboarding / first run:* the :443 notice with another proxy on :443 · downloads moving while
   a prompt is open (#567) · a dialog never freezing the window (#568, ◐) · a database dialog
   after a Valet/Herd takeover (#569).
@@ -94,8 +93,11 @@ against their installers), then PUBLISH-TESTING §A0/§A — publishing IS the �
       "Background Items Added" notifications for rexenv's login item and agent. **Tell:** "rexenv
       Not Opened", or a quarantine attribute on the installed bundle.
 - [ ] **The same, from `rexenv.rex.bd` on a Mac that never had rexenv** — the literal command
-      through the redirect, and onboarding (the 28 Sep run reused app data, so it skipped
-      onboarding). **Open: waits for the redirect to go live.**
+      through the redirect, then onboarding (the VM run reused app data, so it skipped
+      onboarding). The redirect half is proven: live 28 Sep, byte-identical to the tap's
+      `install.sh`, and the literal command ran on the dev Mac (installed → stopped); GitHub's
+      fresh `macos-latest` and `macos-15-intel` runners installed through the same file with no
+      GUI. **Open: a GUI Mac with no rexenv and no app data.**
 
 ## App menu → About
 - [x] **rexenv menu → "About rexenv" lands on Settings → About**, from whatever screen was
