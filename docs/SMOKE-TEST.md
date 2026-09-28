@@ -340,7 +340,13 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
 - [x] Databases screen lists the database **with the repo's migration tables**. ✓
 - [ ] A **private** repo over `git@` clones using your own SSH agent. A private repo over
       `https://` fails at **Fetch** with a message pointing at the `git@` form — never a hang,
-      never a hidden credential prompt. **Open: no run recorded.**
+      never a hidden credential prompt. **◐ the `https://` half, 28 Sep 2026 (15.8 arm64 VM,
+      0.8.9):** Fetch on `https://github.com/rexenv/rexenv.git` (private) came back in seconds
+      with the toast "github.com asked for credentials — this is a PRIVATE repo (or the URL is
+      wrong; github.com answers both the same way). rexenv never prompts for credentials: check
+      the URL, use the SSH form (git@github.com:owner/repo.git), or log the git CLI in once:
+      `gh auth login`" (copy button), nothing created, no prompt. **Open: the `git@` clone —
+      the VM has no SSH key for a private repository; a machine whose agent holds one.**
 - [x] Point it at a repo that is NOT Laravel (e.g. a plain PHP one): the clone phase fails
       naming what it found ("looks like PHP project — not laravel"), the site shows **setup
       incomplete**, and `Sites/<name>.rex/` is EMPTY with no `.rexenv-clone-*` folder left
