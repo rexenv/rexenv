@@ -915,6 +915,13 @@ about Windows behaviour is proven one of three ways, cheapest first:
    waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
    guard refuses a click unless rexenv is frontmost).
 
+**Is the `.rex` answer the machine's own? — yes on Windows, measured 28 Sep 2026.** The Win11
+VM's upstream DNS is the Mac, which answers `.rex` itself (the trap that hid a dead Linux route,
+§"Proving a Linux claim"). NRPT does not fall back: with the agent stopped `anything.rex` FAILS
+there, and answers `127.0.0.1` only while `rexenv.exe --dns-agent` holds `127.0.0.1:53`. So a
+Windows `.rex` resolution needs no pinning — but the control (agent off → fail) is the cheap
+way to know that on any new host.
+
 **The bar runs on Windows in CI too** — `.github/workflows/windows-verify.yml`, the same
 `scripts/verify.sh`, on `windows-latest`. `workflow_dispatch` only while `rexenv/rexenv` is
 private (Windows minutes bill at 2×); when the repo goes public, hosted runners are free and

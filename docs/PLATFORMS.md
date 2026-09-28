@@ -166,6 +166,9 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **The resolver answers on :53** (NRPT has no port). A UI line saying 15353 on Windows is
   macOS's number leaking.
 - **`hosts` is never touched** — shared by every tool on the machine.
+- **NRPT has no fallback** — with the agent down, `.rex` fails rather than asking the interface's
+  server, so a host running rexenv upstream cannot mask a broken Windows route (measured on the
+  Win11 VM, 28 Sep 2026 — unlike Linux, §8).
 - **Trust goes to CurrentUser\Root, never LocalMachine** (#613). Windows shows its own
   certificate dialog; a No is a cancel, and setup offers the step again.
 - **Bind `127.0.0.1`, not all interfaces** — an all-interfaces bind raises the Firewall alert

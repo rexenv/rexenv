@@ -2267,6 +2267,15 @@ them is Windows' own dialog:
 - [x] **The `hosts` file is never touched** — rexenv never overwrites a file somebody else owns,
       and D2 refuses the fallback. ✓ 19 Sep 2026 (VM): zero `.rex` lines. **Tell:** any `.rex`
       entry in `C:\Windows\System32\drivers\etc\hosts`.
+- [x] **`.rex` is answered by THIS machine's agent, never by the upstream DNS** — stop the agent
+      and `Resolve-DnsName anything.rex` must FAIL, not answer. Why it is a row: a VM's upstream
+      is its host, and a host running rexenv answers `.rex` with `127.0.0.1` itself — that is how
+      the Linux route shipped dead behind passing checks (SMOKE Linux P1, #734). ✓ 28 Sep 2026
+      (Win11 VM, 0.8.5, upstream `192.168.64.1` = the Mac running rexenv): NRPT `{.rex} →
+      127.0.0.1`; with no agent `anything.rex` → "An existing connection was forcibly closed";
+      `rexenv.exe --dns-agent` started → `127.0.0.1:53` held by it, `anything.rex` and
+      `sub.site.rex` → `127.0.0.1`, `example.com` public; agent stopped → fails again. NRPT does
+      not fall back to the interface's server, so the Windows `.rex` rows above are the VM's own.
 
 ### Where things live on disk
 - [x] App data: `%LOCALAPPDATA%\rexenv\rexenv\data` (with `config\`, `logs\`, `bin\` under it).
