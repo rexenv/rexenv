@@ -370,8 +370,14 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       **no** tables. ✓
 - [ ] **Front-end assets.** With the box ticked, the card runs `building front-end assets`, the
       log streams the repo's own package manager (pnpm/yarn/npm — its choice, not ours), and
-      `public/build/` exists afterwards. The site's first page renders styled. **Open: no run
-      recorded** (only the failing build below was run).
+      `public/build/` exists afterwards. The site's first page renders styled. **◐ the
+      honest-failure half, 28 Sep 2026 (15.8 arm64 VM, 0.8.9, no Node installed):**
+      `laravel/laravel` → Laravel → From Git, box ticked → after `app key + migrations` the
+      phase "── building front-end assets" printed "✕ npm not found in your shell environment —
+      npm ships with Node.js — install Node, then hit Re-detect: $ brew install node" and the
+      job went on to "── starting to serve": the site is `serving`, `https://laravel.rex/` 200,
+      no `public/build/` — the "site is still created and says so" promise. **Open: the
+      build itself on a Mac with Node** (`public/build/` and a styled first page).
 - [x] **A failing asset build must NOT break the site.** Point it at a repo whose build fails
       (or temporarily rename your node), then create: the job still settles **ok** with a green
       tick, an amber "Front-end assets weren't built" banner naming the reason, and the site
