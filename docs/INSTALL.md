@@ -42,7 +42,19 @@ and the Windows section's "Run anyway" are the BROWSER-download path only. Two t
 command does not change: Windows **Smart App Control**, where it is on, blocks unsigned
 apps whatever their source; and the trust is yours — the checksum proves the download
 arrived intact, while that it is rexenv's rests on HTTPS to github.com, as for a browser
-download (`docs/archive/PLAN-install-scripts.md` §1).
+download (`docs/archive/PLAN-install-scripts.md` §1). Where Smart App Control or another App
+Control policy is on, PowerShell runs in ConstrainedLanguage mode; `install.ps1` then stops with
+a sentence saying so rather than failing on its first .NET call, and says Smart App Control is on
+before it downloads anything.
+
+## One account per machine, every OS
+
+rexenv is built for **one user account per machine**. The web server on `:443`, the `.rex`
+DNS route and the resolver's port are machine-wide on all three systems (`docs/PLATFORMS.md` §3),
+so a second account on the same machine cannot run its own copy alongside the first — its
+services would find those ports taken. Use rexenv from one account. On Windows there is one more
+machine-wide piece, the `\rexenv\dns-agent` scheduled task, and a second account's launch
+re-registers it for itself (`docs/TODO.md` has the row; found reading the code, not run).
 
 ## macOS
 

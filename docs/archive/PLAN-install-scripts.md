@@ -178,3 +178,21 @@ a person-shaped session — here, a scheduled task with `-NoExit` in a signed-in
   and — with the running copy quit first — the script started a NEW `/usr/bin/rexenv` in its own
   session (`setsid`), window and tray up. The VM went back to the release deb it had (same
   binary hash) and to passwordless sudo.
+
+**Smart App Control, as far as it can be seen here (29 Sep 2026, tap #3).** It cannot be switched
+On for a test: it turns On only after a clean install's evaluation, and on the Win11 VM a hand-set
+`VerifiedAndReputablePolicyState = 1` survived until the next policy refresh and read `0` after a
+reboot. What CAN be seen is its PowerShell side: an App Control policy runs PowerShell in
+ConstrainedLanguage mode, where the fresh-install path died at its first .NET call ("Cannot set
+property. Property setting is supported only on core types in this language mode." — the TLS
+line; `HttpWebRequest.Create`, `IO.Path.GetTempPath` and even `Get-FileHash` fail too, measured on
+the Dell). `install.ps1` now checks the language mode before any .NET call and says what imposes
+it, and prints a Smart App Control note (not a refusal — cloud reputation can let a file through)
+when `Get-MpComputerStatus` reports `On`. CI covers both with stand-ins (the mode set by hand, the
+cmdlet shadowed by a function). Still unseen: what Windows itself shows under SAC.
+
+**One account per machine.** Testing a second Windows user surfaced that `\rexenv\dns-agent` is a
+machine-wide task every launch re-registers with `/F`. rexenv is one account per machine on every
+OS by design (`:443`, the route, the resolver port), now said in `docs/INSTALL.md`; the silent
+task takeover stays a TODO row with a recommended refusal, the owner's call.
+

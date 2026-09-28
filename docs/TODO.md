@@ -66,13 +66,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `RuntimeInformation` (PSReadLine 2.0.0), and the first `install.ps1` refused every Windows desktop
   for about a day — fixed in tap #2, grep-guarded in its lint job. Still open by nature: Smart App
   Control ON (SMOKE § Windows row; no machine has it).
-- [ ] **Windows: `\rexenv\dns-agent` is one task per MACHINE, and every launch re-registers it
-  with `/F`** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`) and
-  `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`) while testing a second Windows user on the
-  Win11 VM; **not run**. A second user's first launch either replaces the first user's agent task
-  (the task runs as the SID in its definition) or, as a standard user, fails to overwrite a task
-  it does not own and falls back to in-process DNS — and both users' agents want `:53`. Rare for a
-  dev tool; decide between a per-user task name and a refusal that says so.
+- [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
+  for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
+  launch, `schtasks /Create … /F`) and `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`, one name
+  per machine) while testing a second Windows user; **not run.** rexenv is one account per machine
+  on every OS by design — `:443`, the `.rex` route and the resolver port are machine-wide —
+  and `docs/INSTALL.md` now says so ("One account per machine, every OS"). What is left is the one
+  SILENT part: an admin second account replaces the first account's task (it then starts at the
+  second account's logon, not the first's, until the first account's rexenv launches and takes
+  it back); a standard one cannot overwrite it and falls back to in-process DNS. Recommended:
+  `install` refuses to re-register a task whose principal is another account and says which
+  account holds it — a `platform/windows` change with a rules test, proven with two accounts on
+  the Win11 VM. The owner's call whether a rare multi-account machine is worth that proof.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync (the site still says 0.8.7)

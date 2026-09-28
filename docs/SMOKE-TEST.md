@@ -2324,8 +2324,17 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       would not re-register the machine-wide `\rexenv\dns-agent` task (TODO row).
 - [ ] **Smart App Control ON.** On a Windows 11 where `Get-MpComputerStatus` says
       `SmartAppControlState: On`, run the command and record verbatim what SAC does to the unsigned
-      installer. **Open: no machine has it on** (the VM and the Dell are `Off`; SAC is on only on
-      clean installs that pass its evaluation).
+      installer. **Open: no machine CAN have it on here.** SAC turns On only after a clean install's
+      evaluation; on the Win11 VM (24H2, 26100.9457) a hand-set
+      `HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy\VerifiedAndReputablePolicyState = 1` held until
+      the next policy refresh and read `0` again after a reboot — SAC stayed `Off` (29 Sep 2026).
+      **What stands in, and what it does not cover:** SAC's policy runs PowerShell in
+      ConstrainedLanguage mode, where the fresh-install path used to die at its first .NET call
+      (*"Cannot set property. Property setting is supported only on core types in this language
+      mode."*, measured on the Dell); `install.ps1` now refuses in a sentence instead (run on the VM
+      with the mode set by hand, and in CI), and a stand-in `Get-MpComputerStatus` reporting `On`
+      makes it print its Smart App Control note (CI). What Windows itself shows under SAC is the
+      part still unseen.
 - [x] **The install asks for NO admin.** Per-user (`installMode: currentUser`): it lands in
       `%LOCALAPPDATA%\rexenv` — `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and the
       uninstall entry is under **HKCU**, so Apps & Features lists rexenv with `DisplayVersion`

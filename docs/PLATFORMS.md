@@ -196,6 +196,13 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   reproduce it either). The first `install.ps1` refused every Windows desktop that way (fixed
   29 Sep 2026, tap #2). A PowerShell claim meant for a person is proven in a `-NoExit` session
   on a signed-in desktop.
+- **An App Control policy runs PowerShell in ConstrainedLanguage** — Smart App Control is one.
+  There, setting a static property or calling a method on a non-core .NET type fails ("… is
+  supported only on core types in this language mode"), and even `Get-FileHash` fails (measured
+  on the Dell, PS 5.1). A script for `iex` checks `$ExecutionContext.SessionState.LanguageMode`
+  before its first .NET call. **Smart App Control cannot be switched On for a test:** it turns On
+  only after a clean install's evaluation, and an install where it is Off resets a hand-set
+  `VerifiedAndReputablePolicyState = 1` at the next refresh (measured on the Win11 VM, 29 Sep 2026).
 - Proof hosts, SSH, the click helpers: `docs/TESTING.md` §"Proving a Windows claim";
   design record `docs/PLAN-windows-port.md`; user side `docs/INSTALL.md` § Windows.
 
