@@ -44,6 +44,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **One-command install — `curl … | bash` (macOS, Linux) and `irm … | iex` (Windows)** —
+  owner, 28 Sep 2026: "the Claude Code way", and can it get past Gatekeeper / SmartScreen / Linux's
+  equivalent. `docs/PLAN-install-scripts.md` (research §1, rulings D1–D4 — every recommendation
+  taken). **Built 28 Sep:** `install.sh`, `install.ps1`, `.github/workflows/install-scripts.yml`
+  and the README section in `rexenv/homebrew-tap`; the two 302s in the website's `_redirects`
+  (ledger #738). **Proven 28 Sep:** macOS 15.8 VM (installed, opened, no quarantine, no dialog);
+  Win11 24H2 ARM VM as a temporary standard user (fresh install, 20 s, no UAC) + the Dell (the
+  already-installed path, the caller's session untouched); Ubuntu 22.04 and 24.04 arm64, 22.04
+  amd64 and Fedora (AppImage) in fresh containers; shellcheck, actionlint, PSScriptAnalyzer clean.
+  **Open:** (1) push the tap, THEN the website — its lychee run checks the raw URLs, so the tap
+  goes first (the owner's go); (2) the first `install-scripts.yml` run, which also answers
+  whether the `macos-15-intel` runner label exists; (3) the SMOKE rows it added — the literal
+  command on a Mac that never had rexenv, the SmartScreen dialog's absence SEEN from the Win11
+  desktop, the Linux desktop launch; (4) the website's install page naming the command (its own
+  `update-website` routine).
 - [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
   2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
   server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link

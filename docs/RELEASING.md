@@ -72,6 +72,15 @@ rexenv/homebrew-tap .github/workflows/update-cask.yml
    brew update && brew upgrade --cask rexenv   (users)
 ```
 
+**The asset NAMES are an interface, not a detail** (28 Sep 2026). The one-command
+installers in the tap (`install.sh`, `install.ps1` — `docs/PLAN-install-scripts.md`) build
+`rexenv_<X.Y.Z>_universal.app.tar.gz`, `_x64-setup.exe`, `_<amd64|arm64>.deb` and
+`_<amd64|aarch64>.AppImage` plus each `.sha256` (`<hash>  <name>`) from the tap's
+`releases/latest` tag. Rename one and every new install on that OS fails, while the cask —
+which names only the dmg — keeps passing. The tap's `install-scripts.yml` installs the
+latest published release on every OS on `release: published` and weekly; a red run there
+after a publish is this, and the fix is in the scripts or the names, in the same change.
+
 **Why the bump lives in the tap repo, not here.** A workflow pushing to its OWN repo
 uses the built-in `GITHUB_TOKEN`, so the pipeline needs **no PAT, no deploy key, no
 stored secret**. Pushing from this repo to the tap would need a cross-repo credential:

@@ -91,6 +91,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | `rex` on PATH | symlink, one admin prompt | a **copy** in `%LOCALAPPDATA%\rexenv\bin` on the user Path, no prompt (#634) | one admin prompt |
 | Binary preparation (`prepare_binary`) | de-quarantine → relink Homebrew dylibs → ad-hoc codesign **last** | strip Mark-of-the-Web → refuse a non-runnable PE (`pe.rs`) | set executable; soname shims in `lib-compat/` at spawn (`libaio.so.1t64`, #731); bottle trees `Unported` (D-L8) |
 | Installer / in-app update | `.dmg` + `.app.tar.gz`, Homebrew cask | unsigned NSIS per-user `setup.exe` + zip | `.deb` (`dpkg -i` under polkit) / AppImage (`renameat2` exchange) (#729/#730) |
+| One-command install (`install.sh` / `install.ps1` in `rexenv/homebrew-tap`, `docs/PLAN-install-scripts.md`) | `curl` fetches the `.app.tar.gz` → `/Applications`; curl writes no quarantine, so no Gatekeeper dialog; `xattr -dr` anyway, as the cask's postflight | `Invoke-WebRequest` fetches `setup.exe` — no Mark of the Web (measured Win10 22H2 + Win11 24H2), so no SmartScreen dialog — then `/S`: per-user, no UAC. Smart App Control, where on, still blocks | `apt-get install ./…deb` under `sudo` (Depends resolved); no apt → AppImage in `~/Applications`. No gate to meet |
 | Compile gate in `verify.sh` | native | `windows-check` (cargo-xwin) — #584 | `linux-check` (Ubuntu 22.04 container) — #719 |
 | Where a RUN happens | the dev Mac; UTM macOS 13.6→15.8 VM | the Dell (Win10) + Win11 ARM VM; CI `windows-verify.yml` | Ubuntu 22.04 arm64 UTM VM; Dell WSL2 (x86_64); CI `linux-build.yml` |
 | Human checklist | `SMOKE-TEST.md` main body | `SMOKE-TEST.md` § Windows | `SMOKE-TEST.md` § Linux |
@@ -154,6 +155,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   (a common rule, enforced for every OS, but the reason is WebKit).
 - **WKWebView is the shipping engine**, not Chrome: ITP-blocked iframe cookies, custom-scheme
   302s never followed, no JS dialogs in wry. Check UI in `scripts/wk-checks/` (WebKit).
+- **Quarantine is written by the DOWNLOADING app**: a browser sets `com.apple.quarantine`,
+  `curl` and reqwest do not (measured 16 Aug 2026). The in-app update and the one-command
+  install stand on that; Homebrew is the exception — it adds quarantine and its cask's
+  postflight strips it again. A synthetic `xattr -w` is how PUBLISH-TESTING §A fakes a download.
 - **Legacy tiers**: 13 and 14 resolve older pins (`PinSet::for_tier`); a feature that needs a
   newer binary says so in the tier's words (`needs_newer_os`).
 - Mechanism detail: `docs/ARCHITECTURE.md` (written against macOS), `docs/INSTALL.md` § macOS.
@@ -177,7 +182,13 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   sweep broke concurrent children): mutate global state only on one thread at main start.
 - **Job objects**: the installer's Finish page and SSH shells start rexenv inside a job; the
   start-up hop out of it is `job_guard` (#692).
-- **Unsigned** (owner ruling): SmartScreen text is documented, not worked around.
+- **Unsigned** (owner ruling, D5): a BROWSER-downloaded `setup.exe` meets SmartScreen, and its
+  text is documented, not worked around. The one-command install meets none — `Invoke-WebRequest`
+  writes no Mark of the Web, which is what SmartScreen keys on (measured 28 Sep 2026; the owner
+  took that path the same day, `docs/PLAN-install-scripts.md` D2). `install.ps1` never calls
+  `Unblock-File` and never touches Defender: "download, unblock, run silently" is the shape AMSI
+  flags in a script piped to `iex`. **Smart App Control**, where on, blocks unsigned apps
+  either way — no command changes that.
 - Proof hosts, SSH, the click helpers: `docs/TESTING.md` §"Proving a Windows claim";
   design record `docs/PLAN-windows-port.md`; user side `docs/INSTALL.md` § Windows.
 

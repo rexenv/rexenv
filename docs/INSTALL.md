@@ -3,7 +3,46 @@
 **macOS is below; Windows and Linux are at the end of this file** — the installs share
 almost nothing mechanically (a `.dmg` and Gatekeeper against an installer and
 SmartScreen; `/etc/resolver` against NRPT; a keychain against the CurrentUser Root
-store), so each is written out rather than cross-referenced.
+store), so each is written out rather than cross-referenced. The one thing they share is
+the one-command install, right below.
+
+## One command, every OS
+
+```sh
+curl -fsSL https://rexenv.rex.bd/install.sh | bash      # macOS, Linux
+```
+
+```powershell
+irm https://rexenv.rex.bd/install.ps1 | iex             # Windows (PowerShell)
+```
+
+Both URLs redirect to `install.sh` / `install.ps1` in the public
+[`rexenv/homebrew-tap`](https://github.com/rexenv/homebrew-tap) — read them first; they
+are short. Each installs the latest published release and checks the download against the
+release's `.sha256` before installing anything:
+
+- **macOS 13+** — `rexenv.app` into `/Applications` (from the universal `.app.tar.gz`, the
+  same archive the in-app update uses), then starts it.
+- **Windows 10/11 x64** — the per-user `setup.exe`, run silently: no UAC prompt, a Start-menu
+  and a desktop shortcut, then starts rexenv. Windows on Arm gets a note and the x64 build.
+- **Ubuntu 22.04+ (amd64, arm64)** — the `.deb` through `apt`, so its dependencies come with
+  it; `sudo` asks for your password. A distribution without apt gets the AppImage in
+  `~/Applications` instead (untested outside Ubuntu).
+
+**An installed rexenv is left alone** — the script says where it is and stops, because
+rexenv updates itself (Settings → About → Check now) and a reinstall could put an older
+build over a newer one. `REXENV_NO_LAUNCH=1` installs without starting it.
+
+**The command path meets no Gatekeeper and no SmartScreen dialog, by the operating system's
+own design.** Both dialogs key on a mark the DOWNLOADING program writes — `com.apple.quarantine`
+on macOS, the Mark of the Web on Windows. A browser writes it; `curl` and PowerShell's
+`Invoke-WebRequest` do not (measured: `curl` 16 Aug 2026; `Invoke-WebRequest` and `curl.exe`
+on Windows 10 22H2 and Windows 11 24H2, 28 Sep 2026). So the one-time "Open Anyway" below
+and the Windows section's "Run anyway" are the BROWSER-download path only. Two things the
+command does not change: Windows **Smart App Control**, where it is on, blocks unsigned
+apps whatever their source; and the trust is yours — the checksum proves the download
+arrived intact, while that it is rexenv's rests on HTTPS to github.com, as for a browser
+download (`docs/PLAN-install-scripts.md` §1).
 
 ## macOS
 
@@ -12,7 +51,8 @@ rexenv is a local development environment — it runs your web/WordPress stack
 natively on your Mac, no Docker.
 
 This is a **limited build shared directly** (not from the App Store and not yet
-notarized by Apple), so the **first launch needs one extra click** — see below.
+notarized by Apple), so a **browser-downloaded `.dmg` needs one extra click on first
+launch** — see below. The one-command install above and Homebrew need none.
 
 ### Requirements
 
@@ -231,15 +271,14 @@ login keychain.
 
 ## Windows
 
-> **Not yet installable.** rexenv has no Windows installer today: `bundle.windows` in
-> `src-tauri/tauri.conf.json` is empty, and the NSIS installer, the Windows release job and
-> the winget manifest are all open work (W11 in `docs/TODO.md`). What exists is a Windows
-> build you can compile and run — the whole Rust suite passes there (1313 tests, 19 Sep
-> 2026). This page describes what that build does on your machine, so it is ready when the
-> installer lands.
+> **Installable since 0.8.0** — `rexenv_<version>_x64-setup.exe` on every release of
+> [`rexenv/homebrew-tap`](https://github.com/rexenv/homebrew-tap/releases), or the one
+> command at the top of this file. (Until 28 Sep 2026 this banner said "not yet installable"
+> — written before the installer existed and left standing for nine releases.)
 >
-> **When it does land it will be unsigned**, like the macOS build: rexenv is open source
-> and earns nothing, so it buys no code-signing certificate. What that costs you is below.
+> **It is unsigned**, like the macOS build: rexenv is open source and earns nothing, so it
+> buys no code-signing certificate. What that costs a browser download is below; the one
+> command meets none of it (top of this file), except Smart App Control where it is on.
 
 #### What Windows says about an unsigned installer
 
@@ -409,11 +448,12 @@ store, and the `rex` copy on your `Path`.
 
 ## Linux (Ubuntu)
 
-> **Not yet installable, and not yet run anywhere.** The Linux port landed 24 Sep 2026
-> (`docs/PLAN-linux-port.md`): the code compiles for Linux and every platform piece is written,
-> but no `.deb` has been built and no Linux machine has run it. This section says what the
-> build WILL do on an Ubuntu machine, so it is ready when the package lands — and so the first
-> tester knows what to look for.
+> **Installable since 0.8.8 (27 Sep 2026)** — `rexenv_<version>_<amd64|arm64>.deb` and an
+> AppImage per architecture on every release of
+> [`rexenv/homebrew-tap`](https://github.com/rexenv/homebrew-tap/releases), or the one
+> command at the top of this file (it installs the `.deb` through `apt`). Proven through the
+> installed `.deb` on an Ubuntu 22.04 arm64 VM and on Ubuntu 26.04 x86_64 under WSL2
+> (`docs/PLAN-linux-port.md`). (Until 28 Sep 2026 this banner said "not yet run anywhere".)
 
 ### Requirements
 
@@ -429,7 +469,7 @@ store, and the `rex` copy on your `Path`.
   "rexenv needs administrator permission to change system settings…" (the action file the
   package installs); from an AppImage it is polkit's generic "run /bin/sh as the super user".
 - `libnss3-tools` (`certutil`), `xdg-utils`, `libayatana-appindicator3-1` (the tray). The
-  `.deb` will declare these; an AppImage will not, and the messages name the missing one.
+  `.deb` declares these; an AppImage does not, and the messages name the missing one.
 - An internet connection on **first run** — the same downloads as macOS, from the same
   publishers where they publish Linux builds (`docs/PORTS.md`, Linux table). MySQL's generic
   Linux build additionally needs `libaio1` and `libnuma1`, and PostgreSQL's needs libxml2, OpenSSL 3,
