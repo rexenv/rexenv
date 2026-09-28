@@ -432,7 +432,13 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       matches Adminer, cert card shows issued/expires dates + SANs. **◐ 18 Sep 2026 (clean
       15.6.1 VM):** rename via `rex site rename` updated the list; the Settings tab showed
       domains/env/Xdebug cards; cert dates read via `rex site info` (395 days). **Open: the
-      rename, the DB-name match and the cert card through the Settings tab itself.**
+      rename, the DB-name match and the cert card through the Settings tab itself.** **28 Sep
+      2026 (15.8 VM, 0.8.9): the site page could not be reached by automation** — a System
+      Events click anywhere on a Sites row, and an AXPress on the row's own "Open <site>"
+      accessibility button, opened the site in Safari every time while the app stayed on the
+      list; sidebar, Settings and dialog clicks work. A hand run (or a tool that sends real
+      HID events) is what this row and the Database-tab / delete-confirm rows wait for; the
+      23 Sep hand run reached the page.
 
 ## PHP 7.4 — the one leg no automated tier covers
 **Moved here 15 Aug 2026 from the MCP section, where it was step "11b".** The
