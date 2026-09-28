@@ -90,7 +90,9 @@ pub(crate) fn dead_child() -> std::process::Child {
 
 /// A child that BURNS a core, standing in for a php-cgi parent retrying a spawn — the
 /// churn breaker's subject (ledger #605). The caller owns it and must kill it: like
-/// `yes`, neither form ends on its own.
+/// `yes`, neither form ends on its own — and "must kill it" at the END of the test is
+/// a line a failing assertion never reaches, so the caller holds a [`KillOnDrop`] on
+/// its pid from the moment it is spawned.
 pub(crate) fn spinning_child() -> std::process::Child {
     #[cfg(unix)]
     {
@@ -109,6 +111,32 @@ pub(crate) fn spinning_child() -> std::process::Child {
             .stdout(std::process::Stdio::null())
             .spawn()
             .expect("spawn a spinning child")
+    }
+}
+
+/// Kills `pid` when dropped — for a spinner the test HANDED to the code under test (a
+/// `Pool` takes the `Child`, and dropping a `std::process::Child` kills nothing).
+///
+/// 29 Sep 2026: three `yes` processes with ppid 1 were burning a core each on the dev
+/// Mac, one of them nine days old. Each was a breaker test's spinner, orphaned when an
+/// assertion failed before the test's own `kill()` line — and each leaked spinner was
+/// itself load, starving the NEXT run's quarter-core measurement, so a false-red made
+/// the following run likelier to false-red. A drop guard runs on the unwind too.
+/// `kill`/`taskkill` rather than a libc binding: the fixture file stays extension-free.
+/// Ledger #655 — its "reaped by every caller" half.
+pub(crate) struct KillOnDrop(pub u32);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let pid = self.0.to_string();
+        #[cfg(unix)]
+        let status = std::process::Command::new("kill").args(["-9", &pid]).status();
+        #[cfg(windows)]
+        let status = std::process::Command::new("taskkill")
+            .args(["/PID", &pid, "/F"])
+            .stdout(std::process::Stdio::null())
+            .status();
+        let _ = status;
     }
 }
 

@@ -2690,8 +2690,11 @@ mod tests {
     fn the_breaker_stops_a_spinning_process_and_keeps_an_idle_one() {
         let window_ago = std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW;
         let mut pools = PhpFpmPools::default();
+        let spinner = spinning_process();
+        // The pool takes the child; this outlives a failed assertion and kills it.
+        let _reap = crate::test_support::KillOnDrop(spinner.id());
         for (minor, child) in [
-            ("8.3", spinning_process()),
+            ("8.3", spinner),
             ("8.4", crate::test_support::live_child()),
         ] {
             pools.pools.push(Pool {
@@ -2733,6 +2736,7 @@ mod tests {
     #[test]
     fn the_breaker_never_stops_an_adopted_pid_that_is_not_the_group() {
         let mut busy = spinning_process();
+        let _reap = crate::test_support::KillOnDrop(busy.id());
         let window_ago = std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW;
         let mut pools = PhpFpmPools::default();
         pools.pools.push(Pool {

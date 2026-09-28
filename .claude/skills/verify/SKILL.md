@@ -40,6 +40,12 @@ pre-commit hook then refuses. Docs and `.claude/` are outside the fingerprint.
   hand-edit a generated number.
 - **`probe_version` / devtools timeouts at 10s** — usually `live-checks.sh` is
   running at the same time (Gatekeeper busy). Do not interleave; re-run after.
+- **`core::php::tests::the_breaker_*` red, nothing else** — those two spawn a real
+  spinner and judge it on CPU over a 4 s window, so a loaded machine starves them
+  (PhpStorm indexing `src-tauri/target` at 700%, a release build, a VM). Before
+  29 Sep 2026 their OWN leaked spinners were the load: `ps -eo pid,ppid,command |
+  grep '[ ]yes$'` found three `yes` with ppid 1. Kill any such orphan, wait for
+  `uptime` under ~7, re-run. Never loosen the window to make it pass.
 - **A copy-guard / must-say test fails** — the UI copy and the facts it states
   drifted apart. Fix the copy or the guard, never delete the guard.
 - Anything else: it is a real failure. Quote the output, fix, re-run. Do not
