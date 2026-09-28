@@ -103,6 +103,29 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
+
+`rexenv_0.8.9_universal.dmg` + `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both
+OK), source `bfcd8cf1` (tag `v0.8.9`, pushed; a first tag at `9f099de4` was moved after nine
+more commits landed — its draft deleted, nothing from it published), `rexenv/runtimes` run
+36386674456, all four lanes green on the first try, 16 assets. **§A0 ✅ by hand:** both binaries
+`x86_64 arm64`, `Dist_Archive_Command` ×5 in EACH slice, `minos 13.0` in both, codesign valid,
+Info.plist `0.8.9`, dmg app == archive app. **§A ✅ measured on the 15.8 arm64 UTM VM as an
+UPGRADED INSTALL from 0.8.8** (synthetic `0083` quarantine, `rm -rf` first, the DNS agent
+unloaded before the swap so the known "quit unexpectedly" kill could not fire — and it did
+not): Gatekeeper **"rexenv" Not Opened**; after `sudo xattr -rd` the app launched as
+`0.8.9 (bfcd8cf)`, the agent handed back; Start all → the branded edge prompt → All running,
+`smoke1.rex` / `smoke-lv.rex` / `smoke-pg.rex` all **200 over HTTPS with system trust**; Stop
+all → the branded stop prompt → every service idle, edge daemon unloaded; no crash report.
+VM note: it now auto-logs in (`/etc/kcpassword` + `autoLoginUser`, set this day — it had been
+booting to the login window). **Not run:** the clean-Mac list, the Windows and Linux
+installers from this draft, the in-app updates (descriptors — after Publish).
+
+**Publish is the owner's gate.** After it: the six descriptor publishes (approve together —
+runtimes PRs #12–#14), `check-app-manifest.sh` ×6, then the update proofs: the VM from a
+reinstalled 0.8.8 (macOS relaunch), the Dell from 0.8.8 (Windows relaunch), the 22.04 VM from
+0.8.8 (Linux: the swap lands, the app does NOT come back — 0.8.8 is the old side; open by hand).
+
 ## A) ✅ 0.8.8 — DRAFTED on the tap by CI (the first release built entirely on GitHub Actions)
 
 `rexenv_0.8.8_universal.dmg`, sha256

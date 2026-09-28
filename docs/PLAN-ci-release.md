@@ -114,5 +114,10 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   runtimes descriptor publishes. Published 16:48 UTC; cask bumped; macOS + Windows descriptors
   live and the in-app update measured on the VM (0.8.7 → 0.8.8) and the Dell (0.8.5 → 0.8.8);
   the six-from-one-page push race is fixed in runtimes PR #12 (`docs/RELEASING.md` step 8).
+- **0.8.9, 28 Sep 2026:** bump `9f099de4` tagged and built (run 36346337657, all green, drafted)
+  — then nine commits landed on master, so the tag moved to `bfcd8cf1`, the stale draft was
+  deleted, and run 36386674456 built it again: all four lanes green first time, draft with 16
+  assets, §A0/§A green the same hour (`docs/PUBLISH-TESTING.md`). A tag that moves is cheap
+  while nothing is published from it; the pre-push guard re-checked the manifests both times.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
