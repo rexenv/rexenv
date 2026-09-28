@@ -65,6 +65,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `verify`, `ledger-row`, `live-check`, `release` (now the CI-only, every-OS flow) and
   CONTRIBUTING name all three. Stale "Linux stubs are `todo!()`" removed from CLAUDE.md,
   CONTRIBUTING and README (`platform/linux/` has none since L1, ledger #716).
+- [x] **After an unclean reboot MySQL and PostgreSQL never start again — stale lock files whose
+  pids another program now holds** ✓ fixed 28 Sep 2026 (`core/stale_lock`, ledger #735): found on
+  the 22.04 VM after a reboot (systemd SIGKILLed both; the pids came back as WebKit threads of
+  rexenv's own window), the watchdog gave up after three respawns and every site was down. A start
+  now removes a lock whose pid is gone or belongs to another program, keeps one the server holds.
 - [x] **Linux deb in-app update: the app did not come back after the swap** ✓ fixed 27 Sep 2026
   (`rules::relauncher_exe`, ledger #729): `current_exe()` is `/proc/self/exe` and read
   `/usr/bin/rexenv (deleted)` after `dpkg -i`, so spawning the relauncher was ENOENT and the

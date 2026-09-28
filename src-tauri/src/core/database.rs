@@ -343,6 +343,13 @@ pub fn start(
         format!("--log-error={}", log.display()),
     ];
     args.extend(platform.supervisor().mysqld_supervision_args());
+    // A lock file from a server that died unclean, whose pid another program now has,
+    // makes mysqld abort ("Unable to setup unix socket lock file") on every start until
+    // someone removes two files by hand — measured after a VM reboot (`core::stale_lock`).
+    let lock = std::path::PathBuf::from(format!("{}.lock", socket.display()));
+    if let Some(why) = crate::core::stale_lock::clear_if_stale(platform, &lock, &socket.display().to_string(), &[socket])? {
+        log::warn!("mysql: removed a stale lock before starting — {why}");
+    }
     let stdout_log = platform.paths().log_dir()?.join("mysql-stdout.log");
     platform
         .supervisor()

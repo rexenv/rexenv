@@ -69,6 +69,7 @@ pub mod site_metrics;
 pub mod sites;
 pub mod stopped_page;
 pub mod ssl;
+pub mod stale_lock;
 pub mod starter;
 pub mod stack_guard;
 pub mod terminal;

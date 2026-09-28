@@ -145,6 +145,12 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
     if let Some(parent) = log.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    // `postmaster.pid` from a postmaster that died unclean: PostgreSQL only asks whether
+    // the pid EXISTS, and after a reboot it usually does — as some other program. Then
+    // every start fails "lock file already exists" (`core::stale_lock`, measured on a VM).
+    if let Some(why) = crate::core::stale_lock::clear_if_stale(platform, &datadir.join("postmaster.pid"), &datadir.display().to_string(), &[])? {
+        log::warn!("postgres: removed a stale pid file before starting — {why}");
+    }
     if !platform.supervisor().may_spawn_with_admin_token() {
         let child = platform.supervisor().spawn_logged(
             &postgres_bin(basedir),
