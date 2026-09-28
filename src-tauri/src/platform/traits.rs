@@ -143,6 +143,15 @@ pub trait CertTrustManager: Send + Sync {
     fn root_trust_command(&self, _ca_cert_path: &std::path::Path) -> Option<String> {
         None
     }
+    /// The mirror for teardown: the ROOT command that takes the CA out of the OS's system
+    /// store — only where that is a root op and only when the store holds a file to remove.
+    /// `run_system_teardown` batches it with the other root work (the edge, the routes) into
+    /// its ONE prompt; `untrust_ca` runs it itself only when the file is still there. Measured
+    /// 28 Sep 2026 on the 22.04 VM: "Remove system changes" showed two password dialogs, the
+    /// second for this file alone, and a tester who answered one saw the CA left in the store.
+    fn root_untrust_command(&self) -> Option<String> {
+        None
+    }
    fn is_trusted(&self, _ca_cert_path: &std::path::Path) -> bool {
         false
     }

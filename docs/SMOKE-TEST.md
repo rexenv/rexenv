@@ -2475,8 +2475,20 @@ rexenv0 <name>` and read `Current Scopes:`.
       then retry: `sudo apt install libnss3-tools`" with a copy button; no `pkexec` ran and the
       system store's file kept its mtime. (A certutil that is present but not executable gives
       the raw "io error: Permission denied (os error 13)" instead — TODO row.)
-- [ ] Settings → Remove system changes → both stores empty (NSS dbs and the system file), the
-      `rexenv0` link, route marker, units and autostart entry gone. **Open: no Linux run recorded.**
+- [x] Settings → Remove system changes → both stores empty (NSS dbs and the system file), the
+      `rexenv0` link, route markers and units gone; the login item is a preference and stays
+      on every OS (this row used to say "autostart entry gone" — no OS's teardown touches it).
+      **◐ 28 Sep 2026 (VM, 0.8.9, with `.rex` + `.test` routed):** Settings → Services →
+      Uninstall → "Remove rexenv's system changes?" (names the markers, the CA, the password) →
+      Remove → polkit → the edge unit and both markers gone, `rexenv0` "does not exist",
+      `rexenv-edge` / `rexenv-dns-route` unit files gone, all services stopped, `~/.pki/nssdb`
+      and the snap Chromium database empty of the CA, the user DNS unit removed and the agent
+      gone — `rex status`: "DNS DOWN (removed) · resolver MISSING · CA NOT TRUSTED". **But a
+      SECOND polkit dialog** came for `/usr/local/share/ca-certificates/rexenv-local-ca.crt`
+      alone, and until it was answered the file stayed (a tester who answers one dialog keeps a
+      trusted CA). The teardown twin of the setup finding — fixed on master the same day
+      (ledger #723: the CA file's removal rides the one batch); one dialog is owed the next
+      release. Firefox's profile database already held no CA (its trust is the `user.js` pref).
 
 ### P4 — autostart and the DNS agent
 - [x] ✓ 24 Sep 2026 (VM, `sudo reboot` with both launch toggles on): after the reboot's

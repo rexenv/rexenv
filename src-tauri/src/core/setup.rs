@@ -76,6 +76,21 @@ pub fn run_system_setup(platform: &dyn Platform) -> Result<ssl::LocalCa> {
     Ok(ca)
 }
 
+/// The teardown prompt's words, naming exactly what its batch touches (an honest prompt is
+/// one whose sentence matches its command, DESIGN.md): the rex command only when its removal
+/// rides along, the certificate authority only where its removal is a root op in this batch.
+pub fn teardown_prompt_words(cli: bool, ca: bool) -> String {
+    let mut parts = vec!["DNS resolvers", "the HTTPS server"];
+    if cli {
+        parts.push("the rex command");
+    }
+    if ca {
+        parts.push("the local certificate authority");
+    }
+    let last = parts.pop().unwrap_or("");
+    format!("remove its system changes ({} and {last})", parts.join(", "))
+}
+
 /// The ONE privileged step of setup: the resolver's command, the store's, or both joined —
 /// and the sentence for the prompt that names everything it does. `None` when the
 /// resolver is already ours and the store needs nothing (or is a user op): `trust_ca` then
@@ -145,6 +160,12 @@ pub fn run_system_teardown(
     if !plan.remove.is_empty() {
         root_cmds.push(platform.dns().uninstall_command(&plan.remove));
     }
+    //  - the CA's system-store file, where untrusting needs root (Linux): in THIS prompt,
+    //    not a second one from `untrust_ca` — the two-dialog teardown measured 28 Sep 2026.
+    let ca_in_batch = platform.cert_trust().root_untrust_command();
+    if let Some(cmd) = &ca_in_batch {
+        root_cmds.push(cmd.clone());
+    }
     if !plan.restore.is_empty() {
         root_cmds.push(platform.dns().restore_command(&plan.restore));
     }
@@ -154,11 +175,7 @@ pub fn run_system_teardown(
             // The prompt names what this batch will actually touch: the rex
             // command only when its removal rides along (an honest prompt is
             // one whose sentence matches its command, DESIGN.md).
-            &crate::platform::traits::PromptReason::new(if cli_in_batch.is_some() {
-                "remove its system changes (DNS resolvers, the HTTPS server and the rex command)"
-            } else {
-                "remove its system changes (DNS resolvers and the HTTPS server)"
-            }),
+            &crate::platform::traits::PromptReason::new(teardown_prompt_words(cli_in_batch.is_some(), ca_in_batch.is_some())),
         )?;
     }
     // Records + their backups die together, and only after the root step
@@ -452,6 +469,16 @@ mod tests {
     /// Linux re-setup asked twice). Both → one script, one sentence naming both; the
     /// resolver alone → its own sentence; nothing for the resolver → no batch (the store,
     /// if any, rides `trust_ca`'s single prompt).
+    /// Teardown's one prompt names every root leg it carries — and the CA leg only where it
+    /// is one (Linux). A macOS teardown keeps its old two sentences.
+    #[test]
+    fn teardown_prompt_names_exactly_what_its_batch_removes() {
+        assert_eq!(teardown_prompt_words(false, false), "remove its system changes (DNS resolvers and the HTTPS server)");
+        assert_eq!(teardown_prompt_words(true, false), "remove its system changes (DNS resolvers, the HTTPS server and the rex command)");
+        assert_eq!(teardown_prompt_words(false, true), "remove its system changes (DNS resolvers, the HTTPS server and the local certificate authority)");
+        assert_eq!(teardown_prompt_words(true, true), "remove its system changes (DNS resolvers, the HTTPS server, the rex command and the local certificate authority)");
+    }
+
     #[test]
     fn setup_runs_its_root_legs_as_one_step_with_one_sentence() {
         let both = setup_root_batch(Some("install-route"), Some("install-store"), "rex").unwrap();

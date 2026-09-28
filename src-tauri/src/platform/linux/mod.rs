@@ -260,13 +260,17 @@ impl CertTrustManager for LinuxCertTrust {
                 }
             }
         }
-        if Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME).exists() {
+        // Only when teardown did not already take it in its batched step.
+        if let Some(cmd) = self.root_untrust_command() {
             LinuxPrivileges.run_privileged(
-                &trust::system_untrust_command(),
+                &cmd,
                 &PromptReason::new("remove its local certificate authority from this computer's trust store"),
             )?;
         }
         Ok(())
+    }
+    fn root_untrust_command(&self) -> Option<String> {
+        Path::new(trust::SYSTEM_CERT_DIR).join(trust::SYSTEM_CERT_NAME).exists().then(trust::system_untrust_command)
     }
     /// One nickname holds one certificate per database: a different one there is a stale root.
     fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
