@@ -144,6 +144,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   only within 20 s. **Still owed:** the Win11 VM run — a `--hidden` start from a scheduled task
   arrives as a login launch (no window, login-start) on the installed 0.8.11.
 
+- [ ] **The apt repository's first release run, and its key's backup** (`docs/PLAN-apt-repo.md`,
+  ledger #745, 29 Sep 2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed
+  — 0.8.11 published through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
+  `scripts/check-apt-repo.sh`), the tap's `install-scripts.yml` passing its lag path on that
+  publish, and the owner holding the private key's backup (the agent's copy deleted after).
+
 - [ ] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
   2026, 22.04 VM, 0.8.9 → 0.8.10): the update itself was clean — the new app came back — but at
   09:12:26, the moment the OLD app exited through the update's exit gate, its WebKitWebProcess

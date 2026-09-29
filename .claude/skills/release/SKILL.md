@@ -51,7 +51,8 @@ While the interim note at the top of RELEASING.md stands, the workflow runs from
 9. Owner publishes the draft → the tap's **Update cask** runs on that publish. Then
    `rexenv/runtimes` → "Publish app update manifest" once per descriptor (macOS,
    Windows, Linux deb/AppImage × x86_64/aarch64) and `scripts/check-app-manifest.sh`
-   for each (`--linux` for the Linux ones). Sanity:
+   for each (`--linux` for the Linux ones). Then `rexenv/apt` → "Publish apt repository"
+   (one more approval) and `scripts/check-apt-repo.sh`. Sanity:
    `brew audit --cask --online rexenv/tap/rexenv`.
 
 ## Do not

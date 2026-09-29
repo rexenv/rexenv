@@ -445,6 +445,11 @@ moving, with every workflow green.
    bumps from the published dmg's hash).
 5. Sanity check: `brew update && brew audit --cask --online rexenv/tap/rexenv`,
    or the full §D dry-run for a first-time setup.
+6b. **`rexenv/apt` → Actions → "Publish apt repository"** (after the tap release is published —
+   a draft's assets are not public): one approval (`apt-signing`), then
+   `./scripts/check-apt-repo.sh` — the signature by the repository's key, each `Packages` against
+   `InRelease`, the newest version = the tap's latest. Until it runs, `apt upgrade` offers nothing
+   new; `install.sh` meanwhile installs the release's `.deb` directly (`docs/PLAN-apt-repo.md`).
 6. `rexenv/runtimes` → "Publish app update manifest", dry-run then publish, **six times**
    (macOS, Windows, Linux deb/AppImage × x86_64/aarch64) — step 8 below; then
    `./scripts/check-app-manifest.sh` for each.

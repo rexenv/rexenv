@@ -2624,6 +2624,21 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 
 ### Install — the one command (`docs/archive/PLAN-install-scripts.md`)
 
+- [x] **apt, by hand** (`docs/PLAN-apt-repo.md`, ledger #745): the four lines of `docs/INSTALL.md`
+      → `apt-get update` fetches `InRelease` + `Packages` from `rexenv.github.io/apt` → `apt-get
+      install rexenv` installs the newest. ✓ 29 Sep 2026, 22.04 arm64 VM: 0.8.10 from the
+      repository (`Get: … rexenv arm64 0.8.10 [15.3 MB]`), `--print-version` 0.8.10.
+- [x] **`apt upgrade` moves rexenv**: ✓ 29 Sep 2026 (VM): `rexenv=0.8.9` from the repository →
+      `apt list --upgradable` names 0.8.10 → `apt-get upgrade` → 0.8.10.
+- [x] **A repository signed by another key is refused**: ✓ 29 Sep 2026 (VM): another key in
+      `/etc/apt/keyrings/rexenv.gpg` → "NO_PUBKEY D2F2070D6DFA60C9 … the previous index files will be
+      used"; the right key back → clean.
+- [x] **`install.sh` on apt adds the repository**: ✓ 29 Sep 2026 (VM, the script before its push):
+      fresh → "adding rexenv's apt repository" → "installing rexenv 0.8.10 from the repository";
+      installed without the source → the source added, "the package itself is not touched"; a third
+      run → nothing changed. The lag path (the repository behind a new release) is met by the
+      tap's `install-scripts.yml` on every release publish.
+
 - [x] `curl -fsSL https://rexenv.rex.bd/install.sh | bash` installs the `.deb` through `apt`
       (dependencies pulled in, `sudo` asked once), `rexenv --print-version` answers the release,
       and a second run says "already installed". ✓ 28 Sep 2026 in fresh containers, the script

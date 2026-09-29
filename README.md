@@ -28,8 +28,9 @@ irm https://rexenv.rex.bd/install.ps1 | iex             # Windows 10/11 x64, in 
 ```
 
 It installs the latest release and starts it: `rexenv.app` into `/Applications` on macOS, the
-per-user installer run silently on Windows (no administrator prompt), the `.deb` through
-`apt` on Ubuntu (`sudo` asks once; without apt, the AppImage into `~/Applications`). Every
+per-user installer run silently on Windows (no administrator prompt), the `rexenv` package
+from rexenv's signed apt repository on Ubuntu (`sudo` asks once; later updates also arrive with
+`sudo apt upgrade`; without apt, the AppImage into `~/Applications`). Every
 download is checked against the release's own `.sha256` first, and an installed rexenv is left
 alone — it updates itself (Settings → About → Check now). The command path meets no Gatekeeper
 or SmartScreen dialog: both check a mark the *downloading* program writes, and `curl` and

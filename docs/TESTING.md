@@ -1477,6 +1477,11 @@ bloating the fast path:
   warns without ruling lag out; everything current is all green; a committed file with a bad
   signature fails. Releasing 0.7.1, the check told the releaser to publish twice (ledger #594).
   **Does not prove:** the real CDN, the contents API or `gh` — those only run by hand at release.
+- **`scripts/check-apt-repo.sh`, NOT in `verify.sh` (29 Sep 2026, #745):** the release step's apt
+  check — `InRelease` verified by `gpgv` against the published key AND that key's fingerprint,
+  each `Packages` against the hash `InRelease` signs, the newest version = the tap's latest.
+  Network only (the live site), so it runs by hand at release; the repository's own CI proves the
+  build (`self-test.sh`: the runner's apt over the signed result before any deploy).
 - **`scripts/notices-check.py`, inside `verify.sh` (13 Sep 2026):** THIRD-PARTY-NOTICES.md's
   Rust table against the graphs that ship — arm64 ∪ x86_64, the app crate and the `rex`
   CLI, normal + build edges — in BOTH directions, each row's licence against the crate's

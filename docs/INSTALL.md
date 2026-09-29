@@ -25,9 +25,12 @@ release's `.sha256` before installing anything:
   same archive the in-app update uses), then starts it.
 - **Windows 10/11 x64** — the per-user `setup.exe`, run silently: no UAC prompt, a Start-menu
   and a desktop shortcut, then starts rexenv. Windows on Arm gets a note and the x64 build.
-- **Ubuntu 22.04+ (amd64, arm64)** — the `.deb` through `apt`, so its dependencies come with
-  it; `sudo` asks for your password. A distribution without apt gets the AppImage in
-  `~/Applications` instead (untested outside Ubuntu).
+- **Ubuntu 22.04+ (amd64, arm64)** — adds rexenv's **apt repository** (the key travels inside
+  the script) and installs the `rexenv` package from it, so its dependencies come with it and
+  later versions arrive with `sudo apt upgrade` too; `sudo` asks for your password. While the
+  repository lags a brand-new release (it is published right after it), the release's `.deb` is
+  installed directly instead — the repository stays configured. A distribution without apt gets
+  the AppImage in `~/Applications` (untested outside Ubuntu).
 
 **An installed rexenv is left alone** — the script says where it is and stops, because
 rexenv updates itself (Settings → About → Check now) and a reinstall could put an older
@@ -473,6 +476,23 @@ store, and the `rex` copy on your `Path`.
 > installed `.deb` on an Ubuntu 22.04 arm64 VM and on Ubuntu 26.04 x86_64 under WSL2
 > (`docs/PLAN-linux-port.md`). (Until 28 Sep 2026 this banner said "not yet run anywhere".)
 
+### Install with apt (since 29 Sep 2026)
+
+rexenv has a signed apt repository, [`rexenv/apt`](https://github.com/rexenv/apt) (key
+fingerprint `139C C1A4 A197 1376 FC6B 586B D2F2 070D 6DFA 60C9`) — the one command above sets it
+up for you, or by hand:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://rexenv.github.io/apt/rexenv.gpg | sudo tee /etc/apt/keyrings/rexenv.gpg > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/rexenv.gpg] https://rexenv.github.io/apt stable main" | sudo tee /etc/apt/sources.list.d/rexenv.list
+sudo apt-get update && sudo apt-get install rexenv
+```
+
+apt checks the repository's signature and every package's hash against it; a repository signed
+by any other key is refused (`NO_PUBKEY`). It carries the three newest releases for amd64 and
+arm64. `docs/PLAN-apt-repo.md` is the design.
+
 ### Requirements
 
 - **Ubuntu 22.04 LTS or newer** (the first LTS with `libwebkit2gtk-4.1`, which the app's
@@ -524,7 +544,9 @@ architecture, carrying `rexenv` and `rex`), and installs it with ONE polkit prom
 rexenv sentence as setup. From an AppImage, Update swaps the file beside itself with no prompt
 (keep it in a folder you own; a read-only or root-owned folder is refused with the fix named).
 An AppImage needs `libfuse2` to mount, or nothing at all — rexenv runs it extract-and-run when
-checking its version. A `cargo` build reads no update descriptor.
+checking its version. A `cargo` build reads no update descriptor. With the apt repository
+configured, `sudo apt upgrade` updates rexenv too — the same package the in-app update installs,
+so the two never disagree about what is on the machine.
 
 ### Not in Linux v1
 
