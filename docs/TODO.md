@@ -206,10 +206,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   could read `composer.json`'s `require.php` too and say "this repository needs PHP ≥ 8.4 —
   pick 8.4" beside the version picker before anything is cloned. Recovery today: switch the
   site's PHP and Retry (worked).
-- [ ] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
+- [x] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
   error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
   only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures
-  of certutil should read as the same sentence with the reason appended.
+  of certutil should read as the same sentence with the reason appended. ✓ **Fixed 29 Sep 2026
+  (ledger #746):** every certutil call in `LinuxCertTrust` goes through one `certutil_run`, whose
+  spawn failure reads "certutil (/usr/bin/certutil) is installed but cannot run — Permission
+  denied (os error 13) — so rexenv cannot add … Reinstall it, then retry: `sudo apt install
+  --reinstall libnss3-tools`"; a non-zero exit keeps its stderr sentence. L0 + TEXT tests, both
+  plant-proven; the run on the installed 0.8.11 is owed in SMOKE § Linux's certutil row.
 - [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new

@@ -2769,8 +2769,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       app, `certutil` moved off PATH):** Settings → Re-trust → "certutil is not installed, so
       rexenv cannot add its certificate authority to your browsers' trust store. Install it,
       then retry: `sudo apt install libnss3-tools`" with a copy button; no `pkexec` ran and the
-      system store's file kept its mtime. (A certutil that is present but not executable gives
-      the raw "io error: Permission denied (os error 13)" instead — TODO row.)
+      system store's file kept its mtime. (A certutil that is present but not executable gave
+      the raw "io error: Permission denied (os error 13)" until 29 Sep 2026 — since then, ledger
+      #746, the sentence names the path and the reason and offers `sudo apt install --reinstall
+      libnss3-tools`; ◐ the run on the installed 0.8.11 with `chmod -x /usr/bin/certutil` is owed.)
 - [x] Settings → Remove system changes → both stores empty (NSS dbs and the system file), the
       `rexenv0` link, route markers and units gone; the login item is a preference and stays
       on every OS (this row used to say "autostart entry gone" — no OS's teardown touches it).

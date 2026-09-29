@@ -221,6 +221,12 @@ impl LinuxCertTrust {
     fn certutil() -> Result<PathBuf> {
         which("certutil").ok_or_else(|| Error::Other(trust::CERTUTIL_MISSING.into()))
     }
+    /// The ONE certutil runner: a spawn failure reads as `trust::certutil_cannot_run` (present
+    /// but not executable), never `Error::Io`'s raw text — the 28 Sep 2026 VM with
+    /// `chmod -x /usr/bin/certutil` showed "io error: Permission denied (os error 13)".
+    fn certutil_run(certutil: &Path, args: &[String]) -> Result<String> {
+        trust::certutil_outcome(certutil, run_ok(&certutil.display().to_string(), args))
+    }
     /// The PEM the NSS database at `db` holds under our nickname, if any.
     fn nss_current_in(db: &Path) -> Option<String> {
         let certutil = which("certutil")?;
@@ -242,13 +248,13 @@ impl CertTrustManager for LinuxCertTrust {
         for db in trust::nss_db_dirs(&home) {
             if !db.join("cert9.db").exists() {
                 std::fs::create_dir_all(&db)?;
-                run_ok(&certutil.display().to_string(), &trust::nss_create_args_for(&db))?;
+                Self::certutil_run(&certutil, &trust::nss_create_args_for(&db))?;
             }
             // A stale entry under the nickname would make `-A` a no-op that keeps the OLD root.
             if Self::nss_current_in(&db).is_some() {
-                let _ = run_ok(&certutil.display().to_string(), &trust::nss_delete_args_for(&db));
+                let _ = Self::certutil_run(&certutil, &trust::nss_delete_args_for(&db));
             }
-            run_ok(&certutil.display().to_string(), &trust::nss_add_args_for(&db, ca_cert_path))?;
+            Self::certutil_run(&certutil, &trust::nss_add_args_for(&db, ca_cert_path))?;
         }
         // The root leg only when the store lacks this PEM — setup may already have run it in
         // its one batched step, and a re-setup must not ask for a store that is already right.
@@ -273,7 +279,7 @@ impl CertTrustManager for LinuxCertTrust {
         if let Ok(certutil) = Self::certutil() {
             for db in trust::nss_db_dirs(&home) {
                 if Self::nss_current_in(&db).is_some() {
-                    run_ok(&certutil.display().to_string(), &trust::nss_delete_args_for(&db))?;
+                    Self::certutil_run(&certutil, &trust::nss_delete_args_for(&db))?;
                 }
             }
         }
@@ -299,7 +305,7 @@ impl CertTrustManager for LinuxCertTrust {
             if trust::same_pem(&held, &ours) {
                 continue;
             }
-            run_ok(&Self::certutil()?.display().to_string(), &trust::nss_delete_args_for(&db))?;
+            Self::certutil_run(&Self::certutil()?, &trust::nss_delete_args_for(&db))?;
             removed += 1;
         }
         Ok(removed)

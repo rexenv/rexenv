@@ -65,6 +65,28 @@ pub(crate) fn nss_db_arg_for(db: &Path) -> String {
 pub(crate) const CERTUTIL_MISSING: &str = "certutil is not installed, so rexenv cannot add its certificate authority \
 to your browsers' trust store. Install it, then retry:\n$ sudo apt install libnss3-tools";
 
+/// The sentence when `certutil` is on PATH but cannot be RUN. The 28 Sep 2026 VM with
+/// `chmod -x /usr/bin/certutil` got the raw "io error: Permission denied (os error 13)" from the
+/// trust step — only an ABSENT certutil had a sentence (`CERTUTIL_MISSING`). Same shape: what is
+/// wrong, the reason, the one command that fixes it (the `$ ` line is what the UI offers to copy).
+pub(crate) fn certutil_cannot_run(certutil: &Path, reason: &std::io::Error) -> String {
+    format!(
+        "certutil ({}) is installed but cannot run — {reason} — so rexenv cannot add its certificate \
+authority to your browsers' trust store. Reinstall it, then retry:\n$ sudo apt install --reinstall libnss3-tools",
+        certutil.display()
+    )
+}
+
+/// Every certutil run's result passes through here: a SPAWN failure (`Error::Io` — the binary is
+/// present but not executable, or its loader is broken) becomes `certutil_cannot_run`; a non-zero
+/// exit keeps `run_ok`'s stderr sentence; success passes through.
+pub(crate) fn certutil_outcome(certutil: &Path, outcome: crate::error::Result<String>) -> crate::error::Result<String> {
+    outcome.map_err(|e| match e {
+        crate::error::Error::Io(io) => crate::error::Error::Other(certutil_cannot_run(certutil, &io)),
+        other => other,
+    })
+}
+
 /// `certutil -A`: add `cert` as a trusted CA for SSL (`C,,`).
 pub(crate) fn nss_add_args(home: &Path, cert: &Path) -> Vec<String> {
     nss_add_args_for(&nss_db_dir(home), cert)
@@ -187,6 +209,41 @@ mod tests {
             vec![unix_join(&home, ".pki/nssdb"), unix_join(&home, "snap/chromium/current/.local/share/pki/nssdb"), unix_join(&ff, "s4g1o8kw.default")]
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// A certutil that is present but cannot be spawned reads as a sentence with the reason and
+    /// the reinstall, never `Error::Io`'s raw text; a non-zero exit and a success pass through.
+    /// The reason is the host's own `io::Error` text (os error 13 is worded per OS).
+    #[test]
+    fn a_certutil_that_cannot_run_names_the_reason_and_the_reinstall() {
+        use crate::error::Error;
+        let bin = Path::new("/usr/bin/certutil");
+        let reason = std::io::Error::from_raw_os_error(13).to_string();
+        let Err(Error::Other(msg)) = certutil_outcome(bin, Err(Error::Io(std::io::Error::from_raw_os_error(13)))) else {
+            panic!("a spawn failure must become a sentence")
+        };
+        assert!(msg.starts_with("certutil (/usr/bin/certutil) is installed but cannot run — "), "{msg}");
+        assert!(msg.contains(&reason), "{msg} lacks {reason}");
+        assert!(msg.ends_with("\n$ sudo apt install --reinstall libnss3-tools"), "{msg}");
+        assert!(!msg.contains("io error"), "{msg}");
+        let exit = Error::Other("`certutil -A` failed (exit status: 255): SEC_ERROR_BAD_DATABASE".into());
+        assert!(matches!(certutil_outcome(bin, Err(exit)), Err(Error::Other(m)) if m.contains("SEC_ERROR_BAD_DATABASE")));
+        assert_eq!(certutil_outcome(bin, Ok("pem".into())).unwrap(), "pem");
+    }
+
+    /// TEXT: every certutil call in `LinuxCertTrust` goes through `certutil_run` — the one
+    /// `run_ok(` in that impl is the wrapper's own. A direct `run_ok` would hand a spawn failure
+    /// to the UI raw again.
+    #[test]
+    fn every_certutil_call_goes_through_the_one_wrapper() {
+        const SRC: &str = include_str!("mod.rs");
+        let start = SRC.find("pub struct LinuxCertTrust").expect("LinuxCertTrust");
+        let end = SRC[start..].find("pub struct LinuxPrivileges").expect("the next section") + start;
+        let section = &SRC[start..end];
+        assert_eq!(section.matches("run_ok(").count(), 1, "one run_ok — inside certutil_run");
+        assert!(section.contains("fn certutil_run("));
+        assert!(section.contains("trust::certutil_outcome(certutil, run_ok("), "the wrapper maps through certutil_outcome");
+        assert!(section.matches("Self::certutil_run(").count() >= 5, "the five call sites");
     }
 
     #[test]
