@@ -128,7 +128,13 @@ Fixed in `a470c1af`; that draft deleted, the unreleased tag moved, the pipeline 
 way the first Start all over the replaced app failed once with "Bootstrap failed: 5: Input/output
 error" (edge down; the second succeeded) — a TODO row.
 
-**Not run:** the clean-Mac list, the in-app updates (descriptors — after Publish).
+**PUBLISHED 29 Sep 2026, 08:34:04Z.** Update cask green (cask `0.8.10`, sha `3414c4fd…`, the
+dmg's); the six descriptors published together — macOS serial 17, Windows 12, the four Linux
+documents 3 — and `check-app-manifest.sh` (+ `--windows`, `--linux <kind> <arch>` ×4) all green.
+`brew audit --cask --online` could not run on the dev Mac ("Command Line Tools are too
+outdated"); the tap's Install scripts run on the publish event installed the release on every OS.
+**Not run:** the clean-Mac list, and the in-app updates FROM 0.8.9 — the Linux one is the owed
+proof that the deb relaunch fix (#729, in 0.8.9's old side) brings the app back.
 
 ## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
 

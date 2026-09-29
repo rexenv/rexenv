@@ -137,5 +137,9 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   run 36535772891 green on all four lanes, 16 assets — the draft that ships. Three tag positions
   for one version, zero published bytes re-issued: the pre-push guard re-checked each, and the
   `publish` job's "release already exists" refusal is why the stale draft had to go first.
+  Published 08:34 UTC; Update cask, Install scripts and Notify the website green on the publish
+  event (cask `0.8.10`, sha `3414c4fd…`); the six descriptors dispatched together and approved
+  from one page, all six green first time (serials macOS 17, Windows 12, Linux 3 ×4) and
+  `check-app-manifest.sh` all green ×6 two minutes later — no CDN lag.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
