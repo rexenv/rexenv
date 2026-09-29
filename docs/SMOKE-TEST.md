@@ -1265,8 +1265,10 @@ hand can prove a spec entry became the item it describes.*
   toggle since 29 Sep 2026 (ledger #739: the second toggle, "Start services when rexenv
   opens", is gone; the `--hidden` launch runs Start all and a launch you made does not — open
   the app by hand with the stack stopped and nothing starts): `rex status` lists them running and a site
-  answers over HTTPS before the window is ever opened. **Open: no run recorded — owed on
-  0.8.10, the first build with the one toggle.** The 1 Sep
+  answers over HTTPS before the window is ever opened. **🔴 FAILED 29 Sep 2026 (15.8 VM, the
+  drafted 0.8.10):** after a reboot with rexenv open, macOS's "Reopen windows" relaunch (no
+  `--hidden`) won the race, the LaunchAgent's `--hidden` launch handed off and exited, nothing
+  started — `docs/TODO.md`'s ONE-toggle row has the mechanism and the fix. The 1 Sep
   login recorded the window half above and not the services (the script prints only
   `rex status`'s first three lines); what that login DID show was the DNS race the next row
   exists for — the app won UDP 15353 and served DNS in-process (#442, fixed 2 Sep). Neither

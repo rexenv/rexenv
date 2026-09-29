@@ -59,6 +59,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`rexenv.exe --hidden` under `explorer.exe`, backends running, and a Start-menu launch after
   Stop all starts nothing), the Ubuntu VM (autologin reboot, same two halves) — the three SMOKE
   rows the ledger row names are ticked with the evidence.
+  **🔴 FAILED on macOS, 29 Sep 2026 (15.8 VM, the drafted 0.8.10 dmg `4553902a…`):** toggle on
+  (the LaunchAgent names `rexenv --hidden`), stack running, the VM hard-killed and booted →
+  autologin → every service idle, no site answering. macOS's own "Reopen windows when logging
+  back in" list (`com.apple.loginwindow.<UUID>` `TALAppsToRelaunchAtLogin`, rexenv `Hide = 0` —
+  the dialog's DEFAULT) launched rexenv WITHOUT `--hidden` at 12:56:14, the LaunchAgent's
+  `--hidden` launch found it holding the socket and handed off (`launchctl print`: runs 1, last
+  exit 0), and `cli_server::hand_off_to_running_instance` sends only `app.open` — the login
+  launch's one distinguishing fact is dropped, so login-start never runs and the window is raised
+  instead. 0.8.9 hid it: its second toggle started the stack on ANY launch. **Fix before 0.8.10
+  publishes:** the handoff carries `--hidden` (unix socket and Windows pipe — common rule), and
+  the owner runs login-start (idempotent; skips running services) without raising a window.
 
 - [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
