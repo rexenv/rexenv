@@ -1268,7 +1268,9 @@ hand can prove a spec entry became the item it describes.*
   answers over HTTPS before the window is ever opened. **🔴 FAILED 29 Sep 2026 (15.8 VM, the
   drafted 0.8.10):** after a reboot with rexenv open, macOS's "Reopen windows" relaunch (no
   `--hidden`) won the race, the LaunchAgent's `--hidden` launch handed off and exited, nothing
-  started — `docs/TODO.md`'s ONE-toggle row has the mechanism and the fix. The 1 Sep
+  started — `docs/TODO.md`'s ONE-toggle row has the mechanism. Fixed the same day (the handoff
+  carries the login, ledger #739); **re-run owed on the re-cut 0.8.10**, the same way: rexenv
+  OPEN, toggle on, reboot. The 1 Sep
   login recorded the window half above and not the services (the script prints only
   `rex status`'s first three lines); what that login DID show was the DNS race the next row
   exists for — the app won UDP 15353 and served DNS in-process (#442, fixed 2 Sep). Neither

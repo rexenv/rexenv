@@ -1766,8 +1766,17 @@ where
         // `hand_off_to_running_instance`. Deliberately NOT state-dependent: it
         // must work while the app is still starting, which is exactly when an
         // impatient second launch happens.
+        //
+        // A LOGIN launch's handoff (`handoff_request(true)`) raises nothing and
+        // asks for login-start instead — the login is the one fact that launch
+        // carried, and dropping it left the stack down after a reboot on 0.8.10's
+        // draft (`crate::LoginStartGate`). Held until setup is ready if it is not.
         "app.open" => {
-            crate::show_main_window(app.app_handle());
+            if handoff_is_login(&args) {
+                crate::request_login_start(app.app_handle());
+            } else {
+                crate::show_main_window(app.app_handle());
+            }
             Ok(Value::Null)
         }
         // Doctor: one honest diagnosis pass composing the app's own probes —
@@ -1968,18 +1977,43 @@ pub fn hand_off_to_running_instance() -> bool {
     // Best-effort from here: the answer to "should I exit" is already yes.
     let _ = sock.set_write_timeout(Some(std::time::Duration::from_millis(500)));
     let _ = sock.set_read_timeout(Some(std::time::Duration::from_millis(1500)));
-    let _ = sock.write_all(b"{\"cmd\":\"app.open\",\"args\":{}}\n");
+    let login = crate::is_hidden_launch();
+    let _ = sock.write_all(handoff_request(login).as_bytes());
     let _ = sock.flush();
     let mut buf = [0u8; 64];
     let _ = sock.read(&mut buf);
     // stderr, not `log`: the logger belongs to the instance that owns the app
     // data, and this process is about to stop existing. A launch that vanishes
     // silently is indistinguishable from one that crashed.
-    eprintln!(
-        "rexenv is already running — brought its window to the front. \n\
-         (Its menu-bar icon is the one to use; this second copy has exited.)"
-    );
+    eprintln!("{}", handoff_note(login));
     true
+}
+
+/// **What a second launch sends the instance that holds the lock** — one line, built HERE for both
+/// transports (the unix socket above, Windows' pipe in `platform::windows::app_pipe`), so the two
+/// cannot say different things. `login` = this launch was `--hidden`: the holder then runs
+/// login-start instead of raising its window. Until 29 Sep 2026 both sent a bare `app.open`, and a
+/// login that found rexenv already open (macOS's "Reopen windows" relaunch wins the race at every
+/// ordinary reboot) was lost — see `crate::LoginStartGate`.
+pub fn handoff_request(login: bool) -> String {
+    let args = if login { json!({ "login": true }) } else { json!({}) };
+    format!("{}\n", json!({ "cmd": "app.open", "args": args }))
+}
+
+/// The `app.open` arm's reading of [`handoff_request`]: only an explicit `true` is a login.
+fn handoff_is_login(args: &Value) -> bool {
+    args.get("login").and_then(Value::as_bool) == Some(true)
+}
+
+/// What the exiting second copy prints (stderr) after a handoff.
+pub fn handoff_note(login: bool) -> &'static str {
+    if login {
+        "rexenv is already running — handed this login launch to it (it runs Start all).\n\
+         This second copy has exited."
+    } else {
+        "rexenv is already running — brought its window to the front.\n\
+         (Its menu-bar icon is the one to use; this second copy has exited.)"
+    }
 }
 
 /// Spawn the listener at app startup, on the socket `claim_at_startup` already
@@ -2040,7 +2074,9 @@ pub fn claim_pipe_at_startup() -> PipeStartup {
     match crate::platform::claim_app_pipe(&dir) {
         crate::platform::AppPipeClaim::Ours(held) => PipeStartup::Ours(Some(held)),
         crate::platform::AppPipeClaim::AnotherInstance => {
-            if crate::platform::hand_off_to_app_pipe(&dir) {
+            let login = crate::is_hidden_launch();
+            if crate::platform::hand_off_to_app_pipe(&dir, &handoff_request(login)) {
+                eprintln!("{}", handoff_note(login));
                 PipeStartup::AnotherInstanceRuns
             } else {
                 // Held a moment ago and gone now — this copy is the app.
@@ -2508,6 +2544,31 @@ mod tests {
                  exception is a hole waiting for a command to be given that name"
             );
         }
+    }
+
+    /// **A second launch says whether it was a login, and both transports say it the same way**
+    /// (ledger #739). The unix socket and Windows' pipe send `handoff_request`'s bytes; the
+    /// `app.open` arm reads them with `handoff_is_login`, so the round trip IS the contract.
+    #[test]
+    fn a_login_handoff_says_login_and_both_transports_send_the_one_line() {
+        for login in [false, true] {
+            let line = handoff_request(login);
+            assert!(line.ends_with('\n'), "one line per request");
+            let req = parse_request(&line).expect("the handoff line parses");
+            assert_eq!(req.cmd, "app.open");
+            assert_eq!(handoff_is_login(&req.args), login, "{line}");
+        }
+        // Only an explicit `true` is a login; `rex open`'s bare args raise the window.
+        assert!(!handoff_is_login(&json!({})));
+        assert!(!handoff_is_login(&json!({ "login": "true" })));
+        assert!(!handoff_is_login(&json!({ "login": false })));
+
+        let src = crate::core::copy_scan::production_source(include_str!("cli_server.rs"));
+        assert!(src.contains("sock.write_all(handoff_request(login).as_bytes())"), "the unix handoff");
+        assert!(src.contains("hand_off_to_app_pipe(&dir, &handoff_request(login))"), "the Windows handoff");
+        let pipe = crate::core::copy_scan::production_source(include_str!("platform/windows/app_pipe.rs"));
+        assert!(pipe.contains("pipe.write_all(request.as_bytes())"));
+        assert!(!pipe.contains("app.open"), "the pipe builds its own request again");
     }
 
     #[test]

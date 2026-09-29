@@ -67,9 +67,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `--hidden` launch found it holding the socket and handed off (`launchctl print`: runs 1, last
   exit 0), and `cli_server::hand_off_to_running_instance` sends only `app.open` — the login
   launch's one distinguishing fact is dropped, so login-start never runs and the window is raised
-  instead. 0.8.9 hid it: its second toggle started the stack on ANY launch. **Fix before 0.8.10
-  publishes:** the handoff carries `--hidden` (unix socket and Windows pipe — common rule), and
-  the owner runs login-start (idempotent; skips running services) without raising a window.
+  instead. 0.8.9 hid it: its second toggle started the stack on ANY launch. **Fixed 29 Sep 2026
+  (before 0.8.10 publishes):** the handoff carries `login: true` (`cli_server::handoff_request`,
+  one line for the unix socket and Windows' pipe), and the running instance runs login-start —
+  once per process, held until setup is ready (`LoginStartGate`) — without raising its window.
+  L0 + four plants (ledger #739). **Still owed:** the same VM reboot on the re-cut 0.8.10.
 
 - [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every

@@ -9,7 +9,7 @@
 //! with error 5 and its client connect still reaches the holder.
 
 use super::acl::OwnerOnlyDescriptor;
-use super::app_pipe_rules::{claim_from, mcp_pipe_name, pipe_name, Claim, APP_OPEN};
+use super::app_pipe_rules::{claim_from, mcp_pipe_name, pipe_name, Claim};
 use std::io::{Read, Write};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
@@ -139,10 +139,12 @@ pub fn next_instance(name: &str) -> std::io::Result<NamedPipeServer> {
     }
 }
 
-/// Ask the instance holding the lock to show its window. True when a holder was reached — the caller
-/// exits; false when nobody is there any more (it died between the claim and now), and the caller starts.
-/// Best-effort past the connect, as on macOS: a wedged app that never answers still owns the stack.
-pub fn hand_off(config_dir: &Path) -> bool {
+/// Send the instance holding the lock `request` — `cli_server::handoff_request`'s line, the same bytes the
+/// unix socket sends (show your window, or run login-start for a `--hidden` launch). True when a holder was
+/// reached — the caller exits; false when nobody is there any more (it died between the claim and now), and
+/// the caller starts. Best-effort past the connect, as on macOS: a wedged app that never answers still owns
+/// the stack.
+pub fn hand_off(config_dir: &Path, request: &str) -> bool {
     let name = pipe_name(&config_dir.to_string_lossy());
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut pipe = loop {
@@ -154,7 +156,7 @@ pub fn hand_off(config_dir: &Path) -> bool {
             Err(_) => return false,
         }
     };
-    let _ = pipe.write_all(format!("{{\"cmd\":\"{APP_OPEN}\",\"args\":{{}}}}\n").as_bytes());
+    let _ = pipe.write_all(request.as_bytes());
     let _ = pipe.flush();
     // A pipe read has no timeout; read on a thread and stop waiting after 1.5 s.
     let (tx, rx) = std::sync::mpsc::channel();
@@ -163,6 +165,5 @@ pub fn hand_off(config_dir: &Path) -> bool {
         let _ = tx.send(pipe.read(&mut buf).is_ok());
     });
     let _ = rx.recv_timeout(Duration::from_millis(1500));
-    eprintln!("rexenv is already running — brought its window to the front. This second copy has exited.");
     true
 }

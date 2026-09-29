@@ -284,7 +284,7 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 ///
 /// Failures surface as `service-health` events (the same toast pipeline the
 /// watchdog uses) + the health log, so a broken login-start is never silent.
-pub async fn auto_start_services(app: tauri::AppHandle) {
+pub async fn auto_start_services<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     use tauri::{Emitter, Manager};
     let state = app.state::<AppState>();
     let event = match auto_start_inner(&state).await {

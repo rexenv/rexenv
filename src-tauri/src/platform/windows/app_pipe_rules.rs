@@ -14,9 +14,6 @@ use sha2::{Digest, Sha256};
 /// `ERROR_ACCESS_DENIED` — what a first-instance create answers while another process holds the name.
 pub(crate) const ERROR_ACCESS_DENIED: u32 = 5;
 
-/// What a second launch sends the instance that holds the lock: show your window.
-pub(crate) const APP_OPEN: &str = "app.open";
-
 /// The pipe for the app-data directory whose config folder is `config_dir`: one rexenv per app-data
 /// directory, as on macOS. A digest, not the path: a pipe name is limited to 256 characters and may not
 /// hold a second backslash-separated part in every API. Lower-cased first, because Windows paths are

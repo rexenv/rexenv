@@ -16,6 +16,7 @@ pub mod utils;
 #[cfg(test)]
 mod test_support;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -129,7 +130,7 @@ pub fn run() {
             // every later resolve reads it through `binaries::tier()`.
             core::binaries::install_tier(platform.binary_tier());
 
-            let hidden_launch = std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG);
+            let hidden_launch = is_hidden_launch();
 
             // THE DOCK FOLLOWS THE WINDOW. Start as an accessory app — no dock
             // tile, no app-switcher entry — because with no window up the
@@ -945,12 +946,11 @@ pub fn run() {
                     // without a click while an open the user made starts nothing.
                     // Runs AFTER adoption (already-running services are skipped)
                     // and is login-safe by construction: never downloads, never
-                    // prompts (see `auto_start_services`).
-                    if hidden_launch {
-                        let auto = app.handle().clone();
-                        tauri::async_runtime::spawn(async move {
-                            commands::services::auto_start_services(auto).await;
-                        });
+                    // prompts (see `auto_start_services`). The gate also runs a
+                    // login that a `--hidden` launch HANDED OFF to this process
+                    // before it got here (see `LoginStartGate`).
+                    if LOGIN_START.ready(hidden_launch) {
+                        run_login_start(app.handle());
                     }
                     None
                 }
@@ -1938,6 +1938,73 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
 /// It is a REQUEST, not a command — see `first_window_decision`.
 pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 
+/// Whether THIS process was started as a login launch.
+pub(crate) fn is_hidden_launch() -> bool {
+    std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG)
+}
+
+/// **Login-start runs once per process, for either of the two ways a login reaches it.**
+///
+/// 1. This process IS the login launch (`--hidden`) — `setup` says so when it is ready.
+/// 2. A login launch found this process already holding the lock and HANDED OFF to it
+///    (`cli_server::handoff_request(true)`). Measured 29 Sep 2026 on the 15.8 VM with the
+///    drafted 0.8.10: a reboot with rexenv open → macOS's "Reopen windows when logging back
+///    in" (the restart dialog's default) relaunched rexenv WITHOUT `--hidden`, the LaunchAgent's
+///    `--hidden` launch found it running, sent a bare `app.open` and exited — and nothing
+///    started. The one toggle's whole promise failed on the most ordinary reboot there is.
+///
+/// A handoff can arrive before `setup` has the state login-start needs (the socket is claimed
+/// before Tauri boots), so a request made early is held until `ready`. Both sides store their
+/// fact, then read the other's (SeqCst): whichever lands second sees both, so a login is never
+/// lost between them, and `ran` makes a second run impossible.
+pub(crate) struct LoginStartGate {
+    requested: AtomicBool,
+    ready: AtomicBool,
+    ran: AtomicBool,
+}
+
+impl LoginStartGate {
+    const fn new() -> Self {
+        Self { requested: AtomicBool::new(false), ready: AtomicBool::new(false), ran: AtomicBool::new(false) }
+    }
+
+    /// A handed-off login asks for Start all. True = run it now.
+    pub(crate) fn request(&self) -> bool {
+        self.requested.store(true, Ordering::SeqCst);
+        self.ready.load(Ordering::SeqCst) && self.claim()
+    }
+
+    /// `setup` reached the point login-start may run; `login` = this launch was `--hidden`.
+    /// True = run it now.
+    pub(crate) fn ready(&self, login: bool) -> bool {
+        if login {
+            self.requested.store(true, Ordering::SeqCst);
+        }
+        self.ready.store(true, Ordering::SeqCst);
+        self.requested.load(Ordering::SeqCst) && self.claim()
+    }
+
+    fn claim(&self) -> bool {
+        !self.ran.swap(true, Ordering::SeqCst)
+    }
+}
+
+static LOGIN_START: LoginStartGate = LoginStartGate::new();
+
+/// A `--hidden` launch handed its login to this process (`cli_server`'s `app.open` arm).
+pub(crate) fn request_login_start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if LOGIN_START.request() {
+        run_login_start(app);
+    }
+}
+
+fn run_login_start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let auto = app.clone();
+    tauri::async_runtime::spawn(async move {
+        commands::services::auto_start_services(auto).await;
+    });
+}
+
 /// The setting that used to say whether ANY launch ran Start all — retired 29 Sep 2026
 /// when it was folded into the login toggle (a `--hidden` launch starts the stack, a
 /// user's launch does not). Named only so the launch sweep can delete a leftover row.
@@ -2495,32 +2562,55 @@ mod tests {
         assert!(log_sinks(None, false).is_empty());
     }
 
-    /// **Login-start runs on a `--hidden` launch and on nothing else.** The
-    /// "Start rexenv at login" toggle installs that launch, so the one switch
-    /// is the whole of "my sites are back after a reboot" — and an open the
-    /// user made never runs Start all behind their back. Until 29 Sep 2026 a
-    /// second setting (`start_services_on_launch`) gated this instead, on ANY
-    /// launch; it is retired, and the only mention left in production source is
-    /// the sweep that deletes a leftover row.
+    /// **Login-start runs on a login and on nothing else.** The "Start rexenv at login" toggle
+    /// installs a `--hidden` launch, so the one switch is the whole of "my sites are back after a
+    /// reboot" — and an open the user made never runs Start all behind their back. A login reaches
+    /// login-start two ways: this process IS the `--hidden` launch, or a `--hidden` launch handed
+    /// off to this one (`cli_server::handoff_request(true)` → the `app.open` arm). Until 29 Sep 2026
+    /// a second setting (`start_services_on_launch`) gated this instead, on ANY launch; it is
+    /// retired, and the only mention left in production source is the sweep that deletes a
+    /// leftover row.
     ///
-    /// **TEXT, not behaviour** (the #175 bound): the call to
-    /// `auto_start_services` sits inside `if hidden_launch {`, and no setting
-    /// read gates it. The behaviour — a real login, no click, the stack up — is
+    /// **TEXT, not behaviour** (the #175 bound): the one `auto_start_services` spawn lives in
+    /// `run_login_start`, whose two callers are gated by `LOGIN_START.ready(hidden_launch)` and
+    /// `LOGIN_START.request()`, and the only `request_login_start` call sits under
+    /// `if handoff_is_login(&args) {`. The gate's own behaviour is the next test; a real login is
     /// a SMOKE leg per OS.
     #[test]
-    fn login_start_runs_only_on_a_hidden_launch() {
+    fn login_start_runs_only_on_a_login() {
         let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
-        let call = src
-            .find("commands::services::auto_start_services(")
-            .expect("login-start is still spawned from setup (moved? update this guard AND ledger #739)");
-        let before = &src[..call];
-        let gate = before.rfind("if ").expect("some `if` precedes the call");
-        assert!(
-            before[gate..].starts_with("if hidden_launch {"),
-            "the `if` nearest above the login-start call is not `if hidden_launch {{` — login-start \
-             would run on a launch the user made: {:?}",
-            &before[gate..(gate + 40).min(before.len())]
+        assert_eq!(
+            src.matches("commands::services::auto_start_services(").count(),
+            1,
+            "login-start is spawned from more than one place (moved? update this guard AND ledger #739)"
         );
+        let call = src.find("commands::services::auto_start_services(").expect("counted above");
+        let owner = src[..call].rfind("fn ").expect("the spawn sits in a function");
+        assert!(
+            src[owner..].starts_with("fn run_login_start"),
+            "the one login-start spawn left `run_login_start`: {:?}",
+            &src[owner..(owner + 40).min(src.len())]
+        );
+        assert_eq!(src.matches("run_login_start(").count(), 2, "run_login_start gained a caller");
+        assert_eq!(src.matches("LOGIN_START.ready(").count(), 1);
+        assert!(
+            src.contains("if LOGIN_START.ready(hidden_launch) {"),
+            "setup's login fact is not this launch's `--hidden` any more — login-start would run on a \
+             launch the user made"
+        );
+        assert_eq!(src.matches("LOGIN_START.request()").count(), 1);
+        assert!(src.contains("if LOGIN_START.request() {"));
+
+        let cli = crate::core::copy_scan::production_source(include_str!("cli_server.rs"));
+        assert_eq!(cli.matches("crate::request_login_start(").count(), 1, "a second way into login-start");
+        let at = cli.find("crate::request_login_start(").expect("counted above");
+        let gate = cli[..at].rfind("if ").expect("some `if` precedes the call");
+        assert!(
+            cli[gate..].starts_with("if handoff_is_login(&args) {"),
+            "the handoff's login-start is not gated on the login flag alone: {:?}",
+            &cli[gate..(gate + 40).min(cli.len())]
+        );
+
         // The retired setting gates nothing: its one production mention is the
         // constant the launch sweep deletes it by.
         assert_eq!(
@@ -2529,6 +2619,51 @@ mod tests {
             "start_services_on_launch is read somewhere again — the login toggle is the ONE opt-in"
         );
         assert!(src.contains("delete_setting(&conn, RETIRED_AUTO_START_SETTING)"));
+    }
+
+    /// **A login starts the stack exactly once, whichever way it arrives and in whichever order**
+    /// (`LoginStartGate`, ledger #739). The 0.8.10 VM case is the second block: a launch the user
+    /// did not make with `--hidden` (macOS's Reopen-windows relaunch) holds the lock, and the login
+    /// arrives as a handoff.
+    #[test]
+    fn a_login_starts_the_stack_once_whichever_way_it_arrives() {
+        // This launch is the login.
+        let g = LoginStartGate::new();
+        assert!(g.ready(true));
+        assert!(!g.request(), "a handoff after the launch's own login-start must not run it again");
+        // A launch without `--hidden`, then a handed-off login.
+        let g = LoginStartGate::new();
+        assert!(!g.ready(false), "a launch the user made starts nothing");
+        assert!(g.request());
+        assert!(!g.request());
+        // A handoff that lands while setup is still running is HELD, not dropped.
+        let g = LoginStartGate::new();
+        assert!(!g.request());
+        assert!(g.ready(false));
+        // Both at once: still once.
+        let g = LoginStartGate::new();
+        assert!(!g.request());
+        assert!(g.ready(true));
+        assert!(!g.request());
+        // No login at all.
+        let g = LoginStartGate::new();
+        assert!(!g.ready(false));
+
+        // The race itself: setup's `ready` and a handoff's `request` on two threads, many times.
+        // Exactly one of them runs it, every time — never zero (a lost login), never two.
+        for _ in 0..500 {
+            let g = std::sync::Arc::new(LoginStartGate::new());
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let (g2, b2) = (g.clone(), barrier.clone());
+            let handoff = std::thread::spawn(move || {
+                b2.wait();
+                g2.request()
+            });
+            barrier.wait();
+            let setup = g.ready(false);
+            let handoff = handoff.join().expect("the handoff thread");
+            assert!(setup ^ handoff, "setup ran: {setup}, handoff ran: {handoff}");
+        }
     }
 
     /// **The DNS handoff's ORDER is the whole of it.** Release the port, then

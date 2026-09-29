@@ -2993,7 +2993,14 @@ IPC surface — which is how a reader ends up designing against a system with on
   toggle, "Start services when rexenv opens", held that half in a setting
   (`start_services_on_launch`) that gated ANY launch: two switches for one wish, and either one
   alone did something the user did not mean. The setting is retired and a leftover row is swept
-  at launch. The plist
+  at launch. **A login that finds rexenv already running still starts the stack:** the
+  `--hidden` launch hands off with `{"cmd":"app.open","args":{"login":true}}`
+  (`cli_server::handoff_request`, the same line over the unix socket and Windows' pipe), and the
+  running instance runs login-start instead of raising its window — once per process, held
+  until setup is ready if the handoff lands first (`LoginStartGate`). Without it, the drafted
+  0.8.10 lost every login where macOS's "Reopen windows when logging back in" (the restart
+  dialog's default) relaunched rexenv first: the `--hidden` launch sent a bare `app.open`, exited,
+  and the stack stayed down (15.8 VM, 29 Sep 2026). The plist
   passes **`--hidden`**: a login launch goes to the menu bar and opens NO window, which
   is what makes autostart tolerable — an app that throws a window at every login is one
   that has to be closed before work starts. The flag is a REQUEST: `first_window_decision`
