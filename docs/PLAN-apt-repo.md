@@ -7,7 +7,8 @@ the first release the pipeline puts in it. **R1–R4 done the same day:** `rexen
 the runner's `/home/runner` is 0750 and apt verifies as `_apt`, NO_PUBKEY; fixed in `07ea224`),
 0.8.8–0.8.10 for amd64 + arm64, `scripts/check-apt-repo.sh` all green; the VM installed, upgraded
 and refused a wrong key (SMOKE Linux); the tap's `install.sh` adds the repository (`f5d9dfe`).
-**Owed:** R5's first release run (0.8.11), and the private key's backup in the owner's hands.
+**Owed:** R5's first release run (0.8.11). The private key's backup is in the owner's hands (30 Sep
+2026) and the agent's only copy is deleted — the `apt-signing` secret and that backup are the two.
 
 Until now the `.deb` was a file: `install.sh` downloaded it and ran `apt-get install ./rexenv.deb`,
 and nothing verified it but the SHA-256 beside it (D-L6 of `docs/PLAN-linux-port.md`, "an apt
