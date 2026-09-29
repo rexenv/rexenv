@@ -1039,6 +1039,13 @@ builds are for EXAMPLES; the app itself comes from the Dell.
 
 ## Proving a Linux claim
 
+**A power cut, on purpose** (29 Sep 2026, #740): `utmctl stop Ubuntu --kill` is a cut, not a
+shutdown. A root file written by a plain `cp` and killed 10 s later reliably comes back ZERO bytes
+(ext4 delalloc — the inode is journaled at the 5 s commit, the data is not written until ~30 s);
+the same write through `durable::flushed_script` comes back whole. Run the two in SEPARATE boots:
+the wrapper's `sync` is global and would save the plain file too. `/tmp` is emptied at boot — keep
+the source file in `$HOME`.
+
 `verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
 COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a
 route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today

@@ -83,6 +83,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | Edge on `:443` | root LaunchDaemon | unelevated user process, `127.0.0.1` only (no Firewall alert) | systemd **system** unit + wrapper (#718) |
 | Edge admin (never TCP 2019) | unix socket `0600` | AF_UNIX socket via Winsock (#611) | unix socket `0600`, owned by the user across reloads |
 | Privileged step | osascript admin prompt, **foreground** | UAC (`elevation.rs`) | `pkexec` + rexenv's polkit action (#723); absolute paths (`pkexec` strips `PATH`) |
+| Boot/login files survive a power cut (#740) | the step's shell ends in `/bin/sync` (`durable::flushed_script`); the login item + DNS agent plists via `write_durable` | nothing to do: registry, NRPT, cert store, Task Scheduler are the OS's durable stores | the step's shell ends in `/bin/sync`; the autostart entry + DNS user unit via `write_durable` |
 | CA trust | user's **login keychain** | `Cert:\CurrentUser\Root` — never LocalMachine (#613) — + Firefox root | system CA store + NSS dbs, incl. snap Chromium's (#726) |
 | Autostart | macOS login item | HKCU `Run` + `StartupApproved` (#623) | XDG `~/.config/autostart` |
 | PHP pool (`pool_kind`) | php-fpm, one per version | php-cgi group | php-fpm, one per version |
@@ -220,6 +221,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   "check the whole surface" rule, in DNS.
 - **`pkexec` strips `PATH`** — every privileged command is absolute-pathed, and content
   travels through `printf` with `%` doubled.
+- **A written file is not a file on disk.** ext4's delayed allocation left
+  `rexenv-edge.service` ZERO bytes after a power cut ~30 s after Start all, its enable symlink
+  intact — systemd reads an empty unit as masked (29 Sep 2026). Every privileged step now ends in
+  `/bin/sync`, and the app's own boot files are written durably (#740); a new root write gets that
+  for free, a new user-side boot file must use `durable::write_durable`.
 - **Trust has two stores** (system + NSS), and snap browsers carry their own NSS db (#726).
 - **Distributions rename sonames** (`libaio.so.1` → `libaio.so.1t64` on 24.04+, `libxml2`):
   the `lib-compat/` shims and the deb's declared dependencies are both needed (#731).

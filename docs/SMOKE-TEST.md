@@ -2031,6 +2031,11 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   opened; the backends need Start all (or login-start) — `rex start` and the site served.
 - [ ] **Sleep/wake**: after it, a site loads over HTTPS without opening the app. **Open: the 18
   Sep pass recorded the reboot only; no sleep/wake run recorded.**
+- [ ] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
+  then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
+  whole, the edge up on :443 without the app, and the login toggle's Start all silent. The
+  mechanism was measured on Linux only (a root write + a cut 10 s later came back 0 bytes without
+  the flush); APFS was never cut on purpose.
 - [ ] **Login autostart stays silent on a cold cache** (ledger #175 — this checklist IS
   that row's wiring proof; the code has only a text-order guard, which cannot see
   behaviour). Setup: enable "Start rexenv at login" (the one toggle since 29 Sep 2026), then
@@ -2579,6 +2584,11 @@ reconciled into one row per step, each open row saying what it is still waiting 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
 tunnel guard's normal-stop leg. (The `.deb` in-app update's relaunch closed 29 Sep 2026, 0.8.9 →
 0.8.10.)
+- [ ] **A power cut right after Start all leaves the edge able to start** (ledger #740, 0.8.11):
+      Start all (one polkit), then `utmctl stop Ubuntu --kill` within 10 s → boot →
+      `/etc/systemd/system/rexenv-edge.service` whole (not 0 bytes, not `masked`) and the login's
+      Start all brings the edge up with no "needs Start all" line. 0.8.10 failed this exactly.
+
 **Owed through the next release, inside ticked rows:** the AppImage's kept previous copy is swept
 (its row's next run). A re-setup is ONE polkit dialog (#723) — **✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`)**:
 Settings → Remove system changes → ONE polkit (CA file, both NSS dbs, `rexenv0`, the markers and

@@ -79,7 +79,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs`, `trust.rs`, `app_bundle_rules.rs` — mounted as
   `platform::linux_pure` in every non-Linux test build (ledger #716–#719); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
-  `src-tauri/linux/dev.rexenv.rexenv.policy` (#723)).
+  `src-tauri/linux/dev.rexenv.rexenv.policy` (#723));
+  `platform/durable.rs` — power-cut-safe writes for macOS and Linux (#740): `flushed_script` wraps every
+  privileged step so it ends in `/bin/sync` (both `run_privileged`s), `write_durable` (temp → fsync →
+  rename → fsync the folder) for the four boot/login files the app writes itself.
 - `state/` = SQLite migrations + the store layer; only `state/` writes SQL.
 - `crash.rs` = the panic hook, installed FIRST in `main.rs`: every panic appended to
   `<log_dir>/crash.log` (temp dir if `Paths` cannot answer), and the first one raised through

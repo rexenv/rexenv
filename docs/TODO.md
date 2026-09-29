@@ -88,6 +88,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   script, `/etc/rexenv/dns.d/*` and the CA file with no `sync`. *Done when:* the step flushes what
   it wrote before it returns (`sync -f` on each file, or write-temp + fsync + rename), and the same
   hard kill 5 s after a Start all boots with the edge up (a VM run, not an assertion).
+  **Fixed 29 Sep 2026 for macOS and Linux (ledger #740):** every privileged step ends in
+  `/bin/sync` (`durable::flushed_script` at both `run_privileged` doors), and the app's own
+  boot/login files go through `durable::write_durable`. The mechanism A/B RAN on the VM (plain `cp`
+  + cut → 0 bytes; the wrapped write + cut → whole). **Still owed:** the installed 0.8.11's Start
+  all → cut → boot with the edge up.
 
 - [ ] **Linux: a live (re)setup leaves `rexenv0` with NO DNS scope when systemd-networkd runs** —
   `.rex` then resolves only if something upstream answers it (29 Sep 2026, 22.04 VM, 0.8.10):

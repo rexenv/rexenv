@@ -6,6 +6,8 @@ pub mod traits;
 
 // Resolver files: the macOS route, and the fixture classification the core's test platforms share (#617).
 pub(crate) mod resolver_files;
+// Power-cut-safe writes for the files an OS reads at boot/login (macOS + Linux; Windows needs none).
+pub(crate) mod durable;
 
 // The app-data namespace, ONE fact for every OS: `directories::ProjectDirs::from`
 // composes it. macOS → `~/Library/Application Support/dev.rexenv.rexenv` (its drift

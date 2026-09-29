@@ -238,6 +238,7 @@ rexenv/
         │   └── binaries.rs     # BinaryProvider: pinned manifest, checksum, prepare
         │
         ├── platform/           # OS-SPECIFIC impls behind traits (CRITICAL)
+        │   ├── durable.rs      # power-cut-safe writes (macOS + Linux): flushed privileged steps, durable boot files
         │   ├── traits.rs       # DnsManager, CertTrustManager, PrivilegeManager,
         │   │                   #   ProcessSupervisor, AutostartManager, PermissionManager,
         │   │                   #   ShellRunner, Paths, BinaryProvider, EdgeSupervisor,

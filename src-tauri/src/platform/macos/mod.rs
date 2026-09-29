@@ -244,6 +244,8 @@ impl PrivilegeManager for MacosPrivileges {
         // One dialog at a time — and one build of the per-process work dir.
         static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());
+        // Whatever the step wrote reaches the disk before the prompt returns (`durable`).
+        let script = &crate::platform::durable::flushed_script(script);
 
         // The dialog names rexenv and carries our icon (`prompt_applet`). If the
         // applet cannot be built or launched, no dialog was shown, so osascript's
@@ -1027,7 +1029,7 @@ impl AutostartManager for MacosAutostart {
             std::fs::create_dir_all(parent)?;
         }
         let program = std::env::current_exe()?;
-        std::fs::write(&plist, Self::plist_contents(&program))?;
+        crate::platform::durable::write_durable(&plist, Self::plist_contents(&program).as_bytes())?;
         // Register with launchd so it takes effect this session too (best-effort:
         // the plist on disk is the authoritative state, surviving a failed load).
         let _ = std::process::Command::new("launchctl")
@@ -1197,7 +1199,9 @@ impl DnsAgentManager for MacosDnsAgent {
         // Skip the unload/load churn when nothing changed (every app launch calls
         // this): a byte-identical plist with a live agent is already correct.
         let unchanged = std::fs::read_to_string(&plist).map(|c| c == contents).unwrap_or(false);
-        std::fs::write(&plist, &contents)?;
+        if !unchanged {
+            crate::platform::durable::write_durable(&plist, contents.as_bytes())?;
+        }
         if unchanged {
             return Ok(());
         }

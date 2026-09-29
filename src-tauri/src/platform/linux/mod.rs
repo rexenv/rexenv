@@ -342,6 +342,8 @@ impl PrivilegeManager for LinuxPrivileges {
         // step runs through rexenv itself (`--privileged-step`, `run_step` below) and the dialog
         // says what rexenv is doing; otherwise (an AppImage, a dev build) it is `/bin/sh` and
         // polkit's generic sentence.
+        // Whatever the step wrote reaches the disk before the prompt returns (`durable`).
+        let script = &crate::platform::durable::flushed_script(script);
         let mut cmd = crate::platform::command(pkexec);
         match privileged_step_program() {
             Some(exe) => cmd.arg(exe).arg(PRIVILEGED_STEP_FLAG).arg(script),
@@ -659,7 +661,10 @@ impl AutostartManager for LinuxAutostart {
         if let Some(parent) = entry.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&entry, desktop::autostart_contents(&installed_exe()?, crate::HIDDEN_LAUNCH_FLAG))?;
+        crate::platform::durable::write_durable(
+            &entry,
+            desktop::autostart_contents(&installed_exe()?, crate::HIDDEN_LAUNCH_FLAG).as_bytes(),
+        )?;
         Ok(())
     }
     fn disable(&self) -> Result<()> {
@@ -725,7 +730,9 @@ impl DnsAgentManager for LinuxDnsAgent {
         let exe = if std::env::var_os("APPIMAGE").is_some() { installed_exe()? } else { exe.to_path_buf() };
         let contents = self.definition_contents(&exe, log);
         let unchanged = std::fs::read_to_string(&unit).map(|c| c == contents).unwrap_or(false);
-        std::fs::write(&unit, &contents)?;
+        if !unchanged {
+            crate::platform::durable::write_durable(&unit, contents.as_bytes())?;
+        }
         Self::systemctl_user(&["daemon-reload"])?;
         if unchanged {
             // Already defined; make sure it is up (a fresh login, a stopped unit).

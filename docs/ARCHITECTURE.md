@@ -135,6 +135,15 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   changes.", in the branded applet and the osascript fallback alike. The reason is a
   required typed argument of `run_privileged`, not a `&str`: beside the script, swapped
   strings would compile and run the sentence as root.
+- **What a privileged step writes is on disk before its prompt returns** (`platform/durable.rs`,
+  #740). On macOS and Linux `run_privileged` hands the shell `( script ) ; /bin/sync ; exit <the
+  script's status>`, and the four boot/login files the app writes as the user (the login item and
+  DNS agent plists, the XDG autostart entry, the DNS user unit) go through `write_durable` (temp,
+  fsync, rename, fsync the folder). Measured 29 Sep 2026 on the Ubuntu VM: a unit written by a plain
+  `cp` and a power cut 10 s later came back ZERO bytes — systemd reads that as masked, and the edge
+  never started again until a Start all; written through the wrapper it came back whole. Windows
+  needs neither — registry, NRPT, certificate store and Task Scheduler are the OS's own durable
+  stores.
 - **Stale rexenv CAs are swept, at trust time and at teardown** (`CertTrustManager::
   untrust_stale`, `keychain_trust::untrust_stale`, #678, 18 Sep 2026). Every fresh app-data
   folder mints a NEW local CA and trusts it; the ones earlier folders trusted stayed trusted
