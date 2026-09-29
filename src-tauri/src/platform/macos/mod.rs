@@ -1029,6 +1029,14 @@ impl AutostartManager for MacosAutostart {
             std::fs::create_dir_all(parent)?;
         }
         let program = std::env::current_exe()?;
+        // The same rule as the DNS agent's plist: a translocated path dies with this launch.
+        if app_bundle::is_translocated(&program) {
+            return Err(Error::Other(
+                "rexenv is running from a translocated copy — move rexenv.app to Applications and \
+                 relaunch before turning on Start at login."
+                    .into(),
+            ));
+        }
         crate::platform::durable::write_durable(&plist, Self::plist_contents(&program).as_bytes())?;
         // Register with launchd so it takes effect this session too (best-effort:
         // the plist on disk is the authoritative state, surviving a failed load).
@@ -1055,6 +1063,12 @@ impl AutostartManager for MacosAutostart {
     fn refresh(&self) -> Result<()> {
         let plist = Self::plist_path()?;
         let program = std::env::current_exe()?;
+        // A translocated launch keeps whatever program the login item records: rewriting it
+        // to this launch's path would break the login item the moment the app quits.
+        if app_bundle::is_translocated(&program) {
+            log::info!("login item: running translocated — keeping the recorded program");
+            return Ok(());
+        }
         let want = Self::plist_contents(&program);
         let have = std::fs::read_to_string(&plist).unwrap_or_default();
         // Byte-identical: nothing to do, and no `launchctl load -w` churn —
@@ -1191,6 +1205,18 @@ impl DnsAgentManager for MacosDnsAgent {
     }
 
     fn install(&self, exe: &Path, log: &Path) -> Result<()> {
+        // A translocated copy's path exists only while THIS launch lives: recorded as the
+        // agent's program it left DNS dead from quit until the next launch, and overwrote a
+        // good plist from an earlier install (23 Sep 2026). Refuse — the caller serves DNS
+        // in-process for this session — and say what fixes it.
+        if app_bundle::is_translocated(exe) {
+            return Err(Error::Other(format!(
+                "rexenv is running from a translocated copy ({}) — macOS runs an app that was \
+                 unzipped or copied (not dragged from the dmg) from a temporary read-only path. \
+                 Move rexenv.app to Applications and relaunch; DNS is served in-process until then.",
+                exe.display()
+            )));
+        }
         let plist = self.definition_path()?;
         if let Some(parent) = plist.parent() {
             std::fs::create_dir_all(parent)?;

@@ -112,7 +112,7 @@ async fn main() -> std::process::ExitCode {
     println!("✓ subdirectory network ready");
 
     // 1) Create a sub-site + list.
-    let blog_id = wordpress::network_site_create(&php, &wp, &docroot, "team").expect("create sub-site");
+    let blog_id = wordpress::network_site_create(&php, &wp, &docroot, "team", domain).expect("create sub-site");
     println!("network_site_create(team) → blog_id {}", blog_id.trim());
     let listed = wordpress::network_site_list(&php, &wp, &docroot).expect("site list");
     println!("network_site_list → {} site(s): {:?}", listed.len(),

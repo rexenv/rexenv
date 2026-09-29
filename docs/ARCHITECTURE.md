@@ -1113,7 +1113,10 @@ honest footer —
   classified by the version INSIDE them rather than by a marker, so a crash between the
   swap and any write cannot mislead the sweep. **No path here is privileged**: an
   unwritable folder, a translocated or `/Volumes` launch, a symlinked path or a foreign
-  owner is a refusal that names the consequence and carries a copy-paste fix.
+  owner is a refusal that names the consequence and carries a copy-paste fix. The same
+  translocation predicate guards the two launchd files the app writes for itself — the DNS
+  agent's plist and the login item — so a zipped launch never records a path that dies
+  with it (#753).
   **On Windows the same shape, minus the atomic exchange** (`platform/windows/app_bundle.rs`,
   19 Sep 2026). The "bundle" is the install DIRECTORY the NSIS installer makes —
   `rexenv.exe`, `rex.exe`, `uninstall.exe`, nothing else — and it is swapped whole, because a

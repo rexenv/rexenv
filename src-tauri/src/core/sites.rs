@@ -788,6 +788,19 @@ pub fn set_status(conn: &Connection, id: &str, status: ServiceStatus) -> Result<
     get(conn, id)
 }
 
+/// The display name `rex site create <domain>` gives a site when none is passed: the
+/// domain without its last label (`s1.rex` → `s1`, `shop.acme.test` → `shop.acme`). The
+/// dialog pairs a name with `<slug(name)>.<tld>`; this is the same pairing read backwards.
+/// Until 29 Sep 2026 the CLI stored the whole domain as the name (`docs/TODO.md`'s
+/// "Smaller, same run").
+pub fn name_from_domain(domain: &str) -> String {
+    let d = domain.trim().trim_end_matches('.');
+    match d.rsplit_once('.') {
+        Some((base, _tld)) if !base.is_empty() => base.to_string(),
+        _ => d.to_string(),
+    }
+}
+
 /// Rename a site's DISPLAY name only (the domain, docroot, DB and certs are keyed
 /// off the domain, so they're untouched). Returns the updated site, or `None` if
 /// it doesn't exist. Errors on a blank name.
@@ -2856,6 +2869,23 @@ pub fn rebuild_configs_for(
 
 #[cfg(test)]
 mod tests {
+    /// `rex site create s1.rex` names the site `s1`, as the dialog would pair them —
+    /// not `s1.rex` (a name that repeats the domain beside it).
+    #[test]
+    fn the_cli_default_name_is_the_domain_without_its_tld() {
+        assert_eq!(name_from_domain("s1.rex"), "s1");
+        assert_eq!(name_from_domain("shop.acme.test"), "shop.acme");
+        assert_eq!(name_from_domain(" S1.rex. "), "S1");
+        assert_eq!(name_from_domain("localhost"), "localhost", "no label to strip");
+        assert_eq!(name_from_domain(".rex"), ".rex", "an empty base is not a name");
+        // TEXT: the CLI's site.create arm defaults through it, never to the domain itself.
+        let cli = crate::core::copy_scan::production_source(include_str!("../cli_server.rs"));
+        let arm = cli.split("\"site.create\" => {").nth(1).expect("the site.create arm");
+        let arm = &arm[..arm.find("\n        \"").unwrap_or(arm.len())];
+        assert!(arm.contains("name_from_domain(&a.domain)"), "rex site create names the site from the domain rule");
+        assert!(!arm.contains("unwrap_or_else(|| a.domain.clone())"), "the whole domain is the name again");
+    }
+
     use super::*;
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};

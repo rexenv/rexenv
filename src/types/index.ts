@@ -890,6 +890,9 @@ export interface WpPlugin {
   updateVersion: string;
   /** Human title from the plugin header; may be empty (drop-ins) — fall back to the slug. */
   title: string;
+  /** The main file relative to the plugins dir (`hello.php`, `akismet/akismet.php`);
+   *  a single-file plugin has no folder, so no terminal is offered "in" it. */
+  file: string;
 }
 
 /** One progress snapshot of a running plugin update (mirrors the Rust

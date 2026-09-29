@@ -1224,9 +1224,10 @@ export async function setMailCatchAll(enabled: boolean): Promise<void> {
 // ── WordPress Manager — plugins (§6.1) ──────────────────────────────────────
 
 const mockWpPlugins: WpPlugin[] = [
-  { name: "akismet", status: "inactive", version: "5.3", update: "available", updateVersion: "5.3.7", title: "Akismet Anti-spam" },
-  { name: "hello-dolly", status: "active", version: "1.7.3", update: "none", updateVersion: "", title: "Hello Dolly" },
-  { name: "woocommerce", status: "active", version: "9.1.2", update: "none", updateVersion: "", title: "WooCommerce" },
+  // Hello Dolly is the real shape: ONE file, no folder — the row must offer no terminal.
+  { name: "akismet", status: "inactive", version: "5.3", update: "available", updateVersion: "5.3.7", title: "Akismet Anti-spam", file: "akismet/akismet.php" },
+  { name: "hello-dolly", status: "active", version: "1.7.3", update: "none", updateVersion: "", title: "Hello Dolly", file: "hello.php" },
+  { name: "woocommerce", status: "active", version: "9.1.2", update: "none", updateVersion: "", title: "WooCommerce", file: "woocommerce/woocommerce.php" },
 ];
 
 /** List a site's plugins (`wp plugin list`). `checkUpdates` opts into the

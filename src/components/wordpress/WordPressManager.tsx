@@ -4109,8 +4109,9 @@ function PluginRow({
       />
       {/* Must-use plugins and drop-ins load from a FILE in the content dir and
           have no folder of their own — offering a terminal "in this plugin"
-          would land somewhere that isn't it. */}
-      {!immutable && (
+          would land somewhere that isn't it. Nor has a single-file plugin
+          (Hello Dolly's `hello.php`): its button landed on "Terminal unavailable". */}
+      {!immutable && (p.file ?? "").includes("/") && (
         <AssetTerminalButton siteId={siteId} kind="plugin" name={p.name} onTerminal={onTerminal} />
       )}
       <button

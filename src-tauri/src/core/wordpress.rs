@@ -1279,6 +1279,12 @@ pub struct WpPlugin {
     /// the `alias` keeps reading WP-CLI's `update_version`.
     #[serde(default, rename = "updateVersion", alias = "update_version")]
     pub update_version: String,
+    /// The plugin's main file relative to the plugins dir (`hello.php`,
+    /// `akismet/akismet.php`). A single-file plugin has no folder of its own, so
+    /// the row offers no "terminal in this plugin's folder" — Hello Dolly's did, and
+    /// landed on "Terminal unavailable" (the 15.8 VM run, 23 Sep 2026).
+    #[serde(default)]
+    pub file: String,
 }
 
 /// `wp plugin list` (name, status, version, update, update_version, title). `check_updates:
@@ -1295,7 +1301,7 @@ pub fn plugin_list(
     let mut args = vec![
         "plugin",
         "list",
-        "--fields=name,status,update,update_version,version,title",
+        "--fields=name,status,update,update_version,version,title,file",
     ];
     if !check_updates {
         args.push("--skip-update-check");
@@ -2109,12 +2115,29 @@ pub fn network_site_list(php_bin: &Path, wp_phar: &Path, docroot: &Path) -> Resu
         .collect())
 }
 
+/// `wp site create`'s argv: the slug, `--url=https://<domain>/` and `--porcelain`. The
+/// `--url` is what makes the new sub-site's `siteurl`/`home` HTTPS: WordPress derives the
+/// scheme from `is_ssl()`, which WP-CLI sets only when `--url` carries https — without it
+/// every sub-site created here was recorded `http://` beside an `https://` main site
+/// (the 15.8 VM run, 23 Sep 2026; `docs/TODO.md`'s "Smaller, same run").
+pub fn network_site_create_args(slug: &str, domain: &str) -> Vec<String> {
+    vec![
+        "site".into(),
+        "create".into(),
+        format!("--slug={slug}"),
+        format!("--url=https://{domain}/"),
+        "--porcelain".into(),
+    ]
+}
+
 /// Create a sub-site by slug (`wp site create --slug=<slug>`). The slug becomes a
 /// subdomain (`<slug>.mysite.test`) or a path (`mysite.test/<slug>`) per the
-/// network's install type. Returns the new `blog_id` (via `--porcelain`).
-pub fn network_site_create(php_bin: &Path, wp_phar: &Path, docroot: &Path, slug: &str) -> Result<String> {
-    let slug_arg = format!("--slug={slug}");
-    wp_run(php_bin, wp_phar, docroot, &["site", "create", &slug_arg, "--porcelain"])
+/// network's install type; `domain` is the network's main host, whose HTTPS URL
+/// the new site inherits. Returns the new `blog_id` (via `--porcelain`).
+pub fn network_site_create(php_bin: &Path, wp_phar: &Path, docroot: &Path, slug: &str, domain: &str) -> Result<String> {
+    let args = network_site_create_args(slug, domain);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    wp_run(php_bin, wp_phar, docroot, &refs)
 }
 
 /// Delete a sub-site by `blog_id` (`wp site delete <id> --yes`). The main site
@@ -4166,6 +4189,30 @@ pub fn wp_config_path(docroot: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    /// **A sub-site is created with the network's HTTPS URL, and a plugin row knows its
+    /// file.** Without `--url=https://…` WP-CLI's `is_ssl()` is false and every sub-site
+    /// was recorded `http://` beside an `https://` main site; without `file` the UI could
+    /// not tell Hello Dolly (`hello.php`, no folder) from a plugin with a folder.
+    #[test]
+    fn a_sub_site_is_created_https_and_a_plugin_row_carries_its_file() {
+        assert_eq!(
+            network_site_create_args("shop", "net.rex"),
+            ["site", "create", "--slug=shop", "--url=https://net.rex/", "--porcelain"]
+        );
+        let row: WpPlugin = serde_json::from_str(
+            r#"{"name":"hello","status":"inactive","version":"1.7.2","update":"none","title":"Hello Dolly","file":"hello.php"}"#,
+        )
+        .unwrap();
+        assert_eq!(row.file, "hello.php");
+        let old: WpPlugin = serde_json::from_str(r#"{"name":"x"}"#).unwrap();
+        assert_eq!(old.file, "", "a row without the field still parses (older caches)");
+        assert!(
+            crate::core::copy_scan::production_source(include_str!("wordpress.rs"))
+                .contains("\"--fields=name,status,update,update_version,version,title,file\","),
+            "the plugin list asks WP-CLI for the file"
+        );
+    }
+
 
     /// `core is-installed` exits 1 for "not WordPress", "database dropped" AND
     /// "database server down", so a reader of the exit code alone calls every

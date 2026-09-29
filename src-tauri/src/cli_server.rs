@@ -650,7 +650,12 @@ where
                 }
             };
             let site = crate::state::models::NewSite {
-                name: a.name.unwrap_or_else(|| a.domain.clone()),
+                // No `--name`: the domain without its TLD, the dialog's pairing read
+                // backwards — not the whole domain repeated as the name (#753).
+                name: a
+                    .name
+                    .filter(|n| !n.trim().is_empty())
+                    .unwrap_or_else(|| crate::core::sites::name_from_domain(&a.domain)),
                 domain: a.domain,
                 site_type: a.site_type.unwrap_or(crate::state::models::SiteType::Wordpress),
                 php_version,

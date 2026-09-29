@@ -67,10 +67,10 @@ impl MacosAppBundle {
     }
 
     fn install_kind(bundle: &Path, parent: &Path) -> InstallKind {
-        let b = bundle.to_string_lossy();
-        if b.contains("/AppTranslocation/") {
+        if is_translocated(bundle) {
             return InstallKind::Translocated;
         }
+        let b = bundle.to_string_lossy();
         if b.starts_with("/Volumes/") {
             return InstallKind::DiskImage;
         }
@@ -461,5 +461,47 @@ impl AppBundle for MacosAppBundle {
             out.push(Leftover { path: dir, version, deleted });
         }
         Ok(out)
+    }
+}
+
+/// Is `path` inside an App Translocation mount — the read-only, random, per-launch copy
+/// macOS runs a quarantined app from when it was unzipped or `cp`'d rather than dragged
+/// from the dmg? Such a path exists only while THAT launch lives, so it must never be
+/// recorded as a launchd program of ours: the DNS agent's plist written with it left DNS
+/// dead from quit until the next launch and overwrote a good plist (23 Sep 2026); the
+/// self-update refuses it too (`install_kind`). The fix is the user's: move the app to
+/// Applications and relaunch.
+pub(crate) fn is_translocated(path: &Path) -> bool {
+    path.to_string_lossy().contains("/AppTranslocation/")
+}
+
+#[cfg(test)]
+mod translocation_tests {
+    use super::*;
+
+    /// **No launchd program of ours is ever a translocated path** — the predicate, and
+    /// (TEXT) the three writers that consult it before they write: the DNS agent's
+    /// install refuses, the login item's enable refuses, its refresh keeps what is
+    /// recorded. Plant-proven by removing one call.
+    #[test]
+    fn a_translocated_copy_is_never_recorded_as_a_launchd_program() {
+        assert!(is_translocated(Path::new("/private/var/folders/x/T/AppTranslocation/UUID/d/rexenv.app/Contents/MacOS/rexenv")));
+        assert!(!is_translocated(Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv")));
+        assert!(!is_translocated(Path::new("/Users/u/Applications/rexenv.app/Contents/MacOS/rexenv")));
+        let src = crate::core::copy_scan::production_source(include_str!("mod.rs"));
+        let body = |head: &str| {
+            let i = src.find(head).unwrap_or_else(|| panic!("{head}"));
+            let rest = &src[i..];
+            &rest[..rest.find("\n    }\n").expect("the fn's end")]
+        };
+        // `find` alone would let `None < Some(_)` pass with the check DELETED (a plant
+        // came back green on 29 Sep 2026): both positions must exist.
+        let pos = |body: &str, needle: &str, what: &str| body.find(needle).unwrap_or_else(|| panic!("{what}: `{needle}` is gone"));
+        let install = body("fn install(&self, exe: &Path, log: &Path) -> Result<()> {");
+        assert!(pos(install, "is_translocated(exe)", "the DNS agent's install") < pos(install, "write_durable(", "install"), "the DNS agent's install refuses a translocated exe before writing");
+        let enable = body("fn enable(&self) -> Result<()> {");
+        assert!(pos(enable, "is_translocated(&program)", "the login item's enable") < pos(enable, "write_durable(", "enable"), "the login item's enable refuses before writing");
+        let refresh = body("fn refresh(&self) -> Result<()> {");
+        assert!(pos(refresh, "is_translocated(&program)", "the login item's refresh") < pos(refresh, "let want =", "refresh"), "the login item's refresh keeps the recorded program");
     }
 }

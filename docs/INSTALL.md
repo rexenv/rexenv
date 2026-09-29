@@ -210,6 +210,11 @@ real HTTPS dev stack.)
 - **"app is damaged and can't be opened"** → usually means the download was
   quarantined; right-click → Open as above. (The app is ad-hoc code-signed, which
   is what lets Apple Silicon run it at all.)
+- **"running from a translocated copy"** (in the log, or when turning on Start at login) →
+  you unzipped or copied the app instead of dragging it from the disk image, so macOS runs
+  it from a temporary read-only path that vanishes when it quits. rexenv refuses to record
+  that path for its DNS agent or login item (DNS is served by the app itself until then).
+  Move `rexenv.app` into Applications and relaunch.
 - **Nothing happens / very old Mac** → check you're on **macOS 13 (Ventura) or
   later**, the same floor as the Requirements section above — and on 13 or 14 expect
   the first-launch note about what that macOS gets. (This line said macOS 11 until

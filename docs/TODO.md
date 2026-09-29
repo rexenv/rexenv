@@ -386,13 +386,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the desktop app (the dev harness) nothing is polled. tsc + eslint; NOT run in the app (a GUI
   run on a stopped stack is the SMOKE row).
 
-- [ ] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
+- [x] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
   URLs (main site is `https://`); `rex site create` names a site after its domain (`s1.rex`) where
   the dialog derives a name; Hello Dolly's row shows the terminal button and lands on an honest
   "Terminal unavailable" panel where SMOKE says such rows show no button; SMOKE's MCP row 43 says
   49 tools, the endpoint lists 50; a translocated first launch (zip/`cp`, not a Finder drag) writes
   the DNS LaunchAgent plist with the `/private/var/folders/…/AppTranslocation/…` path — self-heals
-  on the next launch, DNS dead in between.
+  on the next launch, DNS dead in between. ✓ **Fixed 29 Sep 2026 (ledger #753), all five:**
+  `wp site create` gets `--url=https://<main host>/` (WP-CLI's `is_ssl()` is what decides the
+  sub-site's scheme; existing `http://` sub-sites are not rewritten — `wp option update siteurl`
+  by hand); `rex site create <domain>` names the site the domain without its TLD
+  (`name_from_domain`, the dialog's pairing read backwards); `wp plugin list` carries `file` and a
+  plugin whose file has no folder (`hello.php`) gets no terminal button; SMOKE row 43 already
+  reads "the count is whatever `tools/list` prints — never a number carried by hand" (its 49 is
+  the 3 Sep run's record, the 18 Sep 50 beside it) — nothing more to fix there; and on macOS a
+  translocated exe is refused by the DNS agent's install (DNS served in-process this session,
+  the sentence names the fix), by Start at login's enable, and kept-as-recorded by its refresh.
+  L0 on each + TEXT on the three launchd writers and the CLI arm, plant-proven ×5. Not run live
+  (the multisite create and the zip launch are SMOKE rows).
 - [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
   Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
   `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all

@@ -1046,8 +1046,13 @@ pub async fn wp_network_sites(state: State<'_, AppState>, id: String) -> Result<
 #[tauri::command]
 pub async fn wp_network_site_create(state: State<'_, AppState>, id: String, slug: String) -> Result<()> {
     let (docroot, php, wp) = site_tools(&state, &id).await?;
+    // The network's main host: the new site inherits its HTTPS URL through `--url`.
+    let domain = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?.domain
+    };
     wp_blocking(move || {
-        core::wordpress::network_site_create(&php, &wp, &docroot, &slug).map(|_| ())
+        core::wordpress::network_site_create(&php, &wp, &docroot, &slug, &domain).map(|_| ())
     })
     .await
 }
