@@ -139,6 +139,31 @@ pub const MAX_RESTART_ATTEMPTS: u32 = 3;
 /// back (booted out, disabled, uninstalled, or `:443` blocked) → declare edge-down.
 pub const EDGE_SUPERVISOR_GRACE_POLLS: u32 = 3;
 
+/// Consecutive watchdog polls (10 s apart) on which the wire probe must MISS before the edge
+/// is called blocked. One miss is what the app's own Caddy reload produces — the marker
+/// probe times out while the edge re-provisions every site's certificate — and what a
+/// launch still adopting a boot-started edge produces: three `edge-blocked` /
+/// `edge-unblocked` pairs in three minutes on the 15.8 VM (23 Sep 2026, one per `rex site
+/// create`), and one at launch on 29 Sep, each naming "another local proxy" that was not
+/// there and clearing ~10 s later. A real foreign bind (Herd's `127.0.0.1:443`) persists,
+/// so it is still reported — one poll later. Two, not three: the false readings measured
+/// were all one poll long, and every extra poll is another ~10 s a real blocker goes unnamed.
+pub const EDGE_WIRE_MISS_POLLS: u32 = 2;
+
+/// The wire-probe debounce, pure: the miss count after this poll's answer.
+pub fn wire_misses_after(misses: u32, ours: bool) -> u32 {
+    if ours {
+        0
+    } else {
+        misses.saturating_add(1)
+    }
+}
+
+/// Whether that many consecutive misses is a blocked edge (`EDGE_WIRE_MISS_POLLS`).
+pub fn wire_blocked_after(misses: u32) -> bool {
+    misses >= EDGE_WIRE_MISS_POLLS
+}
+
 /// One health-watchdog observation: a managed service found dead and what was
 /// done about it. Serialized to the frontend (`service-health` event) and
 /// appended to `<log_dir>/health.log` as root-cause evidence.
@@ -193,6 +218,12 @@ pub struct ServiceManager {
     /// [`EDGE_SUPERVISOR_GRACE_POLLS`] the watchdog must stop reassuring and
     /// declare the edge down (with a diagnosis) instead of lying every 10s forever.
     edge_dead_polls: u32,
+    /// Consecutive watchdog polls on which the wire probe found :443 not ours (a miss —
+    /// foreign or no answer). The edge is called blocked only at `EDGE_WIRE_MISS_POLLS`
+    /// (`wire_blocked_after`): ONE miss is what the app's own Caddy reload produces, and
+    /// what a launch still adopting a boot-started edge produces — each raised a false
+    /// "another local proxy answers port 443" that cleared a poll later (23 and 29 Sep 2026).
+    edge_wire_misses: u32,
     /// Per-minor PHP ini settings (whitelisted keys, pre-validated values) from
     /// the SQLite `php_settings` table — loaded by the start command, updated by
     /// the settings command. Source for both the pool configs (`php_value` lines)
@@ -404,6 +435,7 @@ impl ServiceManager {
             adopted_misses: HashMap::new(),
             edge_blocked: false,
             edge_dead_polls: 0,
+            edge_wire_misses: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
             site_aliases: HashMap::new(),
@@ -1652,6 +1684,7 @@ impl ServiceManager {
         self.restart_attempts.clear();
         self.edge_dead_polls = 0;
         self.edge_blocked = false;
+        self.edge_wire_misses = 0;
         // A tracked unprivileged child is killed by pid. For a root/privileged edge
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
@@ -2391,7 +2424,11 @@ impl ServiceManager {
             // Events fire on TRANSITIONS only — no per-poll spam.
             let wire = proxy::edge_wire(adminer::ADMINER_HOST, self.ports.https).await;
             let ours = wire == proxy::EdgeWire::Ours;
-            if !ours && !self.edge_blocked {
+            // Debounced (`EDGE_WIRE_MISS_POLLS`): the app's own reload and a launch still
+            // adopting a boot-started edge each miss ONE poll, and naming a proxy that is
+            // not there is worse than a poll's delay on one that is.
+            self.edge_wire_misses = wire_misses_after(self.edge_wire_misses, ours);
+            if !ours && !self.edge_blocked && wire_blocked_after(self.edge_wire_misses) {
                 self.edge_blocked = true;
                 // NOTHING listening while our edge process is ALIVE is a
                 // different fault from a foreign proxy: the master is up and is
@@ -2787,6 +2824,37 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
 
 #[cfg(test)]
 mod tests {
+    /// **The wire probe needs `EDGE_WIRE_MISS_POLLS` consecutive misses before the edge is
+    /// called blocked, and one answer resets it.** The app's own Caddy reload (one per site
+    /// create) and a launch still adopting a boot-started edge each miss ONE poll; the
+    /// unguarded transition raised "another local proxy answers port 443" for a proxy that
+    /// was not there, three times in three minutes (23 Sep 2026), and once at launch (29 Sep).
+    #[test]
+    fn the_wire_probe_needs_consecutive_misses_before_the_edge_is_blocked() {
+        assert_eq!(EDGE_WIRE_MISS_POLLS, 2, "the false readings measured were one poll long each");
+        let mut misses = 0;
+        misses = wire_misses_after(misses, false);
+        assert_eq!(misses, 1);
+        assert!(!wire_blocked_after(misses), "one miss — the reload, the adoption — is not a blocker");
+        misses = wire_misses_after(misses, false);
+        assert_eq!(misses, 2);
+        assert!(wire_blocked_after(misses), "a second consecutive miss is");
+        assert!(wire_blocked_after(wire_misses_after(misses, false)), "…and stays so while it persists");
+        misses = wire_misses_after(misses, true);
+        assert_eq!(misses, 0, "one answer from our edge resets the count");
+        assert!(!wire_blocked_after(misses));
+        assert_eq!(wire_misses_after(u32::MAX, false), u32::MAX, "a blocker held for years never wraps to zero");
+        // TEXT: the watchdog's transition is gated by the rule, fed by the count, and Stop all
+        // resets the count with the other give-up counters.
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let wd = src.split("let wire = proxy::edge_wire(adminer::ADMINER_HOST").nth(1).expect("the watchdog's probe");
+        let wd = &wd[..wd.find("action: \"edge-blocked\"").expect("the event")];
+        assert!(wd.contains("self.edge_wire_misses = wire_misses_after(self.edge_wire_misses, ours);"), "the count feeds from the rule");
+        assert!(wd.contains("&& wire_blocked_after(self.edge_wire_misses) {"), "the transition is gated by it");
+        let stop = src.split("pub fn stop_all(").nth(1).expect("stop_all");
+        assert!(stop[..stop.find("fn ").unwrap_or(stop.len())].contains("self.edge_wire_misses = 0;"), "Stop all resets it");
+    }
+
     /// Ledger #635 — **a cached program is found through the binary cache's own naming, never a hand-joined file
     /// name**: `bin_dir/caddy-<v>/caddy` never exists on Windows, where the file is `caddy.exe`, so an adopting
     /// launch there left the resolved binaries empty and every reload after it failed "services not started". A

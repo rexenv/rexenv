@@ -2229,7 +2229,10 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       Welcome note — an upgraded install never shows Welcome again (`legacy_notice` is `None` on
       Standard, L0). **Found there**: the app said `DNS DOWN` for two hours while the agent
       answered every query (#442 leg 4, fixed in the next build) — and the edge-blocked/unblocked
-      toast pair fires during the app's OWN reload at site create (`docs/TODO.md`).
+      toast pair fires during the app's OWN reload at site create (`docs/TODO.md`; fixed 29 Sep
+      2026, ledger #749 — the wire probe now needs two consecutive misses, so the next run's
+      site creates must raise NO `edge-blocked` toast, while a Herd-style `127.0.0.1:443` bind
+      still raises one within ~20 s).
 - [ ] **The whole list above on a clean macOS 14 VM** — the Welcome note without "…without
       PostgreSQL…", PostgreSQL 16.4 offered, PHP 8.0 not refused, and the legacy-pins row as it
       reads on 14 ("On 14 only cloudflared moves"). **Open: the macOS 14 VM has not been run** (`docs/TODO.md`'s "macOS

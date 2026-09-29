@@ -329,7 +329,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   manager has no notion of a teardown, so the honest wording for "the user did this here" does
   not exist. Same family as #715 (the DNS watchdog had the same blind spot, now fixed with a
   mode); the edge needs its equivalent, or the teardown should tell the manager.
-- [ ] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
+- [x] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
   three minutes on the 15.8 VM (23 Sep 2026, one per `rex site create`), and earlier the same day
   on 13.6: `[edge-blocked] … another local proxy answers port 443 in front of it — no site will
   load until you quit that app` followed ~10s later by `[edge-unblocked]`. Nothing foreign was
@@ -339,6 +339,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   in flight (or require the miss on two consecutive polls) before calling the wire foreign.
   Again 29 Sep 2026 (0.8.10 §A, same VM): once at launch, while the app adopted a root edge the
   boot had started — `edge-blocked` at 06:47:35Z, `edge-unblocked` 11 s later, nothing foreign.
+  ✓ **Fixed 29 Sep 2026 (ledger #749), the second shape — two consecutive polls:** the watchdog
+  keeps `edge_wire_misses` (reset by an answer from our edge, and by Stop all) and calls the edge
+  blocked only at `EDGE_WIRE_MISS_POLLS` = 2 (~20 s); the reload-in-flight flag would not have
+  covered the launch-time adoption, the debounce covers both. A real foreign bind persists and
+  is reported one poll later. L0 on the rule + TEXT on the watchdog, plant-proven. Not run on the
+  VM (the next §A's site creates are the run: no `edge-blocked` toast).
 
 - [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
