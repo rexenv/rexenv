@@ -933,6 +933,21 @@ impl ServiceManager {
         self.caddy = CaddyHandle::Stopped;
     }
 
+    /// The USER removed the edge's OS supervisor through the app (Settings → Remove system
+    /// changes): forget the edge and every give-up counter, so the watchdog does not read the
+    /// silence as a crash. Without this the clean-15 smoke (23 Sep 2026) logged `[edge-down] …
+    /// its KeepAlive daemon is no longer installed (removed outside the app)` twenty seconds
+    /// after the app itself removed it — the manager had no notion of a teardown, the edge's
+    /// half of #715's blind spot. Called AFTER the teardown succeeded: a failed teardown leaves
+    /// the handle true to what is still installed. An edge that somehow still answers is
+    /// re-adopted by the next poll (truth, no start), as after any stop.
+    pub fn edge_removed_by_user(&mut self) {
+        self.caddy = CaddyHandle::Stopped;
+        self.edge_dead_polls = 0;
+        self.edge_blocked = false;
+        self.edge_wire_misses = 0;
+    }
+
     /// Record the edge as a child Caddy we own (unprivileged high port).
     pub fn set_edge_child(&mut self, child: std::process::Child) {
         self.edge_dead_polls = 0;
@@ -2824,6 +2839,22 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
 
 #[cfg(test)]
 mod tests {
+    /// **A teardown the user ran leaves the manager with no edge to mourn** — the handle is
+    /// Stopped and every give-up counter is zero, so the watchdog's daemon-dead branch (three
+    /// polls, then "removed outside the app") never runs for a removal the app itself made.
+    #[test]
+    fn a_user_teardown_forgets_the_edge_and_its_counters() {
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        mgr.caddy = CaddyHandle::Daemon;
+        mgr.edge_dead_polls = 2;
+        mgr.edge_blocked = true;
+        mgr.edge_wire_misses = 1;
+        mgr.edge_removed_by_user();
+        assert!(matches!(mgr.caddy, CaddyHandle::Stopped), "no daemon to wait for");
+        assert_eq!((mgr.edge_dead_polls, mgr.edge_blocked, mgr.edge_wire_misses), (0, false, 0));
+        assert!(!mgr.edge_blocked());
+    }
+
     /// **The wire probe needs `EDGE_WIRE_MISS_POLLS` consecutive misses before the edge is
     /// called blocked, and one answer resets it.** The app's own Caddy reload (one per site
     /// create) and a launch still adopting a boot-started edge each miss ONE poll; the

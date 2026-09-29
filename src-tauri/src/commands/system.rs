@@ -678,6 +678,11 @@ pub async fn uninstall_system(
     // or it reads the silence as a crash and brings DNS back (#715). Any
     // in-process resolver goes with it — dropping the service closes the socket.
     dns.set(None, crate::state::app::DnsMode::Removed);
+    // The teardown booted out and removed the edge's supervisor too; tell the
+    // manager the user did it, or three polls later the watchdog raises
+    // `[edge-down] … (removed outside the app)` about the app's own removal
+    // (#750, the edge's half of the same blind spot). After, for the same reason.
+    state.services.lock().await.edge_removed_by_user();
     Ok(report)
 }
 
@@ -706,6 +711,23 @@ mod tests {
             call > blocking,
             "run_system_setup is called before/outside spawn_blocking, i.e. on the runtime worker"
         );
+    }
+
+    /// #750 — **the teardown tells the service manager the edge is gone, and only
+    /// after it is gone.** TEXT (the #175 bound): `uninstall_system` calls
+    /// `edge_removed_by_user()` after `run_system_teardown(` — before it, a failed
+    /// teardown would leave the manager believing an edge that still runs is gone.
+    #[test]
+    fn the_teardown_tells_the_manager_the_edge_was_removed_by_the_user() {
+        let src = crate::core::copy_scan::production_source(include_str!("system.rs"));
+        let body = src
+            .split("pub async fn uninstall_system(")
+            .nth(1)
+            .and_then(|b| b.split("\n#[").next())
+            .expect("uninstall_system");
+        let ran = body.find("run_system_teardown(").expect("uninstall_system runs the teardown");
+        let told = body.find("edge_removed_by_user()").expect("uninstall_system must tell the manager the edge was removed");
+        assert!(told > ran, "the manager is told AFTER the teardown succeeded, not before it could fail");
     }
 
     /// #178 — **the state a failed startup still has to answer from is ALWAYS

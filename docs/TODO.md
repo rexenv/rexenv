@@ -323,12 +323,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   its fix — `site list`'s STATE is `serving` / `stopped` / `incomplete` / `down`. L0 on all three
   + a TEXT guard on the arm, plant-proven ×4. Not run against a live half-provisioned site (none
   exists here; making one is a failed create on the owner's machine).
-- [ ] **After Settings → Remove system changes, the health log blames an outsider.** Clean-15 smoke,
+- [x] **After Settings → Remove system changes, the health log blames an outsider.** Clean-15 smoke,
   23 Sep 2026: `[edge-down] Caddy: edge stopped and its KeepAlive daemon is no longer installed
   (removed outside the app)` — twenty seconds after the app itself removed it. The service
   manager has no notion of a teardown, so the honest wording for "the user did this here" does
   not exist. Same family as #715 (the DNS watchdog had the same blind spot, now fixed with a
-  mode); the edge needs its equivalent, or the teardown should tell the manager.
+  mode); the edge needs its equivalent, or the teardown should tell the manager. ✓ **Fixed
+  29 Sep 2026 (ledger #750), the second shape:** `uninstall_system` calls
+  `ServiceManager::edge_removed_by_user()` after the teardown succeeded — the handle goes to
+  Stopped and every give-up counter to zero, so the daemon-dead branch never runs for the app's
+  own removal (an edge that somehow still answers is re-adopted by the next poll, as after any
+  stop). L0 on the manager + TEXT on the command's order, plant-proven. The VM run is the
+  uninstall row's next pass: health.log carries no `[edge-down]` after Remove system changes.
 - [x] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
   three minutes on the 15.8 VM (23 Sep 2026, one per `rex site create`), and earlier the same day
   on 13.6: `[edge-blocked] … another local proxy answers port 443 in front of it — no site will
