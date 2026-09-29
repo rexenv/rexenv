@@ -96,7 +96,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Ubuntu 22.04 VM (autologin reboot, stack up) — SMOKE's three rows carry the evidence. The
   runs found the five rows below.
 
-- [ ] **Linux: a unit file written just before a power loss comes back EMPTY — the edge is then
+- [x] **Linux: a unit file written just before a power loss comes back EMPTY — the edge is then
   masked and never starts** (29 Sep 2026, 22.04 VM, 0.8.10): Start all (one polkit), then a hard
   kill ~30 s later (`utmctl stop --kill`) → after the boot `/etc/systemd/system/rexenv-edge.service`
   was 0 bytes, `systemctl is-enabled` said `masked` (systemd reads an empty unit as masked), and
@@ -110,9 +110,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `/bin/sync` (`durable::flushed_script` at both `run_privileged` doors), and the app's own
   boot/login files go through `durable::write_durable`. The mechanism A/B RAN on the VM (plain `cp`
   + cut → 0 bytes; the wrapped write + cut → whole). **Still owed:** the installed 0.8.11's Start
-  all → cut → boot with the edge up.
+  all → cut → boot with the edge up. ✓ **RAN 30 Sep 2026 on the 22.04 VM (this tree's debug deb
+  over 0.8.10):** Start all (one polkit) → `utmctl stop Ubuntu --kill` 5 s after it returned → boot
+  → `rexenv-edge.service` 465 bytes, `enabled`, `active`, the edge answering `https://lv.rex`, and
+  the login's health log carrying no "needs Start all".
 
-- [ ] **Linux: `rexenv0` lost its DNS server and domain once, after a re-setup — cause unknown;
+- [x] **Linux: `rexenv0` lost its DNS server and domain once, after a re-setup — cause unknown;
   since 0.8.11 the app notices and offers setup again** (29 Sep 2026, 22.04 VM, 0.8.10): Remove
   system changes → re-setup (one polkit each, both correct), the unit logged "Bus client set DNS
   server list to: 127.0.0.1:15353", yet a minute later `resolvectl status rexenv0` said `Current
@@ -128,9 +131,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   MISSING, and the app's setup step re-applies it with one polkit (`systemctl restart` of the unit —
   measured to restore it). **Still open:** WHO reverts it — on the next sighting, run the capture in
   `docs/TESTING.md` §"Proving a Linux claim" before touching anything — and the installed 0.8.11's
-  own run of the detection (SMOKE Linux).
+  own run of the detection (SMOKE Linux). ✓ **Found 30 Sep 2026 on the 22.04 VM (ledger #762):
+  nobody outside rexenv.** The route unit's `ExecStop=/sbin/ip link del rexenv0` meant every
+  re-apply (`systemctl restart`) deleted and re-created the link — a new ifindex each time, udev's
+  remove of the old one landing after the add of the new — and resolved's late teardown of the
+  old link took the new link's just-set config with it: 3 of 50 re-applies came back `Current
+  Scopes: none` within four seconds of resolved's own "Bus client set DNS server list" line, with
+  NetworkManager `unmanaged` on the link and only rexenv's own calls on the bus (`busctl monitor`).
+  With the link kept across restarts: 0 of 20 by hand (ifindex constant), and 0 of 10 through the app's own repair on the rebuilt deb (26 re-applies in that session, ifindex 65 constant throughout, `probe.rex → 127.0.0.1` pinned to the link). The
+  detection ran on the installed build too: a hand `resolvectl revert` → `rex status` "resolver
+  MISSING" → `rex tld --repair rex` (one polkit) restored it. Fix: `ExecStop=/usr/bin/resolvectl
+  revert rexenv0` (the uninstall still deletes the link) and the script settles and verifies.
 
-- [ ] **macOS: the first Start all after replacing the app with a new build can fail
+- [x] **macOS: the first Start all after replacing the app with a new build can fail
   "Bootstrap failed: 5: Input/output error" and leave the edge down** (29 Sep 2026, 15.8 VM,
   0.8.10 `7a5ff08` → `a470c1af` by hand, the boot LaunchDaemon's edge up and adopted): `rex start`
   asked for the edge password although the edge answered on its admin socket, then the daemon was
@@ -147,9 +160,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   a reinstall at all — `prepare_edge` reinstalls when an alive edge REFUSES the config reload (its
   documented recovery for a root-owned admin socket), and that reload's error was not logged. It
   is since 0.8.11 ("edge: the live edge refused the config reload (…) — reinstalling it"); look
-  again on the installed 0.8.11.
+  again on the installed 0.8.11. ✓ **Looked 30 Sep 2026, 15.8 VM, this tree's build swapped by
+  hand over the running 0.8.10 with a connection held open on :443:** the new app's Start all found
+  the live edge answering and ADOPTED it — no prompt, no reinstall, no "Bootstrap failed" in either
+  log. The reinstall path did not arise, so the "why" has no new answer; its log line is in place
+  for the next time an edge refuses its reload.
 
-- [ ] **Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch
+- [x] **Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch
   becomes a plain one** (29 Sep 2026, Win11 VM): `platform::windows::job_guard::relaunch_outside_confining_job`
   reopens `explorer.exe <exe>` — Explorer cannot pass arguments — before the pipe claim, so the
   relaunched copy is not a login launch (no login-start, a window). The Run key's login launch is
@@ -160,7 +177,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   launch that hops leaves a `hop-hidden` marker (a timestamp) in the config folder before it asks
   Explorer; the copy Explorer starts reads it once in `is_hidden_launch`, deletes it, and trusts it
   only within 20 s. **Still owed:** the Win11 VM run — a `--hidden` start from a scheduled task
-  arrives as a login launch (no window, login-start) on the installed 0.8.11.
+  arrives as a login launch (no window, login-start) on the installed 0.8.11. ✓ **RAN 30 Sep 2026
+  (Win11 VM, this tree's build, the owner logged in on the console):** `rexenv.exe --hidden` from
+  a `schtasks` task (a `.cmd` wrapper) → two rexenv processes with window handle 0 (no window),
+  the app log "launched at login — staying in the notification area" from the copy Explorer
+  started, login-start running (MySQL listening; PostgreSQL's port already held by the killed
+  copy's engine — the services outlive the app), the `hop-hidden` marker gone. 0.8.10 opened a
+  window and started nothing.
 
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
@@ -188,9 +211,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   web process gets an orderly shutdown instead of losing its UI process mid-flight. TEXT-proven
   (the destroy loop is the arm's first statement, Linux only); `linux-check` compiles it. Still
   open until the VM shows an update (or four quits) with no apport dialog — and if it recurs, the
-  `.crash` capture above is still the next step.
+  `.crash` capture above is still the next step. (30 Sep 2026 on the VM: four SIGTERMs and four
+  Ctrl+Q presses did not quit the Linux build — neither is the quit gate; the tray's Quit is — so
+  no evidence either way; `/var/crash` stayed empty.)
 
-- [ ] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
+- [x] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
   merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not
   yet up and surfaced "services are up, but the HTTPS edge needs Start all (one admin prompt)";
   the daemon came up by itself 70 s later and was re-adopted. The sentence tells the user to do
@@ -199,7 +224,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   OS supervisor is installed AND enabled, login-start polls the admin socket (touching nothing) for
   up to `LOGIN_EDGE_BOOT_WAIT` (120 s) and adopts the edge when it answers; only then is it called
   skipped. Windows' edge has no boot supervisor and never waits. **Still owed:** a slow boot on the
-  macOS VM with the installed 0.8.11 — no "needs Start all" toast, the edge adopted.
+  macOS VM with the installed 0.8.11 — no "needs Start all" toast, the edge adopted. ✓ **RAN 30 Sep
+  2026, 15.8 VM, this tree's build:** a power-cut reboot with the login toggle on → the app launched
+  at login (02:10:40 local), the LaunchDaemon's caddy answered 200 by 02:13, and the app's log
+  carries NO "needs Start all"; the DNS agent came up 100 s after login (in-process first, handed
+  back at 02:12:31) — the slow-boot case exactly, silent.
 
 - [x] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
@@ -218,7 +247,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   refuses another account's with a sentence naming the holder's SID and the one-account rule;
   the launch then serves `.rex` in-process for the session (the same fallback a standard account
   already fell to). L0 on the parser and the sentence + TEXT that the check precedes `/Create`;
-  `windows-check` compiles it. The two-account run on the Win11 VM is the proof still owed.
+  `windows-check` compiles it. The two-account run on the Win11 VM is the proof still owed. ✓ **RAN
+  30 Sep 2026 (Win11 VM, this tree's build, second admin `rex2` launched through a task):** rex2's
+  app log — "dns: could not install the resolver agent: the DNS agent task \rexenv\dns-agent is
+  registered for another account on this computer (S-1-5-21-…)" → "running IN-PROCESS"; the first
+  account's task still `Run As User: Linkon Miyan` before and after.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
@@ -2181,12 +2214,14 @@ The second-instance row this section last carried closed with #441
 (`hand_off_to_running_instance`: the CLI socket is the lock; a second launch activates
 the first and exits) — its box stayed `[ ]` under a struck-through title, ticked 5 Sep 2026.
 
-- [ ] **Hold the tray menu open while the stack MOVES** (L3, ledger #437) — the 5s tick
+- [x] **Hold the tray menu open while the stack MOVES** (L3, ledger #437) — the 5s tick
   now writes titles/enabled/checkmarks onto the live items and rebuilds only when a row
   appears or disappears, so an open menu should update without closing. Fixed 8 Sep 2026
   after the menu was reported closing itself seconds after being opened; the 1 Sep walk
-  missed it because a 15s hold on an IDLE stack is the case where nothing moves. Owed:
-  the `docs/SMOKE-TEST.md` box for a ~30s hold during a start (numbers move, menu stays
+  missed it because a 15s hold on an IDLE stack is the case where nothing moves. ✓ **30 Sep 2026
+  (15.8 VM, this tree's build, over ssh + System Events):** the tray menu held 30 s with the stack
+  running and its numbers ticking — `exists menu 1 of menu bar item 1` true at 0 s and at 30 s.
+  Owed before that: the `docs/SMOKE-TEST.md` box for a ~30s hold during a start (numbers move, menu stays
   open). (**About rexenv** from the tray with the window CLOSED ran ✓ 18 Sep 2026 on the clean
   VM.)
 

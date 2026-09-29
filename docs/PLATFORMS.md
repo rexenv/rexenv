@@ -220,6 +220,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   runs first because it is the row that can break the tester's own internet.
 - **A link with only a link-local address gets NO DNS scope** from systemd-resolved — the dummy
   link must carry a real address (`192.0.2.53/32`, TEST-NET-1), or the route routes nothing.
+- **Never delete and re-create `rexenv0` on a re-apply** (#762, 30 Sep 2026): a restart that
+  deleted the link got a new ifindex, udev's remove of the old one landed after the add of the
+  new, and resolved's late teardown of the old link wiped the new link's just-set DNS — 3 of 50
+  re-applies, `Current Scopes: none` within four seconds. The unit's stop reverts the DNS; only
+  the uninstall deletes the link.
   0.8.8 shipped without it (#734, measured 28 Sep 2026).
 - **A dummy link's resolved settings are volatile.** They are bus calls, not a file: a resolved
   restart drops them (the unit is `PartOf=` resolved so it re-applies), and once — cause unknown —

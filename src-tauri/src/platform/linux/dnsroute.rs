@@ -167,6 +167,8 @@ pub(crate) fn script_contents(port: u16) -> String {
          /sbin/ip link show {LINK} >/dev/null 2>&1 || /sbin/ip link add {LINK} type dummy\n\
          /sbin/ip link set {LINK} up\n\
          /sbin/ip addr replace {LINK_ADDR} dev {LINK}\n\
+         /bin/udevadm settle --timeout=5 2>/dev/null || true\n\
+         i=0; until /usr/bin/resolvectl status {LINK} >/dev/null 2>&1 || [ $i -ge 50 ]; do i=$((i+1)); sleep 0.1; done\n\
          D=\"\"\n\
          for f in {MARKER_DIR}/*; do\n\
          \x20 [ -f \"$f\" ] || continue\n\
@@ -174,15 +176,33 @@ pub(crate) fn script_contents(port: u16) -> String {
          \x20 case \"$n\" in *[!a-z]*) continue;; esac\n\
          \x20 D=\"$D ~$n\"\n\
          done\n\
-         /usr/bin/resolvectl dns {LINK} 127.0.0.1:{port}\n\
-         /usr/bin/resolvectl domain {LINK} $D\n\
-         /usr/bin/resolvectl default-route {LINK} no\n\
+         t=0\n\
+         while [ $t -lt 3 ]; do\n\
+         \x20 t=$((t+1))\n\
+         \x20 /usr/bin/resolvectl dns {LINK} 127.0.0.1:{port}\n\
+         \x20 /usr/bin/resolvectl domain {LINK} $D\n\
+         \x20 /usr/bin/resolvectl default-route {LINK} no\n\
+         \x20 sleep 0.3\n\
+         \x20 if /usr/bin/resolvectl dns {LINK} 2>/dev/null | /bin/grep -q 127.0.0.1:{port}; then break; fi\n\
+         \x20 echo \"rexenv: {LINK} lost its DNS server right after it was set (try $t) - setting it again\" >&2\n\
+         done\n\
          /usr/bin/resolvectl flush-caches\n"
     )
 }
 
 /// The unit: a oneshot that stays "active" so `PartOf` can restart it with resolved, and whose
 /// stop removes the link (which is what removes the route).
+/// The unit's stop REVERTS the link's DNS and leaves the dummy link in place; only the
+/// uninstall command deletes it. Until 30 Sep 2026 `ExecStop` was `ip link del`, so every
+/// re-apply (`systemctl restart`) deleted and re-created `rexenv0` — a new ifindex each time,
+/// udev's remove of the old one landing after the add of the new — and resolved's late
+/// teardown of the old link took the new link's just-set config with it: measured on the
+/// 22.04 VM, 3 of 50 re-applies came back `Current Scopes: none` within four seconds of
+/// "Bus client set DNS server list", NetworkManager `unmanaged` and only rexenv's own calls
+/// on the bus; with the link kept across restarts, 0 of 20 (ifindex constant). That is the
+/// 28–29 Sep "`rexenv0` lost its DNS server and domain once" (#741) — the re-setup that day
+/// re-created the link the same way. The script's settle + verify-retry is belt and braces
+/// for the first apply, which still creates the link.
 pub(crate) fn unit_contents() -> String {
     format!(
         "# Managed by rexenv - the .rex DNS route. Do not edit.\n\
@@ -196,7 +216,7 @@ pub(crate) fn unit_contents() -> String {
          Type=oneshot\n\
          RemainAfterExit=yes\n\
          ExecStart=/bin/sh {SCRIPT_PATH}\n\
-         ExecStop=/sbin/ip link del {LINK}\n\
+         ExecStop=/usr/bin/resolvectl revert {LINK}\n\
          \n\
          [Install]\n\
          WantedBy=multi-user.target\n"
@@ -308,7 +328,8 @@ mod tests {
         assert!(!s.contains("resolved.conf.d"), "the global drop-in is the mechanism P1 refuted");
         let u = unit_contents();
         assert!(u.contains("PartOf=systemd-resolved.service\n"), "a resolved restart must re-apply the link");
-        assert!(u.contains("ExecStop=/sbin/ip link del rexenv0\n"));
+        assert!(u.contains("ExecStop=/usr/bin/resolvectl revert rexenv0\n"), "a re-apply never deletes the link (#762)");
+        assert!(!u.contains("ip link del"), "{u}");
         assert!(u.contains("RemainAfterExit=yes\n"));
     }
 
@@ -324,6 +345,24 @@ mod tests {
     }
 
     /// A marker of ours with a stale or missing script is NOT installed — the update's repair path.
+    /// **A re-apply keeps the link and verifies what it set.** The script waits for udev
+    /// and for resolved to know the link, sets the DNS, and re-reads it — up to three tries —
+    /// before it trusts the apply; the unit's stop reverts the DNS rather than deleting the
+    /// link (the churn that lost 3 of 50 re-applies on the 22.04 VM, 30 Sep 2026). The
+    /// uninstall still deletes the link — that is the one place it should go.
+    #[test]
+    fn a_re_apply_keeps_the_link_and_verifies_the_dns_it_set() {
+        let script = script_contents(15353);
+        assert!(script.contains("/bin/udevadm settle --timeout=5 2>/dev/null || true\n"), "{script}");
+        assert!(script.contains("until /usr/bin/resolvectl status rexenv0 >/dev/null 2>&1 || [ $i -ge 50 ]"), "waits for resolved to know the link");
+        assert!(script.contains("while [ $t -lt 3 ]; do") && script.contains("| /bin/grep -q 127.0.0.1:15353; then break; fi"), "verifies and retries: {script}");
+        assert!(!script.contains("ip link del"), "the script never deletes the link");
+        assert!(unit_contents().contains("ExecStop=/usr/bin/resolvectl revert rexenv0\n"));
+        assert!(uninstall_command(&["rex".into()]).contains("/sbin/ip link del rexenv0"), "the uninstall is where the link goes");
+        // The verify loop must not trip `set -e`: a failed grep sits in an `if`, never bare.
+        assert!(!script.contains("\n /bin/grep") && !script.contains("\n  /bin/grep"), "{script}");
+    }
+
     #[test]
     fn an_old_or_missing_route_script_reads_as_absent_so_setup_is_offered_again() {
         let current = script_contents(15353);

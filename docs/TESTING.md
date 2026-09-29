@@ -1060,7 +1060,11 @@ the source file in `$HOME`.
 (a plain `sudo busctl monitor … &` dies with the ssh session) and `sudo resolvectl log-level debug`,
 then look for a `RevertLink` or an empty `SetLinkDNS` and its `Sender=`; `busctl status <sender>`
 names the process. `sudo resolvectl revert rexenv0` reproduces the lost state on purpose;
-`sudo systemctl restart rexenv-dns-route.service` restores it.
+`sudo systemctl restart rexenv-dns-route.service` restores it. **Answered 30 Sep 2026 (#762):**
+the reverter was the re-apply itself — the unit's stop deleted the link, the restart re-created
+it, and resolved's late teardown of the old ifindex reset the new one's config (3 of 50);
+keeping the link across restarts gave 0 of 20. The capture above is still the tool for a NEW
+sighting.
 
 `verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
 COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a

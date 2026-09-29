@@ -2042,16 +2042,23 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
 - [ ] **Start all over a replaced app reinstalls the edge in ONE try** (ledger #744, 0.8.11): the
   edge running with a browser tab holding a connection, replace the app by hand with another build,
   Start all → if it prompts, the edge comes back after that one prompt (no "Bootstrap failed: 5",
-  no second Start all).
-- [ ] **A slow boot edge is waited for, not reported** (ledger #743, 0.8.11): login toggle on,
+  no second Start all). **◐ 30 Sep 2026 (15.8 VM, this tree's build, a connection held on :443):**
+  Start all ADOPTED the live edge — no prompt, no reinstall, no "Bootstrap failed"; the prompting
+  path did not arise this run.
+- [x] **A slow boot edge is waited for, not reported** (ledger #743, 0.8.11): login toggle on,
   stack up, reboot a slow machine (the UTM VM) → no "the HTTPS edge needs Start all" toast even
   when the LaunchDaemon's caddy comes up a minute after login; the health log shows the edge
   adopted. After a Stop all (the daemon disabled) the line still appears at once — correct.
-- [ ] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
+  ✓ **30 Sep 2026 (15.8 VM, this tree's build, a power-cut reboot):** the app at login 02:10:40,
+  caddy answering 200 by 02:13, the app log with NO "needs Start all"; the agent handed back 100 s
+  after login. (The Stop-all half was not re-run.)
+- [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The
   mechanism was measured on Linux only (a root write + a cut 10 s later came back 0 bytes without
-  the flush); APFS was never cut on purpose.
+  the flush); APFS was never cut on purpose. ✓ **30 Sep 2026 (15.8 VM, this tree's build):** Start
+  all → `--kill` 4 s after it returned → boot → the edge plist 778 bytes, the daemon `running` and
+  answering 200 on :443 by itself, the login's Start all silent.
 - [ ] **Login autostart stays silent on a cold cache** (ledger #175 — this checklist IS
   that row's wiring proof; the code has only a text-order guard, which cannot see
   behaviour). Setup: enable "Start rexenv at login" (the one toggle since 29 Sep 2026), then
@@ -2499,11 +2506,13 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       through Explorer and LOSES its arguments (`docs/TODO.md`), so it reads as a plain launch —
       use a `.lnk` with the argument, opened by Explorer.
 
-- [ ] **A confined `--hidden` launch stays a login launch** (ledger #742, 0.8.11): Stop all, quit;
+- [x] **A confined `--hidden` launch stays a login launch** (ledger #742, 0.8.11): Stop all, quit;
       start `rexenv.exe --hidden` from a scheduled task (confining, so it hops through Explorer) →
       the copy Explorer starts shows no window and runs login-start (the backends come up), and
       `%LOCALAPPDATA%\rexenv\rexenv\data\config\hop-hidden` is gone afterwards. 0.8.10 opened a
-      window and started nothing.
+      window and started nothing. ✓ **30 Sep 2026 (Win11 VM, this tree's build, the console logged
+      in):** two processes, window handle 0; "launched at login — staying in the notification
+      area"; login-start ran; the marker gone.
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
@@ -2616,18 +2625,26 @@ reconciled into one row per step, each open row saying what it is still waiting 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
 tunnel guard's normal-stop leg. (The `.deb` in-app update's relaunch closed 29 Sep 2026, 0.8.9 →
 0.8.10.)
-- [ ] **A slow edge unit at boot is waited for** (ledger #743, 0.8.11): toggle on, the edge unit
+- [x] **A slow edge unit at boot is waited for** (ledger #743, 0.8.11): toggle on, the edge unit
       enabled, reboot → login-start's log shows no "needs Start all" even if `rexenv-edge` comes up
       after it; the edge is adopted. After a Stop all (unit disabled) the line appears at once.
-- [ ] **A route resolved lost reads as not installed, and setup brings it back** (ledger #741,
+      ✓ **30 Sep 2026 (22.04 VM, this tree's debug deb, the power-cut reboot below):** no "needs
+      Start all" in this boot's health log, the edge active and answering.
+- [x] **A route resolved lost reads as not installed, and setup brings it back** (ledger #741,
       0.8.11): `sudo resolvectl revert rexenv0` → `rex status` says the resolver is MISSING, the
       app's next launch opens its setup step → one polkit → `resolvectl status rexenv0` shows
       `Current Scopes: DNS`, `127.0.0.1:15353`, `~rex`, and `resolvectl query -i rexenv0 x.rex`
-      answers. 0.8.10 said "resolver installed" throughout.
-- [ ] **A power cut right after Start all leaves the edge able to start** (ledger #740, 0.8.11):
+      answers. 0.8.10 said "resolver installed" throughout. ✓ **30 Sep 2026 (22.04 VM, this tree's
+      build):** `rex status` "resolver MISSING" after the revert; `rex tld --repair rex` → one
+      polkit → `Current Scopes: DNS`, `127.0.0.1:15353`, `~rex`, `probe.rex → 127.0.0.1` pinned to
+      the link. And the loss's cause is found and fixed (#762): the re-apply's own link churn.
+- [x] **A power cut right after Start all leaves the edge able to start** (ledger #740, 0.8.11):
       Start all (one polkit), then `utmctl stop Ubuntu --kill` within 10 s → boot →
       `/etc/systemd/system/rexenv-edge.service` whole (not 0 bytes, not `masked`) and the login's
       Start all brings the edge up with no "needs Start all" line. 0.8.10 failed this exactly.
+      ✓ **30 Sep 2026 (22.04 VM, this tree's debug deb):** Start all → `--kill` 5 s after it
+      returned → boot → the unit 465 bytes, `enabled`, `active`, `https://lv.rex` answered, no
+      "needs Start all" this boot.
 
 **Owed through the next release, inside ticked rows:** the AppImage's kept previous copy is swept
 (its row's next run). A re-setup is ONE polkit dialog (#723) — **✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`)**:
