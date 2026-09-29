@@ -148,6 +148,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Settings | `/settings` | `src/routes/Settings.tsx` |
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
+| Tutorial video recorder (dev tooling, never shipped) | `scripts/video/demo.html` (vite dev) | `scripts/video/` + its README: `stage.{html,ts}` (frame, cursor, camera, captions), `demo-backend.ts` (the scripted IPC — mirrors `commands/site_provision.rs`'s phases), `lib.mjs` (recorder), `voice.mjs` (edge-tts narration), `record-*.mjs` (one per video) |
 | IPC bridge (the ONLY invoke path; 264 exports) | — | `src/lib/ipc/index.ts` |
 | Self-update card (Settings → About) | `/settings?section=about` | `src/components/settings/AppUpdateCard.tsx`; `UpdateWatch` in `src/App.tsx`; Settings nav badge in `Sidebar.tsx`; L2 `uireview.js` `appupdate-*` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |

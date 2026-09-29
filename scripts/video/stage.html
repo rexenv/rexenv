@@ -1,0 +1,119 @@
+<!doctype html>
+<!-- The video frame: a 1920×1080 stage with the app window (demo.html in an
+     iframe, at the app's real 1180×760 window size), a cursor, a camera and
+     captions. The recorder drives it through window.stage (stage.ts). -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>rexenv — video stage</title>
+    <style>
+      /* `clip`, not `hidden`: a scrollIntoView inside the iframe also scrolls
+         every ancestor document that CAN scroll, and a hidden-overflow stage
+         still can — it slid the captions into the middle of the frame. */
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: clip; }
+      #cam, #caption, #title { position: fixed !important; }
+      body, #title {
+        background:
+          radial-gradient(1200px 700px at 18% 12%, rgba(107, 74, 232, 0.55), transparent 60%),
+          radial-gradient(1000px 700px at 88% 92%, rgba(56, 132, 255, 0.35), transparent 60%),
+          #0b0b12;
+      }
+      body {
+        font-family: "Inter", system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      #cam {
+        position: absolute; inset: 0;
+        transform-origin: 0 0;
+        transition: transform 900ms cubic-bezier(0.65, 0, 0.35, 1);
+      }
+      #win {
+        position: absolute; width: 1180px; height: 760px;
+        transform-origin: 0 0;
+        border-radius: 11px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10), 0 30px 90px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.35);
+        overflow: hidden;
+        background: #0d0e12;
+        opacity: 0;
+        transition: opacity 600ms ease, translate 700ms cubic-bezier(0.22, 1, 0.36, 1);
+        translate: 0 24px;
+      }
+      #win.shown { opacity: 1; translate: 0 0; }
+      #win iframe { width: 1180px; height: 760px; border: 0; display: block; }
+      /* macOS draws the traffic lights over the content (titleBarStyle Overlay). */
+      #lights { position: absolute; left: 14px; top: 14px; display: flex; gap: 8px; pointer-events: none; }
+      #lights span { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
+      #cursor {
+        position: absolute; left: 0; top: 0; width: 22px; height: 30px;
+        pointer-events: none; z-index: 10; opacity: 0;
+        transition: opacity 300ms ease;
+        filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.45));
+      }
+      #cursor svg { display: block; transform-origin: 3px 2px; transition: transform 90ms ease; }
+      #cursor.down svg { transform: scale(0.86); }
+      .ripple {
+        position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px;
+        border-radius: 50%; pointer-events: none; z-index: 9;
+        background: rgba(139, 112, 255, 0.35); border: 2px solid rgba(160, 138, 255, 0.9);
+        animation: ripple 520ms ease-out forwards;
+      }
+      @keyframes ripple { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.5); opacity: 0; } }
+      #caption {
+        position: absolute; left: 50%; bottom: 44px; translate: -50% 12px;
+        max-width: 1700px; white-space: nowrap; padding: 14px 26px; border-radius: 14px;
+        background: rgba(12, 12, 20, 0.82); backdrop-filter: blur(14px);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.10), 0 12px 40px rgba(0, 0, 0, 0.45);
+        color: #f2f1fa; font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.3;
+        text-align: center; opacity: 0; transition: opacity 350ms ease, translate 350ms ease;
+        z-index: 20;
+      }
+      #caption.shown { opacity: 1; translate: -50% 0; }
+      #caption.top { bottom: auto; top: 44px; translate: -50% -12px; }
+      #caption.top.shown { translate: -50% 0; }
+      #spot {
+        position: absolute; pointer-events: none; z-index: 8; border-radius: 10px; opacity: 0;
+        box-shadow: 0 0 0 2px rgba(160, 138, 255, 0.95), 0 0 28px 6px rgba(124, 92, 255, 0.45);
+        transition: opacity 400ms ease;
+      }
+      #spot.shown { opacity: 1; animation: pulse 1600ms ease-in-out infinite; }
+      @keyframes pulse { 50% { box-shadow: 0 0 0 2px rgba(160, 138, 255, 0.6), 0 0 16px 2px rgba(124, 92, 255, 0.25); } }
+      #caption code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.9em; color: #b9a8ff; }
+      #title {
+        position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 22px; color: #fff; z-index: 30; opacity: 0; transition: opacity 600ms ease; pointer-events: none;
+      }
+      #title.shown { opacity: 1; }
+      /* The sync flash (lib.mjs): shown once before the trim point, never in a
+         finished video. Magenta, because the page-load frames are WHITE — a white
+         flash was mistaken for the load and measured a 0.03s lag that was 0.5s. */
+      #sync { position: fixed; inset: 0; z-index: 100; background: #ff00ff; display: none; }
+      #sync.on { display: block; }
+      #title .brand { display: flex; align-items: center; gap: 16px; font-family: "Space Grotesk", sans-serif; font-weight: 600; font-size: 44px; color: #d8d0ff; }
+      #title .brand img { width: 56px; height: 56px; }
+      #title h1 { margin: 0; font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: 92px; letter-spacing: -0.03em; }
+      #title p { margin: 0; font-size: 32px; color: #b8b4cc; }
+    </style>
+  </head>
+  <body>
+    <div id="cam">
+      <div id="win">
+        <iframe id="app" src="/scripts/video/demo.html"></iframe>
+        <div id="spot"></div>
+        <div id="lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+        <div id="cursor">
+          <svg width="22" height="30" viewBox="0 0 22 30" aria-hidden="true">
+            <path d="M2 2 L2 24 L7.6 18.8 L11.4 27.4 L15 25.8 L11.3 17.4 L18.8 17.4 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" />
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div id="caption"></div>
+    <div id="title">
+      <div class="brand"><img src="/src/assets/rexenv-logo.svg" alt="" />rexenv</div>
+      <h1 id="title-h"></h1>
+      <p id="title-p"></p>
+    </div>
+    <div id="sync"></div>
+    <script type="module" src="/scripts/video/stage.ts"></script>
+  </body>
+</html>

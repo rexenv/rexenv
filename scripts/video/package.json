@@ -1,0 +1,12 @@
+{
+  "name": "rexenv-video",
+  "private": true,
+  "description": "Dev tooling only — records tutorial videos of the real UI against a scripted backend. Never shipped.",
+  "type": "module",
+  "scripts": {
+    "wp-install": "node record-wp-install.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1"
+  }
+}

@@ -153,7 +153,8 @@ rexenv/
 ├── scripts/                    # verify.sh (THE pre-commit bar) · verify-full.sh
 │   │                           #   live-checks.sh (tiered L1 runner) · build-cli.sh
 │   │                           #   windows-check.sh (Windows x64 compile check, cargo-xwin)
-│   └── wk-checks/              # Playwright WebKit render checks (L2) + README
+│   ├── wk-checks/              # Playwright WebKit render checks (L2) + README
+│   └── video/                  # narrated tutorial recordings of the real UI (dev only) + README
 │
 │   # The Homebrew cask is NOT in this repo — it lives in github.com/rexenv/homebrew-tap
 │   # (`brew tap rexenv/tap`), which is the single source of truth for it.

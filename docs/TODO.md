@@ -50,6 +50,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Sites list: a site being created shows "setup incomplete" + Retry for the whole of its
+  provision job** (found 30 Sep 2026 recording the one-click-WordPress tutorial: the row behind
+  the New Site dialog told the viewer the setup had failed while the card in front of it was
+  still installing). `src/routes/Sites.tsx` renders the warning badge and the Retry button on
+  `!site.provisioned` alone, and the backend persists the row at job START with
+  `provisioned=false` (`commands/site_provision.rs`, settle-ok is the only writer of 1) — so a
+  running job and a dead one look the same. The badge's own comment says it means "provisioning
+  died or was cancelled". *Done when:* a row whose domain has a RUNNING provision job shows a
+  running state with no Retry, the badge and Retry still show after a failed or cancelled job,
+  and a wk-check renders both. Frontend only — the same on all three OSes.
+- [x] **Tutorial videos: record the real UI with a narrated voiceover, no screen recording**
+  ✓ 30 Sep 2026 — `scripts/video/` (README): the shipped components in a headless Chromium
+  against a scripted backend that replays the Rust provision job's own phases and log lines,
+  edge-tts narration timed by the scene, an aligned voice track + SRT. Pilot
+  `npm run wp-install` (58 s, one-click WordPress). Two traps recorded in the README: headless
+  WebKit's frames arrive ~0.5 s late (synced by a magenta flash), and it shrinks to 0.9 on a
+  laptop-sized screen (hence Chromium).
+
 - [x] **"Start rexenv at login" is ONE toggle — prove the merged login on 0.8.10, all three OSes**
   (owner, 29 Sep 2026: "ekta toggle on korlei auto service on hoye jai login er pore"; ledger
   #739). Built 29 Sep: the login item's `--hidden` launch runs Start all and nothing else does;
