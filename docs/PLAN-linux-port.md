@@ -69,6 +69,7 @@ Linux needs its own answer; nothing is (c) — `linux-check` was green on the fi
 | `core/firefox.rs:295` | a test fixture path | (a) `cfg(unix)` |
 | `core/ports.rs:466, 673`, `confverify.rs:247, 270`, `sites.rs:4333, 5185`, `setup.rs:410` | test-only `cfg(macos)` | (a) tests skipped, never production |
 | `src/` (TSX) | — | (a) NO OS string in the frontend: every OS word comes through `usePlatformWords` (the `words.rs` frontend scan holds this) |
+| `lib.rs` `RunEvent::Exit` (`cfg(linux)`, 30 Sep 2026, #757) | destroy every webview before the process ends | Linux only: WebKitGTK's web process crashed at the old app's exit on an in-app update; macOS and Windows tear theirs down with the process and get nothing |
 
 ## 2. What Linux has that the other two do not
 

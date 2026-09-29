@@ -164,7 +164,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`app.exit(0)` through the gate), so it is an intermittent WebKitGTK crash at exit, not rexenv's
   swap. The first crash file was deleted before it was read (a mistake). **Next sighting:** keep the
   `.crash`, `apport-retrace -o trace.txt <file>` (or `apport-unpack` + `gdb` on the core) for the
-  stack, then decide whether closing the webview before `app.exit` is the fix.
+  stack, then decide whether closing the webview before `app.exit` is the fix. **Mitigation
+  shipped 30 Sep 2026 (ledger #757) without waiting for the stack:** on Linux `RunEvent::Exit`
+  destroys every webview window before the job/tunnel cleanup and the process end, so WebKitGTK's
+  web process gets an orderly shutdown instead of losing its UI process mid-flight. TEXT-proven
+  (the destroy loop is the arm's first statement, Linux only); `linux-check` compiles it. Still
+  open until the VM shows an update (or four quits) with no apport dialog — and if it recurs, the
+  `.crash` capture above is still the next step.
 
 - [ ] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
   merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not

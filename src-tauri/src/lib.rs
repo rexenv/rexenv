@@ -1514,6 +1514,19 @@ pub fn run() {
                 // paths bypass this hook entirely — the launch sweep
                 // (core::tunnels::sweep_startup) is the other half.
                 tauri::RunEvent::Exit => {
+                    // Linux: tear the webviews down BEFORE the process exits. WebKitGTK's
+                    // web process lives on after its UI process is gone and died SIGSEGV
+                    // (apport: "WebKitWebProcess closed unexpectedly") the moment the OLD
+                    // app left through this gate on 1 of 2 in-app updates (22.04 VM, 29
+                    // Sep 2026); an ordinary `exit(0)` with the window still up gives it
+                    // no orderly shutdown. Destroying the windows first does — the
+                    // mitigation the row asked to decide on (#757); the next sighting's
+                    // `.crash` says whether it was enough. macOS and Windows tear their
+                    // webviews down with the process and never showed it.
+                    #[cfg(target_os = "linux")]
+                    for (_, window) in app.webview_windows() {
+                        let _ = window.destroy();
+                    }
                     commands::repo::cancel_all_on_exit(app);
                     commands::tunnels::kill_all_on_exit(app);
                     // A self-update quits and reopens, and THIS is where the
@@ -2746,6 +2759,23 @@ mod tests {
         let probe = body.find("answers_as_ours").expect("the arm probes the wire");
         let adopt = body[probe..].find("DnsMode::Agent);").expect("an answering agent is adopted out of Down");
         assert!(adopt > 0, "adoption follows the probe");
+    }
+
+    /// Ledger #757 — **on Linux every webview is destroyed inside `RunEvent::Exit`
+    /// before anything else runs there.** TEXT (the #175 bound): the arm's first
+    /// statement is the `cfg(target_os = "linux")` destroy loop, ahead of the job
+    /// and tunnel cleanup — the shape whose absence let WebKitWebProcess die on the
+    /// app's exit (22.04 VM, 29 Sep 2026).
+    #[test]
+    fn the_linux_exit_destroys_the_webviews_before_anything_else() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let arm = src.split("tauri::RunEvent::Exit => {").nth(1).expect("the Exit arm");
+        let arm = &arm[..arm.find("\n                }\n").expect("the arm's end")];
+        let pos = |needle: &str| arm.find(needle).unwrap_or_else(|| panic!("`{needle}` is gone from the Exit arm"));
+        let cfg = pos("#[cfg(target_os = \"linux\")]");
+        let destroy = pos("window.destroy()");
+        let jobs = pos("cancel_all_on_exit(app)");
+        assert!(cfg < destroy && destroy < jobs, "the webviews go first, and only on Linux");
     }
 
     /// Ledger #756 — **the watchdog asks patiently and kicks only after two silent
