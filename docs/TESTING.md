@@ -352,7 +352,10 @@ it can:
   while its neighbour is down, and the site serving again after the switch goes back —
   on the certificate it kept.
   **`frankenphp_mail_catch_check` (sandbox tier, 5 Sep 2026) is the same shape for the
-  mail catch-all's third carrier.** L0 holds the FrankenPHP config TEXT (`php_ini
+  mail catch-all's third carrier.** (Since 29 Sep 2026, #754, its readiness is an ANSWERED
+  request — `common::await_answering` — and an empty body is the check's own failure with the
+  backend's log spilled: FrankenPHP accepts before its worker is up, and a bare port poll let
+  the 13/14 Sep release gates hang and then pass a check vacuously.) L0 holds the FrankenPHP config TEXT (`php_ini
   sendmail_path`, the `MAIL_*` env lines) and the manager's merge; what no string can say
   is whether the embedded PHP READS them — and the quoting is the whole risk, because the
   Caddyfile lexer and PHP's ini parser each strip a layer. So it runs the real binary on a

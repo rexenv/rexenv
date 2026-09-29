@@ -32,7 +32,7 @@
 
 use rexenv_lib::core::services::RewriteMode;
 use rexenv_lib::core::{binaries, frankenphp, mail, ports};
-use std::process::Command;
+use std::path::Path;
 
 mod common;
 
@@ -42,16 +42,21 @@ const PORT: u16 = 8379;
 const DOMAIN: &str = "fpmail.test";
 const SUBJECT: &str = "rexenv-fp-mail-514";
 
-fn get(path: &str) -> String {
-    // Bounded (13 Sep 2026): with no --max-time, a backend that accepted and never
-    // answered held 0.7.1's release gate for 50 minutes at 0% CPU. A hung request
-    // now fails its check with an empty body instead of stalling the tier.
-    let out = Command::new("curl").args(["--max-time", "60"])
-        .args(["-s", "-H", &format!("Host: {DOMAIN}"), &format!("http://127.0.0.1:{PORT}{path}")])
-        .output()
-        .expect("curl")
-        .stdout;
-    String::from_utf8_lossy(&out).to_string()
+/// One answered request, or the check's OWN failure — never an empty body that a
+/// `!contains(…)` check reads as a pass. Bounded since 13 Sep 2026 (a backend that
+/// accepted and never answered held 0.7.1's release gate for 50 minutes); since 29 Sep
+/// 2026 an empty or unanswered request is recorded as a failed check naming curl's exit
+/// and the backend's own log, because on 14 Sep the control's empty body passed the
+/// "does not carry our shim" check vacuously and the run was red for a reason no line
+/// stated (`docs/TODO.md`, ledger #754).
+fn get(check: &mut common::Check, label: &str, path: &str, log: &Path) -> String {
+    match common::http_get_bounded(PORT, DOMAIN, path, 60) {
+        Ok(body) => body,
+        Err(why) => {
+            check.is(label, false, &format!("{why}\n  {}", common::log_tail(log, 30)));
+            String::new()
+        }
+    }
 }
 
 #[tokio::main]
@@ -102,6 +107,8 @@ async fn main() -> std::process::ExitCode {
     let bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp binary (cached)");
+    // The backend's own stdout/stderr (under the sandbox) — spilled by every failure below.
+    let log = frankenphp::log_path(&*plat, DOMAIN).expect("frankenphp log path");
 
     // ── Negative control: catch OFF ──────────────────────────────────────────
     {
@@ -111,12 +118,14 @@ async fn main() -> std::process::ExitCode {
             frankenphp::start(&*plat, &bin, DOMAIN, &conf, &[]).expect("start frankenphp (off)"),
             "frankenphp",
         );
-        common::await_listening(PORT, "frankenphp (catch off)", None);
-        let e = get("/e.php");
+        // ANSWERING, not merely listening: FrankenPHP accepts before its worker is up, and
+        // the port poll alone let a request in that was never answered (13 and 14 Sep 2026).
+        common::await_http_answer(PORT, DOMAIN, "/e.php", "frankenphp (catch off)", Some(&log));
+        let e = get(&mut check, "control backend answered /e.php", "/e.php", &log);
         check.is(
             "control: with the catch OFF the embedded PHP does not carry our shim",
-            !e.contains("App Support/mailpit"),
-            &e,
+            !e.is_empty() && !e.contains("App Support/mailpit"),
+            if e.is_empty() { "no body to judge — the request above failed" } else { &e },
         );
         check.is("control: with the catch OFF getenv('MAIL_HOST') is empty", e.contains("MAIL_HOST=false"), &e);
         child.stop();
@@ -135,9 +144,9 @@ async fn main() -> std::process::ExitCode {
         frankenphp::start(&*plat, &bin, DOMAIN, &conf, &env).expect("start frankenphp (on)"),
         "frankenphp",
     );
-    common::await_listening(PORT, "frankenphp (catch on)", None);
+    common::await_http_answer(PORT, DOMAIN, "/e.php", "frankenphp (catch on)", Some(&log));
 
-    let e = get("/e.php");
+    let e = get(&mut check, "catch-on backend answered /e.php", "/e.php", &log);
     check.is(
         "ini_get('sendmail_path') is the shim VERBATIM — single quotes kept, path intact",
         e.contains(&format!("sendmail_path={shim}\n")),
@@ -152,7 +161,7 @@ async fn main() -> std::process::ExitCode {
     );
 
     let _ = std::fs::remove_file(&sent);
-    let m = get("/m.php");
+    let m = get(&mut check, "catch-on backend answered /m.php", "/m.php", &log);
     check.is("mail() returned true through the embedded PHP", m.trim() == "true", &m);
     let recorded = std::fs::read_to_string(&sent).unwrap_or_default();
     check.is(

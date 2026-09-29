@@ -581,6 +581,62 @@ pub fn await_listening(port: u16, what: &str, log: Option<&Path>) {
     });
 }
 
+/// [`await_listening`] and then some (the HTTP sibling of the edge's [`await_answering`]): the backend must ANSWER an HTTP request, not merely
+/// hold the port. FrankenPHP accepts connections before its PHP worker is up, and twice in
+/// two release gates (13 and 14 Sep 2026) `frankenphp_mail_catch_check`'s first backend
+/// passed the port poll and then took a request it never answered — 50 minutes at 0% CPU
+/// once, an EMPTY body the second time, which the "does not carry our shim" check read as a
+/// pass. Polls `curl --max-time 2` until a non-empty body arrives (≤ 20 s), so a worker
+/// still loading is absorbed; a wedge fails HERE, with the backend's own log spilled.
+/// Returns the first answered body.
+pub fn await_http_answer(port: u16, host: &str, path: &str, what: &str, log: Option<&Path>) -> String {
+    let mut body = String::new();
+    await_ready(&format!("{what} answering http://127.0.0.1:{port}{path}"), log, || {
+        body = http_get_bounded(port, host, path, 2).unwrap_or_default();
+        !body.is_empty()
+    });
+    body
+}
+
+/// One bounded `curl` (unlike [`http_get`], which returns the raw exchange or a probe error as text) — `Ok(body)` only for a non-empty answer; `Err` names curl's exit
+/// (28 = timed out, 7 = refused, 52 = empty reply) so an unanswered request is never
+/// mistaken for an answer that happens to say nothing.
+pub fn http_get_bounded(port: u16, host: &str, path: &str, max_secs: u32) -> std::result::Result<String, String> {
+    let out = Command::new("curl")
+        .args(["--max-time", &max_secs.to_string(), "-s", "-H", &format!("Host: {host}")])
+        .arg(format!("http://127.0.0.1:{port}{path}"))
+        .output()
+        .map_err(|e| format!("curl could not run: {e}"))?;
+    let body = String::from_utf8_lossy(&out.stdout).to_string();
+    match (out.status.code(), body.is_empty()) {
+        (Some(0), false) => Ok(body),
+        (Some(0), true) => Err("empty body with curl exit 0 — the backend answered nothing".into()),
+        (code, _) => Err(format!(
+            "no answer within {max_secs}s (curl exit {}{})",
+            code.map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
+            match code {
+                Some(28) => " = timed out: accepted and never answered",
+                Some(7) => " = connection refused: nothing listening",
+                Some(52) => " = empty reply: the connection closed with no response",
+                _ => "",
+            }
+        )),
+    }
+}
+
+/// The last `n` lines of a log, for a failure detail — or why it could not be read.
+pub fn log_tail(path: &Path, n: usize) -> String {
+    match std::fs::read_to_string(path) {
+        Ok(text) if !text.trim().is_empty() => {
+            let lines: Vec<&str> = text.lines().collect();
+            let from = lines.len().saturating_sub(n);
+            format!("{} (last {} of {} lines):\n{}", path.display(), lines.len() - from, lines.len(), lines[from..].join("\n"))
+        }
+        Ok(_) => format!("{} is empty — the backend never wrote a line", path.display()),
+        Err(e) => format!("{} is unreadable: {e}", path.display()),
+    }
+}
+
 /// [`await_listening`] for readiness that is not a TCP port.
 ///
 /// The edge's admin surface is a UNIX SOCKET by design — a TCP admin on a root
