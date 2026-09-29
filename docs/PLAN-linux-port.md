@@ -213,7 +213,8 @@ Each ends in something observable; each is its own commit.
   host without libfuse2 still answers) — an AppImage embeds no version field a reader could
   trust. The deb is verified with `dpkg-deb -f` (Package/Version/Architecture) and `-c`
   (`usr/bin/rexenv` + `usr/bin/rex` present) BEFORE the one root command, `/usr/bin/dpkg -i
-  '<staged>'`, runs through the polkit step (`--privileged-step`, rexenv's sentence). The
+  '<staged>'`, runs through the polkit step (`--privileged-step`, rexenv's sentence; since
+  29 Sep 2026 the update's OWN action and program, #747 — its dialog names the update). The
   AppImage swap is `renameat2(RENAME_EXCHANGE)` with the rename pair as fallback, the
   previous copy left in the stage dir for the health sweep, as on macOS. `InstallKind` grew
   `SystemPackage` and `PortableFile`; `preflight` asks the STAGING folder (app-data
@@ -260,7 +261,8 @@ Each ends in something observable; each is its own commit.
 - **The polkit dialog names `/bin/sh` unless the deb's action file is installed** — with it
   (`linux/dev.rexenv.rexenv.policy`, `exec.path` = `/usr/bin/rexenv`) the step runs as
   `rexenv --privileged-step <script>` and the dialog carries rexenv's sentence (#723). An
-  AppImage never gets that: pkexec matches the path exactly.
+  AppImage never gets that: pkexec matches the path exactly — which is also why a SECOND
+  sentence (the in-app update's, #747) needed a second program, `/usr/libexec/rexenv/privileged-update`.
 - **`pkexec` strips the environment** (`HOME`, `PATH` reduced to a safe set). Every privileged
   script must use absolute paths (`/usr/bin/systemctl`, `/bin/cp`) and never rely on `$HOME`.
 - **Wayland.** `xdotool`-style activation does nothing; `activate_app` is a no-op, and "bring

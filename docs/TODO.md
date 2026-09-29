@@ -221,12 +221,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   denied (os error 13) — so rexenv cannot add … Reinstall it, then retry: `sudo apt install
   --reinstall libnss3-tools`"; a non-zero exit keeps its stderr sentence. L0 + TEXT tests, both
   plant-proven; the run on the installed 0.8.11 is owed in SMOKE § Linux's certutil row.
-- [ ] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
+- [x] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
   administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
   the local certificate authority" — while the step it authorises is `dpkg -i` of the new
   package (seen 27 Sep 2026, the first deb update). One action id = one message; the update
   wants its own id (`…privileged-update`) and sentence, the way the macOS prompt names what it
-  is for.
+  is for. ✓ **Fixed 29 Sep 2026 (ledger #747):** pkexec picks an action by the program's PATH,
+  so the update got a program of its own — `/usr/libexec/rexenv/privileged-update`, a script
+  that runs only `/usr/bin/dpkg -i` on an absolute `.deb` — under `dev.rexenv.rexenv.privileged-update`
+  ("rexenv needs administrator permission to install the update it downloaded — the new rexenv
+  package."); the swap takes that door only when the INSTALLED action file declares it and the
+  program is executable, else the generic step (so the 0.8.10 → 0.8.11 update still shows the
+  old sentence, by design; the one after shows the new). L0 on the shipped policy, script and
+  deb map + TEXT on the swap, plant-proven ×3; `linux-check` compiles it. The dialog itself is
+  owed on the VM's update AFTER 0.8.11 (SMOKE § Linux, the deb update row).
 - [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
   three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
   — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches

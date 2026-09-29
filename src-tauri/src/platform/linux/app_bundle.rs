@@ -22,7 +22,7 @@
 use super::app_bundle_rules as rules;
 use crate::error::{Error, Result};
 use crate::platform::traits::{
-    AppBundle, BundleFacts, InstallKind, Leftover, PrivilegeManager, PromptReason, StagedBundle, StagedExpect,
+    AppBundle, BundleFacts, InstallKind, Leftover, PromptReason, StagedBundle, StagedExpect,
     SwapFailure, SwapMethod, SwapReceipt,
 };
 use std::path::{Path, PathBuf};
@@ -246,9 +246,11 @@ impl AppBundle for LinuxAppBundle {
 
     fn swap(&self, installed: &Path, staged: &StagedBundle) -> std::result::Result<SwapReceipt, SwapFailure> {
         if installed == Path::new(rules::PACKAGE_EXE) {
-            // The package manager's swap, as root through the polkit step: one prompt.
+            // The package manager's swap, as root through the update's own polkit door (its
+            // dialog names the update; the generic step when the installed action file predates
+            // it): one prompt.
             let reason = PromptReason::new("install the downloaded rexenv update");
-            return match super::LinuxPrivileges.run_privileged(&rules::dpkg_install_command(&staged.path), &reason) {
+            return match super::LinuxPrivileges.run_privileged_update(&staged.path, &reason) {
                 Ok(_) => Ok(SwapReceipt {
                     installed: installed.to_path_buf(),
                     // dpkg keeps no previous package; the staged file is what the sweep removes.

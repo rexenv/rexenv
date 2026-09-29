@@ -14,6 +14,13 @@
   auth_admin: an administrator's password, every time (no _keep) — each system change
   rexenv makes is consented to in the app first, and a cached grant would let a later step
   run without the prompt the consent card promised.
+
+  Two actions, two programs: pkexec picks an action by the program's path ALONE, so one
+  sentence per program. The in-app update (dpkg -i of the package the app downloaded and
+  checked) runs /usr/libexec/rexenv/privileged-update — a script that does only that — under
+  its own action, so its dialog says "install the update" and not "change system settings"
+  (the 27 Sep 2026 update showed the generic sentence for a package install: TODO row). An
+  install whose action file predates the update action falls back to the generic step.
 -->
 <policyconfig>
   <vendor>rexenv</vendor>
@@ -27,5 +34,15 @@
       <allow_active>auth_admin</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">/usr/bin/rexenv</annotate>
+  </action>
+  <action id="dev.rexenv.rexenv.privileged-update">
+    <description>Install a rexenv update</description>
+    <message>rexenv needs administrator permission to install the update it downloaded — the new rexenv package.</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/rexenv/privileged-update</annotate>
   </action>
 </policyconfig>

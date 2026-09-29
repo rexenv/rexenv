@@ -2878,7 +2878,10 @@ rexenv0 <name>` and read `Current Scopes:`.
 ### In-app update on Linux (L7, ledger #729/#730)
 - [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
-      (not "run /bin/sh as the super user"); the app quits and comes back as the new version;
+      (not "run /bin/sh as the super user") — from 0.8.11 on, the UPDATE's sentence, "rexenv
+      needs administrator permission to install the update it downloaded — the new rexenv
+      package." (#747; the 0.8.10 → 0.8.11 update itself still shows the setup sentence — the
+      old action file — so this reads from the update AFTER 0.8.11); the app quits and comes back as the new version;
       `dpkg -s rexenv` says so; `~/.local/share/rexenv/updates/` is empty after the health sweep.
       **◐ 27 Sep 2026, 22.04 arm64 VM, 0.8.7 dev deb → 0.8.8 (serial 1):** found, ONE polkit
       dialog (rexenv's sentence — but the generic one, naming DNS/edge/CA and not the update:

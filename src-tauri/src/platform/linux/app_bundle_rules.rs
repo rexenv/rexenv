@@ -24,6 +24,30 @@ pub(crate) const PACKAGE_EXE: &str = "/usr/bin/rexenv";
 /// The package's name in `dpkg`, and the AppImage's identity — `StagedExpect::identifier` on Linux.
 pub(crate) const PACKAGE_NAME: &str = "rexenv";
 
+/// The in-app update's own polkit door. pkexec picks an action by the program's PATH alone, so
+/// "install the update" needs a program of its own beside `/usr/bin/rexenv`'s generic step:
+/// `linux/rexenv-privileged-update` (a `/bin/sh` script that runs only `/usr/bin/dpkg -i` on an
+/// absolute `.deb`), installed by the deb at `UPDATE_PROGRAM` and annotated by
+/// `UPDATE_ACTION_ID` in `linux/dev.rexenv.rexenv.policy`. The 27 Sep 2026 update (0.8.7 →
+/// 0.8.8 on the VM) asked with the generic sentence — DNS route, edge, CA — for a package install.
+pub(crate) const UPDATE_PROGRAM: &str = "/usr/libexec/rexenv/privileged-update";
+pub(crate) const UPDATE_ACTION_ID: &str = "dev.rexenv.rexenv.privileged-update";
+/// The generic step's action, for the tests that read the policy file.
+pub(crate) const STEP_ACTION_ID: &str = "dev.rexenv.rexenv.privileged-step";
+
+/// Whether the update may go through its own door: the INSTALLED action file declares the update
+/// action for `UPDATE_PROGRAM` AND that program is an executable file (`program_mode`, `None`
+/// when absent). Otherwise the generic step installs the package — an install whose action file
+/// predates the update action (any deb before 0.8.11) keeps the generic sentence for that one
+/// update and is never refused.
+pub(crate) fn update_program_usable(policy: Option<&str>, program_mode: Option<u32>) -> bool {
+    let declared = policy.is_some_and(|p| {
+        p.contains(&format!("<action id=\"{UPDATE_ACTION_ID}\">"))
+            && p.contains(&format!("<annotate key=\"org.freedesktop.policykit.exec.path\">{UPDATE_PROGRAM}</annotate>"))
+    });
+    declared && program_mode.is_some_and(|m| m & 0o111 != 0)
+}
+
 /// What this process is, from the executable and `$APPIMAGE`: the bundle path (what gets
 /// replaced) and its kind.
 pub(crate) fn classify(exe: &Path, appimage: Option<&Path>) -> (PathBuf, InstallKind) {
@@ -205,6 +229,54 @@ mod tests {
         // Tauri's bundler writes members WITHOUT `./` (the VM-built 0.8.7 deb, 25 Sep 2026).
         let tauri = "-rwxr-xr-x 0/0 42875800 2026-09-24 09:39 usr/bin/rexenv\n-rwxr-xr-x 0/0 984720 2026-09-24 09:39 usr/bin/rex\n";
         assert_eq!(verify_deb_listing(tauri, &expect()), Ok(()), "the real package's listing shape");
+    }
+
+    /// The update's own polkit door, as the tree ships it: the action file declares BOTH actions
+    /// for DISTINCT programs (pkexec picks by path), the update's message names the update, both
+    /// are `auth_admin` three times with no `_keep`; the program is a `/bin/sh` script that runs
+    /// only `/usr/bin/dpkg -i` on an absolute `.deb` and ends in `sync`; the deb ships both; and
+    /// the door opens only with both halves present (an older install's file → the generic step).
+    #[test]
+    fn the_update_has_its_own_polkit_action_program_and_sentence() {
+        const POLICY: &str = include_str!("../../../linux/dev.rexenv.rexenv.policy");
+        const PROGRAM: &str = include_str!("../../../linux/rexenv-privileged-update");
+        const CONF: &str = include_str!("../../../tauri.conf.json");
+        let action = |id: &str| {
+            let i = POLICY.find(&format!("<action id=\"{id}\">")).unwrap_or_else(|| panic!("no action {id}"));
+            &POLICY[i..POLICY[i..].find("</action>").expect("closed") + i]
+        };
+        let (step, update) = (action(STEP_ACTION_ID), action(UPDATE_ACTION_ID));
+        assert!(step.contains("<annotate key=\"org.freedesktop.policykit.exec.path\">/usr/bin/rexenv</annotate>"));
+        assert!(update.contains(&format!("<annotate key=\"org.freedesktop.policykit.exec.path\">{UPDATE_PROGRAM}</annotate>")));
+        assert!(update.contains("<message>rexenv needs administrator permission to install the update it downloaded"), "{update}");
+        assert!(!update.contains("DNS route") && !update.contains("HTTPS edge"), "the update's sentence is its own");
+        for a in [step, update] {
+            assert_eq!(a.matches(">auth_admin<").count(), 3, "auth_admin every time");
+            assert!(!a.contains("_keep"), "no cached grant");
+        }
+        assert!(PROGRAM.starts_with("#!/bin/sh\n"));
+        assert!(PROGRAM.contains("/usr/bin/dpkg -i \"$1\""), "absolute dpkg on the one argument");
+        assert!(PROGRAM.contains("/*.deb) ;;"), "anything but an absolute .deb is refused");
+        assert!(PROGRAM.contains("\n/bin/sync\n"), "flushed like every privileged step (#740)");
+        assert!(PROGRAM.lines().all(|l| !l.trim_start().starts_with("dpkg ")), "pkexec strips PATH");
+        assert!(CONF.contains(&format!("\"{UPDATE_PROGRAM}\": \"linux/rexenv-privileged-update\"")), "the deb ships the program");
+        assert!(CONF.contains("\"/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy\": \"linux/dev.rexenv.rexenv.policy\""));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(concat!(env!("CARGO_MANIFEST_DIR"), "/linux/rexenv-privileged-update")).unwrap().permissions().mode();
+            assert!(mode & 0o111 != 0, "the script is executable in git — the deb copies its mode ({mode:o})");
+        }
+        // TEXT: the swap takes the door, never the generic step directly.
+        const SWAP: &str = include_str!("app_bundle.rs");
+        assert!(SWAP.contains("run_privileged_update(&staged.path, &reason)"), "the swap goes through the update's door");
+        assert!(!SWAP.contains("run_privileged(&rules::dpkg_install_command"), "the swap bypasses the door");
+        assert!(update_program_usable(Some(POLICY), Some(0o100755)));
+        assert!(!update_program_usable(Some(POLICY), Some(0o100644)), "not executable → the generic step");
+        assert!(!update_program_usable(Some(POLICY), None), "no program → the generic step");
+        assert!(!update_program_usable(None, Some(0o100755)), "no action file → the generic step");
+        let older = POLICY.replace(&format!("<action id=\"{UPDATE_ACTION_ID}\">"), "<action id=\"dev.rexenv.rexenv.other\">");
+        assert!(!update_program_usable(Some(&older), Some(0o100755)), "an older deb's action file → the generic step");
     }
 
     #[test]

@@ -69,7 +69,8 @@
           "libkeyutils1"
         ],
         "files": {
-          "/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy": "linux/dev.rexenv.rexenv.policy"
+          "/usr/share/polkit-1/actions/dev.rexenv.rexenv.policy": "linux/dev.rexenv.rexenv.policy",
+          "/usr/libexec/rexenv/privileged-update": "linux/rexenv-privileged-update"
         }
       },
       "appimage": {

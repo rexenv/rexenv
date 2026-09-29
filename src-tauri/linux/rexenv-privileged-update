@@ -1,0 +1,23 @@
+#!/bin/sh
+# rexenv's privileged UPDATE step — the program polkit's `dev.rexenv.rexenv.privileged-update`
+# action annotates (dev.rexenv.rexenv.policy, beside this file), so the password dialog for an
+# in-app update says it installs the update, not the generic system-settings sentence. pkexec
+# picks an action by the program's PATH alone, so a second sentence needs a second program
+# (platform/linux/mod.rs, `run_privileged_update`; falls back to the generic step when an
+# older install's action file lacks this action). It does ONE thing: install the package the
+# app staged and checked (name, version, architecture, the `rex` sidecar — `verify_staged`).
+# Absolute paths: pkexec strips PATH. `sync` last, as every privileged step ends (ledger #740):
+# the new files reach the disk before the app relaunches into them.
+set -u
+if [ "$#" -ne 1 ]; then
+  echo "rexenv privileged-update: expected one argument, the downloaded .deb" >&2
+  exit 2
+fi
+case "$1" in
+  /*.deb) ;;
+  *) echo "rexenv privileged-update: not an absolute .deb path: $1" >&2; exit 2 ;;
+esac
+/usr/bin/dpkg -i "$1"
+rc=$?
+/bin/sync
+exit $rc

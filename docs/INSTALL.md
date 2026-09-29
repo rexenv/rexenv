@@ -505,7 +505,8 @@ arm64. `docs/PLAN-apt-repo.md` is the design.
 - **polkit** with a desktop authentication agent (any Ubuntu desktop). System changes are made
   through `pkexec`, so you see the desktop's own password dialog. From the `.deb` it reads
   "rexenv needs administrator permission to change system settings…" (the action file the
-  package installs); from an AppImage it is polkit's generic "run /bin/sh as the super user".
+  package installs), and an in-app update's dialog reads "…to install the update it downloaded"
+  (its own action); from an AppImage it is polkit's generic "run /bin/sh as the super user".
 - `libnss3-tools` (`certutil`), `xdg-utils`, `libayatana-appindicator3-1` (the tray). The
   `.deb` declares these; an AppImage does not, and the messages name the missing one.
 - An internet connection on **first run** — the same downloads as macOS, from the same
@@ -540,8 +541,10 @@ arm64. `docs/PLAN-apt-repo.md` is the design.
 
 Settings → About → Check now, as on macOS. From the `.deb`, Update downloads the new package,
 checks it (`dpkg-deb`: it must be `rexenv`, the version the signed release names, and your
-architecture, carrying `rexenv` and `rex`), and installs it with ONE polkit prompt — the same
-rexenv sentence as setup. From an AppImage, Update swaps the file beside itself with no prompt
+architecture, carrying `rexenv` and `rex`), and installs it with ONE polkit prompt worded for
+the update ("rexenv needs administrator permission to install the update it downloaded"; from a
+package older than 0.8.11 that first update still shows the setup sentence — its action file
+has no update action yet). From an AppImage, Update swaps the file beside itself with no prompt
 (keep it in a folder you own; a read-only or root-owned folder is refused with the fix named).
 An AppImage needs `libfuse2` to mount, or nothing at all — rexenv runs it extract-and-run when
 checking its version. A `cargo` build reads no update descriptor. With the apt repository

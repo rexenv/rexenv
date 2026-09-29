@@ -353,13 +353,41 @@ impl LinuxPrivileges {
     }
 }
 
-impl PrivilegeManager for LinuxPrivileges {
-    fn run_privileged(&self, script: &str, _reason: &PromptReason) -> Result<String> {
-        static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// One polkit dialog at a time, whichever door — the generic step or the update's.
+static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+impl LinuxPrivileges {
+    /// `pkexec <program> <args…>`, one dialog at a time; the exit codes read as sentences.
+    fn pkexec(program: &Path, args: &[&std::ffi::OsStr]) -> Result<String> {
         let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());
         let pkexec = which("pkexec").ok_or_else(|| {
             Error::Other("pkexec (polkit) is not installed — rexenv needs it to ask for administrator permission.".into())
         })?;
+        let out = crate::platform::command(pkexec).arg(program).args(args).output()?;
+        if out.status.success() {
+            Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+        } else {
+            Err(Error::Other(Self::error_message(out.status.code(), &String::from_utf8_lossy(&out.stderr))))
+        }
+    }
+
+    /// The in-app update's own door: `pkexec /usr/libexec/rexenv/privileged-update <deb>` under the
+    /// update's polkit action, so the dialog says it installs the update — when the INSTALLED
+    /// action file declares that action and the program is executable
+    /// (`app_bundle_rules::update_program_usable`). Otherwise the generic step runs
+    /// `dpkg_install_command`: an install whose action file predates the update action (any deb
+    /// before 0.8.11) keeps the generic sentence for that one update and is never refused.
+    pub(crate) fn run_privileged_update(&self, deb: &Path, reason: &PromptReason) -> Result<String> {
+        if !privileged_update_usable() {
+            log::info!("update: the installed polkit action file has no update action (or its program is not executable) — the generic step installs the package");
+            return self.run_privileged(&app_bundle_rules::dpkg_install_command(deb), reason);
+        }
+        Self::pkexec(Path::new(app_bundle_rules::UPDATE_PROGRAM), &[deb.as_os_str()])
+    }
+}
+
+impl PrivilegeManager for LinuxPrivileges {
+    fn run_privileged(&self, script: &str, _reason: &PromptReason) -> Result<String> {
         // The reason is on screen already (the consent card). The dialog's own words come from
         // the polkit action the deb installs, which names `/usr/bin/rexenv`: when both exist the
         // step runs through rexenv itself (`--privileged-step`, `run_step` below) and the dialog
@@ -367,16 +395,10 @@ impl PrivilegeManager for LinuxPrivileges {
         // polkit's generic sentence.
         // Whatever the step wrote reaches the disk before the prompt returns (`durable`).
         let script = &crate::platform::durable::flushed_script(script);
-        let mut cmd = crate::platform::command(pkexec);
+        let script = std::ffi::OsStr::new(script);
         match privileged_step_program() {
-            Some(exe) => cmd.arg(exe).arg(PRIVILEGED_STEP_FLAG).arg(script),
-            None => cmd.args(["/bin/sh", "-c", script]),
-        };
-        let out = cmd.output()?;
-        if out.status.success() {
-            Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
-        } else {
-            Err(Error::Other(Self::error_message(out.status.code(), &String::from_utf8_lossy(&out.stderr))))
+            Some(exe) => Self::pkexec(&exe, &[std::ffi::OsStr::new(PRIVILEGED_STEP_FLAG), script]),
+            None => Self::pkexec(Path::new("/bin/sh"), &[std::ffi::OsStr::new("-c"), script]),
         }
     }
 }
@@ -392,6 +414,18 @@ const POLKIT_ANNOTATED_EXE: &str = "/usr/bin/rexenv";
 fn privileged_step_program() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     (exe == Path::new(POLKIT_ANNOTATED_EXE) && Path::new(POLKIT_ACTION_PATH).is_file()).then_some(exe)
+}
+
+/// Whether the update may take its own door: the INSTALLED action file (not the tree's) declares
+/// the update action for its program, and that program is an executable file.
+fn privileged_update_usable() -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let policy = std::fs::read_to_string(POLKIT_ACTION_PATH).ok();
+    let mode = std::fs::metadata(app_bundle_rules::UPDATE_PROGRAM)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.permissions().mode());
+    app_bundle_rules::update_program_usable(policy.as_deref(), mode)
 }
 
 /// The privileged step itself, run as root by pkexec: `/bin/sh -c <script>` with stdio
