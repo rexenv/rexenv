@@ -800,7 +800,17 @@ impl ServiceManager {
         // 0600) — adopt it and push the current config through its admin API. Only
         // if the reload is refused (wedged edge, or a port set it can't rebind) do
         // we fall through to the stop + fresh-start path.
-        if alive && proxy::reload(platform, &bins.caddy, &caddyfile, false).is_ok() {
+        let reloaded = alive
+            && match proxy::reload(platform, &bins.caddy, &caddyfile, false) {
+                Ok(()) => true,
+                // Logged, because this refusal is what turns an adopt into a privileged
+                // reinstall — and on 29 Sep 2026 (the 15.8 VM) nobody could say why one had.
+                Err(e) => {
+                    log::warn!("edge: the live edge refused the config reload ({e}) — reinstalling it");
+                    false
+                }
+            };
+        if reloaded {
             // A live edge backed by the KeepAlive daemon is tracked as `Daemon` so an
             // explicit Stop-all boots it out (an admin `caddy stop` alone would just
             // be relaunched); a live edge with no daemon is the legacy osascript one.

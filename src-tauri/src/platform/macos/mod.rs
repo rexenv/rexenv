@@ -1413,6 +1413,13 @@ impl EdgeSupervisor for MacosEdgeDaemon {
     /// (so it stays down across reboots), and `bootstrap` will NOT run a service that
     /// launchd has on its disabled list — so a Start-all after a Stop-all would
     /// reinstall but never actually launch the edge without this re-enable.
+    ///
+    /// **`bootstrap` waits for the `bootout` to land** (#744): `bootout` returns while a
+    /// running caddy is still being taken down, and a `bootstrap` in that window fails
+    /// "Bootstrap failed: 5: Input/output error" — the 15.8 VM, 29 Sep 2026, the first Start
+    /// all over a replaced app: the old edge booted out, the new one refused, the edge down
+    /// until a second Start all. So the step polls `launchctl print` until the label is gone
+    /// (≤ 10 s), and a refused bootstrap is tried once more a second later.
     fn install_command(
         &self,
         src_caddy: &Path,
@@ -1428,8 +1435,9 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              cp {sw} {wrapper} && chown root:wheel {wrapper} && chmod 755 {wrapper} && \
              cp {sp} {plist} && chown root:wheel {plist} && chmod 644 {plist} && \
              {{ launchctl bootout system/{label} 2>/dev/null ; \
+             i=0 ; while launchctl print system/{label} >/dev/null 2>&1 && [ $i -lt 50 ] ; do sleep 0.2 ; i=$((i+1)) ; done ; \
              launchctl enable system/{label} 2>/dev/null ; \
-             launchctl bootstrap system {plist} ; }}",
+             launchctl bootstrap system {plist} || {{ sleep 1 ; launchctl bootstrap system {plist} ; }} ; }}",
             bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
             src = sh_quote(src_caddy),
             bin = sh_quote(&bin),
@@ -2841,6 +2849,21 @@ mod tests {
             cmd.find("enable").unwrap() < cmd.find("bootstrap").unwrap(),
             "enable must precede bootstrap: {cmd}"
         );
+    }
+
+    /// Ledger #744 — the install's `bootstrap` never races its own `bootout`: it waits, bounded,
+    /// for the label to leave launchd, and a refused bootstrap gets exactly one retry.
+    #[test]
+    fn the_install_waits_for_the_booted_out_edge_before_bootstrapping() {
+        let ed = MacosEdgeDaemon;
+        let cmd = ed.install_command(Path::new("/tmp/caddy"), &ed.wrapper_path(), Path::new("/tmp/staged.plist"));
+        let out = cmd.find(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")).expect("bootout");
+        let wait = cmd.find(&format!("while launchctl print system/{EDGE_DAEMON_LABEL}")).expect("waits for the label to go");
+        let boot = cmd.find("launchctl bootstrap system").expect("bootstrap");
+        assert!(out < wait && wait < boot, "bootout, then the wait, then bootstrap: {cmd}");
+        assert!(cmd.contains("[ $i -lt 50 ]") && cmd.contains("sleep 0.2"), "the wait is bounded (10 s): {cmd}");
+        assert_eq!(cmd.matches("launchctl bootstrap system").count(), 2, "one retry, no more: {cmd}");
+        assert!(cmd.contains("|| { sleep 1 ; launchctl bootstrap system"), "the retry runs only on a refusal: {cmd}");
     }
 
     #[test]

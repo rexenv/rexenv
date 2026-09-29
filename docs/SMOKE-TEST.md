@@ -2031,6 +2031,10 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   opened; the backends need Start all (or login-start) — `rex start` and the site served.
 - [ ] **Sleep/wake**: after it, a site loads over HTTPS without opening the app. **Open: the 18
   Sep pass recorded the reboot only; no sleep/wake run recorded.**
+- [ ] **Start all over a replaced app reinstalls the edge in ONE try** (ledger #744, 0.8.11): the
+  edge running with a browser tab holding a connection, replace the app by hand with another build,
+  Start all → if it prompts, the edge comes back after that one prompt (no "Bootstrap failed: 5",
+  no second Start all).
 - [ ] **A slow boot edge is waited for, not reported** (ledger #743, 0.8.11): login toggle on,
   stack up, reboot a slow machine (the UTM VM) → no "the HTTPS edge needs Start all" toast even
   when the LaunchDaemon's caddy comes up a minute after login; the health log shows the edge

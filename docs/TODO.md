@@ -121,7 +121,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   bringing it back". The second Start all, same prompt, succeeded. Two questions: why an adoptable
   edge was re-installed at all after a same-version replace, and why the bootstrap does not wait
   for the bootout. Not seen through the in-app updater (it restarts the edge its own way); owed a
-  look before the next release.
+  look before the next release. **The race is fixed for 0.8.11 (ledger #744):** the install polls
+  `launchctl print` until the label is gone (≤ 10 s) before `bootstrap`, and retries a refused
+  bootstrap once. A/B on the VM against the installed 0.8.10 daemon with connections held open on
+  :443: the old tail failed "Bootstrap failed: 5: Input/output error" 3/3, the new one bootstrapped
+  3/3 (idle, the old tail passed 5/5 — the race needs a caddy slow to leave). **Still open:** why
+  a reinstall at all — `prepare_edge` reinstalls when an alive edge REFUSES the config reload (its
+  documented recovery for a root-owned admin socket), and that reload's error was not logged. It
+  is since 0.8.11 ("edge: the live edge refused the config reload (…) — reinstalling it"); look
+  again on the installed 0.8.11.
 
 - [ ] **Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch
   becomes a plain one** (29 Sep 2026, Win11 VM): `platform::windows::job_guard::relaunch_outside_confining_job`

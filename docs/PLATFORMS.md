@@ -160,6 +160,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   `curl` and reqwest do not (measured 16 Aug 2026). The in-app update and the one-command
   install stand on that; Homebrew is the exception — it adds quarantine and its cask's
   postflight strips it again. A synthetic `xattr -w` is how PUBLISH-TESTING §A fakes a download.
+- **`launchctl bootout` returns before the job is gone.** A `bootstrap` right after it fails
+  "Bootstrap failed: 5: Input/output error" while a busy caddy is still leaving (3/3 on the VM
+  with connections open, 29 Sep 2026); the edge install waits for `launchctl print` to fail first
+  and retries once (#744).
 - **Legacy tiers**: 13 and 14 resolve older pins (`PinSet::for_tier`); a feature that needs a
   newer binary says so in the tier's words (`needs_newer_os`).
 - Mechanism detail: `docs/ARCHITECTURE.md` (written against macOS), `docs/INSTALL.md` § macOS.
