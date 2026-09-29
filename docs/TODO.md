@@ -126,6 +126,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   flag (a `.lnk` with arguments opened by Explorer is how the smoke run did it), or the guard says
   in a comment why a hopped launch may lose it.
 
+- [ ] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
+  2026, 22.04 VM, 0.8.9 → 0.8.10): the update itself was clean — the new app came back — but at
+  09:12:26, the moment the OLD app exited through the update's exit gate, its WebKitWebProcess
+  (pid 2656, reparented to `systemd --user`) died on SIGSEGV and apport put up "Problem in
+  WebKitWebProcess … closed unexpectedly" over the new window (`/var/crash/_usr_lib_aarch64-linux-
+  gnu_webkit2gtk-4.1_WebKitWebProcess.1000.crash`). A user reads it as the update crashing. Find
+  out whether an ordinary Quit does the same (the gate may exit without closing the webview) and
+  close the window/webview before the process exits.
+
 - [ ] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
   merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not
   yet up and surfaced "services are up, but the HTTPS edge needs Start all (one admin prompt)";

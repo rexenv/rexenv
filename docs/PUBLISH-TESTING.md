@@ -133,8 +133,21 @@ dmg's); the six descriptors published together — macOS serial 17, Windows 12, 
 documents 3 — and `check-app-manifest.sh` (+ `--windows`, `--linux <kind> <arch>` ×4) all green.
 `brew audit --cask --online` could not run on the dev Mac ("Command Line Tools are too
 outdated"); the tap's Install scripts run on the publish event installed the release on every OS.
-**Not run:** the clean-Mac list, and the in-app updates FROM 0.8.9 — the Linux one is the owed
-proof that the deb relaunch fix (#729, in 0.8.9's old side) brings the app back.
+**§M — the in-app update 0.8.9 → 0.8.10 on all three OSes, 29 Sep 2026** (each VM reinstalled
+with the PUBLISHED 0.8.9 first — dmg / `setup.exe /S` / `apt install --allow-downgrades` — its
+stored serial already the new one, which 0.8.9 accepted: equal is not a replay):
+- **macOS 15.8 VM:** the Settings badge "0.8.10", About "0.8.10 · 27.0 MB has been published",
+  Install → "rexenv 0.8.10 is installed" → OK → "swapped to 0.8.10 (AtomicSwap)", the app came
+  back as `0.8.10 (a470c1a)`, "swept 1 leftover(s)", "updated from 0.8.9", no crash report.
+- **Win11 ARM VM** (its console session was LOCKED after boot — a one-shot autologon for the
+  owner's account, every Winlogon value removed again after): About "0.8.10 · 13.2 MB", Install
+  → dialog → OK → "swapped to 0.8.10 (RenamePair)", back as `0.8.10 (a470c1a)`, the agent on
+  udp 53 relaunched as 0.8.10, Apps & Features `0.8.10`, the kept copy swept.
+- **Ubuntu 22.04 arm64 VM:** "0.8.10 · 14.6 MB", Install → ONE polkit → `dpkg -l` 0.8.10 →
+  dialog → OK → **the app came back by itself** (#729's relaunch, first proven here), leftovers
+  swept — and Ubuntu showed "WebKitWebProcess closed unexpectedly" for the OLD instance's web
+  process (`docs/TODO.md`).
+**Not run:** the clean-Mac list.
 
 ## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
 

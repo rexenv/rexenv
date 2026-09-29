@@ -2577,7 +2577,8 @@ beneath it, and the unticked rows beside them described steps those runs had alr
 reconciled into one row per step, each open row saying what it is still waiting for.
 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
-tunnel guard's normal-stop leg · the `.deb` in-app update's relaunch (0.8.9 → the next release).
+tunnel guard's normal-stop leg. (The `.deb` in-app update's relaunch closed 29 Sep 2026, 0.8.9 →
+0.8.10.)
 **Owed through the next release, inside ticked rows:** the AppImage's kept previous copy is swept
 (its row's next run). A re-setup is ONE polkit dialog (#723) — **✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`)**:
 Settings → Remove system changes → ONE polkit (CA file, both NSS dbs, `rexenv0`, the markers and
@@ -2826,7 +2827,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
-- [ ] `.deb` install, an older version: Settings → About → Check now finds the release named in
+- [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user"); the app quits and comes back as the new version;
       `dpkg -s rexenv` says so; `~/.local/share/rexenv/updates/` is empty after the health sweep.
@@ -2840,8 +2841,15 @@ rexenv0 <name>` and read `Current Scopes:`.
       not run yet). First Check now was refused as a replay — the dev deb had read the macOS
       document (TODO row). **28 Sep, 0.8.8 → 0.8.9 on the same VM:** offered (serial 1 → 2), one
       polkit dialog, `dpkg -l` 0.8.9, swap logged, OK → 0.8.8's relauncher failed the same way
-      (expected — the old side spawns), hand open → 0.8.9. **Open: the relaunch — 0.8.9 → the
-      next release is the first update whose OLD side carries #729's fix.**
+      (expected — the old side spawns), hand open → 0.8.9. **✓ 29 Sep 2026, 0.8.9 → 0.8.10 on the
+      same VM — the first update whose OLD side carries #729's fix:** 0.8.9 (the published arm64
+      deb, `apt install --allow-downgrades`) offered "0.8.10 · 14.6 MB" (the Settings badge too),
+      Install → ONE polkit (the generic sentence — TODO row) → `dpkg -l` 0.8.10, "swapped to
+      0.8.10 (RenamePair)", OK → "reopening /usr/bin/rexenv once this process exits" → **a new
+      `/usr/bin/rexenv` came back by itself**, window up, `rex 0.8.10 (a470c1a)`, "swept 2
+      leftover(s)", "updated from 0.8.9", the agent answering. One blemish: Ubuntu's "Problem in
+      WebKitWebProcess — closed unexpectedly" dialog — the OLD instance's web process (reparented
+      to `systemd --user`) died on SIGSEGV as the old app exited; `docs/TODO.md`.
 - [x] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`
