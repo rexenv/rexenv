@@ -195,7 +195,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
   and unaffected. (The site was brought to 0.8.9 by hand on 29 Sep — `rexenv/website` #14, merged
   with its CI job never started and its bar run locally instead; the bot stays dark.)
-- [ ] **The DNS health probe calls the agent "not answering" while it answers** (15.8 arm64
+- [x] **The DNS health probe calls the agent "not answering" while it answers** (15.8 arm64
   VM, 27–28 Sep 2026: "resolver agent was not answering; kicked it" three times in six minutes
   on 27 Sep with `dig @127.0.0.1 -p 15353` answering throughout, and four times plus one
   "gave-up … port already in use by rexenv (pid <agent>)" then "[adopted] … answering after
@@ -205,6 +205,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Again 29 Sep 2026 (0.8.10 §A, same VM): one kick during a GUI Start all, which the user sees
   as the toast "DNS stopped unexpectedly — restarted automatically" while `rex status` said
   `answering (agent)` before and after.
+  ✓ **Fixed 30 Sep 2026 (ledger #756), the mechanism read off the code rather than measured on
+  the VM (no `utmctl` on this Mac):** the probe was ONE 500 ms UDP datagram and a kick followed
+  the FIRST miss — on a loaded VM a datagram answers late or is dropped. The watchdog now asks
+  with `answers_as_ours_patiently` (three datagrams, 200 ms apart) and kicks only on the second
+  consecutive silent poll (`PROBE_MISS_POLLS` = 2, ~20 s); a real death still gets its kick, and
+  launchd's KeepAlive is the supervisor anyway. L0 on the rule and the patient probe (a silent
+  socket really waits for every datagram) + TEXT on the arm's order, plant-proven ×2. The VM
+  measurement (`dig` vs the probe under load) stays worth doing if a kick is ever seen again.
 - [x] **A From-Git create on a PHP version the repository's lock rejects fails only after the
   clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
   requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install

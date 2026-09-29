@@ -331,6 +331,48 @@ pub fn answers_as_ours(port: u16) -> bool {
     probe().unwrap_or(false)
 }
 
+/// Datagrams the WATCHDOG's probe sends before it reads the agent as silent for this
+/// poll, and the consecutive polls (10 s apart) that must miss before the agent is
+/// kicked. One 500 ms datagram was the whole verdict until 30 Sep 2026, and a kick
+/// followed the first miss: on the 15.8 VM the watchdog logged "resolver agent was not
+/// answering; kicked it" three times in six minutes while `dig -p 15353` answered
+/// throughout (27–28 Sep), and once during a GUI Start all (29 Sep) — the user sees
+/// "DNS stopped unexpectedly — restarted automatically" about a resolver that never
+/// stopped. A loaded VM answers late or drops a datagram; a dead agent answers none of
+/// three, twice. launchd's KeepAlive is the real supervisor, so the ~10 s a real death
+/// now waits for its kick costs nothing.
+pub const PROBE_TRIES: u32 = 3;
+pub const PROBE_MISS_POLLS: u32 = 2;
+
+/// [`answers_as_ours`] with patience: up to `tries` datagrams, 200 ms apart, true on the
+/// first answer. For the watchdog; the launch path keeps the single try (it waits its
+/// own way).
+pub fn answers_as_ours_patiently(port: u16, tries: u32) -> bool {
+    for i in 0..tries.max(1) {
+        if answers_as_ours(port) {
+            return true;
+        }
+        if i + 1 < tries {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+    false
+}
+
+/// The watchdog's miss count after this poll: an answer resets it, a miss adds one.
+pub fn probe_misses_after(misses: u32, answered: bool) -> u32 {
+    if answered {
+        0
+    } else {
+        misses.saturating_add(1)
+    }
+}
+
+/// Whether that many consecutive misses earns a kick (`PROBE_MISS_POLLS`).
+pub fn kick_after(misses: u32) -> bool {
+    misses >= PROBE_MISS_POLLS
+}
+
 /// Ask the resolver on loopback `port` which build it is.
 ///
 /// `None` means it did not answer the question — either nothing is there, or it
@@ -888,6 +930,29 @@ pub fn port_bound(port: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// **The watchdog kicks the agent only after `PROBE_MISS_POLLS` consecutive silent
+    /// polls, each of `PROBE_TRIES` datagrams** — one missed datagram, or one missed poll,
+    /// is a slow VM, not a dead agent (the 27–29 Sep 2026 false kicks). The patient probe
+    /// really sends `tries` datagrams to a port that never answers, and comes back false.
+    #[test]
+    fn the_watchdog_needs_two_silent_polls_of_three_datagrams_before_it_kicks() {
+        assert_eq!((super::PROBE_TRIES, super::PROBE_MISS_POLLS), (3, 2));
+        let mut misses = 0;
+        misses = super::probe_misses_after(misses, false);
+        assert!(!super::kick_after(misses), "one silent poll is not a kick");
+        misses = super::probe_misses_after(misses, false);
+        assert!(super::kick_after(misses), "the second consecutive one is");
+        assert_eq!(super::probe_misses_after(misses, true), 0, "an answer resets it");
+        assert_eq!(super::probe_misses_after(u32::MAX, false), u32::MAX, "never wraps to zero");
+        // A socket that never answers: two tries = two 500 ms waits and one 200 ms pause.
+        let silent = std::net::UdpSocket::bind((std::net::Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = silent.local_addr().unwrap().port();
+        let started = std::time::Instant::now();
+        assert!(!super::answers_as_ours_patiently(port, 2));
+        assert!(started.elapsed() >= std::time::Duration::from_millis(1100), "both datagrams were waited for: {:?}", started.elapsed());
+        assert!(!super::answers_as_ours_patiently(port, 0), "zero tries still asks once and reads silence as silence");
+    }
+
 
     /// The set the doctor asks about: every TLD a site ANSWERS on, including
     /// one only an EXTRA domain uses (v42) — which nothing else in the app

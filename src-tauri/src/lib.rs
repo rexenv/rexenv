@@ -1068,6 +1068,10 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 use tauri::Emitter;
                 let mut dns_failures: u32 = 0;
+                // Consecutive polls the wire probe found silent (`core::dns::PROBE_MISS_POLLS`):
+                // a kick on the FIRST silent poll restarted a healthy agent on a loaded VM
+                // (27–29 Sep 2026) and toasted "DNS stopped unexpectedly".
+                let mut dns_probe_misses: u32 = 0;
                 loop {
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                     let Some(state) = watchdog.try_state::<state::app::AppState>() else {
@@ -1109,7 +1113,14 @@ pub fn run() {
                     let dns = watchdog.state::<state::app::DnsState>();
                     match dns.mode() {
                         state::app::DnsMode::Agent | state::app::DnsMode::Down => {
-                            if core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT) {
+                            // Three datagrams, then two polls, before a kick (#756): a loaded VM
+                            // answers late or drops one; a dead agent answers none of them twice.
+                            let answered = core::dns::answers_as_ours_patiently(
+                                core::dns::DEFAULT_DNS_PORT,
+                                core::dns::PROBE_TRIES,
+                            );
+                            dns_probe_misses = core::dns::probe_misses_after(dns_probe_misses, answered);
+                            if answered {
                                 dns_failures = 0;
                                 if matches!(dns.mode(), state::app::DnsMode::Down) {
                                     dns.set(None, state::app::DnsMode::Agent);
@@ -1121,6 +1132,9 @@ pub fn run() {
                                             .into(),
                                     });
                                 }
+                            } else if !core::dns::kick_after(dns_probe_misses) {
+                                // One silent poll: say nothing, ask again in 10 s. A toast here
+                                // named a restart the resolver never needed.
                             } else if dns_failures < 3 {
                                 dns_failures += 1;
                                 match state.platform.dns_agent().kickstart() {
@@ -2732,6 +2746,26 @@ mod tests {
         let probe = body.find("answers_as_ours").expect("the arm probes the wire");
         let adopt = body[probe..].find("DnsMode::Agent);").expect("an answering agent is adopted out of Down");
         assert!(adopt > 0, "adoption follows the probe");
+    }
+
+    /// Ledger #756 — **the watchdog asks patiently and kicks only after two silent
+    /// polls.** TEXT (the #175 bound): the Agent/Down arm probes with
+    /// `answers_as_ours_patiently`, feeds the miss count through `probe_misses_after`,
+    /// and no kick precedes `kick_after`. Plant-proven by putting the single-try probe
+    /// back and by deleting the gate.
+    #[test]
+    fn the_dns_watchdog_kicks_only_after_two_silent_polls() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("let dns = watchdog.state::<state::app::DnsState>();").expect("the watchdog reads DnsState");
+        let body = &src[start..];
+        let body = &body[..body.find("if !events.is_empty()").expect("the watchdog flushes its events")];
+        let pos = |needle: &str| body.find(needle).unwrap_or_else(|| panic!("`{needle}` is gone from the watchdog"));
+        let probe = pos("core::dns::answers_as_ours_patiently(");
+        assert!(!body.contains("if core::dns::answers_as_ours(core::dns::DEFAULT_DNS_PORT)"), "the single-try probe is back");
+        let fed = pos("dns_probe_misses = core::dns::probe_misses_after(dns_probe_misses, answered);");
+        let gate = pos("else if !core::dns::kick_after(dns_probe_misses) {");
+        let kick = pos("dns_agent().kickstart()");
+        assert!(probe < fed && fed < gate && gate < kick, "probe → count → gate → kick, in that order");
     }
 
     /// Ledger #715 — **a resolver the user REMOVED is never brought back by the
