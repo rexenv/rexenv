@@ -3581,3 +3581,160 @@ from 15 to 14" is neither an option nor a question any more. Original text:
   would drop the app floor from 15 to 14** (MySQL's floor). Same
   `rexenv/runtimes` path that built PHP 7.4; recorded like the c-ares ruling -
   known, waiting for a reason (e.g. macOS-14 users actually asking).
+
+## Reconcile of 29 Sep 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **One-command install — `curl … | bash` (macOS, Linux) and `irm … | iex` (Windows)** ✓ 29 Sep
+  2026 — owner, 28 Sep: "the Claude Code way", and can it get past Gatekeeper / SmartScreen / Linux's
+  equivalent. Design record `docs/archive/PLAN-install-scripts.md`; ledger #738. Scripts in
+  `rexenv/homebrew-tap` (#1, then #2), short URLs in `rexenv/website` (#12), the site's hero and
+  install pages lead with the command (#13). Proven per OS: macOS on two fresh GitHub runners
+  (onboarding's Welcome, no Gatekeeper window) and the 15.8 VM; Windows on the Win11 VM's desktop
+  (no dialog; a `ZoneId=3` copy met "Open File - Security Warning" in the same session) and 8 CI
+  runners; Linux on the 22.04 VM's GNOME desktop (`sudo` mid-pipe, launch) and fresh containers.
+  **The desktop run found what no automated run could:** interactive PowerShell 5.1 shadows
+  `RuntimeInformation` (PSReadLine 2.0.0), and the first `install.ps1` refused every Windows desktop
+  for about a day — fixed in tap #2, grep-guarded in its lint job. Still open by nature: Smart App
+  Control ON (SMOKE § Windows row; no machine has it).
+
+- [x] **The website names all three OSes, and `docs/INSTALL.md` says where site files are** ✓ 29 Sep
+  2026 — owner: "website update koro … linux er part o add korte hobe … je operating system diye
+  visit korbe by default sei operating system er content dekhate hobe". `rexenv/website` #14,
+  merged (`aaa09a9`) and live on rexenv.rex.bd: Linux on the platform switch and every OS-branched
+  page and docs tab, facts read from the `v0.8.9` tag and the 0.8.9 `.deb`; ONE head script for
+  the landing page and the docs, which stores the DETECTED OS because Starlight restores tabs only
+  from storage — a Windows visitor landing on `/docs/install` had been getting the macOS tab.
+  Checked in Chrome with Linux, Windows and macOS visitors. **Found on the way, fixed here and on
+  the site:** INSTALL.md's three uninstall sections said site files live in the app data folder —
+  `default_sites_dir` has been `~/rexenv/Sites` since before 0.1.1; and Linux's said "polkit
+  prompts … the drop-ins", a mechanism #717 retired (598ec757 made it one prompt, unreleased).
+
+- [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
+  2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
+  server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link
+  whose only address is link-local — so 0.8.8's route routed nothing, and every `.rex` answer
+  recorded on Linux came from a HOST running rexenv (the VM's upstream is the Mac, WSL's is
+  Windows): with no route and no agent on the VM, `anything.rex` → `127.0.0.1 -- link: enp0s1`.
+  Fix: the link carries `192.0.2.53/32` (TEST-NET-1; owner's pick over a ULA, which would flip
+  `AI_ADDRCONFIG`), and a stale route script reads as not installed so setup rewrites it on
+  machines that already ran 0.8.8's. `linux_dns_route_check` now asserts the scope and pinned
+  answers: PASS 32/32 on the VM; the 0.8.8 script planted back → 4 named FAILs. Shipped in 0.8.9;
+  the GUI half ran the same day on the VM — the in-app update over 0.8.8, setup re-offered,
+  `.rex` answered by `rexenv0` (SMOKE Linux P1 ✓), and still so after the VM's next reboot.
+
+- [x] **The instruction docs said "macOS and Windows", and "Linux is `todo!()`"** ✓ 28 Sep 2026 —
+  owner: every new feature must work on Mac, Windows and Linux, common work written in common
+  places, OS-specific work written OS-wise. New `docs/PLATFORMS.md` (§1 common, §2 where a
+  difference goes, §3 per-OS mechanism table, §4 the feature checklist, §5 per-OS proof, §6–§8
+  macOS/Windows/Linux traps); CLAUDE.md's rule is now "All three platforms" with its
+  non-negotiables split into common + OS-only; new `all-platforms` skill; `finish-task`,
+  `verify`, `ledger-row`, `live-check`, `release` (now the CI-only, every-OS flow) and
+  CONTRIBUTING name all three. Stale "Linux stubs are `todo!()`" removed from CLAUDE.md,
+  CONTRIBUTING and README (`platform/linux/` has none since L1, ledger #716).
+
+- [x] **After an unclean reboot MySQL and PostgreSQL never start again — stale lock files whose
+  pids another program now holds** ✓ fixed 28 Sep 2026 (`core/stale_lock`, ledger #735): found on
+  the 22.04 VM after a reboot (systemd SIGKILLed both; the pids came back as WebKit threads of
+  rexenv's own window), the watchdog gave up after three respawns and every site was down. A start
+  now removes a lock whose pid is gone or belongs to another program, keeps one the server holds.
+
+- [x] **Linux deb in-app update: the app did not come back after the swap** ✓ fixed 27 Sep 2026
+  (`rules::relauncher_exe`, ledger #729): `current_exe()` is `/proc/self/exe` and read
+  `/usr/bin/rexenv (deleted)` after `dpkg -i`, so spawning the relauncher was ENOENT and the
+  honest fallback ran. A package install runs the relauncher from the new `/usr/bin/rexenv`.
+  Ships in the next release; because the OLD side spawns, 0.8.8 → next still needs a hand
+  open, and the relaunch is proven by the release after that (SMOKE's Linux row).
+
+- [x] **A re-setup on an upgraded Linux install asks for the admin password TWICE** ✓ fixed
+  28 Sep 2026 (ledger #723): setup gathers the resolver's root command and — on Linux only,
+  and only when the system store lacks the PEM — the CA store's, and runs them as ONE
+  privileged step under one sentence (`setup_root_batch`); `trust_ca` runs the store leg
+  itself only when setup did not. Found the same day (0.8.9 over 0.8.8 on the 22.04 VM,
+  SMOKE P1): two `pkexec` steps two minutes apart, the second rewriting a store that
+  already held the certificate. Proof through the installed app: the release after 0.8.9.
+
+- [x] **The onboarding finish page says "Create your first site" on an install that has
+  sites** ✓ 28 Sep 2026 — the page reads the sites count from the backend (`listSites`):
+  with sites the button is "Open your sites" and the sentence "rexenv will serve your N
+  sites instantly" (or "your site start as soon as they land" while components download);
+  a first run keeps its words. Found on the 22.04 VM's re-setup, three sites present.
+
+- [x] **A build that reads no descriptor (a Linux dev build; no key pinned) made the About card
+  say "Couldn't reach the update server"** ✓ fixed 28 Sep 2026: the interactive check answers
+  such a build as a state with its own sentence (`app_update::no_descriptor_reason`, rendered
+  through `checkRefusal`) before any network; `fetch` keeps the same words for the poller. Found
+  on the VM with the 0.8.9 binary run from a `target/debug/` path (SMOKE Linux, the dev-build
+  update row) — the fetch-side twin of the accept-side refusal wording fixed the same morning.
+
+- [x] **A Bedrock site fails after WordPress is installed — the admin-password step and the
+  WordPress manager point wp-cli at `web/`, not `web/wp`** ✓ fixed 28 Sep 2026 (ledger #737):
+  fifteen hand-built `--path=<docroot>` flags routed through one `wp_path_arg` that resolves
+  the core; the manager uses `Site::served_root`. Found on the first real Bedrock provision
+  (SMOKE's Bedrock row); ships in the next release, proven there.
+
+- [x] **A refused descriptor reads as "Couldn't reach the update server"** in the About card
+  ✓ 28 Sep 2026 — `app_update_check` returns a refusal as `checkRefusal` (Rust's
+  `refusal_sentence`, "The update server answered, but rexenv refused what it published: …"),
+  the card renders it as its fourth footer sentence, `copy_scan` pins the field, ledger #534.
+  (Seen on the Dell where the refusal was a replay: the server had answered, and the line
+  hid that the machine would never be offered anything.)
+
+- [x] **The accepted-descriptor serial is ONE key for every update document, so a machine
+  that once read another document refuses this one as a replay** ✓ 28 Sep 2026 — per-document
+  keys (`app_update::document_for`/`serial_key`, ledger #519; the first document keeps the
+  bare names), L0 `each_document_has_its_own_floor_and_the_first_document_keeps_the_bare_keys`.
+  Found on the Dell (`core/app_update.rs` `SERIAL_KEY`), and the same hour on the 22.04 VM:
+  its 0.8.7 dev deb held serial 14 — the macOS document — and refused the Linux document's serial 1;
+  and a third time on 0.8.8 between two LINUX documents: the deb app stored the deb document,
+  the AppImage app on the same machine then offered the `.deb` and refused it as "printed no
+  version"): its Windows 0.8.5 held `serial 9`, the
+  macOS document's 0.8.3 of 19 Sep 17:54:25Z (a Windows build from before the per-OS URL
+  read `app-manifest.json`), and every Windows publish since — serials 6, 7, 8 — was
+  refused "OLDER than the highest already accepted (9)". The About card then said
+  **"Couldn't reach the update server"** (`AppUpdateCard.tsx` maps any check error to
+  that line), which is wrong twice: the server answered, and the machine will stay on
+  0.8.5 forever. Fix: key the stored serial by document (`…_serial:<document>`), and give a
+  refused descriptor its own sentence. Only machines that changed document are affected;
+  a fresh install reads one document from its first check. The Dell and the VM were reset
+  by deleting the three `app_update_release*` settings rows, and then updated through the
+  card. **A stuck install cannot receive the code fix (it refuses every descriptor), so the
+  Windows document must also be published past the highest macOS serial an early Windows
+  build could have stored (≤ 10 on 19–20 Sep 2026); the Linux documents start at 1 and nothing
+  shipped read another one. ✓ Done 28 Sep 2026: the Windows document re-signed to serial 10
+  (runs 36342956297 and 36343274888 — a second run approved beside the first read the same
+  serial from its trigger-time checkout and conflicted, runtimes PR #14 reads the tip first).**
+
+- [x] **Windows/Linux: `detect_browsers`/`open_in_browser` are the default empty
+  stubs** ✓ both halves filled. Windows W7 S3, 15 Sep 2026 (ledger #622: the registry, Chrome
+  flagged default on the Dell, private windows by flag). Linux 24 Sep 2026 (`platform/linux/desktop.rs`,
+  L1): found on `PATH` (deb, snap, Toolbox names), the default from `xdg-settings`'s `.desktop` id
+  (the snap's `firefox_firefox.desktop` included), private windows by the same flags as macOS —
+  **unmeasured on a desktop** (SMOKE-TEST Linux P5).
+
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **0.8.8 and 0.8.9 went public with the draft-gate warning as their release notes** ✓ 28 Sep
+  2026 — `release.yml` created every draft with a fixed "⚠️ Draft until PUBLISH-TESTING §A
+  passes …" body and nothing replaced it before publish. Both tap releases' notes replaced by
+  hand with their annotated tag bodies; `publish` now drafts with `scripts/tag-notes.sh <tag>`
+  (the tag's body), the gate reminder goes to the run summary, `versions` refuses a lightweight
+  or subject-only tag before the builds, the dispatch path takes a required `notes` input.
+  RELEASING.md step 2/4 + "Rules the pipeline encodes"; ledger #736.
+
+- [x] **PUBLISH-TESTING §B** — uninstall removes the root :443 daemon (live launchd). ✓ 23 Sep
+  2026, clean-15 smoke on the UTM VM (macOS 15.8, dmg `cb17756a…`, source `5aab0be0`): after
+  Settings → Remove, `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist` gone, nothing on
+  :443, `/etc/resolver` empty, the CA still in the keychain but `CSSMERR_TP_NOT_TRUSTED`, the
+  DNS agent job gone; one admin prompt + the keychain's own trust dialog. Found #715 there.
+
+
+### From “Phase 4+ (next era)”
+
+- [x] Linux platform impls — `platform/linux/mod.rs` ✓ moved to *Now* as "Linux launch" on
+  24 Sep 2026 (`docs/PLAN-linux-port.md`); the stubs are filled (ledger #716). Windows's
+  W1/W2 (traits for the Unix-only leaks, the `(os, arch)` binary catalog) were most of
+  Linux's groundwork, as this row predicted.
+
