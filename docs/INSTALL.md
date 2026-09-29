@@ -278,8 +278,12 @@ login keychain.
 1. In the app: **Settings → "Remove system changes"** (one admin prompt —
    removes the edge daemon, resolver files, CA trust, and the DNS agent).
 2. Then delete `rexenv.app` from Applications (and, if you want a full wipe,
-   `~/Library/Application Support/dev.rexenv.rexenv/` — your site files live
-   there unless you moved the Sites folder, so check before deleting).
+   `~/Library/Application Support/dev.rexenv.rexenv/` — your databases and every
+   downloaded component — and, separately, `~/rexenv/Sites`, where your site files
+   live unless you moved the Sites folder; check each before deleting).
+   Until 29 Sep 2026 all three uninstall sections here said the site files were in the data
+   folder — true of no released build: `default_sites_dir` (`core/sites.rs`) has been
+   `~/rexenv/Sites` since before 0.1.1, and the public site carried the same sentence.
 
 ---
 
@@ -456,9 +460,9 @@ store, and the `rex` copy on your `Path`.
 1. In the app: **Settings → "Remove system changes"** (one UAC prompt — removes the NRPT
    rules, the scheduled task, the CA trust and the `rex` copy with its `Path` entry).
 2. Then remove the app itself, and — only if you want a full wipe —
-   `%LOCALAPPDATA%\rexenv`. **Your site files live under
-   `%LOCALAPPDATA%\rexenv\rexenv\data` unless you moved the Sites folder**, so check
-   before deleting.
+   `%LOCALAPPDATA%\rexenv` (your databases and every downloaded component) and,
+   separately, `%USERPROFILE%\rexenv\Sites`. **Your site files live in that Sites folder
+   unless you moved it**, so check each before deleting.
 
 ## Linux (Ubuntu)
 
@@ -529,8 +533,11 @@ PHP 7.4 IS available — rexenv's own static build, as on macOS.
 
 ### Uninstalling — do the in-app step FIRST
 
-1. In the app: **Settings → "Remove system changes"** (polkit prompts — removes the drop-ins,
-   the edge unit and its root folder, both certificate trusts, the DNS agent unit and the
-   `rex` symlink).
+1. In the app: **Settings → "Remove system changes"** (one polkit prompt — removes the `.rex`
+   route (every `/etc/rexenv/dns.d` marker, then the `rexenv0` link, its unit and script), the
+   edge unit and its root folder, both certificate trusts, the DNS agent unit and the `rex`
+   symlink. 0.8.9 and earlier asked twice — the certificate's system-store file came in a
+   second dialog; it rides the one prompt since 598ec757).
 2. Then `sudo apt remove rexenv` (or delete the AppImage), and — only if you want a full wipe —
-   `~/.local/share/rexenv`. **Your site files live there unless you moved the Sites folder.**
+   `~/.local/share/rexenv` (your databases and every downloaded component) and, separately,
+   `~/rexenv/Sites`. **Your site files live in that Sites folder unless you moved it.**

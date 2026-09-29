@@ -66,6 +66,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `RuntimeInformation` (PSReadLine 2.0.0), and the first `install.ps1` refused every Windows desktop
   for about a day — fixed in tap #2, grep-guarded in its lint job. Still open by nature: Smart App
   Control ON (SMOKE § Windows row; no machine has it).
+- [x] **The website names all three OSes, and `docs/INSTALL.md` says where site files are** ✓ 29 Sep
+  2026 — owner: "website update koro … linux er part o add korte hobe … je operating system diye
+  visit korbe by default sei operating system er content dekhate hobe". `rexenv/website` #14,
+  merged (`aaa09a9`) and live on rexenv.rex.bd: Linux on the platform switch and every OS-branched
+  page and docs tab, facts read from the `v0.8.9` tag and the 0.8.9 `.deb`; ONE head script for
+  the landing page and the docs, which stores the DETECTED OS because Starlight restores tabs only
+  from storage — a Windows visitor landing on `/docs/install` had been getting the macOS tab.
+  Checked in Chrome with Linux, Windows and macOS visitors. **Found on the way, fixed here and on
+  the site:** INSTALL.md's three uninstall sections said site files live in the app data folder —
+  `default_sites_dir` has been `~/rexenv/Sites` since before 0.1.1; and Linux's said "polkit
+  prompts … the drop-ins", a mechanism #717 retired (598ec757 made it one prompt, unreleased).
 - [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
   launch, `schtasks /Create … /F`) and `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`, one name
@@ -80,9 +91,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the Win11 VM. The owner's call whether a rare multi-account machine is worth that proof.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
-  needs to be increased", so the site's CI, its scheduled Release sync (the site still says 0.8.7)
-  and its weekly checks are all dark. The org's billing settings; nothing in code. The tap and
-  `rexenv/runtimes` are public and unaffected.
+  needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
+  all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
+  and unaffected. (The site was brought to 0.8.9 by hand on 29 Sep — `rexenv/website` #14, merged
+  with its CI job never started and its bar run locally instead; the bot stays dark.)
 - [x] **SHIPPED LINUX BUG — `.rex` resolved only where another machine answered it** ✓ fixed 28 Sep
   2026 (ledger #717, #734). Found running SMOKE Linux P1 on the 22.04 VM: `rexenv0` carried the
   server and `~rex` but `Current Scopes: none` — systemd-resolved gives no DNS scope to a link
@@ -2043,9 +2055,11 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
   since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
   account payments have failed or your spending limit needs to be increased" (GitHub billing,
-  the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR exists and the site still
-  says 0.8.7. Owner: fix billing, then the next poll (or a manual run) syncs — it reads the
-  tap release body, which is the real tag notes again since 28 Sep (the row in Release gates).
+  the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR was ever opened; the site
+  was synced to 0.8.9 BY HAND on 29 Sep (`rexenv/website` #14 — both changelog entries, and
+  `sync-release.mjs` now reads every OS's asset names). The next release has no such hand, so:
+  owner, fix billing, then the next poll (or a manual run) syncs — it reads the tap release body,
+  which is the real tag notes again since 28 Sep (the row in Release gates).
 - [ ] ⚠ **Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more**
   (found 23 Sep 2026 while walking ghcr for `docs/PLAN-macos-13-floor.md`: `formulae.brew.sh`
   lists only `arm64_*` + Linux for redis 8.10.2 and mariadb 13.0.2; `mariadb@11.4`,
