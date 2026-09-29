@@ -151,7 +151,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   WebKitWebProcess … closed unexpectedly" over the new window (`/var/crash/_usr_lib_aarch64-linux-
   gnu_webkit2gtk-4.1_WebKitWebProcess.1000.crash`). A user reads it as the update crashing. Find
   out whether an ordinary Quit does the same (the gate may exit without closing the webview) and
-  close the window/webview before the process exits.
+  close the window/webview before the process exits. **Measured the same day, and NOT fixed in
+  0.8.11 — nothing to aim a fix at yet:** a second 0.8.9 → 0.8.10 in-app update did NOT crash (1 of
+  2); tray Quit with the window hidden, and visible, did not; `dpkg -i` under a running app then
+  Quit did not; Quit followed at once by a relaunch did not. The update's quit is the ordinary one
+  (`app.exit(0)` through the gate), so it is an intermittent WebKitGTK crash at exit, not rexenv's
+  swap. The first crash file was deleted before it was read (a mistake). **Next sighting:** keep the
+  `.crash`, `apport-retrace -o trace.txt <file>` (or `apport-unpack` + `gdb` on the core) for the
+  stack, then decide whether closing the webview before `app.exit` is the fix.
 
 - [ ] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
   merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not
