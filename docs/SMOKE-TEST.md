@@ -488,7 +488,10 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       public/"**; `installing dependencies` ran and the job card then said "✕ failed at:
       installing dependencies · composer install failed…" — the repository's lock requires
       PHP ≥ 8.4.1 and the site was on the default 8.3 (composer's `platform_check.php`, in Show
-      log), the site left as `setup incomplete`. `rex php install 8.4` + `rex site php
+      log), the site left as `setup incomplete`. **Since 0.8.11 (ledger #751) the card must say
+      it before composer runs:** "this repository's composer.json requires PHP … and this site
+      runs PHP 8.3 — … switch the site's PHP version to 8.4 or 8.5 (Site → Settings) and Retry"
+      — ◐ owed on this row's next run. `rex php install 8.4` + `rex site php
       demosymdemo.rex 8.4` + `rex site retry` → dependencies installed, **`building front-end
       assets` → "no package.json in this repository — nothing to build"** (skipped, not
       failed), `starting to serve` → `https://demosymdemo.rex/` **200 "Symfony Demo

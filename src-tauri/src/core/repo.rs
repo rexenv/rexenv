@@ -2079,6 +2079,217 @@ fn leading_int(s: &str) -> Option<u32> {
 }
 
 // ---------------------------------------------------------------------------
+// The PHP a repository asks for — read BEFORE `composer install` runs
+// ---------------------------------------------------------------------------
+//
+// The site's PHP is what executes composer, so a `require.php` the site cannot
+// satisfy fails with certainty — and used to fail two screens away: `symfony/demo`
+// on the default 8.3 (28 Sep 2026) ran the whole clone, then `composer install`
+// refused for PHP ≥ 8.4.1 with the reason only in Show log. The manifest is read
+// once the clone is on disk (`git ls-remote` reads no files, so a pre-clone hint
+// would need per-host raw URLs and would miss private repositories), and the
+// refusal names the fix: which of rexenv's PHP minors satisfies the constraint.
+
+/// `require.php` from a `composer.json`, if the manifest states one.
+pub fn composer_php_requirement(composer_json: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(composer_json).ok()?;
+    v.get("require")?
+        .get("php")?
+        .as_str()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+}
+
+/// A version as Composer orders them: three numbers (PHP has no fourth).
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct Ver(u32, u32, u32);
+
+/// `8`, `8.2`, `8.2.5`, `v8.2`, `8.4.0-dev`, `8.4.0RC1` → the numbers and how many were
+/// given (`^`/`~`/hyphen ranges widen by the precision). `None` for anything else.
+fn parse_ver(s: &str) -> Option<(Ver, usize)> {
+    let s = s.trim().trim_start_matches('v');
+    let s = s.split(['-', '+', '@']).next()?;
+    let digits: String = s.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let parts: Vec<u32> = digits.split('.').map(str::parse).collect::<std::result::Result<_, _>>().ok()?;
+    match parts.as_slice() {
+        [] => None,
+        [a] => Some((Ver(*a, 0, 0), 1)),
+        [a, b] => Some((Ver(*a, *b, 0), 2)),
+        [a, b, c, ..] => Some((Ver(*a, *b, *c), 3)),
+    }
+}
+
+/// One AND-group of a constraint: bounds and exclusions.
+#[derive(Default, Debug)]
+struct Range {
+    lo: Option<(Ver, bool)>,
+    hi: Option<(Ver, bool)>,
+    not: Vec<Ver>,
+}
+
+impl Range {
+    fn admits(&self, v: Ver) -> bool {
+        // `map_or(true, …)`, not `is_none_or`: the MSRV is 1.77.2 (clippy's `incompatible_msrv`).
+        let above = self.lo.map_or(true, |(l, incl)| if incl { v >= l } else { v > l });
+        let below = self.hi.map_or(true, |(h, incl)| if incl { v <= h } else { v < h });
+        above && below && !self.not.contains(&v)
+    }
+    fn at_least(&mut self, v: Ver, incl: bool) {
+        self.lo = Some(match self.lo {
+            Some((l, li)) if (l, !li) > (v, !incl) => (l, li),
+            _ => (v, incl),
+        });
+    }
+    fn below(&mut self, v: Ver, incl: bool) {
+        self.hi = Some(match self.hi {
+            Some((h, hi)) if (h, hi) < (v, incl) => (h, hi),
+            _ => (v, incl),
+        });
+    }
+}
+
+/// The next minor / major, for the upper bound of `~`, `^` and wildcards.
+fn next_minor(v: Ver) -> Ver {
+    Ver(v.0, v.1 + 1, 0)
+}
+fn next_major(v: Ver) -> Ver {
+    Ver(v.0 + 1, 0, 0)
+}
+
+/// One comparator token into `range`; `None` when the token is not one this reads.
+fn apply_token(range: &mut Range, token: &str) -> Option<()> {
+    let t = token.trim().split('@').next()?.trim();
+    if t.is_empty() {
+        return Some(());
+    }
+    if t == "*" || t == "x" {
+        return Some(());
+    }
+    if let Some(rest) = t.strip_prefix('^') {
+        let (v, _) = parse_ver(rest)?;
+        range.at_least(v, true);
+        range.below(if v.0 > 0 { next_major(v) } else { next_minor(v) }, false);
+        return Some(());
+    }
+    if let Some(rest) = t.strip_prefix('~') {
+        let (v, precision) = parse_ver(rest)?;
+        range.at_least(v, true);
+        range.below(if precision >= 3 { next_minor(v) } else { next_major(v) }, false);
+        return Some(());
+    }
+    if let Some(stem) = t.strip_suffix(".*").or_else(|| t.strip_suffix(".x")) {
+        let (v, precision) = parse_ver(stem)?;
+        range.at_least(v, true);
+        range.below(if precision >= 2 { next_minor(v) } else { next_major(v) }, false);
+        return Some(());
+    }
+    for (op, f) in [
+        (">=", 0u8),
+        ("<=", 1),
+        ("<>", 2),
+        ("!=", 2),
+        ("==", 3),
+        (">", 4),
+        ("<", 5),
+        ("=", 3),
+    ] {
+        if let Some(rest) = t.strip_prefix(op) {
+            let (v, _) = parse_ver(rest)?;
+            match f {
+                0 => range.at_least(v, true),
+                1 => range.below(v, true),
+                2 => range.not.push(v),
+                3 => {
+                    range.at_least(v, true);
+                    range.below(v, true);
+                }
+                4 => range.at_least(v, false),
+                _ => range.below(v, false),
+            }
+            return Some(());
+        }
+    }
+    // A bare version is exact.
+    let (v, _) = parse_ver(t)?;
+    if !t.starts_with(|c: char| c.is_ascii_digit() || c == 'v') {
+        return None;
+    }
+    range.at_least(v, true);
+    range.below(v, true);
+    Some(())
+}
+
+/// One AND-group (`>=7.4 <8.3`, `>=7.4,<8.3`, `8.1 - 8.3`) into a `Range`.
+fn parse_group(group: &str) -> Option<Range> {
+    let tokens: Vec<&str> = group.split(|c: char| c.is_whitespace() || c == ',').filter(|t| !t.is_empty()).collect();
+    let mut range = Range::default();
+    let mut i = 0;
+    while i < tokens.len() {
+        if tokens.get(i + 1) == Some(&"-") {
+            // Hyphen range: inclusive, the right side widened to its precision as Composer does.
+            let (lo, _) = parse_ver(tokens[i])?;
+            let (hi, precision) = parse_ver(tokens.get(i + 2)?)?;
+            range.at_least(lo, true);
+            if precision >= 3 {
+                range.below(hi, true);
+            } else {
+                range.below(if precision == 2 { next_minor(hi) } else { next_major(hi) }, false);
+            }
+            i += 3;
+            continue;
+        }
+        apply_token(&mut range, tokens[i])?;
+        i += 1;
+    }
+    Some(range)
+}
+
+/// Whether a Composer constraint admits SOME patch of PHP minor `X.Y` (a site's PHP is a
+/// minor; its patch is whatever rexenv pins, so a constraint that turns on the patch alone
+/// never blocks). `None` when the constraint is not one this reads (`dev-*`, garbage): a
+/// guess must never refuse a create.
+pub fn php_constraint_admits_minor(constraint: &str, minor: &str) -> Option<bool> {
+    let (m, precision) = parse_ver(minor)?;
+    if precision < 2 {
+        return None;
+    }
+    let groups: Vec<Range> = constraint
+        .split("||")
+        .flat_map(|g| g.split('|'))
+        .filter(|g| !g.trim().is_empty())
+        .map(parse_group)
+        .collect::<Option<_>>()?;
+    if groups.is_empty() {
+        return None;
+    }
+    let (first, last) = (Ver(m.0, m.1, 0), Ver(m.0, m.1, 999));
+    Some(groups.iter().any(|g| g.admits(first) || g.admits(last)))
+}
+
+/// The sentence the deps step fails with BEFORE composer runs, when the site's PHP cannot
+/// satisfy the repository's `require.php`; names which of `offered` (rexenv's PHP minors) can.
+/// `None` when it can, or when the constraint is not one this reads.
+pub fn php_requirement_refusal(constraint: &str, minor: &str, offered: &[String]) -> Option<String> {
+    if php_constraint_admits_minor(constraint, minor)? {
+        return None;
+    }
+    let fits: Vec<&str> = offered
+        .iter()
+        .filter(|m| php_constraint_admits_minor(constraint, m) == Some(true))
+        .map(String::as_str)
+        .collect();
+    let fix = match fits.as_slice() {
+        [] => "no PHP version rexenv ships satisfies it, so this repository cannot run here yet".to_string(),
+        [one] => format!("switch the site's PHP version to {one} (Site → Settings) and Retry"),
+        many => format!("switch the site's PHP version to {} (Site → Settings) and Retry", many.join(" or ")),
+    };
+    Some(format!(
+        "this repository's composer.json requires PHP {constraint}, and this site runs PHP {minor} — \
+         composer install would refuse it. Nothing was installed; {fix}."
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Install / build steps
 // ---------------------------------------------------------------------------
 
@@ -2216,9 +2427,19 @@ pub fn map_composer_error(tail: &[String]) -> Error {
         ));
     }
     if joined.contains("your php version") || joined.to_lowercase().contains("requires php") {
+        // Composer says which PHP it wanted and which it got — "Root composer.json requires
+        // php >=8.4.1 but your php version (8.3.32) does not satisfy that requirement" — so
+        // the sentence says both; the manifest's own `require.php` was already checked
+        // before this ran (`php_requirement_refusal`), so this is the LOCK's requirement.
+        let wanted = joined.split("requires php ").nth(1).and_then(|r| r.split(" but").next()).map(str::trim);
+        let running = joined.split("your php version (").nth(1).and_then(|r| r.split(')').next()).map(str::trim);
+        let what = match (wanted, running) {
+            (Some(w), Some(r)) => format!("this repository requires PHP {w} and this site runs PHP {r}"),
+            (Some(w), None) => format!("this repository requires PHP {w}, which this site isn't running"),
+            _ => "the repo requires a PHP version this site isn't running".to_string(),
+        };
         return Error::Other(format!(
-            "Composer refused: the repo requires a PHP version this site \
-             isn't running. Switch the site's PHP version (Site → Settings) \
+            "Composer refused: {what}. Switch the site's PHP version (Site → Settings) \
              and retry.\n{}",
             last_lines(tail, 3)
         ));
@@ -2669,6 +2890,81 @@ mod tests {
         assert!(!b.composer);
         let _ = std::fs::remove_dir_all(&d);
         let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    /// **A repository's `require.php` is judged against the site's PHP MINOR before composer
+    /// runs, in Composer's own constraint grammar, and never on a guess.** `symfony/demo` on
+    /// the default 8.3 (28 Sep 2026) cloned, then failed inside `composer install` for PHP
+    /// ≥ 8.4.1 with the reason two screens away; the refusal now names the constraint, the
+    /// site's PHP and the minor to switch to. An unreadable constraint is `None` — a guess
+    /// must never refuse a create — and a patch-level bound never blocks a minor.
+    #[test]
+    fn a_repositorys_php_requirement_is_judged_before_composer_runs() {
+        let admits = |c: &str, m: &str| php_constraint_admits_minor(c, m);
+        for (constraint, minor, want) in [
+            (">=8.4.1", "8.3", Some(false)),
+            (">=8.4.1", "8.4", Some(true)),
+            (">=8.1", "8.3", Some(true)),
+            ("^8.2", "8.3", Some(true)),
+            ("^8.2", "9.0", Some(false)),
+            ("^8.2", "8.1", Some(false)),
+            ("^8.2.5", "8.2", Some(true)),
+            ("~8.1.0", "8.1", Some(true)),
+            ("~8.1.0", "8.2", Some(false)),
+            ("~8.1", "8.4", Some(true)),
+            ("~8.1", "9.0", Some(false)),
+            ("8.2.*", "8.2", Some(true)),
+            ("8.2.*", "8.3", Some(false)),
+            ("8.*", "8.5", Some(true)),
+            (">=7.4 <8.3", "8.2", Some(true)),
+            (">=7.4,<8.3", "8.3", Some(false)),
+            ("^7.4 || ^8.0", "8.3", Some(true)),
+            ("^7.4|^8.0", "7.4", Some(true)),
+            ("^7.4 || ^8.0", "9.0", Some(false)),
+            ("*", "8.3", Some(true)),
+            ("8.1 - 8.3", "8.3", Some(true)),
+            ("8.1 - 8.3", "8.4", Some(false)),
+            ("8.1 - 8.3.0", "8.3", Some(true)),
+            (">=8.1@dev", "8.1", Some(true)),
+            ("8.2", "8.2", Some(true)),
+            ("8.2", "8.3", Some(false)),
+            ("!=8.3.0", "8.3", Some(true)),
+            ("<8.3.5", "8.3", Some(true)),
+            (">=8.3.5", "8.3", Some(true)),
+            ("dev-main", "8.3", None),
+            ("", "8.3", None),
+            ("garbage", "8.3", None),
+            (">=8.1", "8", None),
+        ] {
+            assert_eq!(admits(constraint, minor), want, "{constraint:?} vs {minor}");
+        }
+        assert_eq!(composer_php_requirement(r#"{"require":{"php":" >=8.2 ","ext-mbstring":"*"}}"#).as_deref(), Some(">=8.2"));
+        assert_eq!(composer_php_requirement(r#"{"require":{"ext-mbstring":"*"}}"#), None);
+        assert_eq!(composer_php_requirement(r#"{"name":"a/b"}"#), None);
+        assert_eq!(composer_php_requirement("not json"), None);
+        let offered: Vec<String> = ["7.4", "8.2", "8.3", "8.4", "8.5"].iter().map(|s| s.to_string()).collect();
+        let why = php_requirement_refusal(">=8.4.1", "8.3", &offered).expect("refused");
+        assert!(why.contains("requires PHP >=8.4.1") && why.contains("runs PHP 8.3"), "{why}");
+        assert!(why.contains("Nothing was installed") && why.contains("8.4 or 8.5") && why.contains("Retry"), "{why}");
+        assert!(php_requirement_refusal("^8.2", "8.3", &offered).is_none(), "satisfied → no refusal");
+        assert!(php_requirement_refusal("dev-main", "8.3", &offered).is_none(), "unreadable → no refusal");
+        let none = php_requirement_refusal(">=9.0", "8.5", &offered).expect("refused");
+        assert!(none.contains("no PHP version rexenv ships"), "{none}");
+        // Composer's own refusal (the LOCK's requirement, which the manifest need not state)
+        // names both versions too.
+        let tail = ["Your lock file does not contain a compatible set of packages. Please run composer update.".to_string(),
+            "  Problem 1".to_string(),
+            "    - Root composer.json requires php >=8.4.1 but your php version (8.3.32) does not satisfy that requirement.".to_string()];
+        let msg = map_composer_error(&tail).to_string();
+        assert!(msg.contains("requires PHP >=8.4.1 and this site runs PHP 8.3.32"), "{msg}");
+        assert!(msg.contains("Site → Settings"), "{msg}");
+        // TEXT: the deps phase asks before it runs composer.
+        let sp = crate::core::copy_scan::production_source(include_str!("../commands/site_provision.rs"));
+        let deps = sp.split("async fn deps_phase<").nth(1).expect("deps_phase");
+        let deps = &deps[..deps.find("\n}\n").expect("its end")];
+        let asked = deps.find("php_requirement_refusal(").expect("deps_phase reads the requirement");
+        let ran = deps.find("composer_install(").expect("deps_phase runs composer");
+        assert!(asked < ran, "the requirement is judged BEFORE composer runs");
     }
 
     #[test]

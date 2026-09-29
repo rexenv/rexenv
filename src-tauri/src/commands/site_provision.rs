@@ -1244,7 +1244,7 @@ async fn drive<R: tauri::Runtime>(
             // The PROJECT root: `composer.json` sits beside `web/`, not in it.
             let project = PathBuf::from(&site.path);
             if let Some(end) =
-                deps_phase(app, entry, progress, &project, &composer_php, &composer_phar, &env)
+                deps_phase(app, entry, progress, &project, &minor, &composer_php, &composer_phar, &env)
                     .await
             {
                 return end;
@@ -1669,7 +1669,7 @@ async fn drive<R: tauri::Runtime>(
 
         // ── deps (a CLONED project only) ─────────────────────────────────
         if from_git {
-            match deps_phase(app, entry, progress, &project, &php_bin, &composer_phar, &env).await {
+            match deps_phase(app, entry, progress, &project, &minor, &php_bin, &composer_phar, &env).await {
                 None => {}
                 Some(end) => return end,
             }
@@ -1878,7 +1878,7 @@ async fn drive<R: tauri::Runtime>(
         // `docroot_subdir` records.
         let project = PathBuf::from(&site.path);
         if let Some(end) =
-            deps_phase(app, entry, progress, &project, &php_bin, &composer_phar, &env).await
+            deps_phase(app, entry, progress, &project, &minor, &php_bin, &composer_phar, &env).await
         {
             return end;
         }
@@ -2089,13 +2089,15 @@ async fn deps_phase<R: tauri::Runtime>(
     entry: &Arc<ProvisionEntry>,
     progress: &mut sites::ProvisionProgress,
     project: &Path,
+    minor: &str,
     php_bin: &Path,
     composer_phar: &Path,
     env: &EnvSnapshot,
 ) -> Option<JobEnd> {
     let ix = phase_index(entry, "deps");
     enter_phase(app, entry, ix);
-    if !project.join("composer.json").is_file() {
+    let manifest = project.join("composer.json");
+    if !manifest.is_file() {
         finish_phase(
             app,
             entry,
@@ -2105,6 +2107,17 @@ async fn deps_phase<R: tauri::Runtime>(
             Some("no composer.json in this repository — nothing to install"),
         );
         return None;
+    }
+    // The site's PHP runs composer, so a `require.php` it cannot satisfy fails HERE, in one
+    // sentence on the card naming the minor to switch to — not two screens away in composer's
+    // own refusal after the clone (`symfony/demo` on 8.3, 28 Sep 2026; ledger #751).
+    if let Some(requirement) =
+        std::fs::read_to_string(&manifest).ok().and_then(|j| core::repo::composer_php_requirement(&j))
+    {
+        if let Some(why) = core::repo::php_requirement_refusal(&requirement, minor, &core::php::all_minors()) {
+            append_line(app, entry, &format!("composer.json requires PHP {requirement}; this site runs PHP {minor}"));
+            return Some(JobEnd::Failed(why));
+        }
     }
     let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
     let (p2, c2, d2) =

@@ -205,13 +205,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Again 29 Sep 2026 (0.8.10 §A, same VM): one kick during a GUI Start all, which the user sees
   as the toast "DNS stopped unexpectedly — restarted automatically" while `rex status` said
   `answering (agent)` before and after.
-- [ ] **A From-Git create on a PHP version the repository's lock rejects fails only after the
+- [x] **A From-Git create on a PHP version the repository's lock rejects fails only after the
   clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
   requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install
   failed…", the reason two screens away in Show log). Fetch already reads the repository; it
   could read `composer.json`'s `require.php` too and say "this repository needs PHP ≥ 8.4 —
   pick 8.4" beside the version picker before anything is cloned. Recovery today: switch the
-  site's PHP and Retry (worked).
+  site's PHP and Retry (worked). ✓ **Fixed 29 Sep 2026 (ledger #751) — the reason on the card,
+  with the fix:** the deps phase reads the cloned `composer.json`'s `require.php` and judges it
+  against the site's PHP minor in Composer's own constraint grammar (`^`, `~`, wildcards, `||`,
+  hyphen ranges, `@stability`; an unreadable constraint never refuses) BEFORE composer runs —
+  "this repository's composer.json requires PHP >=8.4.1, and this site runs PHP 8.3 … switch the
+  site's PHP version to 8.4 or 8.5 (Site → Settings) and Retry"; composer's own refusal (the
+  LOCK's requirement, which the manifest need not state) now names both versions too. L0 table +
+  TEXT on the phase, plant-proven ×3. Not run live (no repository pinned above the default here).
+  - [ ] **The pre-clone hint beside the version picker** is NOT built: Fetch is `git ls-remote`,
+    which reads no files; a raw-file fetch would need per-host URLs (GitHub/GitLab/Bitbucket) and
+    would miss private repositories and self-hosted forges. Owed only if the post-clone refusal
+    above proves too late in practice.
 - [x] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
   error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
   only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures
