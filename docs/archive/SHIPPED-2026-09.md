@@ -3738,3 +3738,16 @@ from 15 to 14" is neither an option nor a question any more. Original text:
   W1/W2 (traits for the Unix-only leaks, the `(os, arch)` binary catalog) were most of
   Linux's groundwork, as this row predicted.
 
+
+## Reconcile of 29 Sep 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **Next release: the notes wiring runs in CI for the first time** (ledger #736 ✅) ✓ 29 Sep
+  2026, 0.8.10 — runtimes run 36530417624: "The tag carries release notes" passed on `v0.8.10`
+  and the tap draft's body is the tag body verbatim (identical but for a trailing newline); was: the
+  `versions` job's "The tag carries release notes" passes on the real tag, and the tap draft's
+  body is the tag body verbatim, with the §A reminder only on the run's summary page. The run
+  that proves it is `rexenv/runtimes`' `rexenv-release.yml` (the live pipeline, RELEASING.md's
+  interim note), which did NOT carry the wiring until the 0.8.10 cut ported it (runtimes `356db55`, 29 Sep 2026).
+

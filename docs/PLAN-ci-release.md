@@ -123,5 +123,14 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   update measured 0.8.8 → 0.8.9 on the macOS VM (relaunch), the Dell (relaunch) and the 22.04
   VM (swap; hand open, as the old side predicted). **The CI-only release now takes one
   evening end to end with four owner clicks: Publish, six approvals, and nothing else.**
+- **0.8.10, 29 Sep 2026:** tag at `9dcc8b67`, run 36528981913 — macOS and both Linux lanes
+  green, **Windows red on one lib test of 1402**: the Bedrock `--path` test built its expected
+  value with `join("web/wp")` and read `web/wp` against Windows' real `web\wp` (the test, not the
+  code, asserted one OS's spelling — the same class as 0.8.8's seven `Path::join` tests). Local
+  `windows-check` is a compile gate and cannot see it; only a Windows test run can. Fixed in
+  `7a5ff084`, the unreleased tag moved there, run 36530417624: all four lanes green, draft with
+  16 assets. The first run of the notes wiring in the LIVE pipeline (runtimes `356db55`, ported
+  at this cut — `63e602ac` had fixed only this repo's copy): the `versions` step passed on the
+  real tag and the draft's body is the tag body verbatim, no "Draft until" line.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).

@@ -103,6 +103,19 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ◐ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026) — §A0 ✅, §A not yet run
+
+`rexenv_0.8.10_universal.dmg` sha256 `4553902a41d29a04932c977cce0458940f6b44db5f498c94bc87402e3a2728e1`
++ `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both OK), source `7a5ff084` (tag
+`v0.8.10`; a first tag at `9dcc8b67` was moved after its Windows lane failed one test — no draft
+was made from it), `rexenv/runtimes` run 36530417624, all four lanes green, 16 assets. **§A0 ✅ by
+hand on the downloaded assets:** `rexenv` and `rex` both `x86_64 arm64`, `Dist_Archive_Command`
+×5 and the update key in EACH slice, `minos 13.0` in both, codesign valid, Info.plist `0.8.10`
+— on the dmg's app AND the archive's; the archive's one top-level entry is `rexenv.app/`, no
+AppleDouble members; dmg app == archive app (`diff -rq`). **The draft's body is the tag body
+verbatim** (ledger #736). **Not run:** §A (Gatekeeper → `xattr -rd` → launch), the clean-Mac
+list, the Windows and Linux installers from this draft, the in-app updates (after Publish).
+
 ## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
 
 `rexenv_0.8.9_universal.dmg` + `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both

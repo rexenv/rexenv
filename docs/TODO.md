@@ -1767,11 +1767,6 @@ SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publish
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **Next release: the notes wiring runs in CI for the first time** (ledger #736 ◐) — the
-  `versions` job's "The tag carries release notes" passes on the real tag, and the tap draft's
-  body is the tag body verbatim, with the §A reminder only on the run's summary page. The run
-  that proves it is `rexenv/runtimes`' `rexenv-release.yml` (the live pipeline, RELEASING.md's
-  interim note), which did NOT carry the wiring until the 0.8.10 cut ported it (runtimes `356db55`, 29 Sep 2026).
 - [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
   **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
   bumped cleanly through 0.1.1, 0.2.0, 0.3.0 and 0.4.0 since, so the install half is not "half
