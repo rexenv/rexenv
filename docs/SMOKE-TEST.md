@@ -2356,7 +2356,11 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       interactive PowerShell the old architecture check read `$null` (PSReadLine 2.0.0 shadows
       `RuntimeInformation`) and refused with *"this machine is ."* — fixed in the tap's #2, this
       run is the fixed script. Launch skipped (`REXENV_NO_LAUNCH=1`) so a second user's rexenv
-      would not re-register the machine-wide `\rexenv\dns-agent` task (TODO row).
+      would not re-register the machine-wide `\rexenv\dns-agent` task (TODO row; since 30 Sep
+      2026, #758, a second account's launch REFUSES to take it — `dns-agent.log`/the app log reads
+      "registered for another account on this computer (S-1-5-…)" and `schtasks /Query /TN
+      \rexenv\dns-agent /XML` still names the first account's SID; a run with two accounts on
+      the Win11 VM is owed).
 - [ ] **Smart App Control ON.** On a Windows 11 where `Get-MpComputerStatus` says
       `SmartAppControlState: On`, run the command and record verbatim what SAC does to the unsigned
       installer. **Open: no machine CAN have it on here.** SAC turns On only after a clean install's

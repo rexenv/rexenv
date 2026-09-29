@@ -961,6 +961,18 @@ impl DnsAgentManager for WindowsDnsAgent {
     /// present is left alone — the app calls this on every launch.
     fn install(&self, exe: &Path, log: &Path) -> Result<()> {
         let sid = acl::current_user_sid()?;
+        // The task's name is MACHINE-wide, so a second account's launch must not take it from
+        // the first with `/F` (#758): read the registered principal and refuse another account's.
+        // The caller serves DNS in-process for this session and logs the sentence.
+        if let Ok(out) = Self::schtasks(&["/Query", "/TN", logon_task::DNS_AGENT_TASK, "/XML"]) {
+            if out.status.success() {
+                if let Some(holder) = logon_task::task_principal_sid(&String::from_utf8_lossy(&out.stdout)) {
+                    if !holder.eq_ignore_ascii_case(&sid) {
+                        return Err(Error::Other(logon_task::foreign_task_refusal(&holder)));
+                    }
+                }
+            }
+        }
         let bytes = logon_task::utf16_file_bytes(&logon_task::dns_agent_task_xml(&sid, exe, log));
         let path = self.definition_path()?;
         if let Some(parent) = path.parent() {

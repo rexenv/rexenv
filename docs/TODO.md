@@ -183,7 +183,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   skipped. Windows' edge has no boot supervisor and never waits. **Still owed:** a slow boot on the
   macOS VM with the installed 0.8.11 — no "needs Start all" toast, the edge adopted.
 
-- [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
+- [x] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
   launch, `schtasks /Create … /F`) and `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`, one name
   per machine) while testing a second Windows user; **not run.** rexenv is one account per machine
@@ -195,6 +195,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `install` refuses to re-register a task whose principal is another account and says which
   account holds it — a `platform/windows` change with a rules test, proven with two accounts on
   the Win11 VM. The owner's call whether a rare multi-account machine is worth that proof.
+  ✓ **The recommended shape built 30 Sep 2026 (ledger #758):** `install` reads the registered
+  task's principal (`schtasks /Query /XML` → `task_principal_sid`) before its `/Create … /F` and
+  refuses another account's with a sentence naming the holder's SID and the one-account rule;
+  the launch then serves `.rex` in-process for the session (the same fallback a standard account
+  already fell to). L0 on the parser and the sentence + TEXT that the check precedes `/Create`;
+  `windows-check` compiles it. The two-account run on the Win11 VM is the proof still owed.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are

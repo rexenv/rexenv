@@ -56,8 +56,9 @@ rexenv is built for **one user account per machine**. The web server on `:443`, 
 DNS route and the resolver's port are machine-wide on all three systems (`docs/PLATFORMS.md` §3),
 so a second account on the same machine cannot run its own copy alongside the first — its
 services would find those ports taken. Use rexenv from one account. On Windows there is one more
-machine-wide piece, the `\rexenv\dns-agent` scheduled task, and a second account's launch
-re-registers it for itself (`docs/TODO.md` has the row; found reading the code, not run).
+machine-wide piece, the `\rexenv\dns-agent` scheduled task: a second account's launch finds it
+registered for the first and leaves it alone — its log says "registered for another account on
+this computer (S-1-5-…)", and `.rex` is served by that app only while it runs (#758).
 
 ## macOS
 

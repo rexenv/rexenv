@@ -96,6 +96,28 @@ pub(crate) fn dns_agent_task_xml(user_sid: &str, exe: &Path, log: &Path) -> Stri
     )
 }
 
+/// The SID a REGISTERED task runs as, read off `schtasks /Query /TN … /XML`: the first `<UserId>` under
+/// `<Principals>`. `None` for anything that is not a task definition with a principal.
+pub(crate) fn task_principal_sid(xml: &str) -> Option<String> {
+    let principals = xml.split("<Principals>").nth(1)?;
+    let principals = principals.split("</Principals>").next()?;
+    let sid = principals.split("<UserId>").nth(1)?.split("</UserId>").next()?.trim();
+    (!sid.is_empty()).then(|| sid.to_string())
+}
+
+/// The refusal when the task belongs to another account. rexenv is one account per machine
+/// (`docs/INSTALL.md`): the task's NAME is machine-wide, so the second account's `schtasks /Create
+/// … /F` silently took it from the first — it then ran at the second account's logon only, until the
+/// first account's next launch took it back. Found reading `install` on 29 Sep 2026; never run.
+pub(crate) fn foreign_task_refusal(holder_sid: &str) -> String {
+    format!(
+        "the DNS agent task {DNS_AGENT_TASK} is registered for another account on this computer \
+         ({holder_sid}) — rexenv is one account per machine, so this launch will not take it over; \
+         `.rex` is served by this app while it runs. Use rexenv from that account, or remove its system \
+         changes there first."
+    )
+}
+
 /// The definition as the file `schtasks /Create /XML` reads: UTF-16 little-endian with its byte-order
 /// mark, matching the `encoding="UTF-16"` the document declares (the measured shape).
 pub(crate) fn utf16_file_bytes(xml: &str) -> Vec<u8> {
@@ -148,6 +170,28 @@ mod tests {
     }
 
     /// A user folder may hold `&` or an apostrophe; the document must stay XML.
+    /// **A registered task's principal is read back, and another account's is refused** — the
+    /// definition rexenv writes parses to the SID it was given, a foreign one names the holder in the
+    /// refusal, and a non-task answers nothing. TEXT: `install` asks BEFORE `/Create`, so the `/F`
+    /// never lands on another account's task.
+    #[test]
+    fn another_accounts_task_is_never_taken_over() {
+        let ours = "S-1-5-21-3487155226-1665577948-3202841263-1001";
+        let theirs = "S-1-5-21-3487155226-1665577948-3202841263-1002";
+        let xml = dns_agent_task_xml(theirs, Path::new(r"C:\x\rexenv.exe"), Path::new(r"C:\x\a.log"));
+        assert_eq!(task_principal_sid(&xml).as_deref(), Some(theirs));
+        assert_eq!(task_principal_sid("<?xml version=\"1.0\"?><Task></Task>"), None);
+        assert_eq!(task_principal_sid("ERROR: The system cannot find the file specified."), None);
+        let why = foreign_task_refusal(theirs);
+        assert!(why.contains(theirs) && why.contains(DNS_AGENT_TASK) && why.contains("one account per machine"), "{why}");
+        assert_ne!(task_principal_sid(&xml).as_deref(), Some(ours));
+        let src = include_str!("mod.rs");
+        let install = src.split("    fn install(&self, exe: &Path, log: &Path) -> Result<()> {\n        let sid = acl::current_user_sid()?;").nth(1).expect("WindowsDnsAgent::install");
+        let install = &install[..install.find("\n    }\n").expect("its end")];
+        let pos = |needle: &str| install.find(needle).unwrap_or_else(|| panic!("`{needle}` is gone from install"));
+        assert!(pos("task_principal_sid(") < pos("foreign_task_refusal(") && pos("foreign_task_refusal(") < pos("\"/Create\""), "the principal is checked, and refused, before /Create");
+    }
+
     #[test]
     fn paths_with_xml_characters_are_escaped() {
         let xml = dns_agent_task_xml("S-1-5-21-1", Path::new(r"C:\Users\A & B\rexenv.exe"), Path::new(r"C:\Users\O'Neil <x>\dns.log"));
