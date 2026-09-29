@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ◐ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026) — §A0 ✅, §A not yet run
+## A) ✅ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026) — §A0 by hand and §A on the 15.8 VM green
 
 `rexenv_0.8.10_universal.dmg` sha256 `4553902a41d29a04932c977cce0458940f6b44db5f498c94bc87402e3a2728e1`
 + `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both OK), source `7a5ff084` (tag
@@ -113,8 +113,23 @@ hand on the downloaded assets:** `rexenv` and `rex` both `x86_64 arm64`, `Dist_A
 ×5 and the update key in EACH slice, `minos 13.0` in both, codesign valid, Info.plist `0.8.10`
 — on the dmg's app AND the archive's; the archive's one top-level entry is `rexenv.app/`, no
 AppleDouble members; dmg app == archive app (`diff -rq`). **The draft's body is the tag body
-verbatim** (ledger #736). **Not run:** §A (Gatekeeper → `xattr -rd` → launch), the clean-Mac
-list, the Windows and Linux installers from this draft, the in-app updates (after Publish).
+verbatim** (ledger #736). **§A ✅ measured on the 15.8 arm64 UTM VM as an UPGRADED INSTALL from
+0.8.9** (four sites, one of them stopped by the user; the dmg `scp`'d and its hash re-checked
+there, the DNS agent booted out before the swap, `rm -rf /Applications/rexenv.app`, the app
+copied out of the mounted dmg, a synthetic `0083` quarantine on the bundle; `spctl`: rejected):
+Gatekeeper **"rexenv" Not Opened** ("Apple could not verify…", Done / Move to Bin — no
+"damaged"); Done → nothing running; after `sudo xattr -rd` the app launched into its Sites list,
+`rex --version` → `rex 0.8.10 (7a5ff08) · app rexenv 0.8.10 (7a5ff08)`, the DNS agent back
+(`answering (agent)`) with no hand; `rex start` → every service running, `smoke1.rex`,
+`smoke-pg.rex`, `php74.rex` **200 over HTTPS with the system trust store** (verify 0),
+`smoke-lv.rex` 503 = rexenv's "This site is stopped" page (the user's own stop, kept); GUI
+Stop all → the branded prompt "rexenv wants to stop its HTTPS server on ports 80 and 443" →
+every service idle, :443 closed, the edge daemon gone from launchd; GUI Start all → the branded
+start prompt → all running, the same three 200s. No crash report. **Seen, both known rows in
+`docs/TODO.md`:** one "DNS stopped unexpectedly — restarted automatically" toast during Start all
+(the health probe's agent churn) and one `edge-blocked` → `edge-unblocked` pair 11 s apart at
+launch (the edge wire probe). **Not run:** the clean-Mac list, the Windows and Linux installers
+from this draft, the in-app updates (after Publish).
 
 ## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
 

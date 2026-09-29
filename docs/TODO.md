@@ -85,6 +85,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   all" in the two minutes after a login launch on 28 Sep). The probe's verdict disagrees with
   the resolver's own answer; either its timeout is too short for a slow VM or it asks the wrong
   socket. Not seen on the Mac or the Dell. Measure the probe against `dig` before changing it.
+  Again 29 Sep 2026 (0.8.10 §A, same VM): one kick during a GUI Start all, which the user sees
+  as the toast "DNS stopped unexpectedly — restarted automatically" while `rex status` said
+  `answering (agent)` before and after.
 - [ ] **A From-Git create on a PHP version the repository's lock rejects fails only after the
   clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
   requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install
@@ -195,6 +198,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   just asked for, and "another local proxy" is the fallback when no holder is found. Two toasts
   per site create, naming an app that does not exist. Fix: the watchdog should know a reload is
   in flight (or require the miss on two consecutive polls) before calling the wire foreign.
+  Again 29 Sep 2026 (0.8.10 §A, same VM): once at launch, while the app adopted a root edge the
+  boot had started — `edge-blocked` at 06:47:35Z, `edge-unblocked` 11 s later, nothing foreign.
 
 - [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
