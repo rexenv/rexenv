@@ -3892,7 +3892,9 @@ mod password_channel_tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("web/wp")).unwrap();
         std::fs::write(dir.join("web/wp/wp-load.php"), "<?php").unwrap();
-        assert_eq!(wp_path_arg(&dir.join("web")), format!("--path={}", dir.join("web/wp").display()));
+        // Joined per segment, as `core_root` joins: `join("web/wp")` keeps the `/` inside one
+        // component, so on Windows it read `web/wp` against the real `web\wp` (0.8.10's CI lane).
+        assert_eq!(wp_path_arg(&dir.join("web")), format!("--path={}", dir.join("web").join("wp").display()));
         // A stock site: wp-load.php at the docroot itself.
         std::fs::create_dir_all(dir.join("stock")).unwrap();
         std::fs::write(dir.join("stock/wp-load.php"), "<?php").unwrap();
