@@ -2473,6 +2473,12 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       through Explorer and LOSES its arguments (`docs/TODO.md`), so it reads as a plain launch —
       use a `.lnk` with the argument, opened by Explorer.
 
+- [ ] **A confined `--hidden` launch stays a login launch** (ledger #742, 0.8.11): Stop all, quit;
+      start `rexenv.exe --hidden` from a scheduled task (confining, so it hops through Explorer) →
+      the copy Explorer starts shows no window and runs login-start (the backends come up), and
+      `%LOCALAPPDATA%\rexenv\rexenv\data\config\hop-hidden` is gone afterwards. 0.8.10 opened a
+      window and started nothing.
+
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
 them is Windows' own dialog:

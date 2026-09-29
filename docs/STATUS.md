@@ -10,86 +10,86 @@ App version **0.8.10** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 - `TODO.md:97` Linux: `rexenv0` lost its DNS server and domain once, after a re-setup — cause unknown; since 0.8.11 the ap…
 - `TODO.md:115` macOS: the first Start all after replacing the app with a new build can fail "Bootstrap failed: 5: Input/ou…
 - `TODO.md:126` Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch becomes a plain…
-- `TODO.md:135` Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"
-- `TODO.md:144` macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is merely slow
-- `TODO.md:150` Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task for itself
-- `TODO.md:162` The website's GitHub Actions never start — billing
-- `TODO.md:168` The DNS health probe calls the agent "not answering" while it answers
-- `TODO.md:178` A From-Git create on a PHP version the repository's lock rejects fails only after the clone, inside `compos…
-- `TODO.md:185` A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os error 13)"
-- `TODO.md:189` The polkit sentence for an in-app update is the generic one
-- `TODO.md:195` A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"
-- `TODO.md:210` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:260` PostgreSQL self-build for macOS 13/14
-- `TODO.md:266` `rex site list` / `site info` say `serving` about a site that cannot be reached
-- `TODO.md:274` After Settings → Remove system changes, the health log blames an outsider
-- `TODO.md:280` The edge wire probe reads the app's OWN Caddy reload as a foreign proxy
-- `TODO.md:291` Adminer: the documented revert does not exist
-- `TODO.md:295` A stopped site's WordPress and Database tabs say nothing true
-- `TODO.md:304` Smaller, same run
-- `TODO.md:311` Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode Command Line Tools on a cle…
-- `TODO.md:322` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:329` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
-- `TODO.md:354` `frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers
-- `TODO.md:361` Windows launch
-- `TODO.md:1327` Linux launch
-- `TODO.md:1409` The keychain (CA trust) dialog is rexenv's too
-- `TODO.md:1424` In-app self-update — a dmg user has no update path at all
-- `TODO.md:1556` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:1583` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:1617` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:1626` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:1701` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:1775` Radicle-hosted repos are unverified
-- `TODO.md:1777` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:139` Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"
+- `TODO.md:148` macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is merely slow
+- `TODO.md:154` Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task for itself
+- `TODO.md:166` The website's GitHub Actions never start — billing
+- `TODO.md:172` The DNS health probe calls the agent "not answering" while it answers
+- `TODO.md:182` A From-Git create on a PHP version the repository's lock rejects fails only after the clone, inside `compos…
+- `TODO.md:189` A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os error 13)"
+- `TODO.md:193` The polkit sentence for an in-app update is the generic one
+- `TODO.md:199` A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"
+- `TODO.md:214` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:264` PostgreSQL self-build for macOS 13/14
+- `TODO.md:270` `rex site list` / `site info` say `serving` about a site that cannot be reached
+- `TODO.md:278` After Settings → Remove system changes, the health log blames an outsider
+- `TODO.md:284` The edge wire probe reads the app's OWN Caddy reload as a foreign proxy
+- `TODO.md:295` Adminer: the documented revert does not exist
+- `TODO.md:299` A stopped site's WordPress and Database tabs say nothing true
+- `TODO.md:308` Smaller, same run
+- `TODO.md:315` Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode Command Line Tools on a cle…
+- `TODO.md:326` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:333` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
+- `TODO.md:358` `frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers
+- `TODO.md:365` Windows launch
+- `TODO.md:1331` Linux launch
+- `TODO.md:1413` The keychain (CA trust) dialog is rexenv's too
+- `TODO.md:1428` In-app self-update — a dmg user has no update path at all
+- `TODO.md:1560` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:1587` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:1621` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:1630` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:1705` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:1779` Radicle-hosted repos are unverified
+- `TODO.md:1781` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:1790` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:1842` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:1794` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:1846` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 12
 
-- `TODO.md:1862` PUBLISH-TESTING §D
-- `TODO.md:1880` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1894` The in-app update's remaining human rows (macOS)
-- `TODO.md:1901` PUBLISH-TESTING §K
-- `TODO.md:1902` PUBLISH-TESTING §F
-- `TODO.md:1903` PUBLISH-TESTING §G
-- `TODO.md:1909` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1915` Tunnel probe session
-- `TODO.md:1919` Intel spot-run
-- `TODO.md:1922` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1962` In-app verifies owed
-- `TODO.md:1974` PUBLISH-TESTING §E / §L
+- `TODO.md:1866` PUBLISH-TESTING §D
+- `TODO.md:1884` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:1898` The in-app update's remaining human rows (macOS)
+- `TODO.md:1905` PUBLISH-TESTING §K
+- `TODO.md:1906` PUBLISH-TESTING §F
+- `TODO.md:1907` PUBLISH-TESTING §G
+- `TODO.md:1913` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1919` Tunnel probe session
+- `TODO.md:1923` Intel spot-run
+- `TODO.md:1926` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1966` In-app verifies owed
+- `TODO.md:1978` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1980` The live pool swap is still L3
-- `TODO.md:1984` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:1992` Install WordPress into an empty LINKED folder
-- `TODO.md:1999` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1984` The live pool swap is still L3
+- `TODO.md:1988` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1996` Install WordPress into an empty LINKED folder
+- `TODO.md:2003` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:2012` Hold the tray menu open while the stack MOVES
+- `TODO.md:2016` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 6
 
-- `TODO.md:2023` `rexenv/website`'s "Release sync" has not run since 0.8.7
-- `TODO.md:2031` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:2042` Xdebug on PHP 8.0
-- `TODO.md:2047` SMAppService privileged helper
-- `TODO.md:2049` Developer ID signing + notarization
-- `TODO.md:2051` OpenLiteSpeed override server
+- `TODO.md:2027` `rexenv/website`'s "Release sync" has not run since 0.8.7
+- `TODO.md:2035` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:2046` Xdebug on PHP 8.0
+- `TODO.md:2051` SMAppService privileged helper
+- `TODO.md:2053` Developer ID signing + notarization
+- `TODO.md:2055` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:2061` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:2065` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 645 · ◐ 65 · 🔨 14 · 🚫 17** of 741 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 645 · ◐ 66 · 🔨 14 · 🚫 17** of 742 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

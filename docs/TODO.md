@@ -130,7 +130,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Explorer's child and never hops, so the toggle is unaffected; a Task Scheduler task (every smoke
   harness) is confined and does hop, which is how it was found. *Done when:* the hop carries the
   flag (a `.lnk` with arguments opened by Explorer is how the smoke run did it), or the guard says
-  in a comment why a hopped launch may lose it.
+  in a comment why a hopped launch may lose it. **Fixed for 0.8.11 (ledger #742):** a `--hidden`
+  launch that hops leaves a `hop-hidden` marker (a timestamp) in the config folder before it asks
+  Explorer; the copy Explorer starts reads it once in `is_hidden_launch`, deletes it, and trusts it
+  only within 20 s. **Still owed:** the Win11 VM run — a `--hidden` start from a scheduled task
+  arrives as a login launch (no window, login-start) on the installed 0.8.11.
 
 - [ ] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
   2026, 22.04 VM, 0.8.9 → 0.8.10): the update itself was clean — the new app came back — but at

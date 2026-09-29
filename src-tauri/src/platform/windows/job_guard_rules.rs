@@ -46,9 +46,59 @@ pub(crate) fn should_hop(confined: bool, parent_exe: Option<&str>) -> bool {
     confined && !parent_exe.is_some_and(|p| p.eq_ignore_ascii_case(SHELL_EXE))
 }
 
+/// The file a `--hidden` launch leaves in the config folder before it hops: Explorer opens a PATH
+/// and passes no arguments, so the flag would otherwise be lost and the relaunched copy would be a
+/// launch the user made — a window, and no login-start (29 Sep 2026, found on the Win11 VM when a
+/// smoke harness's task, which is confining, hopped). The copy Explorer starts reads it once and
+/// deletes it (`hopped_hidden`).
+pub(crate) const HOP_HIDDEN_MARKER: &str = "hop-hidden";
+
+/// A marker counts only while this young: the hop waits at most 5 s for the new copy, so 20 s
+/// covers a slow shell, and a marker a crashed hop left behind cannot turn a later launch the user
+/// makes into a login.
+pub(crate) const HOP_MARKER_MAX_AGE_SECS: u64 = 20;
+
+/// What the marker holds: the second it was written.
+pub(crate) fn hop_marker_contents(now_secs: u64) -> String {
+    format!("{now_secs}\n")
+}
+
+/// Whether a marker read now carries the flag — written within [`HOP_MARKER_MAX_AGE_SECS`], and
+/// not in the future (a clock set back is not a reason to trust it).
+pub(crate) fn hop_marker_fresh(contents: &str, now_secs: u64) -> bool {
+    contents
+        .trim()
+        .parse::<u64>()
+        .is_ok_and(|written| written <= now_secs && now_secs - written <= HOP_MARKER_MAX_AGE_SECS)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ledger #742 — the hop's marker carries `--hidden` across Explorer for one launch, briefly.
+    #[test]
+    fn the_hop_marker_carries_the_flag_only_while_fresh() {
+        let written = hop_marker_contents(1_000);
+        assert!(hop_marker_fresh(&written, 1_000));
+        assert!(hop_marker_fresh(&written, 1_000 + HOP_MARKER_MAX_AGE_SECS));
+        assert!(!hop_marker_fresh(&written, 1_000 + HOP_MARKER_MAX_AGE_SECS + 1), "a stale marker is a later launch's");
+        assert!(!hop_marker_fresh(&written, 999), "a marker from the future is not trusted");
+        assert!(!hop_marker_fresh("", 1_000));
+        assert!(!hop_marker_fresh("--hidden", 1_000));
+    }
+
+    /// Ledger #742, TEXT (the #175 bound): the hop writes the marker BEFORE it asks Explorer (a
+    /// copy that starts first would find nothing), and the launch's one reader consults it.
+    #[test]
+    fn the_hop_leaves_its_marker_before_explorer_and_the_launch_reads_it() {
+        let hop = crate::core::copy_scan::production_source(include_str!("job_guard.rs"));
+        let write = hop.find("rules::hop_marker_contents(").expect("the hop writes the marker");
+        let spawn = hop.find("Command::new(shell)").expect("the hop asks Explorer");
+        assert!(write < spawn, "the marker is written after Explorer is asked — the new copy can miss it");
+        let lib = crate::core::copy_scan::production_source(include_str!("../../lib.rs"));
+        assert!(lib.contains("|| platform::hopped_hidden()"), "is_hidden_launch no longer reads the hop's marker");
+    }
 
     /// The three measured contexts, and the two the measurement implies.
     #[test]

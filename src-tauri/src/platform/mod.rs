@@ -312,6 +312,20 @@ pub fn relaunch_outside_confining_job() -> Option<i32> {
     }
 }
 
+/// Whether THIS copy was started by a hop that dropped a `--hidden` flag on the way (Explorer
+/// passes no arguments; the hopping copy leaves a marker). Consumes the marker. Always `false` off
+/// Windows — nothing else hops.
+pub fn hopped_hidden() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        windows::hopped_hidden()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
 /// The limit flags of the job THIS process is in (`None` = no job) — the fact the hop above is
 /// decided on, re-exported for the live check that spawns fixtures inside jobs it builds. Windows-only.
 #[cfg(target_os = "windows")]

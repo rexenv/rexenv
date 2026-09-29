@@ -995,7 +995,8 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   arrives without its flags. 29 Sep 2026: a `rexenv.exe --hidden` started from a task reached
   the app as a plain launch and the login handoff looked broken; the same flag on a `.lnk`
   opened by Explorer (`Start-Process explorer.exe <lnk>` from the task) is the harness shape that
-  keeps it (`docs/TODO.md`'s hop row).
+  keeps it on 0.8.10 and older. From 0.8.11 the hop carries `--hidden` itself (a marker the new
+  copy reads once, ledger #742) — other flags are still dropped.
 - `linux_app_swap_check` (system, Linux) — the Linux updater's two swaps on fixtures the
   sandbox owns: a fixture "AppImage" (a script answering `--print-version`) refused when its
   version disagrees with the signed one, then exchanged in place with the previous copy kept

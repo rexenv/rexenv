@@ -182,7 +182,9 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **Process-wide state mutation beside a spawn races other threads' spawns** (#600's handle
   sweep broke concurrent children): mutate global state only on one thread at main start.
 - **Job objects**: the installer's Finish page and SSH shells start rexenv inside a job; the
-  start-up hop out of it is `job_guard` (#692).
+  start-up hop out of it is `job_guard` (#692). **Explorer passes no arguments**, so the hop
+  carries `--hidden` in a one-shot marker (`hop-hidden`, ≤ 20 s, #742) — any other flag a
+  confined launch had is lost.
 - **Unsigned** (owner ruling, D5): a BROWSER-downloaded `setup.exe` meets SmartScreen, and its
   text is documented, not worked around. The one-command install meets none — `Invoke-WebRequest`
   writes no Mark of the Web, which is what SmartScreen keys on (measured 28 Sep 2026; the owner
