@@ -67,7 +67,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   answered → neither, never a flash of "failed" first. The dialog also hands its started job to
   the route (`onStarted`) so the route's own card shows behind the dialog and survives "Close
   (keeps running)". wk-check `uireview.js` `badges` asserts all three rows (`creating.test`,
-  `half.test`, `asking.test`), planted three ways. SMOKE's headline flow carries the live look.
+  `half.test`, `asking.test`), planted three ways. SMOKE's headline flow carries the live look —
+  ran the same day on the 15.8 VM (`rex site create` with the Sites page in front): `Setting up`
+  at 6 s, `Running` at 16 s.
 - [x] **Tutorial videos: record the real UI with a narrated voiceover, no screen recording**
   ✓ 30 Sep 2026 — `scripts/video/` (README): the shipped components in a headless Chromium
   against a scripted backend that replays the Rust provision job's own phases and log lines,

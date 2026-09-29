@@ -6,64 +6,64 @@ App version **0.8.10** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 ### Now — actionable code/test work — 18
 
-- `TODO.md:196` The apt repository's first release run
-- `TODO.md:202` Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"
-- `TODO.md:263` The website's GitHub Actions never start — billing
-- `TODO.md:351` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:401` PostgreSQL self-build for macOS 13/14
-- `TODO.md:520` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:527` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
-- `TODO.md:566` Windows launch
-- `TODO.md:1540` Linux launch
-- `TODO.md:1622` The keychain (CA trust) dialog is rexenv's too
-- `TODO.md:1637` In-app self-update — a dmg user has no update path at all
-- `TODO.md:1769` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:1796` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:1830` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:1839` Eliminate the bug class: bundled PHP with curl's THREADED resolver
-- `TODO.md:1914` PHP 7.4 — the five residuals of a shipped feature
-- `TODO.md:1988` Radicle-hosted repos are unverified
-- `TODO.md:1990` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:198` The apt repository's first release run
+- `TODO.md:204` Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"
+- `TODO.md:265` The website's GitHub Actions never start — billing
+- `TODO.md:353` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:403` PostgreSQL self-build for macOS 13/14
+- `TODO.md:522` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:529` SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026)
+- `TODO.md:568` Windows launch
+- `TODO.md:1542` Linux launch
+- `TODO.md:1624` The keychain (CA trust) dialog is rexenv's too
+- `TODO.md:1639` In-app self-update — a dmg user has no update path at all
+- `TODO.md:1771` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:1798` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:1832` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:1841` Eliminate the bug class: bundled PHP with curl's THREADED resolver
+- `TODO.md:1916` PHP 7.4 — the five residuals of a shipped feature
+- `TODO.md:1990` Radicle-hosted repos are unverified
+- `TODO.md:1992` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:2003` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:2055` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:2005` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:2057` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 12
 
-- `TODO.md:2075` PUBLISH-TESTING §D
-- `TODO.md:2093` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:2107` The in-app update's remaining human rows (macOS)
-- `TODO.md:2114` PUBLISH-TESTING §K
-- `TODO.md:2115` PUBLISH-TESTING §F
-- `TODO.md:2116` PUBLISH-TESTING §G
-- `TODO.md:2122` Release 5.4 — clean-Mac smoke test
-- `TODO.md:2128` Tunnel probe session
-- `TODO.md:2132` Intel spot-run
-- `TODO.md:2135` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:2175` In-app verifies owed
-- `TODO.md:2187` PUBLISH-TESTING §E / §L
+- `TODO.md:2077` PUBLISH-TESTING §D
+- `TODO.md:2095` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:2109` The in-app update's remaining human rows (macOS)
+- `TODO.md:2116` PUBLISH-TESTING §K
+- `TODO.md:2117` PUBLISH-TESTING §F
+- `TODO.md:2118` PUBLISH-TESTING §G
+- `TODO.md:2124` Release 5.4 — clean-Mac smoke test
+- `TODO.md:2130` Tunnel probe session
+- `TODO.md:2134` Intel spot-run
+- `TODO.md:2137` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:2177` In-app verifies owed
+- `TODO.md:2189` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:2193` The live pool swap is still L3
-- `TODO.md:2197` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:2205` Install WordPress into an empty LINKED folder
-- `TODO.md:2212` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:2195` The live pool swap is still L3
+- `TODO.md:2199` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:2207` Install WordPress into an empty LINKED folder
+- `TODO.md:2214` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 6
 
-- `TODO.md:2238` `rexenv/website`'s "Release sync" has not run since 0.8.7
-- `TODO.md:2246` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:2257` Xdebug on PHP 8.0
-- `TODO.md:2262` SMAppService privileged helper
-- `TODO.md:2264` Developer ID signing + notarization
-- `TODO.md:2266` OpenLiteSpeed override server
+- `TODO.md:2240` `rexenv/website`'s "Release sync" has not run since 0.8.7
+- `TODO.md:2248` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:2259` Xdebug on PHP 8.0
+- `TODO.md:2264` SMAppService privileged helper
+- `TODO.md:2266` Developer ID signing + notarization
+- `TODO.md:2268` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:2276` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:2278` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

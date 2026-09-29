@@ -224,13 +224,18 @@ nothing.** The silent case is the one that ships to everybody.
 ## Core: WordPress over HTTPS (the headline flow)
 - [x] **New site** → WordPress → create; install completes without error. ✓ 18 Sep 2026
       (clean 15.6.1 VM, 8437afd9) · ✓ 23 Sep 2026 (clean 15.8 VM, 0.8.7).
-- [ ] **While the install runs, the row behind the dialog reads `Setting up`** (the amber
+- [x] **While the install runs, the row behind the dialog reads `Setting up`** (the amber
       spinner pill, no retry icon), and turns `Running` when the card settles. **Tell:** `setup
       incomplete` with the retry icon while the card in front is still installing — that was every
       create before 0.8.12 (found 30 Sep 2026 recording the tutorial; wk-check `badges`, #763).
       The same with the site created by `rex site create` while the Sites page is open — the
       row asks the job registry, not the dialog. Frontend only — the same row on Windows and
-      Linux.
+      Linux. **✓ 30 Sep 2026 (15.8 arm64 VM, this tree's build 06881ca5 over 0.8.10, through
+      `rex site create sm763.rex --type wordpress` with the Sites page in front):** at 6 s the
+      `sm763` row showed the amber spinner pill `Setting up` with no retry icon; at 16 s (the job
+      had settled — "✓ created sm763.rex … → https://sm763.rex") the row was `Running`. The
+      dialog path was not run live — the CLI is the harder case, where the route never saw the
+      job start.
 - [x] **With the stack STOPPED when you create it** (the first site on a clean Mac always is):
       the card's serve phase reads `stack is stopped — starting it`, the branded "rexenv wants
       to start its HTTPS server on ports 80 and 443" prompt appears from the card, and the card
