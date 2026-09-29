@@ -2168,9 +2168,14 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       (A "rexenv quit unexpectedly" seen once during a HAND swap of the bundle over ssh —
       `SIGKILL (Code Signature Invalid)` at `_dyld_start` — was the DNS agent's KeepAlive
       relaunching into a half-copied bundle, not the app: the in-app updater swaps atomically.
-      Since 30 Sep 2026 (#761) the job waits for `codesign --verify` before it execs, so a
-      hand swap must show NO dialog — and System Settings → General → Login Items must list
-      the job as **rexenv**, not "sh" (`AssociatedBundleIdentifiers`); both owed on this VM.)
+      Since 30 Sep 2026 (#761, #764) the job's program is `<app data>/dns-agent/rexenv`, a
+      launcher named after the app that waits for `codesign --verify` before it execs, so a
+      hand swap must show NO dialog — and System Settings → General → Login Items & Extensions
+      → Allow in the Background must list the job as **rexenv**, not "sh". **Tell:** a
+      `/bin/sh -c` program is listed as "sh — Item from unidentified developer" (#761's first
+      shape, read on this VM 30 Sep 2026; `AssociatedBundleIdentifiers` does nothing for an
+      ad-hoc signature). ✓ 30 Sep 2026 (15.8 VM, this tree's build over the #761 build): Login Items & Extensions → Allow in the Background listed the new registration as "rexenv" (the pane read rexenv, rexenv, sh — the surviving "sh" is the #761 registration's history; the four newest "Background Items Added" banners all said "rexenv", the three older ones "sh"); launchd's `program` = `~/Library/Application Support/dev.rexenv.rexenv/dns-agent/rexenv` (0755, written at the relaunch), the job's pid IS `rexenv --dns-agent` (the exec kept it), and `rex status` read `DNS answering (agent, udp 15353)` after the documented 10 s port handoff (two "cannot bind … retrying in 10s" lines while the old agent left).
+      The drag-over dialog is still owed on this VM.)
 - [x] **Onboarding's Welcome step shows the legacy note once**: "This Mac runs macOS 13.x —
       rexenv works here with older versions of some components and without PostgreSQL and
       PHP 8.0. Everything is available on macOS 15 or later." (on 14: "…without PostgreSQL…"

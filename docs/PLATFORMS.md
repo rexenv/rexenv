@@ -164,6 +164,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   "Bootstrap failed: 5: Input/output error" while a busy caddy is still leaving (3/3 on the VM
   with connections open, 29 Sep 2026); the edge install waits for `launchctl print` to fail first
   and retries once (#744).
+- **Login Items names a LaunchAgent after its program's FILE NAME.** `/bin/sh -c '…'` is listed
+  as "sh — Item from unidentified developer" (15.8 VM, 30 Sep 2026); `AssociatedBundleIdentifiers`
+  attributes the job to the app only when both carry one Team ID, which an ad-hoc signature does
+  not. A job that must wait or wrap runs a script named after the app, in app data (#764).
 - **Legacy tiers**: 13 and 14 resolve older pins (`PinSet::for_tier`); a feature that needs a
   newer binary says so in the tier's words (`needs_newer_os`).
 - Mechanism detail: `docs/ARCHITECTURE.md` (written against macOS), `docs/INSTALL.md` § macOS.

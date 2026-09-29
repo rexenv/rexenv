@@ -350,6 +350,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   settles; `codesign --verify` is base macOS, not the CLT. L0 on the plist text; live: PASS on the dev Mac, 30 Sep 2026 (a throwaway launchd label, an ad-hoc signed cc-built fixture as `$0`, the production shell line): exec once after load; the exe truncated + `kickstart -k` → no exec, the job `state = running`, no crash report; the exe restored → exec within 3 s — and, measured first, a COPIED Apple binary as the fixture is itself SIGKILLed (`OS_REASON_CODESIGNING`, a launch constraint), which is why the fixture is ad-hoc signed like rexenv.
   The app's next launch rewrites the plist (its bytes changed) — one `launchctl` reload per
   install, and the Login Items name is what SMOKE §A must read: "rexenv", not "sh".
+  **Read 30 Sep 2026 on the 15.8 VM: "sh", twice** — Login Items names a LaunchAgent after its
+  program's file name, and `AssociatedBundleIdentifiers` attributes only a Team-ID-signed pair.
+  ✓ **#764 the same day:** the program is a launcher script in app data named after the app
+  (`dns-agent/rexenv`, the wait inside it, written before the plist); a throwaway agent of that
+  shape was listed as "rexenv" on the VM, and the installed build: Login Items & Extensions → Allow in the Background listed the new registration as "rexenv" (the pane read rexenv, rexenv, sh — the surviving "sh" is the #761 registration's history; the four newest "Background Items Added" banners all said "rexenv", the three older ones "sh"); launchd's `program` = `~/Library/Application Support/dev.rexenv.rexenv/dns-agent/rexenv` (0755, written at the relaunch), the job's pid IS `rexenv --dns-agent` (the exec kept it), and `rex status` read `DNS answering (agent, udp 15353)` after the documented 10 s port handoff (two "cannot bind … retrying in 10s" lines while the old agent left). The old "sh" rows are
+  BTM history until `sfltool resetbtm`.
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a

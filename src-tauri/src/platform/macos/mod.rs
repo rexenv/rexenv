@@ -1145,25 +1145,66 @@ pub struct MacosDnsAgent;
 /// launchd label for the DNS LaunchAgent — a sub-label of the canonical app
 /// identity, distinct from the app-autostart agent and the root edge daemon.
 const DNS_AGENT_LABEL: &str = "dev.rexenv.rexenv.dns";
-/// The app's bundle identifier — what `AssociatedBundleIdentifiers` names so Login Items
-/// shows the DNS job under rexenv although its program is `/bin/sh` (#761).
+/// The app's bundle identifier, in the plist's `AssociatedBundleIdentifiers`. It is NOT what
+/// names the job in Login Items for rexenv: that attribution needs the app and the agent
+/// signed under one Team ID, and rexenv is ad-hoc signed — the 15.8 VM listed #761's
+/// `/bin/sh -c` job as "sh", twice (30 Sep 2026, #764). Kept because it costs nothing and
+/// is right the day a Developer ID lands (`docs/SIGNING.md`).
 const APP_BUNDLE_ID: &str = "dev.rexenv.rexenv";
 
-/// The shell the DNS job runs, with the app's executable as `$0`: it execs rexenv only once
-/// the bundle's signature verifies. launchd's KeepAlive relaunches the agent the instant it
-/// dies — including while the bundle is being REPLACED (a Finder drag over a running copy,
-/// a hand `cp` over ssh, a kickstart right after a swap) — and an exec into a half-copied
-/// bundle is SIGKILLed by dyld (`Code Signature Invalid` at `_dyld_start`, or a `Launch
-/// Constraint Violation`) before a line of ours runs, which macOS reports as "rexenv quit
-/// unexpectedly" (13.6 VM ×3, 23 Sep 2026; 15.8 VM, 27 Sep). `codesign --verify` is in the
-/// base system (not the Command Line Tools); a bundle that never settles keeps the job
-/// alive, looping at 1 Hz, and reports nothing. `exec` keeps the pid, so `kickstart -k`
-/// still restarts the agent in place. Measured on the dev Mac with a throwaway label and an
-/// ad-hoc signed fixture (30 Sep 2026): exec once after load; the exe truncated + kickstart
-/// → no exec, the job running, no crash report; the exe restored → exec within 3 s.
-pub(crate) const DNS_AGENT_SHELL: &str = "until /usr/bin/codesign --verify \"$0\" >/dev/null 2>&1; do sleep 1; done; exec \"$0\" --dns-agent";
+/// The launcher the DNS job runs: a script in app data NAMED AFTER THE APP, with the app's
+/// executable as `$1`. It execs rexenv only once the bundle's signature verifies. Two facts,
+/// each measured:
+///
+/// - launchd's KeepAlive relaunches the agent the instant it dies — including while the
+///   bundle is being REPLACED (a Finder drag over a running copy, a hand `cp` over ssh, a
+///   kickstart right after a swap) — and an exec into a half-copied bundle is SIGKILLed by
+///   dyld (`Code Signature Invalid` at `_dyld_start`, or a `Launch Constraint Violation`)
+///   before a line of ours runs, which macOS reports as "rexenv quit unexpectedly" (13.6 VM
+///   ×3, 23 Sep 2026; 15.8 VM, 27 Sep; #761). `codesign --verify` is in the base system
+///   (not the Command Line Tools); a bundle that never settles keeps the job alive, looping
+///   at 1 Hz, and reports nothing. `exec` keeps the pid, so `kickstart -k` still restarts
+///   the agent in place. Measured on the dev Mac with a throwaway label and an ad-hoc
+///   signed fixture (30 Sep 2026): exec once after load; the exe truncated + kickstart → no
+///   exec, the job running, no crash report; the exe restored → exec within 3 s.
+/// - Login Items (Background Task Management) names a LaunchAgent after its PROGRAM's file
+///   name, `AssociatedBundleIdentifiers` notwithstanding for an ad-hoc signed app: #761's
+///   first shape, `/bin/sh -c '…'`, was listed as "sh" on the 15.8 VM, and a throwaway
+///   agent whose program was a script named `rexenv` in app data was listed as "rexenv"
+///   (both 30 Sep 2026, #764). So the wait lives in a FILE named after the app, outside the
+///   bundle — a Finder drag-over never replaces the program launchd is running.
+pub(crate) const DNS_AGENT_LAUNCHER: &str = "#!/bin/sh\n\
+# rexenv's DNS agent launcher, written by the app on every launch (platform/macos/mod.rs).\n\
+# Login Items names the background item after this file, so the file is named after the app.\n\
+# It waits for the app bundle's signature to verify before it execs the agent: launchd's\n\
+# KeepAlive relaunches this job while the bundle is being replaced, and an exec into a\n\
+# half-copied bundle is killed by dyld and reported as \"rexenv quit unexpectedly\".\n\
+exe=\"$1\"\n\
+until /usr/bin/codesign --verify \"$exe\" >/dev/null 2>&1; do sleep 1; done\n\
+exec \"$exe\" --dns-agent\n";
 
 impl MacosDnsAgent {
+    /// `<app data>/dns-agent/rexenv` — the file name is the app's, because Login Items shows
+    /// the program's file name (#764).
+    fn launcher_path(&self) -> Result<PathBuf> {
+        Ok(MacosPaths.app_data_dir()?.join("dns-agent").join(APP_NAME))
+    }
+
+    /// Write the launcher (0755), only when its bytes differ: the durable write is a rename
+    /// in place, safe under a running job (which read the script at its exec).
+    fn write_launcher(&self) -> Result<PathBuf> {
+        let path = self.launcher_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let unchanged = std::fs::read_to_string(&path).map(|c| c == DNS_AGENT_LAUNCHER).unwrap_or(false);
+        if !unchanged {
+            crate::platform::durable::write_durable(&path, DNS_AGENT_LAUNCHER.as_bytes())?;
+        }
+        MacosPermissions.set_executable(&path)?;
+        Ok(path)
+    }
+
     fn launchctl(args: &[&str], plist: &Path) -> Result<()> {
         let st = std::process::Command::new("launchctl").args(args).arg(plist).status()?;
         if st.success() {
@@ -1174,10 +1215,48 @@ impl MacosDnsAgent {
     }
 }
 
-/// Plist text escaping: the shell line carries `"` and `>`, and an app path may carry `&`.
-/// A plist is XML; the old template interpolated raw.
+/// Plist text escaping: an app path (or the home directory) may carry `&` or `<`. A plist is
+/// XML; the old template interpolated raw.
 fn xml_text(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// The DNS LaunchAgent, pure: `launcher exe` as the program (the launcher waits, then execs
+/// `exe --dns-agent`), `KeepAlive` + `RunAtLoad`, `Background`, output to `log`.
+fn dns_agent_plist(launcher: &Path, exe: &Path, log: &Path) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
+         \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+         <plist version=\"1.0\">\n\
+         <dict>\n\
+         \t<key>Label</key>\n\
+         \t<string>{DNS_AGENT_LABEL}</string>\n\
+         \t<key>ProgramArguments</key>\n\
+         \t<array>\n\
+         \t\t<string>{launcher}</string>\n\
+         \t\t<string>{exe}</string>\n\
+         \t</array>\n\
+         \t<key>AssociatedBundleIdentifiers</key>\n\
+         \t<array>\n\
+         \t\t<string>{APP_BUNDLE_ID}</string>\n\
+         \t</array>\n\
+         \t<key>KeepAlive</key>\n\
+         \t<true/>\n\
+         \t<key>RunAtLoad</key>\n\
+         \t<true/>\n\
+         \t<key>ProcessType</key>\n\
+         \t<string>Background</string>\n\
+         \t<key>StandardOutPath</key>\n\
+         \t<string>{log}</string>\n\
+         \t<key>StandardErrorPath</key>\n\
+         \t<string>{log}</string>\n\
+         </dict>\n\
+         </plist>\n",
+        launcher = xml_text(&launcher.display().to_string()),
+        exe = xml_text(&exe.display().to_string()),
+        log = xml_text(&log.display().to_string()),
+    )
 }
 
 impl DnsAgentManager for MacosDnsAgent {
@@ -1197,41 +1276,10 @@ impl DnsAgentManager for MacosDnsAgent {
     /// any death. `Background` (a helper, not an interactive app); agent output
     /// goes to the shared log dir so a wedged resolver leaves evidence.
     fn definition_contents(&self, exe: &Path, log: &Path) -> String {
-        format!(
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
-             <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \
-             \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
-             <plist version=\"1.0\">\n\
-             <dict>\n\
-             \t<key>Label</key>\n\
-             \t<string>{DNS_AGENT_LABEL}</string>\n\
-             \t<key>ProgramArguments</key>\n\
-             \t<array>\n\
-             \t\t<string>/bin/sh</string>\n\
-             \t\t<string>-c</string>\n\
-             \t\t<string>{shell}</string>\n\
-             \t\t<string>{exe}</string>\n\
-             \t</array>\n\
-             \t<key>AssociatedBundleIdentifiers</key>\n\
-             \t<array>\n\
-             \t\t<string>{APP_BUNDLE_ID}</string>\n\
-             \t</array>\n\
-             \t<key>KeepAlive</key>\n\
-             \t<true/>\n\
-             \t<key>RunAtLoad</key>\n\
-             \t<true/>\n\
-             \t<key>ProcessType</key>\n\
-             \t<string>Background</string>\n\
-             \t<key>StandardOutPath</key>\n\
-             \t<string>{log}</string>\n\
-             \t<key>StandardErrorPath</key>\n\
-             \t<string>{log}</string>\n\
-             </dict>\n\
-             </plist>\n",
-            shell = xml_text(DNS_AGENT_SHELL),
-            exe = xml_text(&exe.display().to_string()),
-            log = xml_text(&log.display().to_string()),
-        )
+        // The launcher's path needs the home directory, exactly as `definition_path` does,
+        // and `install` has resolved that before this runs — so a failure here is a bug.
+        let launcher = self.launcher_path().expect("app data dir resolves once definition_path() has");
+        dns_agent_plist(&launcher, exe, log)
     }
 
     fn install(&self, exe: &Path, log: &Path) -> Result<()> {
@@ -1251,6 +1299,9 @@ impl DnsAgentManager for MacosDnsAgent {
         if let Some(parent) = plist.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        // The launcher BEFORE the plist: the plist names it as the program, and launchd
+        // runs the job the moment the plist loads (#764).
+        self.write_launcher()?;
         let contents = self.definition_contents(exe, log);
         // Skip the unload/load churn when nothing changed (every app launch calls
         // this): a byte-identical plist with a live agent is already correct.
@@ -1294,6 +1345,10 @@ impl DnsAgentManager for MacosDnsAgent {
         if plist.exists() {
             let _ = Self::launchctl(&["unload", "-w"], &plist);
             std::fs::remove_file(&plist)?;
+        }
+        // The launcher goes with the job (best-effort: app data is removed by the same reset).
+        if let Ok(launcher) = self.launcher_path() {
+            let _ = std::fs::remove_file(launcher);
         }
         Ok(())
     }
@@ -2900,26 +2955,27 @@ mod tests {
     #[test]
     fn dns_agent_plist_keeps_resolver_alive_from_login() {
         let agent = MacosDnsAgent;
-        let plist = agent.definition_contents(
-            Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv"),
-            Path::new("/l/dns-agent.log"),
-        );
+        let launcher = Path::new("/Users/u/Library/Application Support/dev.rexenv.rexenv/dns-agent/rexenv");
+        let exe = Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv");
+        let plist = dns_agent_plist(launcher, exe, Path::new("/l/dns-agent.log"));
         // KeepAlive + RunAtLoad: resolver up from login, relaunched on any death —
         // this is what makes sites resolve with the app closed and after reboot.
         assert!(plist.contains("<key>KeepAlive</key>\n\t<true/>"), "plist:\n{plist}");
         assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
-        // Runs the app binary in headless resolver mode — through a shell that waits for the
-        // bundle's signature to verify (#761: KeepAlive relaunched into a half-copied bundle
-        // and dyld's SIGKILL was reported as "rexenv quit unexpectedly"), with `$0` the exe.
-        assert!(plist.contains("<string>/bin/sh</string>\n\t\t<string>-c</string>"));
-        assert!(plist.contains("<string>/Applications/rexenv.app/Contents/MacOS/rexenv</string>"));
-        assert!(plist.contains("exec \"$0\" --dns-agent"), "the shell execs the agent as $0:\n{plist}");
-        assert!(plist.contains("until /usr/bin/codesign --verify \"$0\" &gt;/dev/null 2&gt;&amp;1"), "the wait, XML-escaped:\n{plist}");
-        // Login Items still lists the job under rexenv, not "sh".
+        // The program is the LAUNCHER, named after the app, with the app binary as its one
+        // argument (#764: Login Items names the job after the program's file name — the
+        // `/bin/sh -c` of #761 was listed as "sh"). No shell in the plist.
+        assert!(
+            plist.contains(&format!("<string>{}</string>\n\t\t<string>{}</string>", launcher.display(), exe.display())),
+            "launcher then exe:\n{plist}"
+        );
+        assert!(!plist.contains("/bin/sh"), "a shell as the program names the job \"sh\":\n{plist}");
+        assert!(!plist.contains("--dns-agent"), "the flag is the launcher's, not the plist's");
+        // The associated bundle id stays (right the day the app carries a Team ID).
         assert!(plist.contains("<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>dev.rexenv.rexenv</string>"));
-        // An app path with an ampersand is escaped, not a broken plist.
-        let odd = agent.definition_contents(Path::new("/Users/a&b/rexenv.app/Contents/MacOS/rexenv"), Path::new("/l/x.log"));
-        assert!(odd.contains("/Users/a&amp;b/rexenv.app"));
+        // A path with an ampersand is escaped, not a broken plist — on either program line.
+        let odd = dns_agent_plist(Path::new("/Users/a&b/dns-agent/rexenv"), Path::new("/Users/a&b/rexenv.app/Contents/MacOS/rexenv"), Path::new("/l/x.log"));
+        assert_eq!(odd.matches("/Users/a&amp;b/").count(), 2, "{odd}");
         // Own label, distinct from the app-autostart agent and the edge daemon.
         assert!(plist.contains(&format!("<string>{DNS_AGENT_LABEL}</string>")));
         assert_ne!(DNS_AGENT_LABEL, AUTOSTART_LABEL);
@@ -2927,6 +2983,44 @@ mod tests {
         // Unprivileged: a per-user LaunchAgent, never a system daemon.
         let path = agent.definition_path().unwrap();
         assert!(path.display().to_string().contains("Library/LaunchAgents"));
+        // The real builder puts the real launcher path first.
+        let real = agent.definition_contents(exe, Path::new("/l/dns-agent.log"));
+        let real_launcher = agent.launcher_path().unwrap();
+        assert!(real.contains(&format!("<string>{}</string>\n\t\t<string>{}</string>", xml_text(&real_launcher.display().to_string()), exe.display())), "{real}");
+    }
+
+    /// **The DNS job's program is a file named after the app, in app data, that execs the
+    /// app only once its bundle verifies** (#761 + #764). Login Items shows the program's
+    /// file name (measured on the 15.8 VM, 30 Sep 2026: `/bin/sh -c …` → "sh"; a script
+    /// named `rexenv` → "rexenv"), so the name IS the claim.
+    #[test]
+    fn the_dns_agent_launcher_is_named_after_the_app_and_waits_for_a_verified_bundle() {
+        let agent = MacosDnsAgent;
+        let launcher = agent.launcher_path().unwrap();
+        assert_eq!(launcher.file_name().and_then(|n| n.to_str()), Some(APP_NAME), "{}", launcher.display());
+        assert_eq!(launcher.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()), Some("dns-agent"));
+        assert!(launcher.starts_with(MacosPaths.app_data_dir().unwrap()), "outside the bundle, in app data: {}", launcher.display());
+        // The script: a POSIX sh, the exe as $1 (never $0 — that is the script itself now),
+        // the verify loop, then the exec with the agent flag.
+        assert!(DNS_AGENT_LAUNCHER.starts_with("#!/bin/sh\n"), "{DNS_AGENT_LAUNCHER}");
+        assert!(DNS_AGENT_LAUNCHER.contains("exe=\"$1\"\n"), "{DNS_AGENT_LAUNCHER}");
+        assert!(DNS_AGENT_LAUNCHER.contains("until /usr/bin/codesign --verify \"$exe\" >/dev/null 2>&1; do sleep 1; done\n"), "the wait:\n{DNS_AGENT_LAUNCHER}");
+        assert!(DNS_AGENT_LAUNCHER.ends_with("exec \"$exe\" --dns-agent\n"), "the exec, last:\n{DNS_AGENT_LAUNCHER}");
+        assert!(!DNS_AGENT_LAUNCHER.contains("$0"), "{DNS_AGENT_LAUNCHER}");
+    }
+
+    /// TEXT: `install` writes the launcher BEFORE the plist and before `launchctl load` —
+    /// the plist names the launcher as the program, and launchd runs the job as it loads.
+    #[test]
+    fn the_dns_agent_install_writes_the_launcher_before_launchd_can_run_it() {
+        let src = crate::core::copy_scan::production_source(include_str!("mod.rs"));
+        let head = "    fn install(&self, exe: &Path, log: &Path) -> Result<()> {";
+        let i = src.find(head).unwrap_or_else(|| panic!("{head}"));
+        let b = &src[i..];
+        let b = &b[..b.find("\n    }\n").expect("the fn's end")];
+        let pos = |needle: &str| b.find(needle).unwrap_or_else(|| panic!("`{needle}` is gone from MacosDnsAgent::install"));
+        assert!(pos("self.write_launcher()?") < pos("write_durable(&plist"), "launcher before the plist");
+        assert!(pos("write_durable(&plist") < pos("launchctl(&[\"load\", \"-w\"]"), "plist before the load");
     }
 
     #[test]

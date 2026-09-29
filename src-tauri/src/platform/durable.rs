@@ -81,10 +81,11 @@ mod tests {
 
     /// **Both privileged doors flush, and no boot-time file goes back to a bare write** (ledger
     /// #740). TEXT, not behaviour (the #175 bound): `run_privileged` on macOS and Linux shadows its
-    /// `script` with [`flushed_script`] before anything uses it, and the four files the app writes
-    /// for the next boot or login — the macOS login item and DNS agent plists, the Linux autostart
-    /// entry and DNS user unit — are written with [`write_durable`]. What a power cut does to them
-    /// is a VM run (SMOKE, Linux).
+    /// `script` with [`flushed_script`] before anything uses it, and the five files the app writes
+    /// for the next boot or login — the macOS login item and DNS agent plists and the DNS agent's
+    /// launcher script (#764: a 0-byte launcher would leave KeepAlive respawning a job that runs
+    /// nothing), the Linux autostart entry and DNS user unit — are written with [`write_durable`].
+    /// What a power cut does to them is a VM run (SMOKE, Linux).
     #[test]
     fn every_privileged_door_flushes_and_no_boot_file_is_a_bare_write() {
         for (os, src) in [("macOS", include_str!("macos/mod.rs")), ("Linux", include_str!("linux/mod.rs"))] {
@@ -103,7 +104,7 @@ mod tests {
         }
         assert!(!macos.contains("std::fs::write(&plist"), "macOS writes a launchd plist bare again");
         assert_eq!(linux.matches("durable::write_durable(").count(), 2, "Linux: the autostart entry and the DNS unit");
-        assert_eq!(macos.matches("durable::write_durable(").count(), 2, "macOS: the login item and the DNS agent plists");
+        assert_eq!(macos.matches("durable::write_durable(").count(), 3, "macOS: the login item plist, the DNS agent plist and its launcher");
     }
 
     /// The file ends up with exactly the new bytes, an existing file is replaced, and no temp file

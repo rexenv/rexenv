@@ -414,8 +414,11 @@ Live-proven end to end by `site_stop_start_check`.
   `/etc/resolver/<tld>` files exist (one per TLD; no restart to add one). Safe only
   because it binds loopback and only our resolver files route to it (`core/dns.rs`).
 - **The resolver runs OUTSIDE the app** — a per-user LaunchAgent
-  (`dev.rexenv.rexenv.dns`, `KeepAlive` + `RunAtLoad`) running `<app binary>
-  --dns-agent` (headless: no Tauri/SQLite/services; `dns::run_agent`). Rationale
+  (`dev.rexenv.rexenv.dns`, `KeepAlive` + `RunAtLoad`) whose program is
+  `<app data>/dns-agent/rexenv <app binary>`: a launcher script named after the app
+  (Login Items shows the program's file name — a `/bin/sh -c` read as "sh", #764) that
+  execs `<app binary> --dns-agent` once the bundle's signature verifies (#761; headless:
+  no Tauri/SQLite/services; `dns::run_agent`). Rationale
   (observed live): the data plane outlives a quit, but the OLD in-process resolver died
   with the app — sites coasted ~1h40m on client caches/persistent connections, then went
   dark until relaunch. All unprivileged (`~/Library/LaunchAgents`, high loopback port;
