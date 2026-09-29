@@ -10,6 +10,11 @@ it, and the Homebrew tap updates itself. Two workflows implement this.
 > private repo, the arm64 runner is a larger runner) and a public repo's minutes are free.
 > Push the tag here (the pre-push hook checks the version), then Actions → runtimes →
 > "rexenv release (from runtimes)" → the version. Step output is public there.
+> **A change to `release.yml` here is not live until the runtimes copy carries it** —
+> in the same change. The release-notes fix (`63e602ac`, ledger #736) landed here only, and
+> the 0.8.10 cut found the runtimes copy still drafting with the "Draft until §A …" warning
+> as the public notes; ported 29 Sep 2026 (runtimes `356db55`), with `GITHUB_REPOSITORY=rexenv/rexenv` on
+> `tag-notes.sh`, since on that runner the variable names runtimes.
 >
 > **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
 > (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →

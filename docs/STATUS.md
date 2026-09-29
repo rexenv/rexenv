@@ -46,42 +46,42 @@ App version **0.8.10** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 ### Release gates (human, scripted — see the docs named) — 13
 
 - `TODO.md:1770` Next release: the notes wiring runs in CI for the first time
-- `TODO.md:1773` PUBLISH-TESTING §D
-- `TODO.md:1791` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1805` The in-app update's remaining human rows (macOS)
-- `TODO.md:1812` PUBLISH-TESTING §K
-- `TODO.md:1813` PUBLISH-TESTING §F
-- `TODO.md:1814` PUBLISH-TESTING §G
-- `TODO.md:1820` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1826` Tunnel probe session
-- `TODO.md:1830` Intel spot-run
-- `TODO.md:1833` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1873` In-app verifies owed
-- `TODO.md:1885` PUBLISH-TESTING §E / §L
+- `TODO.md:1775` PUBLISH-TESTING §D
+- `TODO.md:1793` Flip the release host back when `rexenv/rexenv` goes public
+- `TODO.md:1807` The in-app update's remaining human rows (macOS)
+- `TODO.md:1814` PUBLISH-TESTING §K
+- `TODO.md:1815` PUBLISH-TESTING §F
+- `TODO.md:1816` PUBLISH-TESTING §G
+- `TODO.md:1822` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1828` Tunnel probe session
+- `TODO.md:1832` Intel spot-run
+- `TODO.md:1835` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1875` In-app verifies owed
+- `TODO.md:1887` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1891` The live pool swap is still L3
-- `TODO.md:1895` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:1903` Install WordPress into an empty LINKED folder
-- `TODO.md:1910` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1893` The live pool swap is still L3
+- `TODO.md:1897` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1905` Install WordPress into an empty LINKED folder
+- `TODO.md:1912` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Menu-bar app — 1
 
-- `TODO.md:1923` Hold the tray menu open while the stack MOVES
+- `TODO.md:1925` Hold the tray menu open while the stack MOVES
 
 ### Blocked on external work — 6
 
-- `TODO.md:1934` `rexenv/website`'s "Release sync" has not run since 0.8.7
-- `TODO.md:1942` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:1953` Xdebug on PHP 8.0
-- `TODO.md:1958` SMAppService privileged helper
-- `TODO.md:1960` Developer ID signing + notarization
-- `TODO.md:1962` OpenLiteSpeed override server
+- `TODO.md:1936` `rexenv/website`'s "Release sync" has not run since 0.8.7
+- `TODO.md:1944` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:1955` Xdebug on PHP 8.0
+- `TODO.md:1960` SMAppService privileged helper
+- `TODO.md:1962` Developer ID signing + notarization
+- `TODO.md:1964` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:1972` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1974` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
