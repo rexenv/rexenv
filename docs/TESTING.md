@@ -1046,6 +1046,13 @@ the same write through `durable::flushed_script` comes back whole. Run the two i
 the wrapper's `sync` is global and would save the plain file too. `/tmp` is emptied at boot — keep
 the source file in `$HOME`.
 
+**When `rexenv0` loses its DNS again** (#741, cause unknown): capture BEFORE repairing —
+`sudo systemd-run --unit=rxbusmon sh -c 'busctl monitor org.freedesktop.resolve1 > /var/tmp/rx-bus.log 2>&1'`
+(a plain `sudo busctl monitor … &` dies with the ssh session) and `sudo resolvectl log-level debug`,
+then look for a `RevertLink` or an empty `SetLinkDNS` and its `Sender=`; `busctl status <sender>`
+names the process. `sudo resolvectl revert rexenv0` reproduces the lost state on purpose;
+`sudo systemctl restart rexenv-dns-route.service` restores it.
+
 `verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
 COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a
 route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today

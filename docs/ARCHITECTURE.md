@@ -447,7 +447,12 @@ Live-proven end to end by `site_stop_start_check`.
   `foreign_route_tlds`, `route_label` (the words a message uses) and `route_contents` (what a takeover
   preview shows beside theirs), and gets privileged command strings — it no longer reads
   `/etc/resolver/<tld>` or scans that directory itself. macOS answers exactly as before, from its resolver
-  files (`platform/resolver_files.rs`: `owner_of`, the two signature scans, and their tests).
+  files (`platform/resolver_files.rs`: `owner_of`, the two signature scans, and their tests). **On Linux
+  "Ours" also needs the route LIVE** (#741): the marker and the current script, AND `resolvectl status
+  rexenv0` showing a DNS scope, our server and `~tld` — the link's settings are bus calls resolved can
+  lose (29 Sep 2026 something reverted them after a re-setup while status said "resolver installed"),
+  and a lost route reading `Absent` is what sends the app to its setup step to re-apply it. The file
+  and the NRPT rule need no such check: on macOS and Windows they ARE the live state.
 - **On Windows a TLD's route is an NRPT rule** (#618, W6 S4): `WindowsDns` reads every rule from the
   registry (`DnsPolicyConfig`, local and Group Policy — readable without elevation, measured) and
   `windows/nrpt_rules.rs` decides. Ours is exactly: a local rule, comment `rexenv`, the one namespace

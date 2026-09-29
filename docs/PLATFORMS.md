@@ -215,6 +215,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **A link with only a link-local address gets NO DNS scope** from systemd-resolved — the dummy
   link must carry a real address (`192.0.2.53/32`, TEST-NET-1), or the route routes nothing.
   0.8.8 shipped without it (#734, measured 28 Sep 2026).
+- **A dummy link's resolved settings are volatile.** They are bus calls, not a file: a resolved
+  restart drops them (the unit is `PartOf=` resolved so it re-applies), and once — cause unknown —
+  something reverted them after a re-setup (29 Sep 2026; `resolvectl revert rexenv0` reproduces the
+  state). The marker alone therefore never says "installed": Linux `route_owner` also asks resolved
+  whether the link routes the TLD (#741).
 - **A VM's or WSL's upstream DNS is the HOST's, and a host running rexenv answers `.rex` itself.**
   That hid the dead route above through every Linux proof for four days. Ask WHICH link answered
   (`resolvectl query -i rexenv0`, `Current Scopes:`), never only what the answer was — the same

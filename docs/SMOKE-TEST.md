@@ -2584,6 +2584,11 @@ reconciled into one row per step, each open row saying what it is still waiting 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
 tunnel guard's normal-stop leg. (The `.deb` in-app update's relaunch closed 29 Sep 2026, 0.8.9 →
 0.8.10.)
+- [ ] **A route resolved lost reads as not installed, and setup brings it back** (ledger #741,
+      0.8.11): `sudo resolvectl revert rexenv0` → `rex status` says the resolver is MISSING, the
+      app's next launch opens its setup step → one polkit → `resolvectl status rexenv0` shows
+      `Current Scopes: DNS`, `127.0.0.1:15353`, `~rex`, and `resolvectl query -i rexenv0 x.rex`
+      answers. 0.8.10 said "resolver installed" throughout.
 - [ ] **A power cut right after Start all leaves the edge able to start** (ledger #740, 0.8.11):
       Start all (one polkit), then `utmctl stop Ubuntu --kill` within 10 s → boot →
       `/etc/systemd/system/rexenv-edge.service` whole (not 0 bytes, not `masked`) and the login's

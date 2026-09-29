@@ -94,22 +94,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   + cut → 0 bytes; the wrapped write + cut → whole). **Still owed:** the installed 0.8.11's Start
   all → cut → boot with the edge up.
 
-- [ ] **Linux: a live (re)setup leaves `rexenv0` with NO DNS scope when systemd-networkd runs** —
-  `.rex` then resolves only if something upstream answers it (29 Sep 2026, 22.04 VM, 0.8.10):
-  Remove system changes → re-setup (one polkit each, both correct) → `rexenv0` up with
-  192.0.2.53/32 and the marker written, the route script's `resolvectl dns/domain` logged as set
-  ("Bus client set DNS server list to: 127.0.0.1:15353"), yet `resolvectl status rexenv0` said
-  `Current Scopes: none` a minute later and `resolvectl query anything.rex` answered on `enp0s1` —
-  the VM's upstream (the Mac, which serves `.rex` itself), the 28 Sep "resolved only where another
-  machine answered it" shape again. Re-running the same script by hand → scope DNS, and it held; a
-  reboot → scope DNS. The link is created fresh in both cases; on a live setup networkd adopts the
-  brand-new link ("Link UP / Gained carrier / Gained IPv6LL") in the same instant, and resolved
-  appears to drop the bus-set DNS while it does. The 28 Sep P1 proof ran over an EXISTING link, so
-  it never met this. Likely hits a fresh machine's first-run too whenever networkd is active
-  (servers, cloud images; stock Ubuntu Desktop runs NetworkManager only — unmeasured). *Done
-  when:* the route script applies its `resolvectl` settings only after the link has settled (or
-  re-applies until `resolvectl dns rexenv0` shows the server), and a teardown → re-setup on the VM
-  keeps `Current Scopes: DNS` with the upstream unable to answer `.rex`.
+- [ ] **Linux: `rexenv0` lost its DNS server and domain once, after a re-setup — cause unknown;
+  since 0.8.11 the app notices and offers setup again** (29 Sep 2026, 22.04 VM, 0.8.10): Remove
+  system changes → re-setup (one polkit each, both correct), the unit logged "Bus client set DNS
+  server list to: 127.0.0.1:15353", yet a minute later `resolvectl status rexenv0` said `Current
+  Scopes: none` with no server and no domain, and `.rex` answered on `enp0s1` — the VM's upstream
+  (the Mac serves `.rex` itself), the 28 Sep shape again. **That state is exactly what `resolvectl
+  revert rexenv0` produces** (measured the same day), so some client called RevertLink on the link.
+  **Not the networkd race first suspected here:** six reproductions failed — the script fast and
+  slow on a test link, the real unit's stop → restart, three NetworkManager DNS reloads, and the
+  exact sequence again (teardown → relaunch → onboarding setup) under `busctl monitor`, which saw
+  only rexenv's own three calls; 100 s later the link still routed. **Shipped for 0.8.11 (ledger
+  #741):** Linux `route_owner` counts a marker as ours only while `resolvectl status rexenv0` shows
+  a DNS scope, our server and `~tld`; otherwise the route reads as not installed, `rex status` says
+  MISSING, and the app's setup step re-applies it with one polkit (`systemctl restart` of the unit —
+  measured to restore it). **Still open:** WHO reverts it — on the next sighting, run the capture in
+  `docs/TESTING.md` §"Proving a Linux claim" before touching anything — and the installed 0.8.11's
+  own run of the detection (SMOKE Linux).
 
 - [ ] **macOS: the first Start all after replacing the app with a new build can fail
   "Bootstrap failed: 5: Input/output error" and leave the edge down** (29 Sep 2026, 15.8 VM,

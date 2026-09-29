@@ -101,6 +101,53 @@ pub(crate) fn owner_given(marker: ResolverOwner, installed_script: Option<&str>,
         other => other,
     }
 }
+/// The argv that asks systemd-resolved what it holds for the link — read-only, no root.
+pub(crate) const LINK_STATUS_ARGS: [&str; 2] = ["status", LINK];
+
+/// A marker of ours counts as INSTALLED only while the link is LIVE too: `resolvectl status
+/// rexenv0` names a DNS scope, our server and `~<tld>`. `status` is that command's stdout, or
+/// `Err(())` when it failed — no such link, resolved not answering — and both mean `.tld` is not
+/// routed here. The caller passes `None` only when it cannot ask at all (no `resolvectl`), which
+/// keeps the marker's verdict: guessing "not live" would put a working machine through setup.
+///
+/// **Why (29 Sep 2026, the 22.04 VM, 0.8.10):** after Remove system changes and a re-setup, the
+/// marker and the current script were both in place and the unit had logged "Bus client set DNS
+/// server list to: 127.0.0.1:15353" — yet a minute later the link had no server, no domain,
+/// `Current Scopes: none` (its `-DefaultRoute` kept), and `.rex` resolved only because the VM's
+/// upstream (the Mac) answers it. Six attempts to reproduce it failed, the same sequence included,
+/// with `busctl monitor` showing no other client. So the fix is not a guess at the cause: a route
+/// that is not live reads as not installed, which is what sends the app to its setup step again
+/// (one polkit, the unit re-applies) — the same door the stale-script rule above uses.
+pub(crate) fn live_given(marker: ResolverOwner, status: Option<Result<&str, ()>>, tld: &str, port: u16) -> ResolverOwner {
+    match (marker, status) {
+        (ResolverOwner::Ours, Some(Ok(s))) if !link_routes(s, tld, port) => ResolverOwner::Absent,
+        (ResolverOwner::Ours, Some(Err(()))) => ResolverOwner::Absent,
+        (other, _) => other,
+    }
+}
+
+/// Does `resolvectl status <link>`'s output route `tld` to our port: a DNS scope, the server,
+/// `~tld`? Values may wrap onto indented lines with no `Key:` of their own, and a server carries
+/// its own colon (`127.0.0.1:15353`), so a key is only ever `Name: ` with a space.
+fn link_routes(status: &str, tld: &str, port: u16) -> bool {
+    let mut fields: Vec<(String, Vec<String>)> = Vec::new();
+    for line in status.lines() {
+        let t = line.trim();
+        match t.split_once(": ") {
+            Some((k, v)) if !k.is_empty() && k.chars().all(|c| c.is_ascii_alphabetic() || c == ' ') => {
+                fields.push((k.to_string(), v.split_whitespace().map(str::to_string).collect()));
+            }
+            _ => {
+                if let Some((_, vals)) = fields.last_mut() {
+                    vals.extend(t.split_whitespace().map(str::to_string));
+                }
+            }
+        }
+    }
+    let has = |key: &str, want: &str| fields.iter().any(|(k, v)| k == key && v.iter().any(|x| x == want));
+    has("Current Scopes", "DNS") && has("DNS Servers", &format!("127.0.0.1:{port}")) && has("DNS Domain", &format!("~{tld}"))
+}
+
 pub(crate) fn our_tlds(port: u16) -> Vec<String> {
     resolver_files::tlds_matching_signature(Path::new(MARKER_DIR), &signature(port))
 }
@@ -220,6 +267,31 @@ pub(crate) fn restore_command(restores: &[(String, PathBuf)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Ledger #741 — a marker of ours counts as installed only while resolved actually routes the
+    /// TLD through the link. `live` and `lost` are the 22.04 VM's own `resolvectl status rexenv0`,
+    /// verbatim (29 Sep 2026): `lost` is both the failure and what `resolvectl revert rexenv0`
+    /// produces — the server and domain gone, `.rex` then answered on `enp0s1` by the upstream.
+    #[test]
+    fn a_marker_counts_only_while_the_link_routes_the_tld() {
+        let live = "Link 9 (rexenv0)\n    Current Scopes: DNS\n         Protocols: -DefaultRoute +LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported\nCurrent DNS Server: 127.0.0.1:15353\n       DNS Servers: 127.0.0.1:15353\n        DNS Domain: ~rex\n";
+        let lost = "Link 9 (rexenv0)\nCurrent Scopes: none\n     Protocols: -DefaultRoute +LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported\n";
+        let ours = || ResolverOwner::Ours;
+        assert_eq!(live_given(ours(), Some(Ok(live)), "rex", 15353), ResolverOwner::Ours);
+        assert_eq!(live_given(ours(), Some(Ok(lost)), "rex", 15353), ResolverOwner::Absent, "the VM's failure reads as not installed");
+        assert_eq!(live_given(ours(), Some(Ok(live)), "test", 15353), ResolverOwner::Absent, "another TLD is not routed by ~rex");
+        assert_eq!(live_given(ours(), Some(Ok(live)), "rex", 5353), ResolverOwner::Absent, "another port is not ours");
+        let no_scope = live.replace("Current Scopes: DNS", "Current Scopes: none");
+        assert_eq!(live_given(ours(), Some(Ok(&no_scope)), "rex", 15353), ResolverOwner::Absent, "0.8.8's address-less link");
+        let wrapped = "Link 4 (rexenv0)\nCurrent Scopes: DNS\n       DNS Servers: 10.0.0.1\n                    127.0.0.1:15353\n        DNS Domain: ~test\n                    ~rex\n";
+        assert_eq!(live_given(ours(), Some(Ok(wrapped)), "rex", 15353), ResolverOwner::Ours, "values wrapped onto their own lines");
+        assert_eq!(live_given(ours(), Some(Err(())), "rex", 15353), ResolverOwner::Absent, "no link, or resolved not answering");
+        assert_eq!(live_given(ours(), Some(Ok("")), "rex", 15353), ResolverOwner::Absent, "no link: resolvectl says so on stderr and exits 0");
+        assert_eq!(live_given(ours(), None, "rex", 15353), ResolverOwner::Ours, "cannot ask: the marker's verdict stands");
+        assert_eq!(live_given(ResolverOwner::Absent, Some(Ok(live)), "rex", 15353), ResolverOwner::Absent);
+        let foreign = ResolverOwner::Foreign { content: None };
+        assert_eq!(live_given(foreign.clone(), Some(Err(())), "rex", 15353), foreign, "a foreign marker stays foreign");
+    }
 
     /// What the shell's `printf '<arg>'` writes — the inverse of `printf_arg`.
     fn printf_writes(arg: &str) -> String {

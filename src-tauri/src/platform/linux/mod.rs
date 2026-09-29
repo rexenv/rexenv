@@ -176,8 +176,25 @@ impl DnsManager for LinuxDns {
     fn route_contents(&self, port: u16) -> String {
         dnsroute::signature(port)
     }
+    /// Ours only while the link is LIVE too (`dnsroute::live_given`, ledger #741): a route whose
+    /// marker is in place but that resolved no longer routes reads as not installed, so the app
+    /// offers its setup step and the unit re-applies. macOS and Windows need no such check — the
+    /// resolver file and the NRPT rule ARE the live state; nothing else can quietly lose them.
     fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
-        dnsroute::owner_of(tld, port)
+        let marker = dnsroute::owner_of(tld, port);
+        if marker != ResolverOwner::Ours {
+            return marker;
+        }
+        let status = which("resolvectl").map(|r| {
+            crate::platform::command(r)
+                .args(dnsroute::LINK_STATUS_ARGS)
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+                .ok_or(())
+        });
+        dnsroute::live_given(marker, status.as_ref().map(|r| r.as_deref().map_err(|_| ())), tld, port)
     }
     fn our_route_tlds(&self, port: u16) -> Vec<String> {
         dnsroute::our_tlds(port)
