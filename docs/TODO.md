@@ -367,7 +367,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
   `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
   versions, or drop the row and the design note.
-- [ ] **A stopped site's WordPress and Database tabs say nothing true** (seen on Windows,
+- [x] **A stopped site's WordPress and Database tabs say nothing true** (seen on Windows,
   19 Sep 2026; not established as Windows-only). The WordPress tab spins "Loading plugins…"
   indefinitely — wp-cli cannot reach a database that is not running, and the spinner has no end
   state. The Database tab prints the Adminer URL above a BLANK frame, because Adminer is not
@@ -375,6 +375,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   **Logs** tab is the proof they are fixable rather than inherent: it names the file, says
   "WordPress debug logging is off — nothing is being written", and tells you what to turn on.
   Done when: each tab, on a stopped site, says what is not running and offers the start.
+  ✓ **Fixed 29 Sep 2026 (ledger #752):** both tabs ask `useStoppedDependency` — the site's
+  database engine (`databasesStatus`, the Databases page's own 2 s poll and query key) and, for
+  the Database tab, the web tier (`servicesStatus`: Caddy + Nginx, since Adminer is served
+  through the stack) — and while one is down render `StackNeededPanel`: "MySQL is stopped —
+  WordPress's plugins, themes, users and tools read its database — nothing answers while it is
+  down. Start all brings it back…" with a Start all button (the footer's `startServices`); the
+  WordPress sub-panels are not mounted and their wp-cli queries are `enabled: false`, so
+  nothing spins; the panel gives way to the real tab on the next poll after the start. Outside
+  the desktop app (the dev harness) nothing is polled. tsc + eslint; NOT run in the app (a GUI
+  run on a stopped stack is the SMOKE row).
 
 - [ ] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
   URLs (main site is `https://`); `rex site create` names a site after its domain (`s1.rex`) where

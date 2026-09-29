@@ -13,6 +13,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpCircle, Check, ChevronDown, Download, FileUp, Loader2, Lock, Network, Palette, Plus, RefreshCw, Replace, RotateCcw, Eye, EyeOff, KeyRound, Search, Shield, Star, TerminalSquare, Trash2, UserPlus, X } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
+import { StackNeededPanel, useStoppedDependency } from "@/components/common/StackNeededPanel";
+import type { SiteDbEngine } from "@/types";
 import {
   openExternal,
   pickSqlFile,
@@ -417,16 +419,19 @@ const announcedInstalls = new Set<string>();
  *  pass with the wordpress.org update check (slow; a hang when offline) that
  *  only refreshes the update badges when it lands. Mutations invalidate
  *  `["wp-plugins", siteId]`, which prefix-matches both keys. */
-function useWpPlugins(siteId: string) {
+/** `live` = the site's database engine is running: wp-cli reads it, so nothing is
+ *  asked of it while it is down (the tab shows the stopped panel instead of a spinner). */
+function useWpPlugins(siteId: string, live = true) {
   const fast = useQuery({
     queryKey: ["wp-plugins", siteId],
     queryFn: () => wpPlugins(siteId),
+    enabled: live,
     ...WP_LIVE,
   });
   const updates = useQuery({
     queryKey: ["wp-plugins", siteId, "updates"],
     queryFn: () => wpPlugins(siteId, true),
-    enabled: fast.isSuccess,
+    enabled: live && fast.isSuccess,
     ...WP_QUERY,
     staleTime: 5 * 60_000,
   });
@@ -456,16 +461,17 @@ function useWpPlugins(siteId: string) {
 }
 
 /** Themes, same two-pass shape as `useWpPlugins`. */
-function useWpThemes(siteId: string) {
+function useWpThemes(siteId: string, live = true) {
   const fast = useQuery({
     queryKey: ["wp-themes", siteId],
     queryFn: () => wpThemes(siteId),
+    enabled: live,
     ...WP_LIVE,
   });
   const updates = useQuery({
     queryKey: ["wp-themes", siteId, "updates"],
     queryFn: () => wpThemes(siteId, true),
-    enabled: fast.isSuccess,
+    enabled: live && fast.isSuccess,
     ...WP_QUERY,
     staleTime: 5 * 60_000,
   });
@@ -487,13 +493,14 @@ function useWpThemes(siteId: string) {
   };
 }
 
-function useWpUsers(siteId: string) {
+function useWpUsers(siteId: string, live = true) {
   // Users change in wp-admin too, but far less often and this list is mounted
   // for the tab badge even when nobody is looking at it — so it refetches on
   // focus only once it is actually stale, rather than on every alt-tab.
   return useQuery({
     queryKey: ["wp-users", siteId],
     queryFn: () => wpUsers(siteId),
+    enabled: live,
     ...WP_QUERY,
     refetchOnWindowFocus: true,
   });
@@ -557,22 +564,29 @@ export function WordPressManager({
   siteId,
   multisite = "none",
   domain,
+  dbEngine,
 }: {
   siteId: string;
   multisite?: MultisiteMode;
   domain: string;
+  /** The site's database engine — every panel here reads it through wp-cli, so the
+   *  tab says so and offers Start all while it is stopped, instead of asking. */
+  dbEngine: SiteDbEngine;
 }) {
   const isNetwork = multisite !== "none";
   const [sub, setSub] = useState<SubTab>("plugins");
+  // `undefined` until the first poll answers; `null` = the engine is up.
+  const stopped = useStoppedDependency({ engine: dbEngine });
+  const live = stopped === null;
 
   // Counts for the tab badges (react-query reuses the panels' cached results).
-  const { plugins } = useWpPlugins(siteId);
-  const { themes } = useWpThemes(siteId);
-  const { data: users = [] } = useWpUsers(siteId);
+  const { plugins } = useWpPlugins(siteId, live);
+  const { themes } = useWpThemes(siteId, live);
+  const { data: users = [] } = useWpUsers(siteId, live);
   const { data: netSites = [] } = useQuery({
     queryKey: ["wp-network-sites", siteId],
     queryFn: () => wpNetworkSites(siteId),
-    enabled: isNetwork,
+    enabled: isNetwork && live,
     ...WP_QUERY,
   });
 
@@ -585,6 +599,21 @@ export function WordPressManager({
     // convert panel (the §10.1 convert had no post-create UI until this).
     { key: "network", label: "Network", count: isNetwork ? netSites.length : undefined },
   ];
+
+  // Honest-UI: with the engine down, every sub-panel would spin on a wp-cli that
+  // cannot reach the database (Windows, 19 Sep 2026: "Loading plugins…" with no end).
+  // The panels are not mounted, so nothing is asked; the stopped panel says why.
+  if (stopped === undefined) {
+    return <div className="p-6 text-[0.78125rem] text-rex-text-muted">Checking rexenv&apos;s services…</div>;
+  }
+  if (stopped) {
+    return (
+      <StackNeededPanel
+        stopped={stopped}
+        what="WordPress's plugins, themes, users and tools read its database"
+      />
+    );
+  }
 
   return (
     <>

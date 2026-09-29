@@ -365,7 +365,7 @@ export function SiteDetail() {
           )}
 
           {active === "wordpress" && (
-            <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} />
+            <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} dbEngine={site.dbEngine} />
           )}
           {active === "database" && <DatabaseTab site={site} />}
           {active === "logs" && (

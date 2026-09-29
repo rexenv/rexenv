@@ -1017,6 +1017,12 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       "can't connect" from a click rexenv offered (found by the clean-VM run, 18 Sep 2026).
       ✓ 18 Sep 2026 (same VM; stack Stopped 0/6): the row's quick action, the
       site page's header button and its Quick links tile all disabled with that tooltip.
+- [ ] **With the stack STOPPED (Stop all), open a WordPress site → WordPress tab, then
+      Database tab.** Each shows the stopped panel — "MySQL is stopped — WordPress's plugins,
+      themes, users and tools read its database — nothing answers while it is down." / "The
+      database browser (Adminer) …" — with a **Start all** button; no "Loading plugins…"
+      spinner, no blank Adminer frame (#752). Press Start all in the panel: the real tab
+      appears within a poll or two of the stack coming up. (Windows: the 19 Sep 2026 finding.)
 - [x] With at least two sites serving, row menu → **Stop site** on one. Its pill reads
       **Stopped by you**, and the toast says your other sites keep running.
       ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, CLT-less, build 8437afd9).

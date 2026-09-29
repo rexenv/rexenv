@@ -87,6 +87,16 @@ the shipped UI toward one.
   a sentence describing a rule lives beside the rule, and the DEV harness mocks a fixture
   sentence rather than the real one so the guard it exercises cannot be defeated by its own
   fixture (ledger #534).
+- **A tab that reads a stopped service says so and offers the start.** A stopped site's
+  WordPress tab spun "Loading plugins…" for as long as wp-cli took to give up on a database
+  that was not running, and its Database tab printed the Adminer URL above a blank frame
+  (Windows, 19 Sep 2026) — while the same site's Logs tab named the file, said logging was
+  off and how to turn it on. Both now poll what they depend on (the site's engine; for
+  Adminer, the web tier too) and render `StackNeededPanel` — the service by name, the
+  consequence in one clause, Start all as a button — with the real panels unmounted so
+  nothing is asked of a service that is down (#752). The rule: a panel whose data comes
+  from a service the app itself supervises never spins on that service's absence; it reads
+  the supervisor's own status and says what it says.
 - **Two stopped-nesses, two sentences.** A site can be down because rexenv's
   services are stopped, or because the user stopped THAT site (v44). The pill is
   the same shape either way — the site is not serving, and that is one honest
