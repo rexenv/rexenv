@@ -243,6 +243,22 @@ export function AdminerVersionCard() {
             )}
           </Button>
         )}
+        {/* The revert IS a second press: the pin is a floor and the older tree is
+            kept, so going back is choosing the pinned version again — the same
+            apply, the same checks. Offered only while the choice is newer than the
+            pin; until 30 Sep 2026 the row offered it nowhere (#759). */}
+        {st.effective !== st.pinned && (
+          <Button
+            variant="ghost"
+            disabled={update.isPending}
+            aria-busy={update.isPending}
+            onClick={() => update.mutate(st.pinned)}
+            title={`Go back to Adminer ${st.pinned}, the version this rexenv ships — its files are still on disk; the console restages onto it.`}
+            className="gap-2"
+          >
+            {`Back to ${st.pinned}`}
+          </Button>
+        )}
       </div>
     </div>
   );

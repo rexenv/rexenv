@@ -200,6 +200,7 @@ export const mockAdminerStatus: AdminerStatus = {
   staged: "5.4.2",
   effective: "5.4.2",
   updatable: "6.0.1",
+  pinned: "5.4.2",
 };
 
 /** The browser-dev answer for the update card.

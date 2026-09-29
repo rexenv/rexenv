@@ -689,13 +689,12 @@ updated 5.4.2 → 6.0.2 through it; the pin itself has since moved to 6.1.0, 21 
   `/.adminer.php`. **Tell:** anything but 404 means the real console is reachable
   without the wrapper — no login gate, no frame bound.
   ✓ 18 Sep 2026 (same VM and build).
-- [ ] **A revert is a second press.** There is no revert button by design: the pin
-  is a floor and the old tree is kept, so going back is choosing the older version
-  again. Confirm the older version is still offered after an update.
-  **Open: FAILED 18 Sep 2026 (VM)** — after the update the row reads only `Adminer 6.0.2`;
-  5.4.2 stays on disk but is offered nowhere. Waits on the TODO row "Adminer: the
-  documented revert does not exist" (offer the kept versions, or drop this row and the
-  design note).
+- [ ] **A revert is a second press.** The pin is a floor and the old tree is kept, so going
+  back is choosing the pinned version again: after an update the row shows **Back to
+  <pin>** beside the version (since 30 Sep 2026, #759); press it → the same apply runs
+  (cached files, no download), the toast names the pin, the console restages on the next
+  start. **FAILED 18 Sep 2026 (VM)** — the row read only `Adminer 6.0.2` and offered 5.4.2
+  nowhere; the button is the fix, its press on the VM is owed.
 
 ## PHP ini settings — the revert (18 Aug 2026)
 

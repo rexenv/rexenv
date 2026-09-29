@@ -625,6 +625,8 @@ export interface AdminerStatus {
   /** What it WILL serve: the choice, floored by the pin this build ships, and
    *  vouched by the verified catalog. */
   effective: string;
+  /** The version this build ships — the floor, and what "Back to …" returns to. */
+  pinned: string;
   /** A newer version a VERIFIED manifest offers, or null. */
   updatable: string | null;
 }

@@ -703,7 +703,7 @@ export async function adminerUpdateCheck(): Promise<AdminerStatus> {
  *  Returns the RE-MEASURED row rather than a success flag, so there is no field
  *  the frontend can assert and the backend can get wrong. */
 export async function adminerUpdateApply(version: string): Promise<AdminerStatus> {
-  if (!isTauri()) return { staged: version, effective: version, updatable: null };
+  if (!isTauri()) return { staged: version, effective: version, updatable: null, pinned: mockAdminerStatus.pinned };
   return invoke<AdminerStatus>("adminer_update_apply", { version });
 }
 

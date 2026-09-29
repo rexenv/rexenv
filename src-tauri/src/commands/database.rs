@@ -206,6 +206,11 @@ pub struct AdminerStatus {
     pub effective: String,
     /// A newer version a VERIFIED manifest offers, or `None`.
     pub updatable: Option<String>,
+    /// The version this build ships — the floor, and the one a revert goes back to.
+    /// The older tree stays on disk after an update, but until 30 Sep 2026 nothing offered
+    /// it: the row read only "Adminer 6.0.2" and SMOKE's "a revert is a second press" could
+    /// not be pressed (#759). Sent so the row can offer the pin whenever the choice is newer.
+    pub pinned: String,
 }
 
 /// Point the console at the app's palette. `dark` or `light` — the frontend
@@ -240,6 +245,7 @@ fn adminer_row(
     let effective = crate::core::adminer::effective_version(platform, conn);
     AdminerStatus {
         staged: crate::core::adminer::staged_version(platform),
+        pinned: crate::core::binaries::pins().adminer.to_string(),
         // The machine's arch, even though the family maps it to `ANY_ARCH`:
         // passing a placeholder here would work today and be a lie the day a
         // family's `row_arch` stops ignoring it.

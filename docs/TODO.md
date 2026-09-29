@@ -383,10 +383,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   is reported one poll later. L0 on the rule + TEXT on the watchdog, plant-proven. Not run on the
   VM (the next §A's site creates are the run: no `edge-blocked` toast).
 
-- [ ] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
+- [x] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
   row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
   `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
-  versions, or drop the row and the design note.
+  versions, or drop the row and the design note. ✓ **Offered, 30 Sep 2026 (ledger #759):**
+  `AdminerStatus` carries `pinned` and the row shows "Back to <pin>" whenever the choice is newer
+  than the pin — the same `adminer_update_apply`, with the pin as the version (always in the
+  manifest, its tree still cached), so the revert is literally a second press. tsc + eslint; the
+  press on the VM is SMOKE's row, now pressable.
 - [x] **A stopped site's WordPress and Database tabs say nothing true** (seen on Windows,
   19 Sep 2026; not established as Windows-only). The WordPress tab spins "Loading plugins…"
   indefinitely — wp-cli cannot reach a database that is not running, and the spinner has no end

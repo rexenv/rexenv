@@ -4077,15 +4077,15 @@ pub(crate) mod tests {
         fn set_mail_catch_all<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("mail catch {enabled}")); Box::pin(async { Ok(()) }) }
         fn set_engine_version<'a>(&'a self, key: String, version: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("engine {key} {version}")); Box::pin(async { Ok(()) }) }
         fn adminer_status<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
-            Box::pin(async { Ok(crate::commands::database::AdminerStatus { staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
+            Box::pin(async { Ok(crate::commands::database::AdminerStatus { pinned: "5.4.2".into(), staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
         }
         fn adminer_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
             self.calls.lock().unwrap().push("adminer check".into());
-            Box::pin(async { Ok(crate::commands::database::AdminerStatus { staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
+            Box::pin(async { Ok(crate::commands::database::AdminerStatus { pinned: "5.4.2".into(), staged: Some("5.4.4".into()), effective: "5.4.4".into(), updatable: Some("5.4.5".into()) }) })
         }
         fn adminer_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>> {
             self.calls.lock().unwrap().push(format!("adminer apply {version}"));
-            Box::pin(async move { Ok(crate::commands::database::AdminerStatus { staged: Some(version.clone()), effective: version, updatable: None }) })
+            Box::pin(async move { Ok(crate::commands::database::AdminerStatus { pinned: "5.4.2".into(), staged: Some(version.clone()), effective: version, updatable: None }) })
         }
         fn adminer_set_theme<'a>(&'a self, theme: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("adminer theme {theme}")); Box::pin(async { Ok(()) }) }
         fn downloads<'a>(&'a self) -> OpFuture<'a, Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>> {
