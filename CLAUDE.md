@@ -34,7 +34,7 @@ headers saying "not started" about shipped features. Derived beats typed.
 | `reconcile-todo` | TODO.md has ticked rows, or after a release — `scripts/todo-reconcile.py` + the four judgement shapes |
 | `ledger-row` | you wrote or changed an invariant comment — the row, the verdict, the tally, same commit |
 | `live-check` | an L1 proof is owed, or "run it live" — examples by tier, fixture-owned everything |
-| `release` | bump / tag / release — the order, the four manifests, the CI build of every OS, the human gates the agent cannot run |
+| `release` | bump / tag / release — the order, the four manifests, the CI build of every OS, the per-OS smoke gates, run on the test machines (only UAC / second-browser / Publish go to the owner) |
 | `all-platforms` | designing or building ANY feature or fix — the common/per-OS split, the three-OS checklist, per-OS proof |
 
 ## All three platforms, in the same change (non-negotiable)
