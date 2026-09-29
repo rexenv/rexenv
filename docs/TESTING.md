@@ -990,6 +990,12 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   confuse it with the app, and it reports to a file beside itself when Explorer (whose
   environment it inherits) started it. Does NOT cover the real hop of an installed copy started
   by the installer's Finish page — SMOKE-TEST's Windows section (ledger #692).
+  **The hop drops the launch's arguments** (`explorer.exe <exe>` passes none), and a
+  `schtasks /it` task IS confining — so an app launch made from a smoke harness task hops and
+  arrives without its flags. 29 Sep 2026: a `rexenv.exe --hidden` started from a task reached
+  the app as a plain launch and the login handoff looked broken; the same flag on a `.lnk`
+  opened by Explorer (`Start-Process explorer.exe <lnk>` from the task) is the harness shape that
+  keeps it (`docs/TODO.md`'s hop row).
 - `linux_app_swap_check` (system, Linux) — the Linux updater's two swaps on fixtures the
   sandbox owns: a fixture "AppImage" (a script answering `--print-version`) refused when its
   version disagrees with the signed one, then exchanged in place with the previous copy kept

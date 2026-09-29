@@ -1261,7 +1261,7 @@ hand can prove a spec entry became the item it describes.*
   --hidden`, `lsappinfo` `type="UIElement"`, the log's own "launched at login — staying in
   the menu bar", both sockets answering, no window ever opened; the plist had been rewritten
   on launch to name the current binary with `--hidden`.
-- [ ] **…and the services it manages are up** after that login, with no click — the SAME
+- [x] **…and the services it manages are up** after that login, with no click — the SAME
   toggle since 29 Sep 2026 (ledger #739: the second toggle, "Start services when rexenv
   opens", is gone; the `--hidden` launch runs Start all and a launch you made does not — open
   the app by hand with the stack stopped and nothing starts): `rex status` lists them running and a site
@@ -1269,8 +1269,14 @@ hand can prove a spec entry became the item it describes.*
   drafted 0.8.10):** after a reboot with rexenv open, macOS's "Reopen windows" relaunch (no
   `--hidden`) won the race, the LaunchAgent's `--hidden` launch handed off and exited, nothing
   started — `docs/TODO.md`'s ONE-toggle row has the mechanism. Fixed the same day (the handoff
-  carries the login, ledger #739); **re-run owed on the re-cut 0.8.10**, the same way: rexenv
-  OPEN, toggle on, reboot. The 1 Sep
+  carries the login, ledger #739). **✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`), the same VM, the same
+  way:** "Reopen windows" on (`TALLogoutSavesState` true — the restart dialog's default; restored
+  to the VM's own 0 after), rexenv's window open, stack up, `System Events` restart → macOS
+  relaunched rexenv WITHOUT `--hidden` (pid 354, relaunch list `Hide = 0`), the LaunchAgent's
+  `--hidden` launch handed off (`runs 1, last exit 0`), and the primary ran login-start 12 s after
+  boot: every backend up (a stale `mysql.sock.lock` removed on the way), the edge re-adopted when
+  the boot LaunchDaemon came up 70 s later, `smoke1.rex` / `smoke-pg.rex` / `php74.rex` 200 with
+  the system trust store. Then Stop all, quit, open by hand → 30 s later 0 services running. The 1 Sep
   login recorded the window half above and not the services (the script prints only
   `rex status`'s first three lines); what that login DID show was the DNS race the next row
   exists for — the app won UDP 15353 and served DNS in-process (#442, fixed 2 Sep). Neither
@@ -2446,11 +2452,21 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
 - [x] Every menu item that names a screen brings the window up on it, including from a window
       that was closed. ✓ 21 Sep 2026 (VM, 0.8.5): Services, Databases, Mail, Tunnels, All sites…
       — each opened the window ON that screen.
-- [ ] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
+- [x] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
       notification area and Task Manager's Startup tab): Stop all, turn it on, sign out and in →
       `rexenv.exe --hidden` under `explorer.exe`, no window, and `rex status` lists the backends
       running with no click. Then Stop all and open the app from the Start menu → nothing
-      starts (a launch you made is not a login). **Open: owed on 0.8.10.**
+      starts (a launch you made is not a login). **✓ 29 Sep 2026, Win11 ARM VM, the re-cut 0.8.10 (`a470c1af`)
+      installed over 0.8.9 with `setup.exe /S`:** one toggle with the Windows sentence; on → the Run
+      key `"…\rexenv.exe" --hidden`; a one-shot autologon (`AutoLogonCount 1`, every Winlogon value
+      removed again after — they were absent before) and a reboot → `rexenv.exe --hidden` under
+      `explorer.exe`, "launched at login — staying in the notification area", all seven services
+      running incl. Caddy, `lm.rex` / `lv.rex` 200, a stale `postmaster.pid` removed; `rex stop`, close,
+      Start-menu open → 30 s later all idle. The handoff too: a hand-opened primary + a `--hidden`
+      shortcut opened through Explorer → the second copy exited and the stack came up. **Trap for
+      the next tester:** a `--hidden` launch from a Task Scheduler task is job-confined, hops
+      through Explorer and LOSES its arguments (`docs/TODO.md`), so it reads as a plain launch —
+      use a `.lnk` with the argument, opened by Explorer.
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of
@@ -2562,8 +2578,14 @@ reconciled into one row per step, each open row saying what it is still waiting 
 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
 tunnel guard's normal-stop leg · the `.deb` in-app update's relaunch (0.8.9 → the next release).
-**Owed through the next release, inside ticked rows:** a re-setup is ONE polkit dialog (#723,
-fixed after 0.8.9 — P1) and the AppImage's kept previous copy is swept (its row's next run).
+**Owed through the next release, inside ticked rows:** the AppImage's kept previous copy is swept
+(its row's next run). A re-setup is ONE polkit dialog (#723) — **✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`)**:
+Settings → Remove system changes → ONE polkit (CA file, both NSS dbs, `rexenv0`, the markers and
+both units gone; `rex status` "DNS DOWN (removed) · resolver MISSING · CA NOT TRUSTED"), then the
+next launch's onboarding → "Linux will ask for permission (resolver + certificate)" → ONE polkit
+→ "Domains & SSL are ready", CA back in both stores, `rexenv0` 192.0.2.53/32. **But `rexenv0` had
+no DNS scope after that live re-setup** (`.rex` answered only because the VM's upstream — the Mac
+— answers it); a reboot restored the scope. `docs/TODO.md`.
 
 Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / AppImage) · rexenv version ____
 
@@ -2757,11 +2779,21 @@ rexenv0 <name>` and read `Current Scopes:`.
 - [ ] The guard's normal-stop leg: stop the share from the app → the guard exits at once, no
       stray process. **Open: owed since 24 Sep** (and `tunnel_parent_death_check` has no Linux tier entry).
 
-- [ ] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
+- [x] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
       system tray and `~/.config/autostart`): Stop all, turn it on, reboot into the autologin →
       `rexenv --hidden` with no window and `rex status` listing the backends running with no
-      click. Then Stop all and launch the app from the desktop → nothing starts. **Open: owed on
-      0.8.10** (the 24 Sep row above ran with the two old toggles).
+      click. Then Stop all and launch the app from the desktop → nothing starts. **✓ 29 Sep 2026,
+      22.04 arm64 VM, the re-cut 0.8.10 (`a470c1af`) deb over 0.8.9 (`apt install`):** the autostart entry
+      `Exec="/usr/bin/rexenv" --hidden`; Start all (one polkit) → `sync` → reboot → `rexenv --hidden`,
+      no visible window, "launched at login — staying in the system tray", all seven services
+      running incl. the edge, `lv.rex` / `lm.rex` / `guard.rex` 200; Stop all, quit, launch from the
+      GNOME shell → the window, "Stopped 0/6", nothing started. The handoff: a hand-launched primary
+      + `rexenv --hidden` → "handed this login launch to it (it runs Start all)", exit 0, backends up
+      (the edge skipped with its honest line — Stop all had disabled it, and login never prompts).
+      A hard kill (`utmctl stop --kill`) with the stack up → `mysql.sock.lock: pid 2009 is now
+      /usr/bin/rexenv, not the server that wrote it` — removed, MySQL back (ledger #735's exact
+      shape). The same kill 30 s after a Start all left `rexenv-edge.service` ZERO bytes (masked) —
+      `docs/TODO.md`.
 
 ### P5 — the GUI
 - [x] ✓ 24 Sep 2026 (VM): the COLOUR tray icon in GNOME's top bar (needs

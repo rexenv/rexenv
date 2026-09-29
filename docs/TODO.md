@@ -50,7 +50,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **"Start rexenv at login" is ONE toggle — prove the merged login on 0.8.10, all three OSes**
+- [x] **"Start rexenv at login" is ONE toggle — prove the merged login on 0.8.10, all three OSes**
   (owner, 29 Sep 2026: "ekta toggle on korlei auto service on hoye jai login er pore"; ledger
   #739). Built 29 Sep: the login item's `--hidden` launch runs Start all and nothing else does;
   the `start_services_on_launch` setting is retired and swept; the description is each OS's
@@ -71,7 +71,66 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (before 0.8.10 publishes):** the handoff carries `login: true` (`cli_server::handoff_request`,
   one line for the unix socket and Windows' pipe), and the running instance runs login-start —
   once per process, held until setup is ready (`LoginStartGate`) — without raising its window.
-  L0 + four plants (ledger #739). **Still owed:** the same VM reboot on the re-cut 0.8.10.
+  L0 + four plants (ledger #739). ✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`), both halves
+  and the handoff on every OS — the macOS 15.8 VM (a loginwindow restart with Reopen windows on:
+  the relaunch without `--hidden` held the lock, the `--hidden` launch handed off, the stack came
+  up), the Win11 ARM VM (autologon reboot → `--hidden` under `explorer.exe`, stack up) and the
+  Ubuntu 22.04 VM (autologin reboot, stack up) — SMOKE's three rows carry the evidence. The
+  runs found the five rows below.
+
+- [ ] **Linux: a unit file written just before a power loss comes back EMPTY — the edge is then
+  masked and never starts** (29 Sep 2026, 22.04 VM, 0.8.10): Start all (one polkit), then a hard
+  kill ~30 s later (`utmctl stop --kill`) → after the boot `/etc/systemd/system/rexenv-edge.service`
+  was 0 bytes, `systemctl is-enabled` said `masked` (systemd reads an empty unit as masked), and
+  every login-start said "the HTTPS edge needs Start all" until one ran. ext4's delayed allocation:
+  the file's data was never flushed, its `multi-user.target.wants` symlink (metadata, journaled)
+  was. The privileged step writes `rexenv-edge.service`, `rexenv-dns-route.service`, the route
+  script, `/etc/rexenv/dns.d/*` and the CA file with no `sync`. *Done when:* the step flushes what
+  it wrote before it returns (`sync -f` on each file, or write-temp + fsync + rename), and the same
+  hard kill 5 s after a Start all boots with the edge up (a VM run, not an assertion).
+
+- [ ] **Linux: a live (re)setup leaves `rexenv0` with NO DNS scope when systemd-networkd runs** —
+  `.rex` then resolves only if something upstream answers it (29 Sep 2026, 22.04 VM, 0.8.10):
+  Remove system changes → re-setup (one polkit each, both correct) → `rexenv0` up with
+  192.0.2.53/32 and the marker written, the route script's `resolvectl dns/domain` logged as set
+  ("Bus client set DNS server list to: 127.0.0.1:15353"), yet `resolvectl status rexenv0` said
+  `Current Scopes: none` a minute later and `resolvectl query anything.rex` answered on `enp0s1` —
+  the VM's upstream (the Mac, which serves `.rex` itself), the 28 Sep "resolved only where another
+  machine answered it" shape again. Re-running the same script by hand → scope DNS, and it held; a
+  reboot → scope DNS. The link is created fresh in both cases; on a live setup networkd adopts the
+  brand-new link ("Link UP / Gained carrier / Gained IPv6LL") in the same instant, and resolved
+  appears to drop the bus-set DNS while it does. The 28 Sep P1 proof ran over an EXISTING link, so
+  it never met this. Likely hits a fresh machine's first-run too whenever networkd is active
+  (servers, cloud images; stock Ubuntu Desktop runs NetworkManager only — unmeasured). *Done
+  when:* the route script applies its `resolvectl` settings only after the link has settled (or
+  re-applies until `resolvectl dns rexenv0` shows the server), and a teardown → re-setup on the VM
+  keeps `Current Scopes: DNS` with the upstream unable to answer `.rex`.
+
+- [ ] **macOS: the first Start all after replacing the app with a new build can fail
+  "Bootstrap failed: 5: Input/output error" and leave the edge down** (29 Sep 2026, 15.8 VM,
+  0.8.10 `7a5ff08` → `a470c1af` by hand, the boot LaunchDaemon's edge up and adopted): `rex start`
+  asked for the edge password although the edge answered on its admin socket, then the daemon was
+  booted out (14:14:46 "edge went down") and its bootstrap refused with EIO — the classic answer
+  when the label is still tearing down — and the watchdog reported "KeepAlive daemon is not
+  bringing it back". The second Start all, same prompt, succeeded. Two questions: why an adoptable
+  edge was re-installed at all after a same-version replace, and why the bootstrap does not wait
+  for the bootout. Not seen through the in-app updater (it restarts the edge its own way); owed a
+  look before the next release.
+
+- [ ] **Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch
+  becomes a plain one** (29 Sep 2026, Win11 VM): `platform::windows::job_guard::relaunch_outside_confining_job`
+  reopens `explorer.exe <exe>` — Explorer cannot pass arguments — before the pipe claim, so the
+  relaunched copy is not a login launch (no login-start, a window). The Run key's login launch is
+  Explorer's child and never hops, so the toggle is unaffected; a Task Scheduler task (every smoke
+  harness) is confined and does hop, which is how it was found. *Done when:* the hop carries the
+  flag (a `.lnk` with arguments opened by Explorer is how the smoke run did it), or the guard says
+  in a comment why a hopped launch may lose it.
+
+- [ ] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
+  merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not
+  yet up and surfaced "services are up, but the HTTPS edge needs Start all (one admin prompt)";
+  the daemon came up by itself 70 s later and was re-adopted. The sentence tells the user to do
+  something that is not needed. Wait for the boot daemon (bounded) before calling the edge skipped.
 
 - [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every

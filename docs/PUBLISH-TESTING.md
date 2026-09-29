@@ -103,33 +103,32 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026) — §A0 by hand and §A on the 15.8 VM green
+## A) ✅ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026, the re-cut) — §A0 by hand and §A on the 15.8 VM green
 
-`rexenv_0.8.10_universal.dmg` sha256 `4553902a41d29a04932c977cce0458940f6b44db5f498c94bc87402e3a2728e1`
-+ `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both OK), source `7a5ff084` (tag
-`v0.8.10`; a first tag at `9dcc8b67` was moved after its Windows lane failed one test — no draft
-was made from it), `rexenv/runtimes` run 36530417624, all four lanes green, 16 assets. **§A0 ✅ by
-hand on the downloaded assets:** `rexenv` and `rex` both `x86_64 arm64`, `Dist_Archive_Command`
-×5 and the update key in EACH slice, `minos 13.0` in both, codesign valid, Info.plist `0.8.10`
-— on the dmg's app AND the archive's; the archive's one top-level entry is `rexenv.app/`, no
-AppleDouble members; dmg app == archive app (`diff -rq`). **The draft's body is the tag body
-verbatim** (ledger #736). **§A ✅ measured on the 15.8 arm64 UTM VM as an UPGRADED INSTALL from
-0.8.9** (four sites, one of them stopped by the user; the dmg `scp`'d and its hash re-checked
-there, the DNS agent booted out before the swap, `rm -rf /Applications/rexenv.app`, the app
-copied out of the mounted dmg, a synthetic `0083` quarantine on the bundle; `spctl`: rejected):
-Gatekeeper **"rexenv" Not Opened** ("Apple could not verify…", Done / Move to Bin — no
-"damaged"); Done → nothing running; after `sudo xattr -rd` the app launched into its Sites list,
-`rex --version` → `rex 0.8.10 (7a5ff08) · app rexenv 0.8.10 (7a5ff08)`, the DNS agent back
-(`answering (agent)`) with no hand; `rex start` → every service running, `smoke1.rex`,
-`smoke-pg.rex`, `php74.rex` **200 over HTTPS with the system trust store** (verify 0),
-`smoke-lv.rex` 503 = rexenv's "This site is stopped" page (the user's own stop, kept); GUI
-Stop all → the branded prompt "rexenv wants to stop its HTTPS server on ports 80 and 443" →
-every service idle, :443 closed, the edge daemon gone from launchd; GUI Start all → the branded
-start prompt → all running, the same three 200s. No crash report. **Seen, both known rows in
-`docs/TODO.md`:** one "DNS stopped unexpectedly — restarted automatically" toast during Start all
-(the health probe's agent churn) and one `edge-blocked` → `edge-unblocked` pair 11 s apart at
-launch (the edge wire probe). **Not run:** the clean-Mac list, the Windows and Linux installers
-from this draft, the in-app updates (after Publish).
+`rexenv_0.8.10_universal.dmg` sha256 `3414c4fd7bbf8c1a0065f0e9f24e5604f86064d6496b6fdc079480f62e795839`
++ `.app.tar.gz` (`shasum -c` against the attached `.sha256`: both OK; the arm64 deb and the
+`setup.exe` too), source `a470c1af` (tag `v0.8.10`), `rexenv/runtimes` run 36535772891, all four
+lanes green, 16 assets, the body the tag's verbatim (ledger #736). **§A0 ✅ by hand on the
+downloaded assets:** `rexenv` and `rex` both `x86_64 arm64`, `Dist_Archive_Command` ×5 and the
+update key in EACH slice, `minos 13.0` in both, codesign valid, Info.plist `0.8.10` — on the dmg's
+app AND the archive's; one top-level `rexenv.app/`, no AppleDouble; dmg app == archive app.
+**§A ✅ on the 15.8 arm64 UTM VM, over an installed 0.8.10 (`7a5ff08`)** — the dmg `scp`'d
+(hash re-checked there), the DNS agent booted out, `rm -rf` the app, copied out of the mounted
+dmg, a synthetic `0083` quarantine: Gatekeeper **"rexenv" Not Opened** (a translocated copy waited
+behind it); Done → nothing running; `sudo xattr -rd` → launched, `rex 0.8.10 (a470c1a) · app
+rexenv 0.8.10 (a470c1a)`, no crash report. The same VM then ran SMOKE's login rows (all three OSes
+— `docs/SMOKE-TEST.md`), which is why this draft exists at all:
+
+**The first 0.8.10 draft was withdrawn before anyone could publish it.** Tag at `7a5ff084`
+(the one before it, at `9dcc8b67`, failed its Windows lane on a test that asserted a `/`-joined
+path — no draft), run 36530417624, dmg `4553902a…`: §A0 and §A both green on it, and then the
+login smoke on the same VM failed — with rexenv open at a reboot, macOS's Reopen-windows relaunch
+won the race and the `--hidden` launch's handoff dropped the login (ledger #739, `docs/TODO.md`).
+Fixed in `a470c1af`; that draft deleted, the unreleased tag moved, the pipeline re-run. Along the
+way the first Start all over the replaced app failed once with "Bootstrap failed: 5: Input/output
+error" (edge down; the second succeeded) — a TODO row.
+
+**Not run:** the clean-Mac list, the in-app updates (descriptors — after Publish).
 
 ## A) ✅ 0.8.9 — DRAFTED on the tap by CI (28 Sep 2026)
 

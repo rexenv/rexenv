@@ -132,5 +132,10 @@ recipe. The tap stays the public home of the artefacts while the source is priva
   16 assets. The first run of the notes wiring in the LIVE pipeline (runtimes `356db55`, ported
   at this cut — `63e602ac` had fixed only this repo's copy): the `versions` step passed on the
   real tag and the draft's body is the tag body verbatim, no "Draft until" line.
+  That draft was then WITHDRAWN (never published): the login smoke on the VM failed on it
+  (ledger #739). Fixed in `a470c1af`, the draft deleted, the unreleased tag moved a second time,
+  run 36535772891 green on all four lanes, 16 assets — the draft that ships. Three tag positions
+  for one version, zero published bytes re-issued: the pre-push guard re-checked each, and the
+  `publish` job's "release already exists" refusal is why the stale draft had to go first.
 - A Linux 22.04 x86_64 **run** of the floor deb: the Dell's WSL gets an Ubuntu-22.04 distro for
   it (in progress).
