@@ -428,7 +428,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the sentence names the fix), by Start at login's enable, and kept-as-recorded by its refresh.
   L0 on each + TEXT on the three launchd writers and the CLI arm, plant-proven ×5. Not run live
   (the multisite create and the zip launch are SMOKE rows).
-- [ ] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
+- [x] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
   Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
   `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all
   six first-run components (ledger #676 — fixed for single binaries by reading the load
@@ -439,6 +439,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   command's padded slot when shorter, which `@loader_path/../lib/x` usually is; longer
   needs the `-headerpad` slack Homebrew bottles are built with — measure before building).
   Done when: a clean user on the VM installs Redis with `xcode-select -p` failing.
+  ✓ **The in-place Mach-O rewriter built 30 Sep 2026 (ledger #760):** `core::macho::rewrite_dylib_paths`
+  re-lays out the load-command region itself — in place when the new path fits, into the
+  header pad (`-headerpad_max_install_names`, which every Homebrew bottle carries) when it is
+  longer, and refuses byte-identically when even the pad is too small — and both relink paths
+  (`relink_into_tree` for bundles, `relink_to_system_libs` for single binaries) call it first,
+  reaching `install_name_tool` only for a path that does not fit. Every bottle path rexenv
+  rewrites is SHORTER than the `@@HOMEBREW_*@@` placeholder it replaces, so the CLT is never
+  reached for a bundle rexenv ships; signing stays last and is base macOS. L0 on a synthetic
+  Mach-O (shrink in place, grow into the pad, refuse beyond it, nothing-to-do, not-a-Mach-O) and
+  a CLT-gated test on a REAL cached `libcrypto.3.dylib` (RAN on the dev Mac, 30 Sep 2026 (the tools present) — plus TEXT `the_relink_reaches_the_command_line_tools_only_when_a_path_does_not_fit` (neither relink path names the tools; `rewrite_load_commands` names them only under `NoRoom`); plant-proven ×2 (the room check dropped → the refusal leg red; `relink_into_tree` back on the tools → the TEXT red)). The clean-VM Redis install
+  with `xcode-select -p` failing is the run still owed (SMOKE).
 - [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
   `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
   and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs

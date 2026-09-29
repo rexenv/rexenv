@@ -2145,6 +2145,7 @@ impl MacosBinaryProvider {
     /// `install_name_tool` is reached only when a rewrite is actually needed,
     /// and then says plainly that it needs the tools (`clt_preflight`).
     fn relink_to_system_libs(path: &Path) -> Result<()> {
+        let mut changes: Vec<(String, String)> = Vec::new();
         for dep in Self::load_command_deps(path)? {
             if dep.starts_with("/usr/lib/") || dep.starts_with("/System/") {
                 continue; // already a system lib
@@ -2152,9 +2153,43 @@ impl MacosBinaryProvider {
             let target = Self::system_lib_for(&dep).ok_or_else(|| {
                 Error::Other(format!("no macOS system lib for dependency {dep}"))
             })?;
-            Self::install_name_tool(&["-change", &dep, &target], path)?;
+            changes.push((dep, target));
         }
-        Ok(())
+        Self::rewrite_load_commands(path, &changes)
+    }
+
+    /// Apply `(old, new)` load-command changes to one Mach-O: written by rexenv itself
+    /// (`core::macho::rewrite_dylib_paths`, no toolchain), and only when the new paths
+    /// do not fit the header pad — which `install_name_tool` could not fix either, but
+    /// says in its own words — through the Command Line Tools (#760). Every path a
+    /// bottle needs is SHORTER than the placeholder it replaces, so the tool is never
+    /// reached on a bundle rexenv ships; the fallback is for the file this reasoning
+    /// missed, and it fails with the sentence naming `xcode-select --install`.
+    fn rewrite_load_commands(path: &Path, changes: &[(String, String)]) -> Result<()> {
+        if changes.is_empty() {
+            return Ok(());
+        }
+        match crate::core::macho::rewrite_dylib_paths(path, |_, old| {
+            changes.iter().find(|(from, _)| from == old).map(|(_, to)| to.clone())
+        }) {
+            Ok(_) => Ok(()),
+            Err(crate::core::macho::RewriteError::NoRoom { needed, available }) => {
+                log::warn!(
+                    "relink: {} needs {needed} bytes of load commands, the header pad holds {available} — asking install_name_tool",
+                    path.display()
+                );
+                for (old, new) in changes {
+                    let arg = if Self::dylib_id(path)?.as_deref() == Some(old.as_str()) { "-id" } else { "-change" };
+                    if arg == "-id" {
+                        Self::install_name_tool(&["-id", new], path)?;
+                    } else {
+                        Self::install_name_tool(&["-change", old, new], path)?;
+                    }
+                }
+                Ok(())
+            }
+            Err(e) => Err(Error::Other(format!("relinking {}: {e}", path.display()))),
+        }
     }
 
     /// Lexically resolve a `@loader_path`-relative load command against the
@@ -2356,6 +2391,7 @@ impl MacosBinaryProvider {
     /// never publish a tree that can't load.
     fn relink_into_tree(root: &Path, macho: &Path) -> Result<()> {
         let id = Self::dylib_id(macho)?;
+        let mut changes: Vec<(String, String)> = Vec::new();
         if let Some(old) = id
             .as_deref()
             .filter(|d| Self::needs_tree_relink(root, macho, d))
@@ -2364,7 +2400,7 @@ impl MacosBinaryProvider {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .ok_or_else(|| Error::Other(format!("unparseable install name {old}")))?;
-            Self::install_name_tool(&["-id", &Self::loader_path_dep(root, macho, base)?], macho)?;
+            changes.push((old.to_string(), Self::loader_path_dep(root, macho, base)?));
         }
         for dep in Self::load_command_deps(macho)? {
             // A dylib's own ID shows up in -L output — handled above, skip here.
@@ -2382,8 +2418,11 @@ impl MacosBinaryProvider {
                 )));
             }
             let target = Self::loader_path_dep(root, macho, base)?;
-            Self::install_name_tool(&["-change", &dep, &target], macho)?;
+            changes.push((dep, target));
         }
+        // rexenv's own rewriter first; the Command Line Tools only for a path that does
+        // not fit the pad (#760 — the clean-Mac bundle install).
+        Self::rewrite_load_commands(macho, &changes)?;
         // Verify: every load command must now be system or in-tree relative —
         // and "in-tree" means RESOLVED under `root`, not merely spelled with a
         // `@loader_path/` prefix. See `needs_tree_relink`.
@@ -2803,6 +2842,29 @@ mod tests {
             free_port_command(None, "/opt/homebrew/Cellar/ev;il/1.0/bin/x", 43),
             "sudo kill 43"
         );
+    }
+
+    /// Ledger #760 — **the relink paths write load commands themselves; the Command Line
+    /// Tools are reached only on `NoRoom`.** TEXT: neither `relink_into_tree` nor
+    /// `relink_to_system_libs` names `install_name_tool`, and `rewrite_load_commands`
+    /// names it only after the `NoRoom` arm — the shape that failed every bundle
+    /// install on a clean Mac (18 Sep 2026).
+    #[test]
+    fn the_relink_reaches_the_command_line_tools_only_when_a_path_does_not_fit() {
+        let src = crate::core::copy_scan::production_source(include_str!("mod.rs"));
+        let body = |head: &str| {
+            let i = src.find(head).unwrap_or_else(|| panic!("{head}"));
+            let rest = &src[i..];
+            &rest[..rest.find("\n    }\n").expect("the fn's end")]
+        };
+        for f in ["fn relink_into_tree(root: &Path, macho: &Path) -> Result<()> {", "fn relink_to_system_libs(path: &Path) -> Result<()> {"] {
+            let b = body(f);
+            assert!(!b.contains("install_name_tool("), "{f} calls the tools directly again");
+            assert!(b.contains("rewrite_load_commands("), "{f} no longer goes through the rewriter");
+        }
+        let b = body("fn rewrite_load_commands(path: &Path, changes: &[(String, String)]) -> Result<()> {");
+        let pos = |needle: &str| b.find(needle).unwrap_or_else(|| panic!("`{needle}` is gone from rewrite_load_commands"));
+        assert!(pos("rewrite_dylib_paths(") < pos("RewriteError::NoRoom") && pos("RewriteError::NoRoom") < pos("install_name_tool("), "rewriter first, the tools only under NoRoom");
     }
 
     #[test]

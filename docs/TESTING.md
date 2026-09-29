@@ -421,6 +421,11 @@ it can:
   download and no service; leg C is the control (an already-in-tree path must be left
   ALONE, or leg A would pass for the boring reason that the predicate rejects
   everything), and the plant — restoring the old prefix test — fails leg A by name.
+  (Since 30 Sep 2026, #760, the relink is rexenv's own `core::macho::rewrite_dylib_paths`
+  and `install_name_tool` is the fallback for a path that does not fit the header pad; the
+  rewriter's own proof is `the_rewriter_agrees_with_otool_on_a_real_bottle_dylib`, gated on
+  the tools like `the_parser_agrees_with_otool`, against a copy of the cached mariadb
+  `libcrypto` — the tools it replaces are its oracle.)
   **`php_fpm_serve` takes a VERSION argument** (`cargo run --example php_fpm_serve
   7.4.33`) for the same reason: the pool config generator emits one file per
   minor, so "php-fpm accepts it" is a claim about each minor's own binary. Reading

@@ -268,6 +268,196 @@ fn read_head(path: &Path, max: usize) -> Option<Vec<u8>> {
     Some(buf)
 }
 
+const LC_SEGMENT_64: u32 = 0x19;
+
+/// Why [`rewrite_dylib_paths`] could not do its job.
+#[derive(Debug, PartialEq, Eq)]
+pub enum RewriteError {
+    /// Not a 64-bit Mach-O this module reads (or malformed) — nothing was touched.
+    NotMachO,
+    /// The new load commands need more bytes than the header pad holds. Nothing was
+    /// touched; the caller's fallback is `install_name_tool`, which cannot do better —
+    /// it is the same pad — but says so in its own words.
+    NoRoom { needed: usize, available: usize },
+    Io(String),
+}
+
+impl std::fmt::Display for RewriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RewriteError::NotMachO => write!(f, "not a 64-bit Mach-O this build can rewrite"),
+            RewriteError::NoRoom { needed, available } => write!(
+                f,
+                "the rewritten load commands need {needed} bytes and the header pad holds {available}"
+            ),
+            RewriteError::Io(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// What [`rewrite_dylib_paths`] did.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Rewritten {
+    /// Load commands whose path changed.
+    pub changed: usize,
+    /// Whether the load-command region grew into the header pad (a longer path).
+    pub grew: bool,
+}
+
+/// Rewrite the dylib load-command paths of `path` IN PLACE — what
+/// `install_name_tool -id` / `-change` do, without the Xcode Command Line Tools.
+///
+/// `change(is_id, old)` answers `Some(new)` for a path to replace (`is_id` for the
+/// dylib's own `LC_ID_DYLIB`, else a load of any flavour). Each rewritten command
+/// is re-laid out as ld writes it (name at offset 24, NUL-padded to 8); the whole
+/// region is rewritten at once and may grow into the header pad — the bytes between
+/// the end of the load commands and the first section, which Homebrew links with
+/// `-headerpad_max_install_names` for exactly this. A region that would not fit is
+/// refused with [`RewriteError::NoRoom`] and the file is left byte-identical.
+///
+/// Why this exists: preparing a Homebrew-bottle bundle (redis / mariadb / httpd /
+/// xdebug) rewrote `@@HOMEBREW_PREFIX@@/…` load commands to `@loader_path/…` with
+/// `install_name_tool`, which IS the Command Line Tools — so on a clean Mac every
+/// bundle install failed with "needs the Xcode Command Line Tools" (the clean-VM
+/// smoke, 18 Sep 2026; ledger #676 closed the single-binary half by READING load
+/// commands here, this closes the bundle half by WRITING them here). Signing is the
+/// caller's, LAST, as before — a rewritten Mach-O has no valid signature until then.
+///
+/// Fat files: the FIRST slice, as [`linked_dylibs`] reads — rexenv's bundles are
+/// thin, so this is the robustness path. The rewrite is a whole-file temp + rename
+/// with the original permissions, so a crash mid-write leaves the old file.
+pub fn rewrite_dylib_paths(
+    path: &Path,
+    mut change: impl FnMut(bool, &str) -> Option<String>,
+) -> std::result::Result<Rewritten, RewriteError> {
+    let mut file = std::fs::read(path).map_err(|e| RewriteError::Io(e.to_string()))?;
+    let start = slice_start(&file).ok_or(RewriteError::NotMachO)?;
+    let hdr = file.get(start..start + 32).ok_or(RewriteError::NotMachO)?;
+    if u32_le(hdr, 0) != Some(MH_MAGIC_64) {
+        return Err(RewriteError::NotMachO);
+    }
+    let ncmds = u32_le(hdr, 16).ok_or(RewriteError::NotMachO)? as usize;
+    let sizeofcmds = u32_le(hdr, 20).ok_or(RewriteError::NotMachO)? as usize;
+    if sizeofcmds > 4 * 1024 * 1024 {
+        return Err(RewriteError::NotMachO);
+    }
+    let region_at = start + 32;
+    let old = file.get(region_at..region_at + sizeofcmds).ok_or(RewriteError::NotMachO)?.to_vec();
+
+    // Walk once: rebuild the region, and find where the pad ends (the first section's
+    // file offset, relative to the slice).
+    let mut new_region: Vec<u8> = Vec::with_capacity(sizeofcmds);
+    let mut first_section: Option<usize> = None;
+    let mut changed = 0;
+    let mut at = 0;
+    for _ in 0..ncmds {
+        let cmd = u32_le(&old, at).ok_or(RewriteError::NotMachO)?;
+        let size = u32_le(&old, at + 4).ok_or(RewriteError::NotMachO)? as usize;
+        if size < 8 {
+            return Err(RewriteError::NotMachO);
+        }
+        let body = old.get(at..at + size).ok_or(RewriteError::NotMachO)?;
+        match cmd {
+            LC_ID_DYLIB | LC_LOAD_DYLIB | LC_LOAD_WEAK_DYLIB | LC_REEXPORT_DYLIB | LC_LOAD_UPWARD_DYLIB => {
+                let name = dylib_name(body).ok_or(RewriteError::NotMachO)?;
+                match change(cmd == LC_ID_DYLIB, &name) {
+                    Some(new) if new != name => {
+                        new_region.extend_from_slice(&dylib_command(cmd, &body[8..24], &new));
+                        changed += 1;
+                    }
+                    _ => new_region.extend_from_slice(body),
+                }
+            }
+            LC_SEGMENT_64 => {
+                // segment_command_64: cmd, cmdsize, segname[16], vmaddr, vmsize, fileoff,
+                // filesize, maxprot, initprot, nsects, flags — then nsects × section_64
+                // (80 bytes: sectname[16], segname[16], addr, size, offset u32 at +48, …).
+                let nsects = u32_le(body, 64).ok_or(RewriteError::NotMachO)? as usize;
+                for i in 0..nsects {
+                    let sect = 72 + i * 80;
+                    let size = u64_le(body, sect + 40).ok_or(RewriteError::NotMachO)?;
+                    let offset = u32_le(body, sect + 48).ok_or(RewriteError::NotMachO)? as usize;
+                    if size > 0 && offset > 0 {
+                        first_section = Some(first_section.map_or(offset, |f| f.min(offset)));
+                    }
+                }
+                new_region.extend_from_slice(body);
+            }
+            _ => new_region.extend_from_slice(body),
+        }
+        at += size;
+    }
+    if changed == 0 {
+        return Ok(Rewritten::default());
+    }
+    // The room: up to the first section, or the old region when no section says.
+    let available = first_section.map_or(sizeofcmds, |f| f.saturating_sub(32));
+    if new_region.len() > available {
+        return Err(RewriteError::NoRoom { needed: new_region.len(), available });
+    }
+    let grew = new_region.len() > sizeofcmds;
+    let clear_to = region_at + sizeofcmds.max(new_region.len());
+    if file.len() < clear_to {
+        return Err(RewriteError::NotMachO);
+    }
+    file[region_at..clear_to].fill(0);
+    file[region_at..region_at + new_region.len()].copy_from_slice(&new_region);
+    file[start + 20..start + 24].copy_from_slice(&(new_region.len() as u32).to_le_bytes());
+
+    // Whole-file temp + rename, the original mode kept: a torn write is never a file.
+    let tmp = path.with_extension(format!("rewrite-{}.tmp", std::process::id()));
+    let write = || -> std::io::Result<()> {
+        std::fs::write(&tmp, &file)?;
+        if let Ok(meta) = std::fs::metadata(path) {
+            let _ = std::fs::set_permissions(&tmp, meta.permissions());
+        }
+        std::fs::rename(&tmp, path)
+    };
+    if let Err(e) = write() {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(RewriteError::Io(e.to_string()));
+    }
+    Ok(Rewritten { changed, grew })
+}
+
+/// A `dylib_command` as ld writes it: `cmd`, `cmdsize`, name offset 24, the 12 bytes of
+/// timestamp / current / compatibility version carried over, the name NUL-padded to 8.
+fn dylib_command(cmd: u32, versions: &[u8], name: &str) -> Vec<u8> {
+    let mut body = name.as_bytes().to_vec();
+    body.push(0);
+    while (24 + body.len()) % 8 != 0 {
+        body.push(0);
+    }
+    let mut c = Vec::with_capacity(24 + body.len());
+    c.extend_from_slice(&cmd.to_le_bytes());
+    c.extend_from_slice(&((24 + body.len()) as u32).to_le_bytes());
+    c.extend_from_slice(&24u32.to_le_bytes());
+    c.extend_from_slice(&versions[..12.min(versions.len())]);
+    while c.len() < 24 {
+        c.push(0);
+    }
+    c.extend_from_slice(&body);
+    c
+}
+
+fn u64_le(b: &[u8], at: usize) -> Option<u64> {
+    let s = b.get(at..at + 8)?;
+    Some(u64::from_le_bytes([s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]]))
+}
+
+/// Where the first 64-bit slice begins: 0 for a thin file, the first `fat_arch`'s
+/// offset for a fat one (the same choice [`walk_load_commands`] makes).
+fn slice_start(file: &[u8]) -> Option<usize> {
+    if u32_be(file, 0)? == FAT_MAGIC {
+        let nfat = u32_be(file, 4)?;
+        if nfat == 0 {
+            return None;
+        }
+        return Some(u32_be(file, 8 + 8)? as usize);
+    }
+    Some(0)
+}
+
 /// `true` when `need` is strictly newer than `host` — i.e. the binary declares a
 /// macOS this machine does not have.
 pub fn newer_than(need: (u32, u32, u32), host: (u32, u32, u32)) -> bool {
@@ -554,6 +744,128 @@ mod tests {
         let full = thin_macho(&[dylib_cmd(LC_LOAD_DYLIB, "/usr/lib/libz.1.dylib")]);
         std::fs::write(&truncated, &full[..full.len() - 4]).unwrap();
         assert_eq!(linked_dylibs(&truncated), None, "a short read must not become 'no deps'");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A `segment_command_64` with one section whose data starts at `first_section`
+    /// (relative to the slice) — what bounds the header pad.
+    fn segment_cmd(first_section: u32) -> Vec<u8> {
+        let mut c = Vec::new();
+        c.extend_from_slice(&LC_SEGMENT_64.to_le_bytes());
+        c.extend_from_slice(&((72 + 80) as u32).to_le_bytes());
+        c.extend_from_slice(b"__TEXT\0\0\0\0\0\0\0\0\0\0");
+        c.extend_from_slice(&0u64.to_le_bytes()); // vmaddr
+        c.extend_from_slice(&0x4000u64.to_le_bytes()); // vmsize
+        c.extend_from_slice(&0u64.to_le_bytes()); // fileoff
+        c.extend_from_slice(&0x4000u64.to_le_bytes()); // filesize
+        c.extend_from_slice(&5u32.to_le_bytes()); // maxprot
+        c.extend_from_slice(&5u32.to_le_bytes()); // initprot
+        c.extend_from_slice(&1u32.to_le_bytes()); // nsects
+        c.extend_from_slice(&0u32.to_le_bytes()); // flags
+        // section_64
+        c.extend_from_slice(b"__text\0\0\0\0\0\0\0\0\0\0");
+        c.extend_from_slice(b"__TEXT\0\0\0\0\0\0\0\0\0\0");
+        c.extend_from_slice(&(first_section as u64).to_le_bytes()); // addr
+        c.extend_from_slice(&64u64.to_le_bytes()); // size
+        c.extend_from_slice(&first_section.to_le_bytes()); // offset
+        c.extend_from_slice(&[0u8; 28]); // align, reloff, nreloc, flags, reserved1-3
+        c
+    }
+
+    /// **The rewriter changes exactly the paths it is asked to, in place when they fit
+    /// and into the header pad when they do not, refuses without touching the file when
+    /// even the pad is too small, and what it wrote is what the reader reads back.**
+    /// A bottle's `@@HOMEBREW_PREFIX@@/…` → `@loader_path/…` shrink is the everyday
+    /// case; the grow case is what `-headerpad_max_install_names` exists for.
+    #[test]
+    fn the_rewriter_relinks_in_place_grows_into_the_pad_and_refuses_beyond_it() {
+        let dir = std::env::temp_dir().join(format!("rexenv-macho-rewrite-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let brew = "@@HOMEBREW_PREFIX@@/opt/openssl@3/lib/libcrypto.3.dylib";
+        let tree = "@loader_path/../lib/libcrypto.3.dylib";
+        let build = |pad_to: u32, deps: &[&str]| {
+            let mut cmds = vec![segment_cmd(pad_to), dylib_cmd(LC_ID_DYLIB, "@@HOMEBREW_PREFIX@@/opt/mariadb/lib/libme.dylib")];
+            cmds.extend(deps.iter().map(|d| dylib_cmd(LC_LOAD_DYLIB, d)));
+            let mut bytes = thin_macho(&cmds);
+            bytes.resize(pad_to as usize + 64, 0xAA); // the "section" data after the pad
+            bytes
+        };
+        // 1. Shrinking paths fit in place: no growth, the region's tail zeroed.
+        let f = dir.join("shrink.dylib");
+        let bytes = build(4096, &[brew, "/usr/lib/libSystem.B.dylib"]);
+        std::fs::write(&f, &bytes).unwrap();
+        let done = rewrite_dylib_paths(&f, |is_id, old| {
+            if is_id { Some("@loader_path/../lib/libme.dylib".into()) } else if old == brew { Some(tree.into()) } else { None }
+        })
+        .unwrap();
+        assert_eq!(done, Rewritten { changed: 2, grew: false });
+        let got = linked_dylibs(&f).unwrap();
+        assert_eq!(got.id.as_deref(), Some("@loader_path/../lib/libme.dylib"));
+        assert_eq!(got.deps, [tree, "/usr/lib/libSystem.B.dylib"]);
+        let after = std::fs::read(&f).unwrap();
+        assert_eq!(after.len(), bytes.len(), "the file's length never changes");
+        assert_eq!(&after[after.len() - 64..], &bytes[bytes.len() - 64..], "the section data is untouched");
+        // 2. A longer path grows into the pad; sizeofcmds follows, ncmds does not.
+        let f = dir.join("grow.dylib");
+        std::fs::write(&f, build(4096, &[tree])).unwrap();
+        let done = rewrite_dylib_paths(&f, |is_id, old| (!is_id && old == tree).then(|| brew.to_string())).unwrap();
+        assert_eq!(done, Rewritten { changed: 1, grew: true });
+        assert_eq!(linked_dylibs(&f).unwrap().deps, [brew]);
+        let hdr = std::fs::read(&f).unwrap();
+        assert_eq!(u32_le(&hdr, 16), Some(3), "ncmds unchanged");
+        // 3. Beyond the pad: refused, and the file is byte-identical.
+        let f = dir.join("noroom.dylib");
+        let tight = build(32 + (72 + 80) + 72 + 64, &[tree]); // the pad ends right after the commands
+        std::fs::write(&f, &tight).unwrap();
+        let err = rewrite_dylib_paths(&f, |_, _| Some("x".repeat(300))).unwrap_err();
+        assert!(matches!(err, RewriteError::NoRoom { .. }), "{err:?}");
+        assert_eq!(std::fs::read(&f).unwrap(), tight, "a refusal touches nothing");
+        // 4. Nothing to change: nothing written (mtime and bytes alike), and not a Mach-O is said.
+        let before = std::fs::read(&f).unwrap();
+        assert_eq!(rewrite_dylib_paths(&f, |_, _| None).unwrap(), Rewritten::default());
+        assert_eq!(std::fs::read(&f).unwrap(), before);
+        std::fs::write(dir.join("text"), b"not a mach-o at all").unwrap();
+        assert_eq!(rewrite_dylib_paths(&dir.join("text"), |_, _| Some("y".into())).unwrap_err(), RewriteError::NotMachO);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The rewriter against a REAL bottle dylib, checked by the tools it replaces: a copy of
+    /// the cached mariadb `libcrypto` gets a long Homebrew id through `install_name_tool`
+    /// (the pad it was built with), the rewriter takes it back to the tree path, and
+    /// `otool -L` reads exactly that; ad-hoc signing then succeeds and verifies. Skips
+    /// (loudly) without the cache or the tools — the dev Mac has both.
+    #[test]
+    fn the_rewriter_agrees_with_otool_on_a_real_bottle_dylib() {
+        let Some(home) = std::env::var_os("HOME") else { return };
+        let bin = std::path::Path::new(&home).join("Library/Application Support/dev.rexenv.rexenv/bin");
+        let clt = std::process::Command::new("/usr/bin/xcode-select").arg("-p").output().is_ok_and(|o| o.status.success());
+        let source = std::fs::read_dir(&bin).ok().into_iter().flatten().flatten()
+            .map(|e| e.path().join("lib/libcrypto.3.dylib"))
+            .find(|p| p.is_file());
+        let (Some(source), true) = (source, clt) else {
+            eprintln!("SKIPPED the_rewriter_agrees_with_otool: needs a cached mariadb bundle under {} and the Command Line Tools", bin.display());
+            return;
+        };
+        let dir = std::env::temp_dir().join(format!("rexenv-macho-real-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("libcrypto.3.dylib");
+        std::fs::copy(&source, &f).unwrap();
+        let long = "/opt/homebrew/Cellar/openssl@3/3.5.1/lib/libcrypto.3.dylib";
+        let st = std::process::Command::new("install_name_tool").args(["-id", long]).arg(&f).status().unwrap();
+        assert!(st.success(), "install_name_tool could not set the long id (no pad?)");
+        assert_eq!(linked_dylibs(&f).unwrap().id.as_deref(), Some(long));
+        let tree = "@loader_path/../lib/libcrypto.3.dylib";
+        let done = rewrite_dylib_paths(&f, |is_id, _| is_id.then(|| tree.to_string())).unwrap();
+        assert_eq!(done.changed, 1);
+        let out = std::process::Command::new("otool").arg("-L").arg(&f).output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.lines().nth(1).is_some_and(|l| l.trim().starts_with(tree)), "otool -L:\n{text}");
+        let sign = std::process::Command::new("codesign").args(["--force", "--sign", "-"]).arg(&f).output().unwrap();
+        assert!(sign.status.success(), "codesign: {}", String::from_utf8_lossy(&sign.stderr));
+        let verify = std::process::Command::new("codesign").args(["--verify", "--strict"]).arg(&f).status().unwrap();
+        assert!(verify.success(), "the rewritten, signed dylib must verify");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
