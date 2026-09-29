@@ -2148,7 +2148,10 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       answers "window opened", no `crash.log` entry.
       (A "rexenv quit unexpectedly" seen once during a HAND swap of the bundle over ssh —
       `SIGKILL (Code Signature Invalid)` at `_dyld_start` — was the DNS agent's KeepAlive
-      relaunching into a half-copied bundle, not the app: the in-app updater swaps atomically.)
+      relaunching into a half-copied bundle, not the app: the in-app updater swaps atomically.
+      Since 30 Sep 2026 (#761) the job waits for `codesign --verify` before it execs, so a
+      hand swap must show NO dialog — and System Settings → General → Login Items must list
+      the job as **rexenv**, not "sh" (`AssociatedBundleIdentifiers`); both owed on this VM.)
 - [x] **Onboarding's Welcome step shows the legacy note once**: "This Mac runs macOS 13.x —
       rexenv works here with older versions of some components and without PostgreSQL and
       PHP 8.0. Everything is available on macOS 15 or later." (on 14: "…without PostgreSQL…"

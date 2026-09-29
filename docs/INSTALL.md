@@ -245,7 +245,9 @@ Two things worth knowing:
 If rexenv cannot replace itself it says why and does not offer the button — for example
 when it is running from the disk image rather than from Applications, or when
 `/Applications` belongs to another account. Each of those comes with the command that
-fixes it.
+fixes it. Dragging a newer `rexenv.app` over the old one in Finder works too: the `.rex`
+resolver (a background job) waits until the new copy is whole before it starts from it,
+so you see no "quit unexpectedly" report — the next launch of rexenv finishes the change.
 
 **Updating by hand** still works and is the fallback: quit rexenv and replace
 `rexenv.app` in Applications with the new `.dmg`'s copy (drag over, replace). Your sites,

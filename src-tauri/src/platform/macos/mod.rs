@@ -1145,6 +1145,23 @@ pub struct MacosDnsAgent;
 /// launchd label for the DNS LaunchAgent — a sub-label of the canonical app
 /// identity, distinct from the app-autostart agent and the root edge daemon.
 const DNS_AGENT_LABEL: &str = "dev.rexenv.rexenv.dns";
+/// The app's bundle identifier — what `AssociatedBundleIdentifiers` names so Login Items
+/// shows the DNS job under rexenv although its program is `/bin/sh` (#761).
+const APP_BUNDLE_ID: &str = "dev.rexenv.rexenv";
+
+/// The shell the DNS job runs, with the app's executable as `$0`: it execs rexenv only once
+/// the bundle's signature verifies. launchd's KeepAlive relaunches the agent the instant it
+/// dies — including while the bundle is being REPLACED (a Finder drag over a running copy,
+/// a hand `cp` over ssh, a kickstart right after a swap) — and an exec into a half-copied
+/// bundle is SIGKILLed by dyld (`Code Signature Invalid` at `_dyld_start`, or a `Launch
+/// Constraint Violation`) before a line of ours runs, which macOS reports as "rexenv quit
+/// unexpectedly" (13.6 VM ×3, 23 Sep 2026; 15.8 VM, 27 Sep). `codesign --verify` is in the
+/// base system (not the Command Line Tools); a bundle that never settles keeps the job
+/// alive, looping at 1 Hz, and reports nothing. `exec` keeps the pid, so `kickstart -k`
+/// still restarts the agent in place. Measured on the dev Mac with a throwaway label and an
+/// ad-hoc signed fixture (30 Sep 2026): exec once after load; the exe truncated + kickstart
+/// → no exec, the job running, no crash report; the exe restored → exec within 3 s.
+pub(crate) const DNS_AGENT_SHELL: &str = "until /usr/bin/codesign --verify \"$0\" >/dev/null 2>&1; do sleep 1; done; exec \"$0\" --dns-agent";
 
 impl MacosDnsAgent {
     fn launchctl(args: &[&str], plist: &Path) -> Result<()> {
@@ -1155,6 +1172,12 @@ impl MacosDnsAgent {
             Err(Error::Other(format!("launchctl {} failed (exit {:?})", args.join(" "), st.code())))
         }
     }
+}
+
+/// Plist text escaping: the shell line carries `"` and `>`, and an app path may carry `&`.
+/// A plist is XML; the old template interpolated raw.
+fn xml_text(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
 }
 
 impl DnsAgentManager for MacosDnsAgent {
@@ -1184,8 +1207,14 @@ impl DnsAgentManager for MacosDnsAgent {
              \t<string>{DNS_AGENT_LABEL}</string>\n\
              \t<key>ProgramArguments</key>\n\
              \t<array>\n\
+             \t\t<string>/bin/sh</string>\n\
+             \t\t<string>-c</string>\n\
+             \t\t<string>{shell}</string>\n\
              \t\t<string>{exe}</string>\n\
-             \t\t<string>--dns-agent</string>\n\
+             \t</array>\n\
+             \t<key>AssociatedBundleIdentifiers</key>\n\
+             \t<array>\n\
+             \t\t<string>{APP_BUNDLE_ID}</string>\n\
              \t</array>\n\
              \t<key>KeepAlive</key>\n\
              \t<true/>\n\
@@ -1199,8 +1228,9 @@ impl DnsAgentManager for MacosDnsAgent {
              \t<string>{log}</string>\n\
              </dict>\n\
              </plist>\n",
-            exe = exe.display(),
-            log = log.display(),
+            shell = xml_text(DNS_AGENT_SHELL),
+            exe = xml_text(&exe.display().to_string()),
+            log = xml_text(&log.display().to_string()),
         )
     }
 
@@ -2878,9 +2908,18 @@ mod tests {
         // this is what makes sites resolve with the app closed and after reboot.
         assert!(plist.contains("<key>KeepAlive</key>\n\t<true/>"), "plist:\n{plist}");
         assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
-        // Runs the app binary in headless resolver mode.
+        // Runs the app binary in headless resolver mode — through a shell that waits for the
+        // bundle's signature to verify (#761: KeepAlive relaunched into a half-copied bundle
+        // and dyld's SIGKILL was reported as "rexenv quit unexpectedly"), with `$0` the exe.
+        assert!(plist.contains("<string>/bin/sh</string>\n\t\t<string>-c</string>"));
         assert!(plist.contains("<string>/Applications/rexenv.app/Contents/MacOS/rexenv</string>"));
-        assert!(plist.contains("<string>--dns-agent</string>"));
+        assert!(plist.contains("exec \"$0\" --dns-agent"), "the shell execs the agent as $0:\n{plist}");
+        assert!(plist.contains("until /usr/bin/codesign --verify \"$0\" &gt;/dev/null 2&gt;&amp;1"), "the wait, XML-escaped:\n{plist}");
+        // Login Items still lists the job under rexenv, not "sh".
+        assert!(plist.contains("<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>dev.rexenv.rexenv</string>"));
+        // An app path with an ampersand is escaped, not a broken plist.
+        let odd = agent.definition_contents(Path::new("/Users/a&b/rexenv.app/Contents/MacOS/rexenv"), Path::new("/l/x.log"));
+        assert!(odd.contains("/Users/a&amp;b/rexenv.app"));
         // Own label, distinct from the app-autostart agent and the edge daemon.
         assert!(plist.contains(&format!("<string>{DNS_AGENT_LABEL}</string>")));
         assert_ne!(DNS_AGENT_LABEL, AUTOSTART_LABEL);

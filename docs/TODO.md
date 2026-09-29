@@ -266,7 +266,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   old sentence, by design; the one after shows the new). L0 on the shipped policy, script and
   deb map + TEXT on the swap, plant-proven ×3; `linux-check` compiles it. The dialog itself is
   owed on the VM's update AFTER 0.8.11 (SMOKE § Linux, the deb update row).
-- [ ] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
+- [x] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
   three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
   — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches
   `rexenv --dns-agent` the instant the app is killed, lands in a half-replaced bundle, and dyld
@@ -281,6 +281,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
   agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
   blocker — the shipped path is the updater.
+  ✓ **The second option built 30 Sep 2026 (ledger #761):** the agent's LaunchAgent runs
+  `/bin/sh -c 'until /usr/bin/codesign --verify "$0" …; do sleep 1; done; exec "$0" --dns-agent'
+  <exe>` with `AssociatedBundleIdentifiers` = the app's id, so a relaunch into a half-copied or
+  deleted bundle loops quietly at 1 Hz instead of being SIGKILLed by dyld and reported as a
+  crash, and execs the agent (same pid — `kickstart -k` still works) the moment the bundle
+  settles; `codesign --verify` is base macOS, not the CLT. L0 on the plist text; live: PASS on the dev Mac, 30 Sep 2026 (a throwaway launchd label, an ad-hoc signed cc-built fixture as `$0`, the production shell line): exec once after load; the exe truncated + `kickstart -k` → no exec, the job `state = running`, no crash report; the exe restored → exec within 3 s — and, measured first, a COPIED Apple binary as the fixture is itself SIGKILLed (`OS_REASON_CODESIGNING`, a launch constraint), which is why the fixture is ad-hoc signed like rexenv.
+  The app's next launch rewrites the plist (its bytes changed) — one `launchctl` reload per
+  install, and the Login Items name is what SMOKE §A must read: "rexenv", not "sh".
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
