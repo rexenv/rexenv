@@ -808,7 +808,10 @@ simpler" from sending a Windows binary to an Intel Mac.
 - **Inside a per-OS document** rows keep the `arch` tokens `catalog_arch` spells (`arm64`,
   `x86_64`, `any`) and carry a required `os` equal to the document's; a reader drops any row
   whose `os` is not its own, so even a mis-published file cannot cross OSes. Serials are per
-  document; the signing key is the same one.
+  document; the signing key is the same one. **The reader half shipped 30 Sep 2026 (ledger
+  #755):** `Artifact.os` / `AppRelease.os` are optional (absent = a pre-field macOS document,
+  admitted everywhere), a marked row is dropped and a marked release refused unless it names
+  the host's own OS; the publisher half is still the TODO sub-row.
 - **Linux specifically:** its `arm64` / `x86_64` collide with macOS's tokens exactly as
   Windows' `x86_64` does — that collision is the reason for the rule, so "one document with an
   `os` field" stays refused for Linux too, and so does any variant of it. If Linux ever needs a

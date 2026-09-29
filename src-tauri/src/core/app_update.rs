@@ -226,6 +226,14 @@ pub struct AppRelease {
     pub notes: String,
     #[serde(default)]
     pub published_at: String,
+    /// The OS this release is built for (`macos`, `windows`, `linux`), as the per-OS
+    /// documents carry it (docs/PLAN-windows-port.md §3b). Absent on the macOS documents
+    /// published before the field existed; PRESENT and not this host's OS is a
+    /// mis-published document and refused as malformed — the plan measured (table A)
+    /// that a pre-field Mac ACCEPTS such a release as its own, so the reader's refusal
+    /// is the second lock beside the publisher's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
 }
 
 /// The document, as signed.
@@ -324,6 +332,19 @@ pub fn well_formed_version(v: &str) -> bool {
 /// DROPS a bad row so one malformed entry cannot deny every other update — a bad
 /// row here is the whole document, so it is reported rather than dropped.
 fn structural_check(r: &AppRelease) -> std::result::Result<(), NoOffer> {
+    structural_check_on(r, std::env::consts::OS)
+}
+
+/// [`structural_check`] against an explicit host OS, so the cross-OS refusal is a pure
+/// rule a test can drive on every host.
+fn structural_check_on(r: &AppRelease, host_os: &str) -> std::result::Result<(), NoOffer> {
+    if let Some(os) = r.os.as_deref() {
+        if os != host_os {
+            return Err(NoOffer::Malformed(
+                "the release is marked for another OS — this document was published into the wrong file",
+            ));
+        }
+    }
     if !well_formed_version(&r.version) {
         return Err(NoOffer::Malformed(
             "the version is not three numeric segments (a prerelease is never offered)",
@@ -1201,6 +1222,19 @@ mod tests {
         kp.sign(doc).as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 
+    /// **A release marked for another OS is refused as malformed; unmarked, or marked
+    /// for this one, passes** — the reader's lock on the per-OS documents (plan §3b).
+    #[test]
+    fn a_release_marked_for_another_os_is_refused_as_malformed() {
+        let here = std::env::consts::OS;
+        let elsewhere = if here == "windows" { "linux" } else { "windows" };
+        let marked = |os: &str| AppRelease { os: Some(os.into()), ..release("9.9.9") };
+        assert!(matches!(structural_check_on(&marked(elsewhere), here), Err(NoOffer::Malformed(m)) if m.contains("another OS")));
+        assert!(structural_check_on(&marked(here), here).is_ok());
+        assert!(structural_check_on(&release("9.9.9"), here).is_ok(), "an older document has no mark");
+        assert!(matches!(offer_for(&marked(elsewhere), "0.1.0", Some((15, 0, 0)), None), Err(NoOffer::Malformed(_))));
+    }
+
     fn release(version: &str) -> AppRelease {
         AppRelease {
             version: version.into(),
@@ -1214,6 +1248,7 @@ mod tests {
             minimum_system_version: "15.0".into(),
             notes: String::new(),
             published_at: "2026-09-06T00:00:00Z".into(),
+            os: None,
         }
     }
 

@@ -282,9 +282,28 @@ pub struct Artifact {
     /// Adminer). See [`Artifact::admitted_on`] for what absence means.
     #[serde(default, rename = "minMacos", skip_serializing_if = "Option::is_none")]
     pub min_macos: Option<String>,
+    /// The OS the artifact is built for (`macos`, `windows`, `linux`), as the per-OS
+    /// documents carry it (docs/PLAN-windows-port.md §3b). Absent on every document
+    /// published before the field existed — those are macOS documents, and an absent
+    /// value admits the row on any host. A PRESENT value admits the row only on that OS
+    /// ([`Artifact::for_os`]): measured against every release 0.3.0–0.7.0, an `x86_64`
+    /// row that merely ADDS `os` is kept by every Intel Mac (the plan's table A), so
+    /// the publisher must never put one in the macOS document, and a reader that drops
+    /// it is the second lock on the same door.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub os: Option<String>,
 }
 
 impl Artifact {
+    /// Whether the row is for `os` (this host's `std::env::consts::OS`): an unmarked
+    /// row is (every document before the field), a marked row only when it names it.
+    pub fn for_os(&self, os: &str) -> bool {
+        match self.os.as_deref() {
+            None => true,
+            Some(marked) => marked == os,
+        }
+    }
+
     /// Whether THIS host's tier may resolve the entry.
     ///
     /// Only the Mach-O names carry a floor (`php`, `php-fpm`); licences and
@@ -370,6 +389,8 @@ impl VersionCatalog {
         self.entries
             .iter()
             .filter(|a| Family::of_name(&a.name) == Some(family) && a.arch == row_arch)
+            // …built for this OS (an unmarked row is; a row marked for another never).
+            .filter(|a| a.for_os(std::env::consts::OS))
             // …that this host's tier may run (the completeness filter below asks
             // `artifact`, which applies the same gate to every name in the family).
             .filter(|a| a.admitted_on(tier))
@@ -384,9 +405,13 @@ impl VersionCatalog {
     /// `arch` is the MANIFEST's spelling — use [`catalog_arch`], never a literal.
     pub fn artifact(&self, name: &str, version: &str, arch: &str) -> Option<&Artifact> {
         let tier = crate::core::binaries::tier();
-        self.entries
-            .iter()
-            .find(|a| a.name == name && a.version == version && a.arch == arch && a.admitted_on(tier))
+        self.entries.iter().find(|a| {
+            a.name == name
+                && a.version == version
+                && a.arch == arch
+                && a.for_os(std::env::consts::OS)
+                && a.admitted_on(tier)
+        })
     }
 
     /// Every patch the catalog offers, for the GC's keep-set and for tests.
@@ -884,6 +909,7 @@ pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCata
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
                 min_macos: None,
+                os: None,
             })
             .collect(),
     }
@@ -906,6 +932,7 @@ pub fn catalog_for_tests_with_floors(rows: &[FlooredRow<'_>]) -> VersionCatalog 
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
                 min_macos: floor.map(str::to_string),
+                os: None,
             })
             .collect(),
     }
@@ -922,6 +949,35 @@ mod tests {
     /// may resolve — only a PHP patch whose entry DECLARES a floor it meets. An
     /// entry with no floor is a build nobody measured; a standard host takes it
     /// as before (the Standard tier is every pin). Licences carry no floor.
+    /// **A row marked for another OS is never offered or resolved here; an unmarked
+    /// row is** (every document before the field, and the per-OS documents' own rows).
+    /// The publisher's guard is the other lock (`rexenv/runtimes`); this is the reader's,
+    /// so a mis-published file cannot cross OSes (docs/PLAN-windows-port.md §3b).
+    #[test]
+    fn a_row_marked_for_another_os_is_dropped_and_an_unmarked_row_is_kept() {
+        let here = std::env::consts::OS;
+        let elsewhere = if here == "windows" { "linux" } else { "windows" };
+        let row = |version: &str, os: Option<&str>| Artifact {
+            name: "adminer".into(),
+            version: version.into(),
+            arch: ANY_ARCH.into(),
+            url: format!("https://github.com/rexenv/runtimes/releases/download/adminer-{version}/adminer.php"),
+            sha256: "a".repeat(64),
+            min_macos: None,
+            os: os.map(str::to_string),
+        };
+        let catalog = VersionCatalog {
+            entries: vec![row("6.0.2", None), row("6.0.3", Some(here)), row("6.0.9", Some(elsewhere))],
+        };
+        assert_eq!(catalog.newer_than(Family::Adminer, "6.0.1", "arm64").as_deref(), Some("6.0.3"), "the foreign 6.0.9 is never the offer");
+        assert!(catalog.artifact("adminer", "6.0.9", ANY_ARCH).is_none(), "…nor resolvable");
+        assert!(catalog.artifact("adminer", "6.0.2", ANY_ARCH).is_some(), "an unmarked row is kept");
+        assert!(catalog.artifact("adminer", "6.0.3", ANY_ARCH).is_some(), "this OS's row is kept");
+        assert!(!row("1", Some(elsewhere)).for_os(here) && row("1", None).for_os(here) && row("1", Some(here)).for_os(here));
+        let parsed: Artifact = serde_json::from_str(r#"{"name":"adminer","version":"6.0.2","arch":"any","url":"https://x/y","sha256":"ab"}"#).unwrap();
+        assert_eq!(parsed.os, None, "an older document parses with no mark");
+    }
+
     #[test]
     fn a_legacy_host_is_offered_only_a_patch_that_declares_a_floor_it_meets() {
         use binaries::{install_tier, BinaryTier};
@@ -1242,6 +1298,7 @@ mod tests {
             url: "https://dl.static-php.dev/static-php-cli/bulk/x.tar.gz".into(),
             sha256: "a".repeat(64),
             min_macos: None,
+            os: None,
         };
         assert!(acceptable(&good), "the control entry must pass, or nothing below means anything");
 
@@ -1331,6 +1388,7 @@ mod tests {
                             url: "https://dl.static-php.dev/x".into(),
                             sha256: "a".repeat(64),
                             min_macos: None,
+                            os: None,
                         })
                     })
                 })
@@ -1405,6 +1463,7 @@ mod tests {
             ),
             sha256: "a".repeat(64),
             min_macos: None,
+            os: None,
         }
     }
 
@@ -1499,6 +1558,7 @@ mod tests {
             url: "https://dl.static-php.dev/x.tar.gz".into(),
             sha256: "a".repeat(64),
             min_macos: None,
+            os: None,
         };
         assert!(!acceptable(&php_any), "a PHP row must name a real arch");
     }
@@ -1555,6 +1615,7 @@ mod tests {
                     url: "https://dl.static-php.dev/x.tar.gz".into(),
                     sha256: "a".repeat(64),
                     min_macos: None,
+                    os: None,
                 })
             })
             .collect();

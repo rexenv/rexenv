@@ -518,8 +518,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     field on an `x86_64` row is KEPT by every Intel Mac, so no Windows or Linux entry is ever
     published into the macOS documents. Open until both guards land, and both land before
     the first non-macOS entry is published:
-    - [ ] This tree: tests pinning the macOS readers' drop/ignore behaviour, and future macOS
-      readers dropping any row whose `os` is not `macos`
+    - [x] This tree: tests pinning the macOS readers' drop/ignore behaviour, and future macOS
+      readers dropping any row whose `os` is not `macos` ✓ **30 Sep 2026 (ledger #755):** both
+      row types carry an optional `os`; `VersionCatalog::newer_than`/`artifact` drop a row
+      marked for another OS and keep an unmarked one (every pre-field document), and an
+      app-manifest release marked for another OS is refused as malformed — the reader's lock
+      beside the publisher's (the sub-row below), on every host's own `std::env::consts::OS`.
     - [ ] `rexenv/runtimes` publisher: refuse an OS marker or a foreign arch in the macOS
       documents, and any per-OS row whose `os` is not the file's
     - [x] ✓ 19 Sep 2026 (`manifest_urls_on`, ledger #690; a pre-`a0d4868f` build reading the macOS
