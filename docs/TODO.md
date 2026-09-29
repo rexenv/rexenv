@@ -528,9 +528,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [ ] Per-OS version answers (plan §3a Q3): PostgreSQL driver, Xdebug, curl resolver, the
     cache marker (the update catalogs are the row above) — each before the Windows feature it gates, each with a test that the
     Windows answer differs where the builds do
-  - [ ] Busy-workers signal, macOS too (plan §3 D1(b)): today neither OS tells a user that a
+  - [x] Busy-workers signal, macOS too (plan §3 D1(b)): today neither OS tells a user that a
     slow site is a full pool; ESTABLISHED connections on the pool port ≥ workers, sustained →
     the Services row + health log. Done when N+2 parallel `sleep(5)` requests turn it on and off
+    ✓ **Shipped 14 Sep 2026 as ledger #608** (`core/pool_busy.rs`'s `BusyTracker`, two agreeing
+    samples on and off, the Services row's "all N workers busy — requests are queuing" sub-line,
+    `examples/pool_busy_check.rs` + `scripts/wk-checks/poolbusy.js`; measured on the Mac AND the
+    Dell) — this row stayed open on paper; reconciled 30 Sep 2026.
   - [x] W0 — Windows compile check on the Mac (owner: local `cargo xwin check --all-targets`
     for src-tauri + cli, not Actions — private repo) ✓ 12 Sep 2026 — `scripts/windows-check.sh`,
     exit code is the verdict; first run RED, 29 error sites (19 src-tauri, 10 cli), now the
