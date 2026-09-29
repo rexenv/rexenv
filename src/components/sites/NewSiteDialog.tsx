@@ -12,7 +12,7 @@ import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
 import { useDownloads } from "@/lib/useDownloads";
-import type { LinkedFolderInfo, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteType, WebServer } from "@/types";
+import type { LinkedFolderInfo, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteProvisionState, SiteType, WebServer } from "@/types";
 
 /** Where a new site's files come from — the three sources a docroot has.
  *  Mutually exclusive by construction, which is also the backend's rule:
@@ -87,7 +87,18 @@ export type NewSiteInitial = {
   webServer?: WebServer;
 };
 
-export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initial?: NewSiteInitial }) {
+export function NewSiteDialog({
+  onClose,
+  initial,
+  onStarted,
+}: {
+  onClose: () => void;
+  initial?: NewSiteInitial;
+  /** The job just started, for the Sites route's own `useSiteProvision`: its
+   *  job card then shows behind the dialog and stays after "Close (keeps
+   *  running)" — the route otherwise adopts a job only when it mounts. */
+  onStarted?: (snap: SiteProvisionState) => void;
+}) {
   const qc = useQueryClient();
   const words = usePlatformWords();
   const { data: versions = [] } = useQuery({ queryKey: ["php-versions"], queryFn: listPhpVersions });
@@ -362,7 +373,10 @@ export function NewSiteDialog({ onClose, initial }: { onClose: () => void; initi
         // choose Laravel would otherwise submit a stale id the backend refuses.
         (installingWp && blueprintId) || undefined,
       ),
-    onSuccess: (snap) => prov.start(snap),
+    onSuccess: (snap) => {
+      prov.start(snap);
+      onStarted?.(snap);
+    },
     onError: (e) => toastBackendError(e),
   });
   const pending = create.isPending || prov.running;

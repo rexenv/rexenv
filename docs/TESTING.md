@@ -651,6 +651,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (30 Sep 2026): `uireview.js` `badges` → `provisionBadges`** (#763) — a site row
+  whose provision job is RUNNING renders `Setting up` and neither the `setup incomplete` badge
+  nor Retry; the dead-job row beside it must still carry both, which is the control — a page
+  that dropped the badge for everyone reads as "no false badge" on the running row alone — and
+  a row the registry has not answered about yet claims neither. Planted three ways before it
+  was trusted. It renders `SiteRow` with the prop set by hand, so the registry poll that feeds
+  the prop (`siteProvisionActive(domain)`) is the SMOKE row, not this one.
 - **Probes (2 Sep 2026): `importbar.js`** — the import batch bar shows the CHILD
   job's label and freezes rather than rolling back when a site fails, driven
   through the real card by a scripted batch on a `?panel=import-bar` harness. Its

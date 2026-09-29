@@ -540,14 +540,27 @@ function ProvisionCardView() {
 
 function BadgesView() {
   const noop = () => {};
-  const rows: Array<{ site: Site; dbState?: DbImportRecord["state"] }> = [
+  const rows: Array<{ site: Site; dbState?: DbImportRecord["state"]; provisioning?: boolean }> = [
     { site: fixtureSite({ name: "plain", domain: "plain.rex", docrootManaged: true }) },
     { site: fixtureSite({ name: "external", domain: "linked.test" }) },
     { site: fixtureSite({ name: "imported-db", domain: "lms.test" }), dbState: "imported" },
     { site: fixtureSite({ name: "connected-db", domain: "myblog.test" }), dbState: "connected" },
     {
+      // Dead job (the registry answered: none running): badge + Retry.
       site: fixtureSite({ name: "half", domain: "half.test", provisioned: false }),
       dbState: "imported",
+      provisioning: false,
+    },
+    {
+      // The same provisioned=false row while its job is still RUNNING (the row
+      // behind the New Site dialog): being made, not dead — no warning badge,
+      // no Retry. `uireview.js` asserts this row, the one above and the next.
+      site: fixtureSite({ name: "creating", domain: "creating.test", provisioned: false }),
+      provisioning: true,
+    },
+    {
+      // The registry not yet asked (the row's first paint): neither state.
+      site: fixtureSite({ name: "asking", domain: "asking.test", provisioned: false }),
     },
     {
       // The worst realistic row: longest real domain + external + a DB badge
@@ -567,6 +580,7 @@ function BadgesView() {
           site={r.site}
           status={r.site.status}
           dbState={r.dbState}
+          provisioning={r.provisioning}
           onOpen={noop}
           onDelete={noop}
           onOpenDatabase={noop}

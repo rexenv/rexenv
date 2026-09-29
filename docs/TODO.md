@@ -50,7 +50,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **Sites list: a site being created shows "setup incomplete" + Retry for the whole of its
+- [x] **Sites list: a site being created shows "setup incomplete" + Retry for the whole of its
   provision job** (found 30 Sep 2026 recording the one-click-WordPress tutorial: the row behind
   the New Site dialog told the viewer the setup had failed while the card in front of it was
   still installing). `src/routes/Sites.tsx` renders the warning badge and the Retry button on
@@ -59,7 +59,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   running job and a dead one look the same. The badge's own comment says it means "provisioning
   died or was cancelled". *Done when:* a row whose domain has a RUNNING provision job shows a
   running state with no Retry, the badge and Retry still show after a failed or cancelled job,
-  and a wk-check renders both. Frontend only — the same on all three OSes.
+  and a wk-check renders both. Frontend only — the same on all three OSes. ✓ **30 Sep 2026
+  (ledger #763):** `SiteRow` takes `provisioning`, asked of the backend's job registry per
+  not-yet-provisioned row (`siteProvisionActive(domain)`, a 2 s poll while such a row exists —
+  whoever started the job: the dialog, Retry, `rex site create`, an agent): running → the amber
+  `Setting up` pill and no Retry; answered "none" → the badge + Retry as before; not yet
+  answered → neither, never a flash of "failed" first. The dialog also hands its started job to
+  the route (`onStarted`) so the route's own card shows behind the dialog and survives "Close
+  (keeps running)". wk-check `uireview.js` `badges` asserts all three rows (`creating.test`,
+  `half.test`, `asking.test`), planted three ways. SMOKE's headline flow carries the live look.
 - [x] **Tutorial videos: record the real UI with a narrated voiceover, no screen recording**
   ✓ 30 Sep 2026 — `scripts/video/` (README): the shipped components in a headless Chromium
   against a scripted backend that replays the Rust provision job's own phases and log lines,

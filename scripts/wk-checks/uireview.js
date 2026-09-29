@@ -783,6 +783,52 @@ const PROBES = {
       return problems;
     }),
 
+  // The "setup incomplete" badge is the claim that a provision job DIED, and
+  // its Retry re-runs one. A row whose job is still RUNNING must show neither
+  // (30 Sep 2026: for the whole of a first WordPress install the row behind
+  // the New Site dialog read "setup incomplete" + Retry, because the backend
+  // persists the row at job start with provisioned=false and the row read
+  // that flag alone). Both legs are asserted: the dead row DOES carry badge +
+  // Retry, so a page that dropped the badge for everyone cannot pass either;
+  // and a row whose answer has not arrived claims nothing.
+  provisionBadges: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      const rowOf = (domain) =>
+        [...document.querySelectorAll("[role=button]")].find((el) =>
+          (el.textContent ?? "").includes(domain),
+        );
+      const dead = rowOf("half.test");
+      if (!dead) problems.push("the half-provisioned row (half.test) did not render");
+      else {
+        if (!dead.querySelector('[data-probe="setup-incomplete"]'))
+          problems.push("a DEAD job's row shows no `setup incomplete` badge — the running-row check below proves nothing");
+        if (!dead.querySelector('[aria-label="Retry setup"]'))
+          problems.push("a DEAD job's row offers no Retry");
+      }
+      const live = rowOf("creating.test");
+      if (!live) problems.push("the row with a RUNNING job (creating.test) did not render");
+      else {
+        if (live.querySelector('[data-probe="setup-incomplete"]'))
+          problems.push("a row whose job is RUNNING says `setup incomplete`");
+        if (live.querySelector('[aria-label="Retry setup"]'))
+          problems.push("a row whose job is RUNNING offers Retry");
+        if (!live.querySelector('[data-probe="setup-running"]'))
+          problems.push("a row whose job is RUNNING shows no running state");
+        else if (!(live.textContent ?? "").includes("Setting up"))
+          problems.push("the running state does not read `Setting up`");
+      }
+      const asking = rowOf("asking.test");
+      if (!asking) problems.push("the not-yet-answered row (asking.test) did not render");
+      else if (
+        asking.querySelector('[data-probe="setup-incomplete"]') ||
+        asking.querySelector('[aria-label="Retry setup"]') ||
+        asking.querySelector('[data-probe="setup-running"]')
+      )
+        problems.push("a row whose job state is not yet known already claims a state");
+      return problems;
+    }),
+
   // The delete confirm's type-the-domain gate, on EVERY delete variant (the
   // connected one has two destructive buttons, and both must be gated — a gate
   // that covers one button in a dialog is the same false guard this project has
@@ -975,6 +1021,7 @@ function probeFor(name) {
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents-access")) return PROBES.agentsAccess;
   if (name.startsWith("agents")) return PROBES.agents;
+  if (name === "badges") return PROBES.provisionBadges;
   if (name === "scratch-rows") return PROBES.scratchGroup;
   if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("delete")) return PROBES.deleteGate;

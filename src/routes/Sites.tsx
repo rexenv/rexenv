@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
@@ -16,7 +16,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionCancel, siteProvisionRetry , scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
@@ -229,6 +229,7 @@ export function SiteRow({
   onRename,
   onDuplicate,
   onRetry,
+  provisioning,
   onKeep,
   onToggleEnabled,
   packages,
@@ -253,6 +254,15 @@ export function SiteRow({
   onRename: () => void;
   onDuplicate: () => void;
   onRetry?: () => void;
+  /** Whether a provision job for THIS domain is running right now, asked of the
+   *  backend's job registry (whoever started it: the New Site dialog, Retry,
+   *  `rex site create`, an agent). `true`: the row is being made, not half-made
+   *  — it reads "Setting up" and offers no Retry. `false`: no running job, so
+   *  the warning badge below (the claim that the job DIED) and Retry render.
+   *  `undefined`: not answered yet — neither, never a flash of "failed" first.
+   *  For the whole of a first install the badge was on the row behind the
+   *  dialog (30 Sep 2026). Meaningless for a provisioned site. */
+  provisioning?: boolean;
   /** Adopt this scratch site (Keep). Present only for `origin === "agent"`. */
   onKeep?: () => void;
   /** The plugins/themes an agent cloned in — newest sync first. */
@@ -527,18 +537,35 @@ export function SiteRow({
             label={stoppedByUser ? "Stopped by you" : undefined}
           />
         </span>
+      ) : provisioning ? (
+        /* The job is still RUNNING: the backend persists the row at job start
+           with provisioned=false, so without this branch a site being made
+           looked exactly like one whose setup died. Nothing to retry yet. */
+        <span
+          data-probe="setup-running"
+          className="flex-none"
+          title="Setting up — the provision job is still running; its card is above the list"
+        >
+          <StatusPill status="starting" label="Setting up" className="min-w-[92px]" />
+        </span>
+      ) : provisioning === undefined ? (
+        /* The registry has not answered yet: hold the slot, claim nothing. */
+        <span className="min-w-[92px] flex-none" aria-hidden="true" />
       ) : (
         /* Honest half-site marker (v16): provisioning died or was cancelled —
            the site is NOT healthy-stopped. Retry re-runs the remaining
-           idempotent steps; Delete (menu) removes it. */
+           idempotent steps; Delete (menu) removes it. Never rendered while
+           the job runs or before that is known (the branches above; wk-check
+           `badges`). */
         <span
+          data-probe="setup-incomplete"
           className="flex min-w-[92px] flex-none items-center justify-center gap-1 whitespace-nowrap rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
           title="Provisioning did not finish — Retry re-runs the remaining steps; Delete removes the site."
         >
           setup incomplete
         </span>
       )}
-      {!site.provisioned && (
+      {!site.provisioned && provisioning === false && (
         <div className="flex-none" onClick={(e) => e.stopPropagation()}>
           <Button
             variant="ghost"
@@ -754,6 +781,25 @@ export function Sites() {
     mutationFn: (site: Site) => siteProvisionRetry(site.id),
     onSuccess: (snap) => prov.start(snap),
     onError: (e) => toastBackendError(e),
+  });
+  // Which not-yet-provisioned rows have a job RUNNING right now, asked of the
+  // backend's job registry — the one place that knows, whoever started the job
+  // (the dialog, Retry, `rex site create`, an agent) — for as long as such a
+  // row exists. A row is persisted at job start with provisioned=false, so the
+  // flag alone read a site being made as one whose setup had died (30 Sep
+  // 2026). Unknown until the first answer: the row then claims neither state.
+  const unprovisioned = useMemo(() => sites.filter((s) => !s.provisioned).map((s) => s.domain), [sites]);
+  const jobOf = useQueries({
+    queries: unprovisioned.map((domain) => ({
+      queryKey: ["site-provision-active", domain],
+      queryFn: () => siteProvisionActive(domain),
+      refetchInterval: 2000,
+    })),
+  });
+  const provisioningOf = new Map<string, boolean>();
+  unprovisioned.forEach((domain, i) => {
+    const q = jobOf[i];
+    if (q.data !== undefined) provisioningOf.set(domain, q.data?.status === "running");
   });
 
   const rename = useMutation({
@@ -1082,6 +1128,7 @@ export function Sites() {
                 extraDomains={extraDomains[site.id]}
                 packages={packagesBySite.get(site.id)}
                 reapFailure={reapFailures.get(site.id) || undefined}
+                provisioning={site.provisioned ? false : provisioningOf.get(site.domain)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => setDeleteTarget(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
@@ -1138,6 +1185,7 @@ export function Sites() {
             setShowNew(false);
             setDupSource(null);
           }}
+          onStarted={prov.start}
         />
       )}
       {renameTarget && (

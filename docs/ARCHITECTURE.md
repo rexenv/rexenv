@@ -2862,6 +2862,18 @@ IPC surface — which is how a reader ends up designing against a system with on
     conflict therefore fails THIS job with Start all's own words, the row stays
     `provisioned = 0` ("setup incomplete", Retry re-runs the serve step), and nothing
     ever settles green over a site nobody can open.
+  - **The row reads "Setting up" while its job runs and "setup incomplete" only after the job
+    died** (30 Sep 2026, #763). The row is persisted at job START with `provisioned = 0` and
+    only the ok-settle writes 1, so the flag alone cannot tell a job in flight from a dead one —
+    and `Sites.tsx` read the flag alone: for the whole of a first WordPress install the row
+    behind the New Site dialog said the setup had failed while the card in front was still
+    installing. The row now asks the backend's job registry (`siteProvisionActive(domain)`, a
+    2 s poll per not-yet-provisioned row) — not the route's own `useSiteProvision`, which knows
+    only the jobs this window started, while `rex site create` and an agent insert the same row
+    — and renders the amber `Setting up` pill with no Retry for a running job, neither state
+    until the first answer, and the badge + Retry only once the registry has no running job
+    for it. (The dialog still hands its started job to the route through `onStarted`, for the
+    route's own card behind the dialog and after "Close (keeps running)".)
   - **WordPress from a repository** (Stage 4) runs the SAME four phases a created
     WordPress site does, because each was already skip-aware — `core_download` when
     core is present, `configure` when `wp-config.php` is, `core_install` when

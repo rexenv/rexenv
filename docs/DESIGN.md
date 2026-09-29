@@ -45,6 +45,12 @@ the shipped UI toward one.
   ready", create now and it starts when they land; failed → the count, in the error colour,
   with a Retry that re-runs those rows. The rule: any "done" the UI states about a set of
   things is computed from those things, never typed beside them.
+- **A word that means "failed" is never shown for "in progress".** The Sites row's `setup
+  incomplete` badge is the claim that a provision job died, and it was drawn from
+  `provisioned = 0` alone — which is also the state of every site for the whole of its creation,
+  so the row behind the New Site dialog said "failed" while the card in front said "installing"
+  (30 Sep 2026, #763). The row now asks the backend's job registry and shows `Setting up` for a
+  running job, nothing until it has an answer, and the badge only once no job runs for it.
 - **A queue the user cannot see is said where they look.** A PHP pool whose every worker holds a
   request queues the next one silently — a slow page, then nginx's 504 — so its Services row says
   "all 10 workers busy — requests are queuing" as a sub-line in the warning text colour
