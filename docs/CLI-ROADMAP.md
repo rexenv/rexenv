@@ -28,7 +28,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex site list` | `list_sites` + `sites_serving` |
 | `rex site create <domain> [--name --type --php --server --db]` (`--db none` = the dialog's None, 18 Sep 2026) | `create_site` |
 | `rex site delete <domain> [--yes]` | `delete_site` (domain→id lookup client-side) |
-| `rex site info <domain>` | `list_sites`+`sites_serving`+`sites_resources`+`site_cert_info`+`wp_info` |
+| `rex site info <domain>` | `list_sites`+`probe_serving` (the MCP's classification, #748)+`sites_resources`+`site_cert_info`+`wp_info` |
 | `rex site open <domain>` | CLI-only (`open https://…`, domain validated via `site.list`) |
 | `rex site login <domain> [--print]` | `wp_admin_login_url` |
 | `rex open` | `app.open` — brings the app window to the front (`args.login: true` = a `--hidden` launch's handoff: runs login-start instead, #739; `rex open` never sends it) |
@@ -59,7 +59,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `site create --multisite subdomain\|subdirectory` | `wp_multisite_convert` after `create_site` | ✓ | shipped 16 Jul — full live run: create → multisite subdirectory in info → 200 → deleted |
 | `site create --starter-db` (Blank PHP) | `create_site` (`NewSite.starter_db`) | ✓ | **shipped 3 Sep 2026** (ledger #462) — the dialog's Database field for a Blank-PHP site: creates the database, seeds `starter_items`, writes `db.php`. **The work was the REFUSAL, not the flag.** `sites::create` records the field through a `.then_some` that drops it everywhere else in silence, so asking on a WordPress site or a `--path` link would have produced an ordinary site with no error and nothing to say why; `sites::starter_db_refusal` now owns that rule beside the `.then_some` and the arm reads it. Reported from the row the app wrote back, never from the flag we sent |
 | `site create --blueprint <name>` | `list_blueprints` (name→id) + `create_site(blueprint_id)` | ✓ | shipped 16 Jul — miss errors naming saved blueprints; `rex blueprints` lists them |
-| `site info <domain>` | `list_sites` + `sites_serving` + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on a real WP site (real core version) + a FrankenPHP php site (resources) |
+| `site info <domain>` | `list_sites` + `probe_serving`/`AgentSiteStatus` (the MCP's classification, #748 — was `sites_serving`) + `sites_resources` + `site_cert_info` (+ `wp_info` for WP) | ✓ | shipped 16 Jul — live-verified on a real WP site (real core version) + a FrankenPHP php site (resources). **29 Sep 2026:** `state` renders the serving VERDICT with its fix (`serving` / stopped by you / setup incomplete / down, backend or edge / blocked), and `site list`'s STATE says `stopped` and `incomplete` instead of `down` — a half-provisioned site with no vhost printed `serving` in both (23 Sep 2026) |
 | `site open <domain>` | — (`open https://<domain>`) | ✓ | shipped 16 Jul — domain validated via `site.list`; missing-domain exit 1 |
 | `site login <domain> [--print]` | `wp_admin_login_url` | ✓ | shipped 16 Jul — minted link curl-verified: 302 → /wp-admin/; non-WP site refused |
 | `site logs <domain> [--source K] [--lines N] [--follow]` | `log_targets` + `tail_log` (+ `wp_debug_log_tail` via the `wp-debug` pseudo-source) | ✓ | shipped 16 Jul — sources list, tails, --follow caught a live request; wp-debug reads the docroot debug.log |

@@ -449,7 +449,9 @@ fn default_true() -> bool {
 /// Live per-site serving status (H1 follow-up). `serving` is true only when the edge
 /// is up AND the site's own upstream is up (its FrankenPHP backend, or nginx + the
 /// php-fpm pool its version routes to) — so a partial stack no longer shows every
-/// site as running. Keyed by `domain` (the frontend overlays it on the site rows).
+/// site as running — AND the site is provisioned and not stopped (a half-provisioned
+/// site has no vhost, so the edge refuses its name). Keyed by `domain` (the frontend
+/// overlays it on the site rows).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SiteServing {

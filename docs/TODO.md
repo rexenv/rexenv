@@ -306,14 +306,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
-- [ ] **`rex site list` / `site info` say `serving` about a site that cannot be reached.** Seen on the
+- [x] **`rex site list` / `site info` say `serving` about a site that cannot be reached.** Seen on the
   15.8 VM, 23 Sep 2026: a WordPress create died at "downloading WordPress core" (cURL 28) and the
   site stayed setup-incomplete with NO vhost in the Caddyfile — `curl https://legacy-mwp.rex`
   answered a TLS `internal error` (no certificate for the name) while both `rex` commands printed
   `serving`. The CLI reads `sites_serving` — the manager's belief (edge up && the site's upstream
   up), the Sites-page bool — not `readctx::probe_serving`, which asks the wire and keeps
   setup-incomplete distinct (#200) for the MCP. Same fact, two answers, one of them wrong: the
-  CLI should render the MCP's classification, not the belief.
+  CLI should render the MCP's classification, not the belief. ✓ **Fixed 29 Sep 2026 (ledger
+  #748), at three layers:** the belief itself now counts a half-provisioned site as not serving
+  (no vhost, so the edge refuses its name — the Sites page, the MCP list and `rex site list` read
+  it); the MCP's `classify` no longer reads a healthy edge's refusal of an unrouted name as
+  "another server on 443" (that site is `setup-incomplete`; a port nobody listens on still
+  outranks it); and `site.info` answers with the classification (`probe_serving` +
+  `AgentSiteStatus`, `serving` = the verdict's boolean) while `rex` renders each verdict with
+  its fix — `site list`'s STATE is `serving` / `stopped` / `incomplete` / `down`. L0 on all three
+  + a TEXT guard on the arm, plant-proven ×4. Not run against a live half-provisioned site (none
+  exists here; making one is a failed create on the owner's machine).
 - [ ] **After Settings → Remove system changes, the health log blames an outsider.** Clean-15 smoke,
   23 Sep 2026: `[edge-down] Caddy: edge stopped and its KeepAlive daemon is no longer installed
   (removed outside the app)` — twenty seconds after the app itself removed it. The service

@@ -987,13 +987,14 @@ fn cmd_site_list(json_output: bool) {
     if sites.is_empty() {
         return println!("no sites yet — create one with the app or `rex site create <domain>`");
     }
-    // `serving` is the live wire truth (edge up AND the site's upstream up);
-    // sites the stack isn't serving right now show "down".
-    let serving: Vec<(&str, bool)> = data["serving"]
+    // `serving` is the app's ONE status derivation (edge up AND the site's
+    // upstream up, provisioned, not stopped); its `disabled` is the user's own
+    // stop. The words are `list_state`'s.
+    let serving: Vec<(&str, bool, bool)> = data["serving"]
         .as_array()
         .map(|rows| {
             rows.iter()
-                .filter_map(|r| Some((r["domain"].as_str()?, r["serving"] == json!(true))))
+                .filter_map(|r| Some((r["domain"].as_str()?, r["serving"] == json!(true), r["disabled"] == json!(true))))
                 .collect()
         })
         .unwrap_or_default();
@@ -1017,21 +1018,61 @@ fn cmd_site_list(json_output: bool) {
             .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
             .unwrap_or_default()
     };
-    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<7}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
+    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
     for s in sites {
         let domain = s["domain"].as_str().unwrap_or("?");
-        let up = serving.iter().any(|(d, up)| *d == domain && *up);
+        let (up, stopped) = serving
+            .iter()
+            .find(|(d, _, _)| *d == domain)
+            .map(|(_, up, stopped)| (*up, *stopped))
+            .unwrap_or((false, false));
         println!(
-            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<7}  {}",
+            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  {}",
             domain,
             s["name"].as_str().unwrap_or("?"),
             s["type"].as_str().unwrap_or("?"),
             s["phpVersion"].as_str().unwrap_or("?"),
             s["webServer"].as_str().unwrap_or("?"),
             s["dbEngine"].as_str().unwrap_or("?"),
-            if up { "serving" } else { "down" },
+            list_state(s, up, stopped),
             also(s),
         );
+    }
+}
+
+/// The STATE word for one `site list` row. Four answers, because they have four
+/// fixes: `serving`; `stopped` (you stopped it — `rex site start`); `incomplete`
+/// (setup never finished — Retry or Delete in the app; it has no vhost, so it is
+/// not "down" the way a stopped stack is); `down` (the stack, or this site's
+/// backend, is not up). Until 29 Sep 2026 the last three were all `down`, and a
+/// half-provisioned site was even `serving` — the row read the stack's belief.
+fn list_state(site: &Value, serving: bool, stopped: bool) -> &'static str {
+    if serving {
+        "serving"
+    } else if site["provisioned"] == json!(false) {
+        "incomplete"
+    } else if stopped {
+        "stopped"
+    } else {
+        "down"
+    }
+}
+
+/// The `state` line of `site info`: the app's serving CLASSIFICATION (the same
+/// verdict an agent's `site_status` gets — the wire asked, each failure kept
+/// distinct), never the bare belief that printed `serving` about a site the edge
+/// refused (23 Sep 2026). An app older than the verdict field falls back to its
+/// `serving` boolean.
+fn info_state(data: &Value) -> String {
+    let domain = data["site"]["domain"].as_str().unwrap_or("<domain>");
+    match data["status"]["verdict"].as_str() {
+        Some("serving") => "serving".into(),
+        Some("stopped-by-user") => format!("stopped by you — `rex site start {domain}` serves it again"),
+        Some("setup-incomplete") => "setup incomplete — nothing serves it; Retry or Delete it in the app".into(),
+        Some("backend-down") => "down — the edge is up, but this site's PHP/web backend is not (`rex start`)".into(),
+        Some("edge-down") => "down — nothing answers :443; the stack looks stopped (`rex start`)".into(),
+        Some("edge-blocked") => "blocked — another server answers :443, not rexenv's edge (`rex doctor`)".into(),
+        _ => if data["serving"] == json!(true) { "serving".into() } else { "down".into() },
     }
 }
 
@@ -1276,7 +1317,7 @@ fn cmd_site_info(words: &[String], json_output: bool) {
         }
     }
     field("name", str_of(&s["name"]));
-    field("state", if data["serving"] == json!(true) { "serving".into() } else { "down".into() });
+    field("state", info_state(&data));
     field(
         "type",
         format!(
@@ -3939,6 +3980,33 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+    /// The STATE words are the app's classification, not the stack's belief:
+    /// a half-provisioned site is `incomplete` (never `serving`, never a plain
+    /// `down`), a user's stop is `stopped`, and `site info` renders each verdict
+    /// with its own fix — falling back to the boolean only for an app too old
+    /// to send a verdict.
+    #[test]
+    fn the_state_words_follow_the_classification_not_the_belief() {
+        use serde_json::json;
+        let provisioned = json!({"provisioned": true});
+        let half = json!({"provisioned": false});
+        assert_eq!(super::list_state(&provisioned, true, false), "serving");
+        assert_eq!(super::list_state(&provisioned, false, true), "stopped");
+        assert_eq!(super::list_state(&provisioned, false, false), "down");
+        assert_eq!(super::list_state(&half, false, false), "incomplete");
+        assert_eq!(super::list_state(&half, true, false), "serving", "the app's verdict wins over the flag");
+        let info = |verdict: &str, serving: bool| json!({"site": {"domain": "a.rex"}, "serving": serving, "status": {"verdict": verdict}});
+        assert_eq!(super::info_state(&info("serving", true)), "serving");
+        assert!(super::info_state(&info("setup-incomplete", false)).starts_with("setup incomplete"));
+        assert!(super::info_state(&info("stopped-by-user", false)).contains("rex site start a.rex"));
+        assert!(super::info_state(&info("backend-down", false)).starts_with("down — the edge is up"));
+        assert!(super::info_state(&info("edge-down", false)).starts_with("down — nothing answers :443"));
+        assert!(super::info_state(&info("edge-blocked", false)).starts_with("blocked"));
+        // An older app sends no verdict: the boolean, as before.
+        assert_eq!(super::info_state(&json!({"site": {}, "serving": true})), "serving");
+        assert_eq!(super::info_state(&json!({"site": {}, "serving": false})), "down");
+    }
+
     /// #682 — the database line names an engine and a name only for a site
     /// that has a database. A Blank-PHP site without a starter database is
     /// "none", whatever the row's engine default and derived name say.

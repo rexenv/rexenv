@@ -754,11 +754,16 @@ where
                 .into_iter()
                 .find(|s| s.id == id)
                 .ok_or_else(|| Error::Other(format!("no site {id}")))?;
-            let serving = commands::sites::sites_serving(state.clone())?
-                .into_iter()
-                .find(|r| r.domain == site.domain)
-                .map(|r| r.serving)
-                .unwrap_or(false);
+            // The MCP's classification (#200) — the wire asked, setup-incomplete
+            // and stopped-by-you kept distinct — not the manager's belief, which
+            // said `serving` about a site the edge refused (23 Sep 2026). `serving`
+            // is that verdict's boolean, so the two fields cannot disagree.
+            let status = {
+                let ctx = crate::mcp_server::ReadCtx::new(state.inner());
+                let signals = ctx.probe_serving(&site).await;
+                crate::mcp_server::AgentSiteStatus::from_signals(&site, &signals)
+            };
+            let serving = status.serving;
             let resources = commands::sites::sites_resources(state.clone())
                 .await
                 .ok()
@@ -777,6 +782,7 @@ where
             Ok(json!({
                 "site": to_value(&site)?,
                 "serving": serving,
+                "status": to_value(&status)?,
                 "resources": to_value(&resources)?,
                 "cert": to_value(&cert)?,
                 "wp": to_value(&wp)?,
@@ -2441,6 +2447,24 @@ mod tests {
              Either add the verb, or delete the arm — an arm nothing can reach is a \
              promise the CLI does not keep."
         );
+    }
+
+    /// **`site.info` answers with the MCP's serving classification, never the
+    /// manager's belief.** `rex site info legacy-mwp.rex` printed `serving`
+    /// about a setup-incomplete site with no vhost (23 Sep 2026) because the arm
+    /// read `sites_serving` — edge up && upstream up — while `site_status`
+    /// asked the wire and kept setup-incomplete distinct. One fact, two answers.
+    #[test]
+    fn site_info_renders_the_classification_not_the_belief() {
+        const THIS: &str = include_str!("cli_server.rs");
+        let prod = THIS.split("\n#[cfg(test)]").next().unwrap_or(THIS);
+        let arm = prod.split_once("        \"site.info\" => {").expect("the site.info arm").1;
+        let arm = arm.split("\n        \"").next().unwrap_or(arm);
+        assert!(arm.contains("probe_serving(&site)"), "site.info asks the wire");
+        assert!(arm.contains("AgentSiteStatus::from_signals("), "…and renders the MCP's verdict");
+        assert!(arm.contains("let serving = status.serving;"), "`serving` IS the verdict's boolean");
+        assert!(!arm.contains("sites_serving("), "site.info reads the belief again");
+        assert!(arm.contains("\"status\": to_value(&status)?"), "the verdict reaches `rex`");
     }
 
     /// #57 — **every command this server answers runs the SAME `commands::*` fn

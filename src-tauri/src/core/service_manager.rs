@@ -2774,8 +2774,11 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
                 // A site the user STOPPED (v44) is never serving, whatever the
                 // stack is doing — its nginx block is not generated and its edge
                 // route answers 503, so a true here would be the status line
-                // contradicting the config on disk.
-                serving: s.enabled && edge_up && upstream_up,
+                // contradicting the config on disk. Nor is a site whose setup
+                // never FINISHED: it has no vhost and no certificate, so the
+                // edge refuses its name — `rex site list` said `serving` about
+                // `legacy-mwp.rex` while `curl` got a TLS error (23 Sep 2026).
+                serving: s.enabled && s.provisioned && edge_up && upstream_up,
                 disabled: !s.enabled,
             }
         })
@@ -3697,6 +3700,20 @@ mod tests {
         let f = rows.iter().find(|r| r.domain == "f.test").unwrap();
         assert!(!n.serving && n.disabled);
         assert!(!f.serving && !f.disabled, "the stack being down is not the user stopping a site");
+
+        // **A site whose setup never finished is not serving with everything
+        // up** — it has no vhost and no certificate, so the edge refuses its
+        // name; `serving` here sent `rex site list` and `site info` to print
+        // `serving` about `legacy-mwp.rex` while `curl` got a TLS error (23 Sep
+        // 2026). It is not "stopped by the user" either: the switch does not
+        // reach a half-provisioned site.
+        let mut incomplete = sites.clone();
+        incomplete[0].provisioned = false;
+        let rows = site_serving(&incomplete, &all_up);
+        let n = rows.iter().find(|r| r.domain == "n.test").unwrap();
+        let f = rows.iter().find(|r| r.domain == "f.test").unwrap();
+        assert!(!n.serving && !n.disabled, "setup incomplete → not serving, and not the user's stop");
+        assert!(f.serving, "its neighbour still serves");
     }
 
     #[tokio::test]

@@ -329,7 +329,10 @@ it — so the report carries `serving` (read from `site_serving`, the ONE status
 derivation) and the reason when a started site still is not answering. Status
 carries `disabled` beside `serving` for the same reason: "the stack is down" and
 "you stopped this one" have different fixes, and one word for both sends people
-to start a stack that is already running.
+to start a stack that is already running. A site whose setup never FINISHED is a
+third answer and never `serving` (no vhost, so the edge refuses its name — the
+derivation requires `provisioned`, #748); `rex site info` renders the MCP's full
+classification (#200) rather than that boolean.
 
 **All of them at once** is the same mechanism batched: `set_all_enabled` writes
 every row, then does ONE config rebuild and ONE reload — a per-site loop meant N

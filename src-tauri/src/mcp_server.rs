@@ -82,7 +82,12 @@ mod user_sites;
 mod view;
 
 use crate::state::app::AppState;
-use readctx::ReadCtx;
+// `pub(crate)`: `rex site info` renders the SAME serving classification an agent
+// gets (`ReadCtx::probe_serving` + `AgentSiteStatus`) — the CLI read the
+// manager's belief until 29 Sep 2026 and said `serving` about a site the edge
+// refused (the TODO row of 23 Sep). The modules stay private; the two types cross.
+pub(crate) use readctx::ReadCtx;
+pub(crate) use view::AgentSiteStatus;
 use serde_json::{json, Value};
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 // The transport is the only OS-specific part of this module: on unix `socket_path`,

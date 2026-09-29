@@ -157,8 +157,14 @@ impl ServingSignals {
         use Resolution::*;
         use ServingVerdict::*;
         // 1) Our edge isn't answering for this host (a 204 marker probe the edge
-        //    answers itself — it does NOT request the site).
-        if !self.edge_answers_ours {
+        //    answers itself — it does NOT request the site). A port nobody
+        //    listens on is a bigger truth than any one site's state; a port
+        //    that answers but not for THIS name is "blocked" only for a site
+        //    that HAS a route — a site whose setup never finished has no vhost
+        //    and no certificate, so a healthy edge refuses its name (the 23 Sep
+        //    2026 `legacy-mwp.rex`: a TLS error, which the unguarded order read
+        //    as another server on 443).
+        if !self.edge_answers_ours && (!self.tcp_443_open || provisioned) {
             return if self.tcp_443_open {
                 // Name the holder when the port-conflict help can (the owner's
                 // Local router, 12 Sep 2026, read as "can't identify"); keep the
@@ -616,6 +622,12 @@ mod tests {
         assert_eq!(sig(true, true, false).classify(true, true).0, BackendDown);
         // setup incomplete beats the backend state, even with the edge up.
         assert_eq!(sig(true, true, true).classify(false, true).0, SetupIncomplete);
+        // …and beats "blocked": a site with no route gets no answer for its
+        // name from OUR edge either (no vhost, no certificate → a TLS error),
+        // and reading that as a foreign server on 443 named a blocker that was
+        // not there (23 Sep 2026). A port nobody listens on still outranks it.
+        assert_eq!(sig(false, true, false).classify(false, true).0, SetupIncomplete);
+        assert_eq!(sig(false, false, false).classify(false, true).0, EdgeDown);
 
         // **A site the user stopped is its own verdict, and it outranks both.**
         // Reported as BackendDown it would send a model at the stack ("this
