@@ -3007,7 +3007,12 @@ IPC surface — which is how a reader ends up designing against a system with on
   toggle, "Start services when rexenv opens", held that half in a setting
   (`start_services_on_launch`) that gated ANY launch: two switches for one wish, and either one
   alone did something the user did not mean. The setting is retired and a leftover row is swept
-  at launch. **A login that finds rexenv already running still starts the stack:** the
+  at launch. **A boot-supervised edge that is merely slow is waited for** (#743): login-start never
+  prompts, so a plan that needs the password used to be "skipped" at once — on the 15.8 VM the
+  LaunchDaemon brought caddy up 70 s after login-start had already told the user to press Start
+  all. When the supervisor is installed and enabled (macOS LaunchDaemon, Linux systemd unit) it
+  now polls the admin socket for up to 120 s and adopts the edge; Windows' edge has no boot
+  supervisor and does not wait. **A login that finds rexenv already running still starts the stack:** the
   `--hidden` launch hands off with `{"cmd":"app.open","args":{"login":true}}`
   (`cli_server::handoff_request`, the same line over the unix socket and Windows' pipe), and the
   running instance runs login-start instead of raising its window — once per process, held

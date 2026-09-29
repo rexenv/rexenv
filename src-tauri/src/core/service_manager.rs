@@ -96,6 +96,21 @@ pub enum LoginEdgeAction {
     StartUnprivileged,
 }
 
+/// How long login-start waits for a boot-supervised edge to come up by itself before it calls the
+/// edge skipped. The macOS 15.8 VM's boot LaunchDaemon brought caddy up 70 s after login-start
+/// had already said "the HTTPS edge needs Start all" (29 Sep 2026) — a sentence telling the user
+/// to do something that was not needed. The backends are up before the wait starts; only the
+/// edge's verdict waits.
+pub const LOGIN_EDGE_BOOT_WAIT: Duration = Duration::from_secs(120);
+
+/// Whether login-start should WAIT for the edge instead of skipping it: the plan needs the prompt
+/// it may not show, AND the OS's own supervisor is installed and enabled — so the edge is coming
+/// at boot, not missing (macOS LaunchDaemon, Linux systemd unit). A disabled supervisor is an
+/// explicit Stop all, and nothing will start it; Windows' edge has no boot supervisor at all.
+pub fn login_edge_waits_for_boot(action: &LoginEdgeAction, supervisor_installed: bool, supervisor_enabled: bool) -> bool {
+    matches!(action, LoginEdgeAction::SkipNeedsPrompt) && supervisor_installed && supervisor_enabled
+}
+
 pub fn login_edge_action(plan: &Option<EdgePlan>) -> LoginEdgeAction {
     match plan {
         None => LoginEdgeAction::AlreadyServing,
@@ -2871,6 +2886,25 @@ mod tests {
             login_edge_action(&Some(high_port)),
             LoginEdgeAction::StartUnprivileged
         ));
+    }
+
+    /// Ledger #743 — login-start waits for the boot supervisor only when it is coming: installed
+    /// AND enabled, and only for the plan it may not run.
+    #[test]
+    fn login_start_waits_for_the_edge_only_when_its_boot_supervisor_will_start_it() {
+        let skip = LoginEdgeAction::SkipNeedsPrompt;
+        assert!(login_edge_waits_for_boot(&skip, true, true), "the 15.8 VM's slow LaunchDaemon");
+        assert!(!login_edge_waits_for_boot(&skip, true, false), "disabled = an explicit Stop all: nothing will start it");
+        assert!(!login_edge_waits_for_boot(&skip, false, true), "no supervisor installed (Windows, or never set up)");
+        assert!(!login_edge_waits_for_boot(&LoginEdgeAction::AlreadyServing, true, true));
+        assert!(!login_edge_waits_for_boot(&LoginEdgeAction::StartUnprivileged, true, true));
+        assert!(LOGIN_EDGE_BOOT_WAIT >= Duration::from_secs(90), "the VM's daemon took 70 s after login-start");
+        // TEXT (the #175 bound): login-start asks before its final verdict on the edge.
+        let cmd = crate::core::copy_scan::production_source(include_str!("../commands/services.rs"));
+        let body = &cmd[cmd.find("async fn auto_start_inner").expect("login-start")..];
+        let wait = body.find("login_edge_waits_for_boot(").expect("login-start no longer waits for a boot-supervised edge");
+        let verdict = body.find("match core::service_manager::login_edge_action(&plan)").expect("the final verdict");
+        assert!(wait < verdict, "the wait comes after the verdict it was meant to change");
     }
 
     /// Minimal platform for edge state-machine tests: real paths (a tempdir, so the

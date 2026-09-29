@@ -150,6 +150,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   yet up and surfaced "services are up, but the HTTPS edge needs Start all (one admin prompt)";
   the daemon came up by itself 70 s later and was re-adopted. The sentence tells the user to do
   something that is not needed. Wait for the boot daemon (bounded) before calling the edge skipped.
+  **Fixed for 0.8.11 (ledger #743), macOS and Linux:** when the plan needs a prompt but the edge's
+  OS supervisor is installed AND enabled, login-start polls the admin socket (touching nothing) for
+  up to `LOGIN_EDGE_BOOT_WAIT` (120 s) and adopts the edge when it answers; only then is it called
+  skipped. Windows' edge has no boot supervisor and never waits. **Still owed:** a slow boot on the
+  macOS VM with the installed 0.8.11 — no "needs Start all" toast, the edge adopted.
 
 - [ ] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
   for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every

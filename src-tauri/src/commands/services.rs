@@ -279,8 +279,10 @@ pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
 /// 2. **Never prompt** — if the edge isn't adoptable (needs the privileged
 ///    daemon (re)install, e.g. after an explicit Stop-all), the edge is SKIPPED
 ///    and surfaced, not prompted for. The normal post-reboot path is silent:
-///    the boot LaunchDaemon already has the edge up, so `prepare_edge` adopts
-///    it over the admin socket — no prompt, whole stack up in seconds.
+///    the boot LaunchDaemon (Linux: the systemd unit) has the edge up, so
+///    `prepare_edge` adopts it over the admin socket — no prompt. When that
+///    supervisor is installed and enabled but its edge is not up YET, login-start
+///    waits up to `LOGIN_EDGE_BOOT_WAIT` for it before calling it skipped (#743).
 ///
 /// Failures surface as `service-health` events (the same toast pipeline the
 /// watchdog uses) + the health log, so a broken login-start is never silent.
@@ -345,10 +347,25 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version, catch_mail).await?
     };
     core::service_manager::await_ready(checks).await?;
-    let plan = {
+    let mut plan = {
         let mut mgr = state.services.lock().await;
-        mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
+        mgr.prepare_edge(state.platform.as_ref(), caddyfile.clone())?
     };
+    // A boot-supervised edge that is not up YET is coming, not missing: wait (bounded) for its
+    // admin socket, then adopt it — rather than tell the user to press Start all for an edge the
+    // OS starts by itself (ledger #743). The socket poll touches nothing; `prepare_edge` runs once
+    // more only when there is something to adopt.
+    let edge = state.platform.edge();
+    let action = core::service_manager::login_edge_action(&plan);
+    if core::service_manager::login_edge_waits_for_boot(&action, edge.is_installed(), edge.is_enabled()) {
+        let deadline = tokio::time::Instant::now() + core::service_manager::LOGIN_EDGE_BOOT_WAIT;
+        while !core::proxy::admin_alive(state.platform.as_ref()) && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+        if core::proxy::admin_alive(state.platform.as_ref()) {
+            plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;
+        }
+    }
     // Guard 2 is the pure `login_edge_action` decision (tested in core): a
     // privileged plan would show an auth prompt at login — skipped, surfaced.
     // (Normally unreachable post-reboot: RunAtLoad has the edge up before
