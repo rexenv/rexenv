@@ -966,9 +966,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `LicenseUrl` named `rexenv/rexenv`, which is PRIVATE — 404 to everyone. The generator now names
     the public tap and omits `LicenseUrl` (the `License` field still says Apache-2.0), so a rendered
     manifest cannot carry a URL the world cannot open.
-    - [ ] When `rexenv/rexenv` goes public, point `PackageUrl`/`PublisherSupportUrl` back at it and
-      restore `LicenseUrl` (`scripts/winget-manifest.sh`).
+    - [x] When `rexenv/rexenv` goes public, point `PackageUrl`/`PublisherSupportUrl` back at it and
+      restore `LicenseUrl` (`scripts/winget-manifest.sh`). ✓ **30 Sep 2026** — the repo went public
+      and the releases moved there the same day: the generator reads the newest published release on
+      `rexenv/rexenv`, and `PackageUrl`, `PublisherSupportUrl`, `LicenseUrl` (the repo's LICENSE) and
+      a new `ReleaseNotesUrl` (the release page) all name it. Rendered 0.8.11 from the published
+      `setup.exe` (sha `98774414…`, the API digest agreeing); `winget validate --manifest` on the Win11
+      VM (winget 1.29.380): "Manifest validation succeeded".
     - [ ] Watch PR 437674 through their automated validation, and answer whatever it asks for.
+      **30 Sep 2026: the PR was moved from 0.8.6 to 0.8.11** — the fork branch's `0.8.6/` folder
+      replaced by `0.8.11/`, the title and body rewritten for the public repo (the 0.8.6 files had
+      passed their pipeline: `Azure-Pipeline-Passed`, `Validation-Completed`, waiting on a
+      moderator since 19 Sep). Their pipeline re-runs on the new commit; the CLA is signed.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **✓ verify on the Windows RUNNER — green 21 Sep 2026**, `.github/workflows/windows-verify.yml`

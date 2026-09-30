@@ -328,17 +328,19 @@ release** — which is the property that makes a stolen key survivable. Ledger
    user's side by its control fields and members before `dpkg -i`, an AppImage by running it
    with `--print-version` — so the artifact the descriptor names MUST be the one `tauri build`
    produced, unrenamed. Until each has RUN, that kind+arch is offered nothing.
-   **And the winget manifest** (the tap's Windows counterpart): `./scripts/winget-manifest.sh`
-   renders the three manifests for the tap's latest release into
+   **And the winget manifest** (the cask's Windows counterpart): `./scripts/winget-manifest.sh`
+   renders the three manifests for the newest published release on `rexenv/rexenv` into
    `src-tauri/target/winget/<version>/` — the installer URL and sha256 from the PUBLISHED
    asset, downloaded and hashed here rather than trusted from the API, `Scope: user` because
    that is the only mode rexenv ships, and `AppsAndFeaturesEntries` naming the uninstall entry
    the NSIS installer writes (`ProductCode: rexenv`). `winget validate --manifest <dir>` on a
    Windows machine says "Manifest validation succeeded" (measured 19 Sep 2026 against the
-   first installer, rendered from `--local`). **Every URL in it must be one the PUBLIC can open**:
-   the first render pointed `PackageUrl`/`PublisherSupportUrl`/`LicenseUrl` at `rexenv/rexenv`, which
-   is private and answers 404 to everyone including winget's own URL validation — they name the tap
-   now, and `LicenseUrl` is omitted rather than pointed at a file nobody can read. Submission is a PR
+   first installer, rendered from `--local`; again 30 Sep 2026 for 0.8.11 on the Win11 VM). **Every
+   URL in it must be one the PUBLIC can open**: while `rexenv/rexenv` was private (to 30 Sep 2026)
+   the first render's `PackageUrl`/`PublisherSupportUrl`/`LicenseUrl` answered 404 to everyone
+   including winget's own URL validation, so the 0.8.6 submission named the tap and omitted
+   `LicenseUrl`; since the repo is public and the releases live there, every URL — `LicenseUrl` and
+   `ReleaseNotesUrl` included — names `rexenv/rexenv` (PR 437674, moved to 0.8.11). Submission is a PR
    to `microsoft/winget-pkgs` under `manifests/r/rexenv/rexenv/<version>/`, one version per PR — their
    rule. Their repo is far too big to clone for three YAMLs: fork it (`gh repo fork --clone=false`),
    branch from upstream `master`, PUT the three files through the contents API, then `gh pr create`

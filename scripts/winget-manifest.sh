@@ -18,13 +18,13 @@
 #     asset is DOWNLOADED and hashed here, because a hash nobody in this run
 #     computed is a hash this run is merely repeating (the runtimes publisher's rule);
 #   • the version — the release tag, checked to be plain three-segment semver;
-#   • every URL points at something the PUBLIC can open. `rexenv/rexenv` is a
-#     PRIVATE repo, so `PackageUrl`/`PublisherSupportUrl`/`LicenseUrl` pointing
-#     there answered 404 to everyone including winget's own URL validation
-#     (measured 20 Sep 2026, before the first submission). They name the tap,
-#     which is where the installer itself lives; `LicenseUrl` is omitted rather
-#     than pointed at a file nobody can read — the `License` field still says
-#     Apache-2.0. When the source repo goes public, both move back (docs/TODO.md);
+#   • every URL points at something the PUBLIC can open. Since 30 Sep 2026 that is
+#     `rexenv/rexenv` itself — the repo is public and the releases live there —
+#     so `PackageUrl`, `PublisherSupportUrl`, `LicenseUrl` (the repo's Apache-2.0
+#     LICENSE) and `ReleaseNotesUrl` (the release's page) all name it. Until then
+#     the repo was private and answered 404 to everyone including winget's own
+#     URL validation (measured 20 Sep 2026), so the first submission named the
+#     tap and omitted `LicenseUrl`;
 #   • the fields winget needs to recognise an installed copy — read off what the
 #     NSIS installer actually writes: `AppsAndFeaturesEntries` names the uninstall
 #     entry (`DisplayName` rexenv, `ProductCode` rexenv — the key's leaf under
@@ -164,6 +164,7 @@ PublisherSupportUrl: https://github.com/$RELEASES/issues
 PackageName: rexenv
 PackageUrl: https://github.com/$RELEASES
 License: Apache-2.0
+LicenseUrl: https://github.com/$RELEASES/blob/master/LICENSE
 ShortDescription: A native, lightweight, no-Docker local development environment for web & WordPress developers.
 Description: rexenv runs the whole local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/PostgreSQL, one-click WordPress, .rex DNS, mail catching, tunnels — from one window, with native binaries and no Docker.
 Moniker: rexenv
@@ -172,6 +173,7 @@ Tags:
 - php
 - local-development
 - laravel
+ReleaseNotesUrl: https://github.com/$RELEASES/releases/tag/v$V
 ManifestType: defaultLocale
 ManifestVersion: $MANIFEST_VERSION
 YAML
