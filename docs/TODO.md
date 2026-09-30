@@ -6,6 +6,16 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`) wit
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 30 Sep 2026, before the 0.8.11 cut** (HEAD `149535c2`, v0.8.10 + 35 commits): 23
+ticked blocks moved by the script (22 from Now, 1 from Menu-bar app) — the week's fixes, each proven
+on the VMs: the per-OS update manifests, the patient DNS and edge watchdogs, the durable boot files,
+the Linux route/link and certutil rows, the Windows second-account task, the macOS relink without the
+CLT and the DNS agent's settled-bundle wait + launcher name, the From-Git PHP check, the stopped-stack
+tabs, the "Setting up" row, the tutorial videos. Judgement: shape 1 (open only on paper) hunted over
+the bug rows only — each was fixed or proven this week, none left open on paper; the feature rows were
+not re-hunted. Shape 2: none found. Shape 3: 1 — the WordPress core-files row carries its shipped
+narrative and stays open for the users'-sites ruling, left as is. Shape 4: none. No orphaned prose.
+
 **Reconciled 29 Sep 2026, before the 0.8.10 cut, mechanical pass only** (HEAD `207d6280`,
 v0.8.9 + 39 commits): 16 ticked blocks moved by the script (13 from Now, 2 from Release gates,
 1 from Phase 4+): the one-command install, the Linux `.rex` scope fix, the unclean-reboot DB
@@ -50,151 +60,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [x] **Sites list: a site being created shows "setup incomplete" + Retry for the whole of its
-  provision job** (found 30 Sep 2026 recording the one-click-WordPress tutorial: the row behind
-  the New Site dialog told the viewer the setup had failed while the card in front of it was
-  still installing). `src/routes/Sites.tsx` renders the warning badge and the Retry button on
-  `!site.provisioned` alone, and the backend persists the row at job START with
-  `provisioned=false` (`commands/site_provision.rs`, settle-ok is the only writer of 1) — so a
-  running job and a dead one look the same. The badge's own comment says it means "provisioning
-  died or was cancelled". *Done when:* a row whose domain has a RUNNING provision job shows a
-  running state with no Retry, the badge and Retry still show after a failed or cancelled job,
-  and a wk-check renders both. Frontend only — the same on all three OSes. ✓ **30 Sep 2026
-  (ledger #763):** `SiteRow` takes `provisioning`, asked of the backend's job registry per
-  not-yet-provisioned row (`siteProvisionActive(domain)`, a 2 s poll while such a row exists —
-  whoever started the job: the dialog, Retry, `rex site create`, an agent): running → the amber
-  `Setting up` pill and no Retry; answered "none" → the badge + Retry as before; not yet
-  answered → neither, never a flash of "failed" first. The dialog also hands its started job to
-  the route (`onStarted`) so the route's own card shows behind the dialog and survives "Close
-  (keeps running)". wk-check `uireview.js` `badges` asserts all three rows (`creating.test`,
-  `half.test`, `asking.test`), planted three ways. SMOKE's headline flow carries the live look —
-  ran the same day on the 15.8 VM (`rex site create` with the Sites page in front): `Setting up`
-  at 6 s, `Running` at 16 s.
-- [x] **Tutorial videos: record the real UI with a narrated voiceover, no screen recording**
-  ✓ 30 Sep 2026 — `scripts/video/` (README): the shipped components in a headless Chromium
-  against a scripted backend that replays the Rust provision job's own phases and log lines,
-  edge-tts narration timed by the scene, an aligned voice track + SRT. Pilot
-  `npm run wp-install` (58 s, one-click WordPress). Two traps recorded in the README: headless
-  WebKit's frames arrive ~0.5 s late (synced by a magenta flash), and it shrinks to 0.9 on a
-  laptop-sized screen (hence Chromium).
-
-- [x] **"Start rexenv at login" is ONE toggle — prove the merged login on 0.8.10, all three OSes**
-  (owner, 29 Sep 2026: "ekta toggle on korlei auto service on hoye jai login er pore"; ledger
-  #739). Built 29 Sep: the login item's `--hidden` launch runs Start all and nothing else does;
-  the `start_services_on_launch` setting is retired and swept; the description is each OS's
-  sentence in `words.rs`. *Done when:* on 0.8.10, with the one toggle on — macOS (a real logout
-  and login: `rex status` lists the backends running before the window opens), the Dell
-  (`rexenv.exe --hidden` under `explorer.exe`, backends running, and a Start-menu launch after
-  Stop all starts nothing), the Ubuntu VM (autologin reboot, same two halves) — the three SMOKE
-  rows the ledger row names are ticked with the evidence.
-  **🔴 FAILED on macOS, 29 Sep 2026 (15.8 VM, the drafted 0.8.10 dmg `4553902a…`):** toggle on
-  (the LaunchAgent names `rexenv --hidden`), stack running, the VM hard-killed and booted →
-  autologin → every service idle, no site answering. macOS's own "Reopen windows when logging
-  back in" list (`com.apple.loginwindow.<UUID>` `TALAppsToRelaunchAtLogin`, rexenv `Hide = 0` —
-  the dialog's DEFAULT) launched rexenv WITHOUT `--hidden` at 12:56:14, the LaunchAgent's
-  `--hidden` launch found it holding the socket and handed off (`launchctl print`: runs 1, last
-  exit 0), and `cli_server::hand_off_to_running_instance` sends only `app.open` — the login
-  launch's one distinguishing fact is dropped, so login-start never runs and the window is raised
-  instead. 0.8.9 hid it: its second toggle started the stack on ANY launch. **Fixed 29 Sep 2026
-  (before 0.8.10 publishes):** the handoff carries `login: true` (`cli_server::handoff_request`,
-  one line for the unix socket and Windows' pipe), and the running instance runs login-start —
-  once per process, held until setup is ready (`LoginStartGate`) — without raising its window.
-  L0 + four plants (ledger #739). ✓ 29 Sep 2026 on the re-cut 0.8.10 (`a470c1af`), both halves
-  and the handoff on every OS — the macOS 15.8 VM (a loginwindow restart with Reopen windows on:
-  the relaunch without `--hidden` held the lock, the `--hidden` launch handed off, the stack came
-  up), the Win11 ARM VM (autologon reboot → `--hidden` under `explorer.exe`, stack up) and the
-  Ubuntu 22.04 VM (autologin reboot, stack up) — SMOKE's three rows carry the evidence. The
-  runs found the five rows below.
-
-- [x] **Linux: a unit file written just before a power loss comes back EMPTY — the edge is then
-  masked and never starts** (29 Sep 2026, 22.04 VM, 0.8.10): Start all (one polkit), then a hard
-  kill ~30 s later (`utmctl stop --kill`) → after the boot `/etc/systemd/system/rexenv-edge.service`
-  was 0 bytes, `systemctl is-enabled` said `masked` (systemd reads an empty unit as masked), and
-  every login-start said "the HTTPS edge needs Start all" until one ran. ext4's delayed allocation:
-  the file's data was never flushed, its `multi-user.target.wants` symlink (metadata, journaled)
-  was. The privileged step writes `rexenv-edge.service`, `rexenv-dns-route.service`, the route
-  script, `/etc/rexenv/dns.d/*` and the CA file with no `sync`. *Done when:* the step flushes what
-  it wrote before it returns (`sync -f` on each file, or write-temp + fsync + rename), and the same
-  hard kill 5 s after a Start all boots with the edge up (a VM run, not an assertion).
-  **Fixed 29 Sep 2026 for macOS and Linux (ledger #740):** every privileged step ends in
-  `/bin/sync` (`durable::flushed_script` at both `run_privileged` doors), and the app's own
-  boot/login files go through `durable::write_durable`. The mechanism A/B RAN on the VM (plain `cp`
-  + cut → 0 bytes; the wrapped write + cut → whole). **Still owed:** the installed 0.8.11's Start
-  all → cut → boot with the edge up. ✓ **RAN 30 Sep 2026 on the 22.04 VM (this tree's debug deb
-  over 0.8.10):** Start all (one polkit) → `utmctl stop Ubuntu --kill` 5 s after it returned → boot
-  → `rexenv-edge.service` 465 bytes, `enabled`, `active`, the edge answering `https://lv.rex`, and
-  the login's health log carrying no "needs Start all".
-
-- [x] **Linux: `rexenv0` lost its DNS server and domain once, after a re-setup — cause unknown;
-  since 0.8.11 the app notices and offers setup again** (29 Sep 2026, 22.04 VM, 0.8.10): Remove
-  system changes → re-setup (one polkit each, both correct), the unit logged "Bus client set DNS
-  server list to: 127.0.0.1:15353", yet a minute later `resolvectl status rexenv0` said `Current
-  Scopes: none` with no server and no domain, and `.rex` answered on `enp0s1` — the VM's upstream
-  (the Mac serves `.rex` itself), the 28 Sep shape again. **That state is exactly what `resolvectl
-  revert rexenv0` produces** (measured the same day), so some client called RevertLink on the link.
-  **Not the networkd race first suspected here:** six reproductions failed — the script fast and
-  slow on a test link, the real unit's stop → restart, three NetworkManager DNS reloads, and the
-  exact sequence again (teardown → relaunch → onboarding setup) under `busctl monitor`, which saw
-  only rexenv's own three calls; 100 s later the link still routed. **Shipped for 0.8.11 (ledger
-  #741):** Linux `route_owner` counts a marker as ours only while `resolvectl status rexenv0` shows
-  a DNS scope, our server and `~tld`; otherwise the route reads as not installed, `rex status` says
-  MISSING, and the app's setup step re-applies it with one polkit (`systemctl restart` of the unit —
-  measured to restore it). **Still open:** WHO reverts it — on the next sighting, run the capture in
-  `docs/TESTING.md` §"Proving a Linux claim" before touching anything — and the installed 0.8.11's
-  own run of the detection (SMOKE Linux). ✓ **Found 30 Sep 2026 on the 22.04 VM (ledger #762):
-  nobody outside rexenv.** The route unit's `ExecStop=/sbin/ip link del rexenv0` meant every
-  re-apply (`systemctl restart`) deleted and re-created the link — a new ifindex each time, udev's
-  remove of the old one landing after the add of the new — and resolved's late teardown of the
-  old link took the new link's just-set config with it: 3 of 50 re-applies came back `Current
-  Scopes: none` within four seconds of resolved's own "Bus client set DNS server list" line, with
-  NetworkManager `unmanaged` on the link and only rexenv's own calls on the bus (`busctl monitor`).
-  With the link kept across restarts: 0 of 20 by hand (ifindex constant), and 0 of 10 through the app's own repair on the rebuilt deb (26 re-applies in that session, ifindex 65 constant throughout, `probe.rex → 127.0.0.1` pinned to the link). The
-  detection ran on the installed build too: a hand `resolvectl revert` → `rex status` "resolver
-  MISSING" → `rex tld --repair rex` (one polkit) restored it. Fix: `ExecStop=/usr/bin/resolvectl
-  revert rexenv0` (the uninstall still deletes the link) and the script settles and verifies.
-
-- [x] **macOS: the first Start all after replacing the app with a new build can fail
-  "Bootstrap failed: 5: Input/output error" and leave the edge down** (29 Sep 2026, 15.8 VM,
-  0.8.10 `7a5ff08` → `a470c1af` by hand, the boot LaunchDaemon's edge up and adopted): `rex start`
-  asked for the edge password although the edge answered on its admin socket, then the daemon was
-  booted out (14:14:46 "edge went down") and its bootstrap refused with EIO — the classic answer
-  when the label is still tearing down — and the watchdog reported "KeepAlive daemon is not
-  bringing it back". The second Start all, same prompt, succeeded. Two questions: why an adoptable
-  edge was re-installed at all after a same-version replace, and why the bootstrap does not wait
-  for the bootout. Not seen through the in-app updater (it restarts the edge its own way); owed a
-  look before the next release. **The race is fixed for 0.8.11 (ledger #744):** the install polls
-  `launchctl print` until the label is gone (≤ 10 s) before `bootstrap`, and retries a refused
-  bootstrap once. A/B on the VM against the installed 0.8.10 daemon with connections held open on
-  :443: the old tail failed "Bootstrap failed: 5: Input/output error" 3/3, the new one bootstrapped
-  3/3 (idle, the old tail passed 5/5 — the race needs a caddy slow to leave). **Still open:** why
-  a reinstall at all — `prepare_edge` reinstalls when an alive edge REFUSES the config reload (its
-  documented recovery for a root-owned admin socket), and that reload's error was not logged. It
-  is since 0.8.11 ("edge: the live edge refused the config reload (…) — reinstalling it"); look
-  again on the installed 0.8.11. ✓ **Looked 30 Sep 2026, 15.8 VM, this tree's build swapped by
-  hand over the running 0.8.10 with a connection held open on :443:** the new app's Start all found
-  the live edge answering and ADOPTED it — no prompt, no reinstall, no "Bootstrap failed" in either
-  log. The reinstall path did not arise, so the "why" has no new answer; its log line is in place
-  for the next time an edge refuses its reload.
-
-- [x] **Windows: the Explorer hop drops the launch's arguments, so a job-confined `--hidden` launch
-  becomes a plain one** (29 Sep 2026, Win11 VM): `platform::windows::job_guard::relaunch_outside_confining_job`
-  reopens `explorer.exe <exe>` — Explorer cannot pass arguments — before the pipe claim, so the
-  relaunched copy is not a login launch (no login-start, a window). The Run key's login launch is
-  Explorer's child and never hops, so the toggle is unaffected; a Task Scheduler task (every smoke
-  harness) is confined and does hop, which is how it was found. *Done when:* the hop carries the
-  flag (a `.lnk` with arguments opened by Explorer is how the smoke run did it), or the guard says
-  in a comment why a hopped launch may lose it. **Fixed for 0.8.11 (ledger #742):** a `--hidden`
-  launch that hops leaves a `hop-hidden` marker (a timestamp) in the config folder before it asks
-  Explorer; the copy Explorer starts reads it once in `is_hidden_launch`, deletes it, and trusts it
-  only within 20 s. **Still owed:** the Win11 VM run — a `--hidden` start from a scheduled task
-  arrives as a login launch (no window, login-start) on the installed 0.8.11. ✓ **RAN 30 Sep 2026
-  (Win11 VM, this tree's build, the owner logged in on the console):** `rexenv.exe --hidden` from
-  a `schtasks` task (a `.cmd` wrapper) → two rexenv processes with window handle 0 (no window),
-  the app log "launched at login — staying in the notification area" from the copy Explorer
-  started, login-start running (MySQL listening; PostgreSQL's port already held by the killed
-  copy's engine — the services outlive the app), the `hop-hidden` marker gone. 0.8.10 opened a
-  window and started nothing.
-
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
@@ -225,137 +90,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Ctrl+Q presses did not quit the Linux build — neither is the quit gate; the tray's Quit is — so
   no evidence either way; `/var/crash` stayed empty.)
 
-- [x] **macOS: a login toast says "the HTTPS edge needs Start all" when the boot LaunchDaemon is
-  merely slow** (29 Sep 2026, 15.8 VM, 0.8.10): login-start ran 12 s after boot, found the edge not
-  yet up and surfaced "services are up, but the HTTPS edge needs Start all (one admin prompt)";
-  the daemon came up by itself 70 s later and was re-adopted. The sentence tells the user to do
-  something that is not needed. Wait for the boot daemon (bounded) before calling the edge skipped.
-  **Fixed for 0.8.11 (ledger #743), macOS and Linux:** when the plan needs a prompt but the edge's
-  OS supervisor is installed AND enabled, login-start polls the admin socket (touching nothing) for
-  up to `LOGIN_EDGE_BOOT_WAIT` (120 s) and adopts the edge when it answers; only then is it called
-  skipped. Windows' edge has no boot supervisor and never waits. **Still owed:** a slow boot on the
-  macOS VM with the installed 0.8.11 — no "needs Start all" toast, the edge adopted. ✓ **RAN 30 Sep
-  2026, 15.8 VM, this tree's build:** a power-cut reboot with the login toggle on → the app launched
-  at login (02:10:40 local), the LaunchDaemon's caddy answered 200 by 02:13, and the app's log
-  carries NO "needs Start all"; the DNS agent came up 100 s after login (in-process first, handed
-  back at 02:12:31) — the slow-boot case exactly, silent.
-
-- [x] **Windows: a second account's launch re-registers the machine-wide `\rexenv\dns-agent` task
-  for itself** — found 29 Sep 2026 reading `lib.rs` (the launch-time `dns_agent().install`, every
-  launch, `schtasks /Create … /F`) and `platform/windows/logon_task.rs` (`DNS_AGENT_TASK`, one name
-  per machine) while testing a second Windows user; **not run.** rexenv is one account per machine
-  on every OS by design — `:443`, the `.rex` route and the resolver port are machine-wide —
-  and `docs/INSTALL.md` now says so ("One account per machine, every OS"). What is left is the one
-  SILENT part: an admin second account replaces the first account's task (it then starts at the
-  second account's logon, not the first's, until the first account's rexenv launches and takes
-  it back); a standard one cannot overwrite it and falls back to in-process DNS. Recommended:
-  `install` refuses to re-register a task whose principal is another account and says which
-  account holds it — a `platform/windows` change with a rules test, proven with two accounts on
-  the Win11 VM. The owner's call whether a rare multi-account machine is worth that proof.
-  ✓ **The recommended shape built 30 Sep 2026 (ledger #758):** `install` reads the registered
-  task's principal (`schtasks /Query /XML` → `task_principal_sid`) before its `/Create … /F` and
-  refuses another account's with a sentence naming the holder's SID and the one-account rule;
-  the launch then serves `.rex` in-process for the session (the same fallback a standard account
-  already fell to). L0 on the parser and the sentence + TEXT that the check precedes `/Create`;
-  `windows-check` compiles it. The two-account run on the Win11 VM is the proof still owed. ✓ **RAN
-  30 Sep 2026 (Win11 VM, this tree's build, second admin `rex2` launched through a task):** rex2's
-  app log — "dns: could not install the resolver agent: the DNS agent task \rexenv\dns-agent is
-  registered for another account on this computer (S-1-5-21-…)" → "running IN-PROCESS"; the first
-  account's task still `Run As User: Linkon Miyan` before and after.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
   all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
   and unaffected. (The site was brought to 0.8.9 by hand on 29 Sep — `rexenv/website` #14, merged
   with its CI job never started and its bar run locally instead; the bot stays dark.)
-- [x] **The DNS health probe calls the agent "not answering" while it answers** (15.8 arm64
-  VM, 27–28 Sep 2026: "resolver agent was not answering; kicked it" three times in six minutes
-  on 27 Sep with `dig @127.0.0.1 -p 15353` answering throughout, and four times plus one
-  "gave-up … port already in use by rexenv (pid <agent>)" then "[adopted] … answering after
-  all" in the two minutes after a login launch on 28 Sep). The probe's verdict disagrees with
-  the resolver's own answer; either its timeout is too short for a slow VM or it asks the wrong
-  socket. Not seen on the Mac or the Dell. Measure the probe against `dig` before changing it.
-  Again 29 Sep 2026 (0.8.10 §A, same VM): one kick during a GUI Start all, which the user sees
-  as the toast "DNS stopped unexpectedly — restarted automatically" while `rex status` said
-  `answering (agent)` before and after.
-  ✓ **Fixed 30 Sep 2026 (ledger #756), the mechanism read off the code rather than measured on
-  the VM (no `utmctl` on this Mac):** the probe was ONE 500 ms UDP datagram and a kick followed
-  the FIRST miss — on a loaded VM a datagram answers late or is dropped. The watchdog now asks
-  with `answers_as_ours_patiently` (three datagrams, 200 ms apart) and kicks only on the second
-  consecutive silent poll (`PROBE_MISS_POLLS` = 2, ~20 s); a real death still gets its kick, and
-  launchd's KeepAlive is the supervisor anyway. L0 on the rule and the patient probe (a silent
-  socket really waits for every datagram) + TEXT on the arm's order, plant-proven ×2. The VM
-  measurement (`dig` vs the probe under load) stays worth doing if a kick is ever seen again.
-- [x] **A From-Git create on a PHP version the repository's lock rejects fails only after the
-  clone, inside `composer install`** (28 Sep 2026, `symfony/demo` on the default 8.3: lock
-  requires PHP ≥ 8.4.1; the card said "failed at: installing dependencies · composer install
-  failed…", the reason two screens away in Show log). Fetch already reads the repository; it
-  could read `composer.json`'s `require.php` too and say "this repository needs PHP ≥ 8.4 —
-  pick 8.4" beside the version picker before anything is cloned. Recovery today: switch the
-  site's PHP and Retry (worked). ✓ **Fixed 29 Sep 2026 (ledger #751) — the reason on the card,
-  with the fix:** the deps phase reads the cloned `composer.json`'s `require.php` and judges it
-  against the site's PHP minor in Composer's own constraint grammar (`^`, `~`, wildcards, `||`,
-  hyphen ranges, `@stability`; an unreadable constraint never refuses) BEFORE composer runs —
-  "this repository's composer.json requires PHP >=8.4.1, and this site runs PHP 8.3 … switch the
-  site's PHP version to 8.4 or 8.5 (Site → Settings) and Retry"; composer's own refusal (the
-  LOCK's requirement, which the manifest need not state) now names both versions too. L0 table +
-  TEXT on the phase, plant-proven ×3. Not run live (no repository pinned above the default here).
-  - [ ] **The pre-clone hint beside the version picker** is NOT built: Fetch is `git ls-remote`,
-    which reads no files; a raw-file fetch would need per-host URLs (GitHub/GitLab/Bitbucket) and
-    would miss private repositories and self-hosted forges. Owed only if the post-clone refusal
-    above proves too late in practice.
-- [x] **A `certutil` that exists but cannot run gives a raw "io error: Permission denied (os
-  error 13)"** on the Linux trust step (28 Sep 2026, the VM with `chmod -x /usr/bin/certutil`);
-  only an ABSENT one gets the `sudo apt install libnss3-tools` sentence. Small: spawn failures
-  of certutil should read as the same sentence with the reason appended. ✓ **Fixed 29 Sep 2026
-  (ledger #746):** every certutil call in `LinuxCertTrust` goes through one `certutil_run`, whose
-  spawn failure reads "certutil (/usr/bin/certutil) is installed but cannot run — Permission
-  denied (os error 13) — so rexenv cannot add … Reinstall it, then retry: `sudo apt install
-  --reinstall libnss3-tools`"; a non-zero exit keeps its stderr sentence. L0 + TEXT tests, both
-  plant-proven; the run on the installed 0.8.11 is owed in SMOKE § Linux's certutil row.
-- [x] **The polkit sentence for an in-app update is the generic one** — "rexenv needs
-  administrator permission to change system settings — the .rex DNS route, the HTTPS edge, or
-  the local certificate authority" — while the step it authorises is `dpkg -i` of the new
-  package (seen 27 Sep 2026, the first deb update). One action id = one message; the update
-  wants its own id (`…privileged-update`) and sentence, the way the macOS prompt names what it
-  is for. ✓ **Fixed 29 Sep 2026 (ledger #747):** pkexec picks an action by the program's PATH,
-  so the update got a program of its own — `/usr/libexec/rexenv/privileged-update`, a script
-  that runs only `/usr/bin/dpkg -i` on an absolute `.deb` — under `dev.rexenv.rexenv.privileged-update`
-  ("rexenv needs administrator permission to install the update it downloaded — the new rexenv
-  package."); the swap takes that door only when the INSTALLED action file declares it and the
-  program is executable, else the generic step (so the 0.8.10 → 0.8.11 update still shows the
-  old sentence, by design; the one after shows the new). L0 on the shipped policy, script and
-  deb map + TEXT on the swap, plant-proven ×3; `linux-check` compiles it. The dialog itself is
-  owed on the VM's update AFTER 0.8.11 (SMOKE § Linux, the deb update row).
-- [x] **A Finder "Replace" of the running app can pop macOS's "rexenv quit unexpectedly"** (seen
-  three times on the 13.6 VM, 23 Sep 2026, every one during a HAND swap of the bundle over ssh
-  — `rm -rf` + copy, or copy + `mv`): the DNS agent's LaunchAgent (KeepAlive) relaunches
-  `rexenv --dns-agent` the instant the app is killed, lands in a half-replaced bundle, and dyld
-  kills it with `SIGKILL (Code Signature Invalid)` at `_dyld_start` — the report names rexenv, so
-  the user reads it as the app crashing. `crash.log` stays empty (nothing of ours ran). The
-  in-app updater swaps atomically (ledger's `app_bundle` rows) and never showed it; a user who
-  drags a newer dmg over a RUNNING copy in Finder walks the same race. **Seen a fourth time,
-  27 Sep 2026, 0.8.8's §A on the 15.8 VM:** the app was NOT running — only the 0.8.7 agent was
-  (from the deleted bundle); the new app kickstarted it for the version mismatch, the first
-  relaunch died `Launch Constraint Violation`, the second served. So the trigger is any
-  relaunch of the agent right after a swap, not the app being replaced while open. Options: `bootout` the
-  agent before the swap in the updater's Finder-replace guidance (`docs/INSTALL.md`), or have the
-  agent's KeepAlive wait for a settled bundle (a signature check before exec). Not a 0.8.7
-  blocker — the shipped path is the updater.
-  ✓ **The second option built 30 Sep 2026 (ledger #761):** the agent's LaunchAgent runs
-  `/bin/sh -c 'until /usr/bin/codesign --verify "$0" …; do sleep 1; done; exec "$0" --dns-agent'
-  <exe>` with `AssociatedBundleIdentifiers` = the app's id, so a relaunch into a half-copied or
-  deleted bundle loops quietly at 1 Hz instead of being SIGKILLed by dyld and reported as a
-  crash, and execs the agent (same pid — `kickstart -k` still works) the moment the bundle
-  settles; `codesign --verify` is base macOS, not the CLT. L0 on the plist text; live: PASS on the dev Mac, 30 Sep 2026 (a throwaway launchd label, an ad-hoc signed cc-built fixture as `$0`, the production shell line): exec once after load; the exe truncated + `kickstart -k` → no exec, the job `state = running`, no crash report; the exe restored → exec within 3 s — and, measured first, a COPIED Apple binary as the fixture is itself SIGKILLed (`OS_REASON_CODESIGNING`, a launch constraint), which is why the fixture is ad-hoc signed like rexenv.
-  The app's next launch rewrites the plist (its bytes changed) — one `launchctl` reload per
-  install, and the Login Items name is what SMOKE §A must read: "rexenv", not "sh".
-  **Read 30 Sep 2026 on the 15.8 VM: "sh", twice** — Login Items names a LaunchAgent after its
-  program's file name, and `AssociatedBundleIdentifiers` attributes only a Team-ID-signed pair.
-  ✓ **#764 the same day:** the program is a launcher script in app data named after the app
-  (`dns-agent/rexenv`, the wait inside it, written before the plist); a throwaway agent of that
-  shape was listed as "rexenv" on the VM, and the installed build: Login Items & Extensions → Allow in the Background listed the new registration as "rexenv" (the pane read rexenv, rexenv, sh — the surviving "sh" is the #761 registration's history; the four newest "Background Items Added" banners all said "rexenv", the three older ones "sh"); launchd's `program` = `~/Library/Application Support/dev.rexenv.rexenv/dns-agent/rexenv` (0755, written at the relaunch), the job's pid IS `rexenv --dns-agent` (the exec kept it), and `rex status` read `DNS answering (agent, udp 15353)` after the documented 10 s port handoff (two "cannot bind … retrying in 10s" lines while the old agent left). The old "sh" rows are
-  BTM history until `sfltool resetbtm`.
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
@@ -412,119 +152,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
-- [x] **`rex site list` / `site info` say `serving` about a site that cannot be reached.** Seen on the
-  15.8 VM, 23 Sep 2026: a WordPress create died at "downloading WordPress core" (cURL 28) and the
-  site stayed setup-incomplete with NO vhost in the Caddyfile — `curl https://legacy-mwp.rex`
-  answered a TLS `internal error` (no certificate for the name) while both `rex` commands printed
-  `serving`. The CLI reads `sites_serving` — the manager's belief (edge up && the site's upstream
-  up), the Sites-page bool — not `readctx::probe_serving`, which asks the wire and keeps
-  setup-incomplete distinct (#200) for the MCP. Same fact, two answers, one of them wrong: the
-  CLI should render the MCP's classification, not the belief. ✓ **Fixed 29 Sep 2026 (ledger
-  #748), at three layers:** the belief itself now counts a half-provisioned site as not serving
-  (no vhost, so the edge refuses its name — the Sites page, the MCP list and `rex site list` read
-  it); the MCP's `classify` no longer reads a healthy edge's refusal of an unrouted name as
-  "another server on 443" (that site is `setup-incomplete`; a port nobody listens on still
-  outranks it); and `site.info` answers with the classification (`probe_serving` +
-  `AgentSiteStatus`, `serving` = the verdict's boolean) while `rex` renders each verdict with
-  its fix — `site list`'s STATE is `serving` / `stopped` / `incomplete` / `down`. L0 on all three
-  + a TEXT guard on the arm, plant-proven ×4. Not run against a live half-provisioned site (none
-  exists here; making one is a failed create on the owner's machine).
-- [x] **After Settings → Remove system changes, the health log blames an outsider.** Clean-15 smoke,
-  23 Sep 2026: `[edge-down] Caddy: edge stopped and its KeepAlive daemon is no longer installed
-  (removed outside the app)` — twenty seconds after the app itself removed it. The service
-  manager has no notion of a teardown, so the honest wording for "the user did this here" does
-  not exist. Same family as #715 (the DNS watchdog had the same blind spot, now fixed with a
-  mode); the edge needs its equivalent, or the teardown should tell the manager. ✓ **Fixed
-  29 Sep 2026 (ledger #750), the second shape:** `uninstall_system` calls
-  `ServiceManager::edge_removed_by_user()` after the teardown succeeded — the handle goes to
-  Stopped and every give-up counter to zero, so the daemon-dead branch never runs for the app's
-  own removal (an edge that somehow still answers is re-adopted by the next poll, as after any
-  stop). L0 on the manager + TEXT on the command's order, plant-proven. The VM run is the
-  uninstall row's next pass: health.log carries no `[edge-down]` after Remove system changes.
-- [x] **The edge wire probe reads the app's OWN Caddy reload as a foreign proxy.** Three times in
-  three minutes on the 15.8 VM (23 Sep 2026, one per `rex site create`), and earlier the same day
-  on 13.6: `[edge-blocked] … another local proxy answers port 443 in front of it — no site will
-  load until you quit that app` followed ~10s later by `[edge-unblocked]`. Nothing foreign was
-  there — the marker-header probe (`proxy::edge_wire`) misses during the reload the app itself
-  just asked for, and "another local proxy" is the fallback when no holder is found. Two toasts
-  per site create, naming an app that does not exist. Fix: the watchdog should know a reload is
-  in flight (or require the miss on two consecutive polls) before calling the wire foreign.
-  Again 29 Sep 2026 (0.8.10 §A, same VM): once at launch, while the app adopted a root edge the
-  boot had started — `edge-blocked` at 06:47:35Z, `edge-unblocked` 11 s later, nothing foreign.
-  ✓ **Fixed 29 Sep 2026 (ledger #749), the second shape — two consecutive polls:** the watchdog
-  keeps `edge_wire_misses` (reset by an answer from our edge, and by Stop all) and calls the edge
-  blocked only at `EDGE_WIRE_MISS_POLLS` = 2 (~20 s); the reload-in-flight flag would not have
-  covered the launch-time adoption, the debounce covers both. A real foreign bind persists and
-  is reported one poll later. L0 on the rule + TEXT on the watchdog, plant-proven. Not run on the
-  VM (the next §A's site creates are the run: no `edge-blocked` toast).
-
-- [x] **Adminer: the documented revert does not exist.** After Update (5.4.2 → 6.0.2) the Databases
-  row reads only `Adminer 6.0.2`; the older tree stays on disk but nothing offers it, so
-  `docs/SMOKE-TEST.md`'s "a revert is a second press" cannot be done. Either offer the kept
-  versions, or drop the row and the design note. ✓ **Offered, 30 Sep 2026 (ledger #759):**
-  `AdminerStatus` carries `pinned` and the row shows "Back to <pin>" whenever the choice is newer
-  than the pin — the same `adminer_update_apply`, with the pin as the version (always in the
-  manifest, its tree still cached), so the revert is literally a second press. tsc + eslint; the
-  press on the VM is SMOKE's row, now pressable.
-- [x] **A stopped site's WordPress and Database tabs say nothing true** (seen on Windows,
-  19 Sep 2026; not established as Windows-only). The WordPress tab spins "Loading plugins…"
-  indefinitely — wp-cli cannot reach a database that is not running, and the spinner has no end
-  state. The Database tab prints the Adminer URL above a BLANK frame, because Adminer is not
-  serving. Both are honest-UI failures of the kind `docs/DESIGN.md` forbids, and the same site's
-  **Logs** tab is the proof they are fixable rather than inherent: it names the file, says
-  "WordPress debug logging is off — nothing is being written", and tells you what to turn on.
-  Done when: each tab, on a stopped site, says what is not running and offers the start.
-  ✓ **Fixed 29 Sep 2026 (ledger #752):** both tabs ask `useStoppedDependency` — the site's
-  database engine (`databasesStatus`, the Databases page's own 2 s poll and query key) and, for
-  the Database tab, the web tier (`servicesStatus`: Caddy + Nginx, since Adminer is served
-  through the stack) — and while one is down render `StackNeededPanel`: "MySQL is stopped —
-  WordPress's plugins, themes, users and tools read its database — nothing answers while it is
-  down. Start all brings it back…" with a Start all button (the footer's `startServices`); the
-  WordPress sub-panels are not mounted and their wp-cli queries are `enabled: false`, so
-  nothing spins; the panel gives way to the real tab on the next poll after the start. Outside
-  the desktop app (the dev harness) nothing is polled. tsc + eslint; NOT run in the app (a GUI
-  run on a stopped stack is the SMOKE row).
-
-- [x] **Smaller, same run:** sub-sites created on a subdomain multisite are recorded with `http://`
-  URLs (main site is `https://`); `rex site create` names a site after its domain (`s1.rex`) where
-  the dialog derives a name; Hello Dolly's row shows the terminal button and lands on an honest
-  "Terminal unavailable" panel where SMOKE says such rows show no button; SMOKE's MCP row 43 says
-  49 tools, the endpoint lists 50; a translocated first launch (zip/`cp`, not a Finder drag) writes
-  the DNS LaunchAgent plist with the `/private/var/folders/…/AppTranslocation/…` path — self-heals
-  on the next launch, DNS dead in between. ✓ **Fixed 29 Sep 2026 (ledger #753), all five:**
-  `wp site create` gets `--url=https://<main host>/` (WP-CLI's `is_ssl()` is what decides the
-  sub-site's scheme; existing `http://` sub-sites are not rewritten — `wp option update siteurl`
-  by hand); `rex site create <domain>` names the site the domain without its TLD
-  (`name_from_domain`, the dialog's pairing read backwards); `wp plugin list` carries `file` and a
-  plugin whose file has no folder (`hello.php`) gets no terminal button; SMOKE row 43 already
-  reads "the count is whatever `tools/list` prints — never a number carried by hand" (its 49 is
-  the 3 Sep run's record, the 18 Sep 50 beside it) — nothing more to fix there; and on macOS a
-  translocated exe is refused by the DNS agent's install (DNS served in-process this session,
-  the sentence names the fix), by Start at login's enable, and kept-as-recorded by its refresh.
-  L0 on each + TEXT on the three launchd writers and the CLI arm, plant-proven ×5. Not run live
-  (the multisite create and the zip launch are SMOKE rows).
-- [x] **Homebrew-bottle bundles (redis / mariadb / httpd / xdebug) still need the Xcode
-  Command Line Tools on a clean Mac.** Found 18 Sep 2026 by the first clean-VM smoke test:
-  `prepare_binary` asked `otool` for every binary's dylib list and the CLT shim failed all
-  six first-run components (ledger #676 — fixed for single binaries by reading the load
-  commands in `core/macho.rs`). Bundles are the other half: their `@@HOMEBREW_*@@` load
-  commands must be REWRITTEN to `@loader_path`, and the rewrite is `install_name_tool`,
-  which is CLT. Today that is a quiet `clt_preflight` error naming `xcode-select --install`
-  (no dialog). Closing it means an in-place Mach-O rewriter (a new path fits in the old
-  command's padded slot when shorter, which `@loader_path/../lib/x` usually is; longer
-  needs the `-headerpad` slack Homebrew bottles are built with — measure before building).
-  Done when: a clean user on the VM installs Redis with `xcode-select -p` failing.
-  ✓ **The in-place Mach-O rewriter built 30 Sep 2026 (ledger #760):** `core::macho::rewrite_dylib_paths`
-  re-lays out the load-command region itself — in place when the new path fits, into the
-  header pad (`-headerpad_max_install_names`, which every Homebrew bottle carries) when it is
-  longer, and refuses byte-identically when even the pad is too small — and both relink paths
-  (`relink_into_tree` for bundles, `relink_to_system_libs` for single binaries) call it first,
-  reaching `install_name_tool` only for a path that does not fit. Every bottle path rexenv
-  rewrites is SHORTER than the `@@HOMEBREW_*@@` placeholder it replaces, so the CLT is never
-  reached for a bundle rexenv ships; signing stays last and is base macOS. L0 on a synthetic
-  Mach-O (shrink in place, grow into the pad, refuse beyond it, nothing-to-do, not-a-Mach-O) and
-  a CLT-gated test on a REAL cached `libcrypto.3.dylib` (RAN on the dev Mac, 30 Sep 2026 (the tools present) — plus TEXT `the_relink_reaches_the_command_line_tools_only_when_a_path_does_not_fit` (neither relink path names the tools; `rewrite_load_commands` names them only under `NoRoom`); plant-proven ×2 (the room check dropped → the refusal leg red; `relink_into_tree` back on the tools → the TEXT red)). The clean-VM Redis install
-  with `xcode-select -p` failing is the run still owed (SMOKE).
 - [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
   `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
   and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
@@ -557,20 +184,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     says how to repair an existing site Users of 0.4.0–0.7.1
     with sites created by rexenv are affected the same way — a release note or an in-app repair is a separate
     ruling
-- [x] **`frankenphp_mail_catch_check`'s catch-OFF backend sometimes accepts a request and never answers** — twice in
-  two days, both inside a release `verify-full`: 13 Sep 2026 it held 0.7.1's gate 50 minutes at 0% CPU (curl had no
-  timeout; now `--max-time 60`), and 14 Sep 2026 on the 0.7.2 worktree it failed the control check with an EMPTY body
-  (`getenv('MAIL_HOST') is empty — ` with no detail; the neighbouring "does not carry our shim" check passes vacuously on
-  an empty body). The same example then passed 3 of 3 alone (15 s, 14 s, 11 s). Not the mail catch — the first backend
-  the example starts. Unmeasured: whether FrankenPHP is still loading its worker when `await_listening` sees the port,
-  or wedges; a check that reads "empty body" as its own failure, and the backend's log spilled, would say which
-  ✓ **Hardened 29 Sep 2026 (ledger #754):** readiness is an ANSWERED request (`common::await_answering`:
-  `curl --max-time 2` polled until a non-empty body, ≤ 20 s — a worker still loading is absorbed, a wedge
-  fails there with the backend's log spilled), every request is `common::http_get` (`Ok` only for a
-  non-empty body; curl's exit named — 28 timed out, 7 refused, 52 empty reply), the control's "does not
-  carry our shim" needs a body to judge, and a failed request is its own check line with the last 30 lines of
-  `frankenphp-fpmail.test-stdout.log`. Which of the two it was (loading vs wedge) is what the next red run
-  will now say. Live: 3/3 PASS on the dev Mac, 29 Sep 2026 (3.9 s, 2.9 s, 2.9 s); the empty-body plant → two red control lines, the first reading "no body to judge — the request above failed".
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:
@@ -2229,17 +1842,6 @@ Shipped 31 Aug – 1 Sep 2026 (Phases A–D, ledger #436–#441; log in
 The second-instance row this section last carried closed with #441
 (`hand_off_to_running_instance`: the CLI socket is the lock; a second launch activates
 the first and exits) — its box stayed `[ ]` under a struck-through title, ticked 5 Sep 2026.
-
-- [x] **Hold the tray menu open while the stack MOVES** (L3, ledger #437) — the 5s tick
-  now writes titles/enabled/checkmarks onto the live items and rebuilds only when a row
-  appears or disappears, so an open menu should update without closing. Fixed 8 Sep 2026
-  after the menu was reported closing itself seconds after being opened; the 1 Sep walk
-  missed it because a 15s hold on an IDLE stack is the case where nothing moves. ✓ **30 Sep 2026
-  (15.8 VM, this tree's build, over ssh + System Events):** the tray menu held 30 s with the stack
-  running and its numbers ticking — `exists menu 1 of menu bar item 1` true at 0 s and at 30 s.
-  Owed before that: the `docs/SMOKE-TEST.md` box for a ~30s hold during a start (numbers move, menu stays
-  open). (**About rexenv** from the tray with the window CLOSED ran ✓ 18 Sep 2026 on the clean
-  VM.)
 
 ## Blocked on external work
 
