@@ -2523,6 +2523,10 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       through Explorer and LOSES its arguments (`docs/TODO.md`), so it reads as a plain launch —
       use a `.lnk` with the argument, opened by Explorer.
 
+      **✓ 30 Sep 2026, Win11 ARM VM, the 0.8.11 draft (`7d9ec97`) `/S` over 0.8.10:** a one-shot
+      autologon + reboot → `rexenv.exe --hidden` at login, no visible window (console screenshot +
+      `EnumWindows`), all seven services up with no click, `lm.rex` / `lv.rex` 200 (60 s budget on
+      the emulated VM), the Winlogon values removed after.
 - [x] **A confined `--hidden` launch stays a login launch** (ledger #742, 0.8.11): Stop all, quit;
       start `rexenv.exe --hidden` from a scheduled task (confining, so it hops through Explorer) →
       the copy Explorer starts shows no window and runs login-start (the backends come up), and
@@ -2763,6 +2767,11 @@ rexenv0 <name>` and read `Current Scopes:`.
       link ever does it: `sudo ip link del rexenv0`, and the mechanism is wrong, not the tester.
       **Second tell:** `Current Scopes: none` on `rexenv0` — `.rex` then works only while some
       other machine answers it.
+      ✓ 30 Sep 2026 (22.04 arm64 VM, the 0.8.11 draft deb over 0.8.10): a fresh `.rex` name →
+      127.0.0.1 in 0.6 ms, `~rex` on link 3 only, `example.com` via `enp0s1`; a
+      `systemctl restart rexenv-dns-route` kept ifindex 3 and the scope (#762); `resolvectl revert`
+      → "resolver MISSING" → `rex tld --repair rex` (one polkit, the app launched from Activities)
+      → restored.
 - [x] Add a second TLD in Settings → a second marker, `resolvectl status rexenv0` lists both
       `~rex ~test`, both answer THROUGH `rexenv0`, `example.com` still does not. Remove both →
       `rexenv0` is gone. **◐ the mechanism ✓ 28 Sep 2026 (VM):** `linux_dns_route_check` with the

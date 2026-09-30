@@ -103,6 +103,52 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.11 — DRAFTED on the tap by CI (30 Sep 2026, the second draft) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green
+
+`rexenv_0.8.11_universal.dmg` sha256 `ef3e3ceac0fa4a81bd9949c6f11f29fb88e3821ca5d1909c0ce45b4cf8858c21`
++ `.app.tar.gz`, the four Linux and the two Windows assets (`shasum -c` against every attached
+`.sha256`: all OK), source `7d9ec977` (tag `v0.8.11`), `rexenv/runtimes` run 36679339164 — the
+LAST release drafted from runtimes: the repo went public the same day and the pipeline runs here
+again — all four lanes green, 16 assets, the body the tag's verbatim (28 lines). **The first draft
+(run 36677337263, dmg `01588b49…`) was withdrawn:** its notes carried a 0.8.10 bullet (the login
+handoff, `a470c1af`) as new — the tag moved to the same commit with the bullet dropped, the draft
+deleted, the pipeline re-run; §A0 and §A had already passed on it and were re-run on the second.
+**§A0 ✅ by hand on the downloaded assets (both drafts):** `rexenv` and `rex` both `x86_64 arm64`,
+`Dist_Archive_Command` ×5 and the update key in EACH slice, `minos 13.0` in both, codesign valid,
+Info.plist `0.8.11` — on the dmg's app AND the archive's; one top-level `rexenv.app/`, no
+AppleDouble; dmg app == archive app.
+**§A ✅ on the 15.8 arm64 UTM VM, over an installed 0.8.10 (both drafts):** the dmg `scp`'d (hash
+re-checked there), the DNS agent booted out, `rm -rf` the app, copied out of the mounted dmg, a
+synthetic `0083` quarantine: Gatekeeper **"rexenv" Not Opened** (Done / Move to Bin); Done →
+nothing running; `sudo xattr -rd` → launched, `rex 0.8.11 (7d9ec97) · app rexenv 0.8.11
+(7d9ec97)`, no new crash report (9 → 9), the DNS agent back by itself (`program` = the #764
+launcher, `answering (agent)`); then Stop all → Start all: the edge `state = running` in 8 s,
+`smoke1.rex` 200, no "Bootstrap failed" (#744).
+**Linux ✅ on the 22.04 arm64 VM (the arm64 deb, both drafts — `apt-get install ./…deb` over 0.8.10,
+then over the first draft):** `dpkg -s` 0.8.11, the app relaunched from Activities `0.8.11
+(7d9ec97)`; P1: a fresh `.rex` name → 127.0.0.1 in 0.6 ms with `~rex` on link 3 (`rexenv0`) only
+and `example.com` via `enp0s1`; `systemctl restart rexenv-dns-route` kept ifindex 3 and the scope
+(#762); `resolvectl revert` → `rex status` "resolver MISSING" → `rex tld --repair rex` (one polkit)
+→ restored; edge, route and DNS units active; `/var/crash` empty. (The VM's site docroots had been
+deleted by an earlier cleanup — `lm.rex` 404 from nginx, not a release fact.) **A trap met twice:**
+an app launched from ssh, even with the session's `DISPLAY`/`DBUS` in its environment, has no polkit
+agent — the repair fails "no authentication agent"; launch from Activities.
+**Windows ✅ on the Win11 ARM VM (the `setup.exe`, both drafts — `/S` over 0.8.10, then over the
+first draft with the app running):** exit 0, Apps & Features `0.8.11`, the Run key's `--hidden`
+kept, `\rexenv\dns-agent` Ready; launched through Explorer (a `launch.cmd` from a `/IT` task —
+`schtasks /TR` cannot quote the profile's space): `0.8.11 (7d9ec97)`, seven services running, the
+agent on `udp 53` (`probe.rex` → 127.0.0.1), `lm.rex` / `lv.rex` 200. **The login row
+(`f13efd6b`):** a one-shot autologon + reboot → `rexenv.exe --hidden` at 12:56:45, no visible
+window (a console-session screenshot + `EnumWindows`), all seven services up with no click, the
+Winlogon values removed after (absent before). The first fetches right after a launch time out at
+10 s on the emulated VM and answer 200 in 0.4 s a minute later — budget 60 s there.
+**Not run:** the clean-Mac list; the second-account row (#758 — its L1 ran on this VM the same
+day); the Finder drag-over dialog (#761's own gap); the tunnel probe; the Intel spot-run.
+**Next (owner):** Publish → the tap's Update cask; in `rexenv/runtimes` "Publish app update
+manifest" once per descriptor + `scripts/check-app-manifest.sh` each; `rexenv/apt` → "Publish apt
+repository" (the first run through the pipeline, `docs/TODO.md`) + `scripts/check-apt-repo.sh`;
+then §M — the 0.8.10 → 0.8.11 in-app update on all three VMs, with Ubuntu's WebKitWebProcess row.
+
 ## A) ✅ 0.8.10 — DRAFTED on the tap by CI (29 Sep 2026, the re-cut) — §A0 by hand and §A on the 15.8 VM green
 
 `rexenv_0.8.10_universal.dmg` sha256 `3414c4fd7bbf8c1a0065f0e9f24e5604f86064d6496b6fdc079480f62e795839`
