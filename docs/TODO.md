@@ -60,6 +60,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Linux: the 0.8.10 → 0.8.11 in-app update ends in onboarding's Welcome with "resolver
+  MISSING" over a route that still works** (30 Sep 2026, 22.04 VM, §M): the relaunched 0.8.11 does
+  not classify 0.8.10's route unit (`ExecStop=/sbin/ip link del rexenv0`) as its own, although
+  resolved still routes `~rex` through `rexenv0` and a fresh name resolves; one "Set up domains &
+  SSL" (a polkit prompt) rewrote the unit to #762's shape and everything read installed. Every
+  0.8.10 Linux install pays that extra pass on this update and is greeted like a first run over
+  its existing sites. *Done when:* an app whose route works but whose unit is an older rexenv
+  shape says so ("route from an older rexenv — re-apply" with the one prompt) or re-applies it
+  in the update's own polkit, and never opens the Welcome screen over an install with sites.
+- [ ] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
+  Sep 2026, 22.04 VM): the CLI's `println!` on a closed pipe aborts with a Rust panic on stderr.
+  *Done when:* a closed stdout ends the command quietly (SIGPIPE default, or the writes checked)
+  on all three OSes.
 - [ ] **macOS: the in-app update's automatic reopen did not happen once (1 of 2, 0.8.10 → 0.8.11
   on the 15.8 VM, 30 Sep 2026)** — OK on "rexenv 0.8.11 is installed" → the app quit ("reopening
   … once this process exits" logged 15:05:41) → nothing for two minutes: no launch line, no crash
@@ -121,6 +134,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Ctrl+Q presses did not quit the Linux build — neither is the quit gate; the tray's Quit is — so
   no evidence either way; `/var/crash` stayed empty.)
 
+  ✓ **30 Sep 2026, §M for 0.8.11 (the first update on the #757 build, 22.04 arm64 VM):** 0.8.10 →
+  0.8.11 through the app, ONE polkit, the app came back by itself, `/var/crash` empty, no dialog —
+  0 of 1 with the mitigation; the row stays open until the next update makes it 0 of 2 or more.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
