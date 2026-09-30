@@ -60,13 +60,28 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **macOS: the in-app update's automatic reopen did not happen once (1 of 2, 0.8.10 → 0.8.11
+  on the 15.8 VM, 30 Sep 2026)** — OK on "rexenv 0.8.11 is installed" → the app quit ("reopening
+  … once this process exits" logged 15:05:41) → nothing for two minutes: no launch line, no crash
+  report, no `--relaunch` process caught; a hand `open` then launched 0.8.11 at once. The second
+  run reopened within a second. The relauncher (`platform/macos/relauncher.rs`) waits on the
+  parent's kqueue exit with a 120 s cap and `open`s the bundle, stderr to `/dev/null` — so a
+  failed `open` or a wrong parent token leaves no trace. *Done when:* the relauncher writes its
+  outcome (parent wait, `open`'s exit code, an error) to the app's log dir, and the next update
+  on the VM either reopens twice in a row or names why not. The 0.8.10 → 0.8.11 update also
+  showed "rexenv quit unexpectedly" once (the DNS agent, #761's race under the 0.8.10 plist —
+  expected exactly once per 0.8.10 install, never again after the #764 launcher is written).
 - [ ] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
   place** (found 30 Sep 2026 on the Win11 VM, 0.8.11's third draft over its second): the
   silent install wrote the registry (`DisplayVersion` 0.8.11), `rex.exe` and the task, but the
   running app's image could not be replaced (file in use) and NSIS carried on — `rex --version`
   read `rex 0.8.11 (21f8a1b) · app rexenv 0.8.11 (7d9ec97)`, a half-replaced install with a
-  green exit code. The non-silent installer shows its running-app sentence; `/S` has no UI. With
-  the app quit first the same installer replaced the file. *Done when:* the silent path either
+  green exit code. The non-silent installer shows its running-app sentence; `/S` has no UI.
+  **Sharper, the same afternoon:** the DNS agent is `rexenv.exe` too (`\rexenv\dns-agent`, a
+  logon task — always running), and with only the app quit the replacement failed again (exe hash
+  unchanged, `app rexenv 0.8.11` behind `rex 0.8.10`); with the app AND the agent task stopped
+  the same installer replaced it — so on any machine where rexenv has ever run, `setup.exe /S`
+  cannot replace the binary unless it stops the agent first. *Done when:* the silent path either
   closes the app (the in-app updater's swap does this with `RenamePair`) or exits non-zero
   naming the running process; `docs/SMOKE-TEST.md` § Windows carries the row; the tap's
   `install.ps1` (which leaves a running rexenv alone by design) is not the fix.
@@ -75,6 +90,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
   `scripts/check-apt-repo.sh`) and the tap's `install-scripts.yml` passing its lag path on that
   publish. (The key's backup: ✓ 30 Sep 2026, the owner holds it; the agent's only copy deleted.)
+  ✓ **RAN 30 Sep 2026 for 0.8.11** (run 36689575061, one approval; since that afternoon
+  `build-site.sh` reads the newest published releases on `rexenv/rexenv`, where 0.8.8–0.8.10 are
+  mirrored, so `KEEP=3` resolves): `check-apt-repo.sh` all green — InRelease signed by the
+  repository's key, amd64 and arm64 at 0.8.11, the latest release. The tap's `install-scripts.yml`
+  lag path was not exercised (its run installed the release's `.deb` directly, as designed while
+  apt is not yet current) — left open for that one leg.
 
 - [ ] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
   2026, 22.04 VM, 0.8.9 → 0.8.10): the update itself was clean — the new app came back — but at

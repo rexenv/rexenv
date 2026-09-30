@@ -131,6 +131,37 @@ commit rather than the binaries rebuilt (#765 fixes the path for the next dispat
 record below is the second draft's, kept because its §A and the per-OS install rows were run
 on it too.
 
+**PUBLISHED 30 Sep 2026, 08:17:00Z — on `rexenv/rexenv`, the first release there.** Within 13 s:
+`release-published.yml` dispatched to the tap; the tap's Update cask bumped the cask to `0.8.11`
+/ `c3655b5c…` (the published dmg's digest, url `rexenv/rexenv`), its installer test installed
+0.8.11 from `rexenv/rexenv` on all eight lanes, its website notify ran (no token — the website
+polls). `brew fetch --cask rexenv/tap/rexenv` on the dev Mac: 0.8.11 from `rexenv/rexenv`, sha
+passing. The six descriptors published (owner-approved; macOS/Linux serial 18, Windows 13) and
+`check-app-manifest.sh` ×6 green — every `url` an asset on `rexenv/rexenv`; the apt repository
+published through its pipeline for the first time (`check-apt-repo.sh`: InRelease signed by the
+repository's key, amd64 and arm64 at 0.8.11).
+**§M — the 0.8.10 → 0.8.11 in-app update, the first from the new host** (each VM put back on
+the PUBLISHED 0.8.10 first — the mirrored dmg / `setup.exe /S` with the app AND the agent
+quit / `apt install --allow-downgrades`):
+- **macOS 15.8 VM, run twice.** Both: the Settings badge `0.8.11`, About "rexenv 0.8.11 · 27.1
+  MB has been published" (the descriptor from `rexenv/runtimes`, its `url` on `rexenv/rexenv`),
+  Install → 28 MB in 8 s → "swapped to 0.8.11 (AtomicSwap)" → the OK dialog. **Run 1:** one
+  second after the swap, **"rexenv quit unexpectedly"** over the dialog — the crash report names
+  the DNS AGENT (`parent launchd`, `Launch Constraint Violation`, `SIGKILL (Code Signature
+  Invalid)`): 0.8.10's plist runs the bundle's binary directly, the updater's kickstart relaunched
+  it into the just-swapped bundle — #761's race, met on the one update where the OLD plist is
+  still in play. KeepAlive brought the agent back (`state = running`); and after OK the app did
+  NOT reopen — no launch in the log for two minutes, no second crash report, `open
+  /Applications/rexenv.app` by hand then launched `0.8.11 (21f8a1b)` at once and rewrote the
+  plist to the #764 launcher. **Run 2** (0.8.10 put back, same steps, pid watchers on): no crash,
+  the agent relaunched cleanly one second after the swap, OK → the new app up within a second
+  (`0.8.11 (21f8a1b)`), the plist rewritten, the agent relaunched under the launcher, sites 200.
+  Both findings are 1-of-2 on this VM and both are 0.8.10-era code (the plist; the relauncher);
+  from 0.8.11 on the launcher's identity never changes under launchd (`docs/TODO.md` carries the
+  reopen row).
+- **Ubuntu 22.04 arm64 VM:** **not run today** — the VM was on 0.8.10 (`apt install --allow-downgrades`; 0.8.10 read "resolver MISSING" over 0.8.11's route unit while resolved still routed `~rex`; its onboarding re-ran once and ended "Your kingdom is ready … 3 sites"; the Settings badge read `0.8.11`), but after the day's memory-pressure stops (three VMs at once — the owner's ruling since: ONE VM at a time) the desktop's X clients hung and two reboots brought the kernel back with NO services (22/443/13306 closed) — an emergency-mode boot only the console can answer. Owed: Settings → About → Install → OK, the WebKitWebProcess row (`docs/TODO.md`), `rex --version` 0.8.11.
+- **Win11 ARM VM:** **not run today** — the VM was put back on 0.8.10 (the app AND the agent stopped for `setup.exe /S`; `0.8.10 (a470c1a)`, the agent on `:53`) and its console session unlocked by a one-shot autologon; then it dropped off the network and, after a hard reset, stopped itself while running ALONE. Owed: Settings → About → Install → OK → `app rexenv 0.8.11 (21f8a1b)`, the agent relaunched as 0.8.11, Apps & Features 0.8.11.
+
 
 `rexenv_0.8.11_universal.dmg` sha256 `ef3e3ceac0fa4a81bd9949c6f11f29fb88e3821ca5d1909c0ce45b4cf8858c21`
 + `.app.tar.gz`, the four Linux and the two Windows assets (`shasum -c` against every attached
