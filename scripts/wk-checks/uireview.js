@@ -67,6 +67,11 @@ const SCENARIOS = [
   ["dbtab-imported-nodb", "view=dbtab&shape=imported", []],
   ["dbtab-imported-consent", "view=dbtab&shape=imported&rec=imported&preview=ready&root=1&cache=1", ["scrollBottom"]],
   ["dbtab-imported-connected", "view=dbtab&shape=imported&rec=connectedHttp&preview=noop&cache=1", []],
+  // The Database tab's two stopped states (#752): the panel names the service and
+  // offers Start all, and no Adminer frame is mounted. Their control is the four
+  // rows above — the same mock answering "running" must still mount the frame.
+  ["dbtab-stopped-engine", "view=dbtab&shape=plain&stopped=engine", []],
+  ["dbtab-stopped-web", "view=dbtab&shape=plain&stopped=web", []],
   ["sites-scale-menu", "view=sites&rows=28", ["lastMenu"]],
   ["resolver-handback", "view=resolver", []],
   ["toasts", "view=toast", []],
@@ -581,11 +586,29 @@ const PROBES = {
   // floor sits on the WRAPPER; the iframe legitimately gets the floor minus
   // AdminerFrame's header row (~52px → ~368px measured healthy), so 300 is
   // the discriminating line: healthy ≥ 360, collapsed ≤ 150.
+  // A stopped dependency (#752): the panel, its Start all, and NO frame — and never the
+  // "Checking…" interim, which is what an unanswered poll renders forever.
+  dbtabStopped: async (page) =>
+    page.evaluate(() => {
+      const problems = [];
+      if (document.querySelector('iframe[title="Adminer"]')) problems.push("an Adminer frame is mounted over a stopped dependency");
+      const body = document.body.textContent ?? "";
+      const which = new URLSearchParams(location.search).get("stopped");
+      const headline = which === "engine" ? "MySQL is stopped" : "rexenv's web services are stopped";
+      if (!body.includes(headline)) problems.push(`no "${headline}" panel`);
+      if (body.includes("Checking rexenv")) problems.push("still \"Checking rexenv's services…\" — the poll never answered");
+      if (![...document.querySelectorAll("button")].some((b) => /start all/i.test(b.textContent ?? "")))
+        problems.push("no Start all button in the panel");
+      return problems;
+    }),
   dbtab: async (page) =>
     page.evaluate(() => {
       const problems = [];
       const frame = document.querySelector('iframe[title="Adminer"]');
-      if (!frame) return ["no Adminer iframe in the DOM"];
+      if (!frame) {
+        const body = document.body.textContent ?? "";
+        return [body.includes("Checking rexenv") ? "no Adminer iframe — the tab is still \"Checking rexenv's services…\" (a poll the harness never answered)" : "no Adminer iframe in the DOM"];
+      }
       const h = frame.getBoundingClientRect().height;
       if (h < 300) problems.push(`iframe height ${Math.round(h)}px — percentage chain collapsed`);
       return problems;
@@ -1017,6 +1040,7 @@ const KNOWN_ACTIONS = new Set([
 function probeFor(name) {
   if (name.startsWith("onboarding")) return PROBES.onboardingEdge;
   if (name.startsWith("wppackages")) return PROBES.wpPackages;
+  if (name.startsWith("dbtab-stopped")) return PROBES.dbtabStopped;
   if (name.startsWith("dbtab")) return PROBES.dbtab;
   if (name === "pills") return PROBES.pills;
   if (name.startsWith("agents-access")) return PROBES.agentsAccess;

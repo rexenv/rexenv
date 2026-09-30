@@ -658,6 +658,14 @@ it can:
   a row the registry has not answered about yet claims neither. Planted three ways before it
   was trusted. It renders `SiteRow` with the prop set by hand, so the registry poll that feeds
   the prop (`siteProvisionActive(domain)`) is the SMOKE row, not this one.
+- **Probes (30 Sep 2026): `uireview.js` `dbtab-stopped-engine` / `dbtab-stopped-web`** (#752) — the
+  Database tab's panel for a stopped engine / web tier, with the four `dbtab-*` rows as the control.
+  **What it cost:** the gate landed 20 Sep with a ledger sentence saying the harness "polls nothing";
+  the harness is Tauri to `isTauri()` (mockIPC), the polls fell to the mock's `null`, and every
+  `dbtab-*` scenario rendered "Checking rexenv's services…" instead of a frame for ten days — unseen
+  because `verify.sh` only loads the wk-check files and `verify-full` had not run since 0.8.10. The
+  rule that follows: **a change to a component an L2 scenario renders re-runs that scenario**
+  (`ONLY='^dbtab' node uireview.js` with vite on :5199), not just the bar.
 - **Probes (2 Sep 2026): `importbar.js`** — the import batch bar shows the CHILD
   job's label and freezes rather than rolling back when a site fails, driven
   through the real card by a scripted batch on a `?panel=import-bar` harness. Its

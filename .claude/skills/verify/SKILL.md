@@ -53,3 +53,11 @@ pre-commit hook then refuses. Docs and `.claude/` are outside the fingerprint.
 
 After green: `./scripts/verify-receipt.sh check` should say the tree is covered.
 Then commit — see `finish-task`.
+
+## L2 is not in the bar
+
+`verify.sh` only LOADS `scripts/wk-checks/*.js`; the scenarios run in `verify-full`. A change to a
+component an L2 scenario renders (a site tab, a row, a card, a dialog) re-runs that scenario before
+the commit: `npx vite --port 5199 --strictPort &` then `cd scripts/wk-checks && ONLY='^<scenario>'
+node uireview.js` (or the file's own script). 30 Sep 2026: the stopped-stack gate (#752) silently
+took the Adminer frame out of every `dbtab-*` scenario for ten days — found by 0.8.11's `verify-full`.

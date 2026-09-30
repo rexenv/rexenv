@@ -47,7 +47,7 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { mockAdminerStatus, mockPhpVersions } from "@/lib/mock";
+import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockServicesView } from "@/lib/mock";
 import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
 import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressManager";
@@ -908,6 +908,22 @@ export function DevUiReview() {
   useEffect(() => {
     mockIPC((cmd, args) => {
       switch (cmd) {
+        // The stack the site tabs poll before they render anything (#752): a
+        // running stack by default, `?stopped=engine|web` for the panel states.
+        // Unmocked, both polls fell to the default arm's `null`, the gate read
+        // "not answered yet" forever, and every dbtab scenario lost its Adminer
+        // frame — found by 0.8.11's verify-full, ten days after the gate landed.
+        // The harness IS Tauri to `isTauri()`: mockIPC defines `__TAURI_INTERNALS__`.
+        case "services_status":
+          // The shared mock's Caddy is `running: false` (the Services page's fixture);
+          // here the web tier is UP unless the scenario says otherwise.
+          return mockServicesView().map((s) =>
+            s.name === "Caddy" || s.name === "Nginx" ? { ...s, running: params.get("stopped") !== "web" } : s,
+          );
+        case "databases_status":
+          return mockDatabases.map((d) =>
+            params.get("stopped") === "engine" && d.key === "mysql" ? { ...d, running: false } : d,
+          );
         // Recorded, not just accepted: the "open it privately" target has to be
         // provable, and the only difference between it and the row next to it is
         // one argument. The wk-check reads these back — an icon that fired the
