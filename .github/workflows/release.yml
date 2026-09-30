@@ -78,6 +78,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # THE TAG IS THE RELEASE COMMIT — never the branch the workflow happens to run on.
+      # On the tag-push path github.ref IS the tag; on the dispatch path it is the default
+      # branch, and a tag that already exists may point elsewhere: 0.8.11's third draft
+      # (30 Sep 2026, dispatched after the release-host move) was built from master HEAD,
+      # three docs/workflow commits past the tag — found by `rex --version` on the VM
+      # reading a different hash than the tag's, and settled by moving the tag onto the
+      # built commit. So: a tag that exists is checked out here, the version guard runs on
+      # ITS tree, and every lane checks out `env.TAG` (#765).
+      - name: Check out the tag when it already exists (a dispatch builds THE TAG, never the branch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            git fetch --no-tags origin "refs/tags/$TAG:refs/tags/$TAG"
+            git checkout -q "refs/tags/$TAG"
+            echo "tag $TAG exists — building it at $(git rev-parse --short HEAD), not $GITHUB_REF_NAME"
+          else
+            echo "no tag $TAG yet — it will be created from $GITHUB_REF_NAME@$(git rev-parse --short HEAD)"
+          fi
       - name: Check the tag matches every declared version
         run: ./scripts/check-versions.sh "${TAG#v}"
       - name: Create and push the tag (dispatch path only)
@@ -113,6 +132,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }} # the tag, never the branch (#765)
       # No `version:` — pnpm/action-setup reads `packageManager` from package.json, so CI
       # runs the pnpm this repo declares (a pinned 11 beside developers' 12 once made
       # `pnpm list --prod` disagree with the notices file on Windows CI, 21 Sep 2026).
@@ -211,6 +232,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }} # the tag, never the branch (#765)
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -289,6 +312,8 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }} # the tag, never the branch (#765)
       # A hosted Linux runner has ~14 GB free on /, and verify.sh's debug tests + examples +
       # two clippy passes need more: both Linux lanes of verify-ci (27 Sep 2026) died at 50
       # minutes with "The hosted runner lost communication with the server" — starved. Two
@@ -380,6 +405,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.TAG }} # the tag, never the branch (#765)
           sparse-checkout: scripts/tag-notes.sh
           sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v4

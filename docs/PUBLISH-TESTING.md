@@ -103,7 +103,34 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.8.11 — DRAFTED on the tap by CI (30 Sep 2026, the second draft) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green
+## A) ✅ 0.8.11 — DRAFTED on `rexenv/rexenv` by CI (30 Sep 2026, the third draft: the release host moved that afternoon) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green on every draft
+
+**The third draft: `rexenv/rexenv` run 36683920844, dmg
+`c3655b5c91cf2050f80233c32f1721e18849d17ba1c42d73d4e44cdd173ea75f`, source `21f8a1b0` (tag
+`v0.8.11`, moved onto it — below).** Built by this repo's own `release.yml` after the owner
+moved the releases here (the repo went public at noon; `docs/RELEASING.md`, "The artefacts
+live on `rexenv/rexenv`"); the tap's second draft was deleted. Before it: 0.8.8–0.8.10 mirrored
+here byte-identical (the 0.8.10 dmg's digest `3414c4fd…` = the cask's sha256), the tap's cask
+`url` flipped, its `Update cask` run green (same version, same hash, new host — nothing to
+push), its `install-scripts.yml` green on all eight lanes installing 0.8.10 from here, and
+`brew fetch --cask rexenv/tap/rexenv` on the dev Mac downloading the dmg from `rexenv/rexenv`
+with the sha256 passing. **§A0 ✅** (checksums all OK, both slices in both binaries,
+`Dist_Archive_Command` ×5 and the key per slice, `minos 13.0`, codesign valid, Info.plist
+0.8.11, dmg app == archive app). **§A ✅ 15.8 VM** (Gatekeeper Not Opened → Done → nothing
+running → `xattr -rd` → `0.8.11 (21f8a1b)`, 9 → 9 crash reports). **Linux ✅** (the arm64 deb
+`1608d88e…` over the second draft's: `0.8.11 (21f8a1b)`, agent answering, a fresh `.rex` →
+127.0.0.1, units active, no crash). **Windows ✅ — with a finding:** `setup.exe /S`
+(`98774414…`) over the RUNNING app returned 0, wrote the registry and the new `rex.exe`, and
+left the OLD `rexenv.exe` on disk (file in use) — `rex 0.8.11 (21f8a1b) · app rexenv 0.8.11
+(7d9ec97)`; with the app quit first the same installer replaced it (`2c27829f…` →
+`d11a32e2…`) and the relaunch read `21f8a1b`, the agent on `:53`, `lm.rex`/`lv.rex` 200 in 1 s
+(`docs/TODO.md`, the silent-installer row). **The tag moved:** the dispatch path built master
+HEAD (`21f8a1b0`, three docs/workflow commits past `7d9ec977`, the app source differing by one
+comment), found by the hash `rex --version` printed; the tag was re-pointed onto the built
+commit rather than the binaries rebuilt (#765 fixes the path for the next dispatch). The
+record below is the second draft's, kept because its §A and the per-OS install rows were run
+on it too.
+
 
 `rexenv_0.8.11_universal.dmg` sha256 `ef3e3ceac0fa4a81bd9949c6f11f29fb88e3821ca5d1909c0ce45b4cf8858c21`
 + `.app.tar.gz`, the four Linux and the two Windows assets (`shasum -c` against every attached

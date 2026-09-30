@@ -487,6 +487,14 @@ Changelog link points at the website and never moved.
 
 ## Rules the pipeline encodes (don't undo them by hand)
 
+- **A dispatch builds THE TAG, never the branch** (#765, 30 Sep 2026). `workflow_dispatch` runs
+  on the default branch; when the tag already exists the `versions` job checks it out (and
+  runs the version guard on its tree) and every lane checks out `env.TAG`. 0.8.11's third draft
+  was built from master HEAD, three docs/workflow commits past the tag — `rex --version` on the
+  VM read `21f8a1b`, the tag said `7d9ec97` — and the tag was moved onto the built commit (the
+  source differed by a comment; the binaries had been gated). A tag-push run never had the
+  problem: `github.ref` is the tag.
+
 - **The release is born a draft.** §A is publish-blocking and human-only; publishing
   IS the sign-off. Never flip the workflow to publish directly.
 - **The draft's body is only ever the tag's body.** It turns public the moment the draft

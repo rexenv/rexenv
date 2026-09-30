@@ -60,6 +60,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
+  place** (found 30 Sep 2026 on the Win11 VM, 0.8.11's third draft over its second): the
+  silent install wrote the registry (`DisplayVersion` 0.8.11), `rex.exe` and the task, but the
+  running app's image could not be replaced (file in use) and NSIS carried on — `rex --version`
+  read `rex 0.8.11 (21f8a1b) · app rexenv 0.8.11 (7d9ec97)`, a half-replaced install with a
+  green exit code. The non-silent installer shows its running-app sentence; `/S` has no UI. With
+  the app quit first the same installer replaced the file. *Done when:* the silent path either
+  closes the app (the in-app updater's swap does this with `RenamePair`) or exits non-zero
+  naming the running process; `docs/SMOKE-TEST.md` § Windows carries the row; the tap's
+  `install.ps1` (which leaves a running rexenv alone by design) is not the fix.
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,

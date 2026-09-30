@@ -2306,6 +2306,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [ ] **`setup.exe /S` with rexenv RUNNING** (30 Sep 2026, Win11 VM): today it returns 0 and leaves
+      the old `rexenv.exe` on disk — `rex --version` then reads two hashes (`rex … · app …`).
+      Quit the app first for a silent install until `docs/TODO.md`'s row lands; after the fix the
+      silent path must either close the app or exit non-zero naming it. **Tell:** Apps & Features
+      says the new version while the running app reports the old build.
 - [x] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it reaches
       Running and `netstat -ano | findstr :15432` shows it LISTENING — also on a machine with
       UAC disabled (`EnableLUA=0`, where EVERY process carries the Administrators token),
