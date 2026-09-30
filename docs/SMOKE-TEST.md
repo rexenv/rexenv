@@ -227,7 +227,7 @@ nothing.** The silent case is the one that ships to everybody.
 - [x] **While the install runs, the row behind the dialog reads `Setting up`** (the amber
       spinner pill, no retry icon), and turns `Running` when the card settles. **Tell:** `setup
       incomplete` with the retry icon while the card in front is still installing — that was every
-      create before 0.8.12 (found 30 Sep 2026 recording the tutorial; wk-check `badges`, #763).
+      create before 0.8.11 (found 30 Sep 2026 recording the tutorial; wk-check `badges`, #763).
       The same with the site created by `rex site create` while the Sites page is open — the
       row asks the job registry, not the dialog. Frontend only — the same row on Windows and
       Linux. **✓ 30 Sep 2026 (15.8 arm64 VM, this tree's build 06881ca5 over 0.8.10, through
