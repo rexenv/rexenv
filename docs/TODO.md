@@ -978,6 +978,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       replaced by `0.8.11/`, the title and body rewritten for the public repo (the 0.8.6 files had
       passed their pipeline: `Azure-Pipeline-Passed`, `Validation-Completed`, waiting on a
       moderator since 19 Sep). Their pipeline re-runs on the new commit; the CLA is signed.
+      ✓ **Pipeline green on the 0.8.11 commit, 30 Sep 2026 14:11Z** — Manifest, URLs, URL Domain,
+      Manifest Policy, Catalog Content, Installation Validation, Installer Metadata, Validation
+      Completed all pass; labels `Azure-Pipeline-Passed` + `Validation-Completed` again. Left: the
+      moderator's approval, a community volunteer's — nothing on our side.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **✓ verify on the Windows RUNNER — green 21 Sep 2026**, `.github/workflows/windows-verify.yml`
