@@ -16,7 +16,7 @@ it, and the Homebrew tap updates itself. Two workflows implement this.
 >
 > **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
 > (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
-> one DRAFT on `rexenv/homebrew-tap` with all eight assets. The "build locally, upload to
+> one DRAFT — on `rexenv/rexenv` since 0.8.11 (30 Sep 2026); on the tap before — with all eight assets. The "build locally, upload to
 > the tap by hand" flow that cut 0.1.0–0.8.7 is retired; its section below is kept as the
 > record of why the artefacts live on the tap.
 
@@ -99,31 +99,46 @@ release event the checkout is the tag, a detached HEAD the bump cannot push from
 Verified 2026-08-08: the tap workflow's explicit `permissions: contents: write` is
 granted (`Contents: write` in the run log) even though the org default is read.
 
-## The artefacts live on the tap (why) — and the local flow this replaced
+## The artefacts live on `rexenv/rexenv` (since 0.8.11) — the tap keeps the cask and the installers
 
-**Retired 27 Sep 2026.** From 0.1.0 to 0.8.7 the dmg was built on the owner's Mac and uploaded
-to a tap release by hand; Windows on the Dell; Linux on a VM. The owner's ruling ended that:
-a release is what `release.yml` builds on hosted runners, nothing else, and it is all three
-OSes or nothing. What is still true in this section is WHERE the artefacts go and why.
+**Owner ruling, 30 Sep 2026, the day the repo went public:** "ekhon theke rexenv tei release
+gulo dite … jeno oikhan thekei sob download korte pare" — releases live here, every download
+comes from the source repository, and the in-app self-update must keep working. What that
+changed, and what it deliberately did not:
 
-**Why the tap, still.** Until 30 Sep 2026 the reason was privacy: `brew` fetches a cask's
-`url` with **no authentication**, and a private repo's release asset answers **404** — a cask
-pointing at a release here installed for nobody. The source is public now, and the artefacts
-stay on the tap for a different reason: every consumer reads the tap's releases (the cask,
-`install.sh`/`install.ps1`, the apt publisher, the update-manifest publishers, the website's
-release sync), and the tap's own `release: published` bumps the cask with no cross-repo
-credential. Moving the host would add a `repository_dispatch` and a second token between a
-publish and the bump for nothing a user can see — the flip-back row in `docs/TODO.md` holds
-that question for the owner's ruling.
-
-**Where it goes.** Into a GitHub Release on **`rexenv/homebrew-tap`** — already public,
-already the home of the cask, and same-repo so `update-cask.yml` still needs no secret
-of any kind (`SOURCE_REPO` there points at itself; the cask's `url` names it too).
-
-**It used to be built locally, not in CI**, to avoid a cross-repo credential and the 10×
-macOS-minute multiplier. Both costs are now paid on purpose: `TAP_TOKEN` (a fine-grained PAT
-scoped to `rexenv/homebrew-tap`, contents:write, nothing else) lets `release.yml`'s `publish`
-job draft the release on the tap, and the macOS minutes buy a build nobody's laptop shaped.
+- **Where it goes.** A GitHub Release on **`rexenv/rexenv`**, drafted by `release.yml`'s
+  `publish` job with the workflow token — no cross-repo secret for the draft. The eight assets
+  and their `.sha256` files keep their names (an interface: `install.sh`, `install.ps1`, the apt
+  publisher and the cask all build them from the version).
+- **The tap keeps the cask and the one-command installers** (`rexenv/homebrew-tap`: `brew tap
+  rexenv/tap` needs a tap, and the scripts' URLs are printed everywhere). Its `update-cask.yml`
+  bumps the cask from the PUBLISHED dmg's hash — but a release here is an event in another
+  repository the tap never sees, so **`release-published.yml` here sends it a
+  `repository_dispatch` (`rexenv-release`) on `release: published`, with `TAP_TOKEN`** (the
+  fine-grained PAT that used to create the draft on the tap; `contents: write` there covers a
+  dispatch). The tap also polls once a day, the fallback for a failed dispatch. `SOURCE_REPO`
+  in that workflow and the cask's `url` both name `rexenv/rexenv`; the workflow refuses to bump
+  when they drift.
+- **The self-update descriptor did NOT move**: it is a committed file on `rexenv/runtimes`
+  whose URL is compiled into every shipped build. What moved is the descriptor's `url` FIELD
+  (signed data) — `rexenv/runtimes`'s publisher (`TAP_REPO`, now `rexenv/rexenv`) reads the
+  newest published release here. Every app since 0.6.0 accepts BOTH download prefixes
+  (`core/app_update.rs` `ALLOWED_RELEASE_PREFIXES`), so a 0.8.10 install updates to 0.8.11 from
+  here, and a descriptor published before the move (naming a tap asset) still verifies on an
+  app built after it.
+- **`rexenv/apt`'s publisher and the website's release sync read the newest releases here**
+  (`TAP` → `rexenv/rexenv` in `build-site.sh`; `sync-release.mjs`).
+- **0.8.8, 0.8.9 and 0.8.10 were mirrored here on the day of the move** — the same bytes as
+  the tap's, every `.sha256` re-checked, the tap's release notes — so `releases/latest`, the
+  cask's flipped `url` (`v0.8.10` at the time), apt's `KEEP=3` window and the website's
+  changelog had a history to read the moment the consumers flipped. The tap's releases stay as
+  they were: the cask only names the current version, and the descriptors already published
+  point at them.
+- **Before 30 Sep 2026** (0.1.0–0.8.10): the dmg was released on the tap because this repo was
+  private — `brew` fetches a cask's `url` with no authentication and a private repo's release
+  asset answers 404 — and the tap's own `release: published` bumped the cask with no token. From
+  0.1.0 to 0.8.7 the dmg was also BUILT locally (retired 27 Sep 2026: a release is what
+  `release.yml` builds on hosted runners, all three OSes or nothing).
 
 **Before a release that carries an in-app PHP update:** the manifest must be signed
 and published, or the button offers nothing.
@@ -387,25 +402,21 @@ notices fix alone, while 65 commits of Windows groundwork and features stayed on
   keeps the tag's commit in master's history without taking its tree (master already
   carries the fix). Tag locally, as for every release while the repo is private.
 
-### Going public later — two things flip in one commit
+### The host moved on 30 Sep 2026 — what flipped, where
 
-The cask's `url` and `SOURCE_REPO` in `update-cask.yml` must name the same repo; the
-workflow greps the url for `SOURCE_REPO` and fails loudly if they drift.
-**The self-update descriptor does NOT move with them**: it is a committed file on
-`rexenv/runtimes`, whose URL is compiled into every shipped build and therefore must never
-change — that is why it was not made a release asset. What does move is the descriptor's
-`url` FIELD, which is signed data, and one `TAP_REPO` variable in the runtimes publisher. (This said
-"three things" until 5 Sep 2026: the cask's `verified:` was the third, dropped when
-brew 6.0.22 deprecated the parameter for its default URL verification. The About page's
-Changelog link is deliberately NOT one of these: it points at the website, which does not
-move with the repo.)
-Move both back to `rexenv/rexenv`, delete the interim releases from the tap (or
-leave them — the cask only names the current version), and this section goes away.
-**And restore a trigger in the same change**: `update-cask.yml` fires on the TAP's own
-`release: published`, and a release in `rexenv/rexenv` is an event in another repo that
-never reaches it. Without a new trigger (a schedule — slow, see above — or a
-`repository_dispatch` sent from `release.yml` with a token) the cask would simply stop
-moving, with every workflow green.
+Written as "Going public later — two things flip in one commit" while the repo was private; the
+move happened the day it went public (owner's ruling). Flipped, each in its own repo, in this
+order: (1) 0.8.8–0.8.10 mirrored onto `rexenv/rexenv` (byte-identical, so a flipped `url` had
+something to point at); (2) the tap — the cask's `url` and `SOURCE_REPO` in `update-cask.yml`
+in ONE commit (the workflow greps the url for `SOURCE_REPO` and fails loudly if they drift), the
+`repository_dispatch` trigger + a daily schedule on `update-cask.yml`, `install-scripts.yml`
+and `notify-website.yml`, `REPO`/`$Releases` in `install.sh`/`install.ps1`; (3) `rexenv/runtimes`
+— `TAP_REPO` in `publish-app-manifest.sh`; `rexenv/apt` — `TAP` in `build-site.sh`;
+`rexenv/website` — `sync-release.mjs` and the docs' download links; (4) this repo —
+`release.yml` drafts here, `release-published.yml` sends the dispatch, the check scripts read
+the releases here. **The self-update descriptor did not move** (above). The cask's
+`verified:` was once a third flip, dropped when brew 6.0.22 deprecated it; the About page's
+Changelog link points at the website and never moved.
 
 ## Cutting a release (the pipeline — the only flow since 27 Sep 2026)
 
@@ -438,19 +449,20 @@ moving, with every workflow green.
    "Publish", and **0.8.8 and 0.8.9 went public with that warning as their release
    notes** — replaced by hand with their tag bodies the same day. The gate reminder now
    goes to the run's summary page, which is never published.
-3. Wait for the draft release **on `rexenv/homebrew-tap`** — `publish` drafts it only when all
+3. Wait for the draft release **here, on `rexenv/rexenv`** — `publish` drafts it only when all
    four lanes delivered (dmg + app.tar.gz, setup.exe + zip, amd64/arm64 deb + AppImage, every
    `.sha256` matching). Download the attached dmg and run `docs/PUBLISH-TESTING.md` **§A** on
    it (§A0 already ran in CI, per OS). Record the pass next to the dmg's sha256 in that doc.
 4. **Publish** the release — its notes are already the tag's body; read them once as a
-   user would. Publishing on the tap fires its own `update-cask.yml` (the cask
-   bumps from the published dmg's hash).
+   user would. Publishing fires `release-published.yml` → the tap's `update-cask.yml` (the
+   cask bumps from the published dmg's hash) and its installer test; a failed dispatch is a
+   red run here, and the tap polls daily as the fallback.
 5. Sanity check: `brew update && brew audit --cask --online rexenv/tap/rexenv`,
    or the full §D dry-run for a first-time setup.
-6b. **`rexenv/apt` → Actions → "Publish apt repository"** (after the tap release is published —
+6b. **`rexenv/apt` → Actions → "Publish apt repository"** (after the release is published here —
    a draft's assets are not public): one approval (`apt-signing`), then
    `./scripts/check-apt-repo.sh` — the signature by the repository's key, each `Packages` against
-   `InRelease`, the newest version = the tap's latest. Until it runs, `apt upgrade` offers nothing
+   `InRelease`, the newest version = the latest release here. Until it runs, `apt upgrade` offers nothing
    new; `install.sh` meanwhile installs the release's `.deb` directly (`docs/PLAN-apt-repo.md`).
 6. `rexenv/runtimes` → "Publish app update manifest", dry-run then publish, **six times**
    (macOS, Windows, Linux deb/AppImage × x86_64/aarch64) — step 8 below; then
@@ -459,25 +471,19 @@ moving, with every workflow green.
 ## One-time setup (required before the first automated release)
 
 - **`TAP_TOKEN`** on `rexenv/rexenv` (Settings → Secrets → Actions): a fine-grained PAT with
-  repository access to `rexenv/homebrew-tap` only and `Contents: read and write`. The `publish`
-  job refuses with a sentence naming it when it is missing.
+  repository access to `rexenv/homebrew-tap` only and `Contents: read and write`. Since 30 Sep
+  2026 it is used by `release-published.yml` (the dispatch that bumps the cask), which refuses
+  with a sentence naming it when it is missing; the draft itself needs no secret.
 - **The arm64 Linux lane** runs on `ubuntu-22.04-arm`, free on public repositories and a paid
   larger runner on private ones; if the first tag run leaves that lane queued, enable arm
   runners for the org or go public — the ruling does not allow shipping without it.
 - **macOS minutes** are billed 10× on a private repo (~400 per release); the free tier is 2,000.
-- **`rexenv/rexenv` need not be public any more** for the pipeline to run; going public would
-  only let the draft move back here. The older note follows for the record. Two things
-  depend on it: the cask's `url` is fetched by users' machines with no auth, and the
-  tap's poller reads this repo's releases cross-repo. While it is private the poller
-  finds nothing here and the dmg ships from the tap instead — see the interim section
-  at the top, which is the flow in effect today — and, as of 21 Aug 2026, the ONLY flow that has ever
-cut a release: 0.1.0, 0.1.1, 0.2.0, 0.3.0 and 0.4.0 all shipped through it (0.1.0 predates the
-`v*` tag convention — there is no `v0.1.0` tag, only the `v0.1.1` re-cut). It was written as a
-provisional note dated 2026-08-12; five releases in, "interim" describes the intention
-rather than the practice.
-- **No secrets to create.** That is the design — see the note above. It holds in the
-  interim flow too, which is why the dmg goes to the tap rather than to a third repo
-  the tap's own `GITHUB_TOKEN` could not read.
+- **The repo is public (30 Sep 2026)** and the releases live here — the section above. The
+  private-era note (the cask's `url` fetched with no auth, the tap's poller reading this repo
+  cross-repo, "the dmg ships from the tap instead") described 0.1.0–0.8.10.
+- **One secret, for one dispatch.** The draft here needs none; `TAP_TOKEN` exists so a
+  publish here reaches the tap's cask bump. (While the draft landed on the tap the same token
+  created it — the tap's own `GITHUB_TOKEN` could bump the cask but not read another repo.)
 
 ## Rules the pipeline encodes (don't undo them by hand)
 

@@ -42,7 +42,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-TAP="${TAP_REPO:-rexenv/homebrew-tap}"
+RELEASES="${RELEASES_REPO:-rexenv/rexenv}"
 ID="rexenv.rexenv"
 MANIFEST_VERSION="1.9.0"
 
@@ -68,7 +68,7 @@ if [ -n "$LOCAL" ]; then
   V="$WANT"
   [ -n "$V" ] || fail "--local needs the version: --local <setup.exe> <version>"
   ASSET="rexenv_${V}_x64-setup.exe"
-  URL="${URL:-https://github.com/$TAP/releases/download/v$V/$ASSET}"
+  URL="${URL:-https://github.com/$RELEASES/releases/download/v$V/$ASSET}"
   cp "$LOCAL" "$WORK/$ASSET"
   PUBLISHED_AT="$(date -u +%Y-%m-%d)"
 else
@@ -76,14 +76,14 @@ else
   if [ -n "$WANT" ]; then
     TAG="v$WANT"
   else
-    TAG="$(gh release list --repo "$TAP" --limit 1 --exclude-drafts --exclude-pre-releases \
+    TAG="$(gh release list --repo "$RELEASES" --limit 1 --exclude-drafts --exclude-pre-releases \
              --json tagName --jq '.[0].tagName // ""')"
-    [ -n "$TAG" ] || fail "no published release on $TAP"
+    [ -n "$TAG" ] || fail "no published release on $RELEASES"
   fi
   V="${TAG#v}"
   ASSET="rexenv_${V}_x64-setup.exe"
-  REL="$(gh api "repos/$TAP/releases/tags/$TAG" 2>/dev/null)" \
-    || fail "no release $TAG on $TAP (a draft is invisible here, which is the point)"
+  REL="$(gh api "repos/$RELEASES/releases/tags/$TAG" 2>/dev/null)" \
+    || fail "no release $TAG on $RELEASES (a draft is invisible here, which is the point)"
   URL="$(printf '%s' "$REL" | jq -r --arg n "$ASSET" 'first(.assets[] | select(.name == $n) | .browser_download_url) // ""')"
   DIGEST="$(printf '%s' "$REL" | jq -r --arg n "$ASSET" 'first(.assets[] | select(.name == $n) | .digest) // ""')"
   DIGEST="${DIGEST#sha256:}"
@@ -160,9 +160,9 @@ PackageVersion: $V
 PackageLocale: en-US
 Publisher: rexenv
 PublisherUrl: https://github.com/rexenv
-PublisherSupportUrl: https://github.com/$TAP/issues
+PublisherSupportUrl: https://github.com/$RELEASES/issues
 PackageName: rexenv
-PackageUrl: https://github.com/$TAP
+PackageUrl: https://github.com/$RELEASES
 License: Apache-2.0
 ShortDescription: A native, lightweight, no-Docker local development environment for web & WordPress developers.
 Description: rexenv runs the whole local stack — edge proxy with auto-HTTPS, shared web server, multi-version PHP, MySQL/PostgreSQL, one-click WordPress, .rex DNS, mail catching, tunnels — from one window, with native binaries and no Docker.

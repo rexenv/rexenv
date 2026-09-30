@@ -1,8 +1,9 @@
 # PLAN — every release from GitHub Actions, every OS at once (27 Sep 2026)
 
 **Status: SHIPPED — 0.8.8–0.8.11 built on Actions; the repo went PUBLIC on 30 Sep 2026 and the
-pipeline runs in this repo again (the 27–30 Sep runtimes interim ended). Open: the draft's home
-(`docs/TODO.md`, the release-host row).**
+pipeline runs in this repo again (the 27–30 Sep runtimes interim ended) and, by the owner's ruling
+the same day, the draft lands HERE too — `docs/RELEASING.md`, "The artefacts live on
+`rexenv/rexenv`".**
 
 **Owner ruling, 27 Sep 2026:** "proti release e mac, windows ebong linux er jonno eksathe sob
 release hobe, ebong release build korar jonno amader device er upore nirvor na kore sorasori

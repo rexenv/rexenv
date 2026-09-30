@@ -20,7 +20,7 @@
 set -euo pipefail
 
 APT_URL="https://rexenv.github.io/apt"
-TAP_LATEST="https://github.com/rexenv/homebrew-tap/releases/latest"
+RELEASES_LATEST="https://github.com/rexenv/rexenv/releases/latest"
 # The repository's key (github.com/rexenv/apt KEY_FINGERPRINT). install.sh in the tap carries the
 # same key; a rotation changes all three together (docs/PLAN-apt-repo.md §5).
 EXPECTED_FPR="139CC1A4A1971376FC6B586BD2F2070D6DFA60C9"
@@ -47,7 +47,7 @@ signer="$(printf '%s\n' "$status" | awk '/VALIDSIG/ {print $NF; exit}')"
 [ "$signer" = "$EXPECTED_FPR" ] || fail "InRelease is signed by ${signer:-nobody}, expected ${EXPECTED_FPR}"
 say "InRelease: good signature by ${signer}"
 
-latest="$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error -o /dev/null -w '%{redirect_url}' "$TAP_LATEST")"
+latest="$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error -o /dev/null -w '%{redirect_url}' "$RELEASES_LATEST")"
 latest="${latest##*/v}"
 [[ $latest =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "could not read the tap's latest release"
 

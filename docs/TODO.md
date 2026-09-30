@@ -1711,14 +1711,17 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
-- [ ] **The release host, now that `rexenv/rexenv` IS public (30 Sep 2026): stay on the tap, or
-  move the draft here?** An owner ruling. What visibility settled the same day is done: the
-  pipeline runs here again (`release.yml` on the tag push, free minutes), the runtimes interim
-  copies and `REXENV_SRC_TOKEN` are retired, RELEASING.md's interim section is gone. What is
-  left is the draft's HOME. Recommendation: stay on the tap — every consumer (cask, install
-  scripts, apt, update manifests, website sync) reads the tap's releases and its own publish
-  event bumps the cask with no cross-repo token; moving buys a user nothing. If moved, two
-  things in ONE commit, or the tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
+- [x] **The release host, now that `rexenv/rexenv` IS public (30 Sep 2026): stay on the tap, or
+  move the draft here?** ✓ **Ruled MOVE by the owner the same day** ("ekhon theke rexenv tei
+  release gulo dite … jeno oikhan thekei sob download korte pare … in app self update jeno
+  thik moto kaj kore"), and moved: `release.yml` drafts here, `release-published.yml` dispatches
+  to the tap (`TAP_TOKEN`) with a daily poll as the fallback, the tap's cask `url` + `SOURCE_REPO`
+  flipped in one commit with `install.sh`/`install.ps1`, runtimes' `TAP_REPO`, apt's `TAP` and the
+  website's sync + links flipped, 0.8.8–0.8.10 mirrored here byte-identical, the descriptor's home
+  unchanged (both download prefixes allowed since 0.6.0 — `docs/RELEASING.md`, "The artefacts
+  live on `rexenv/rexenv`"). The recommendation before the ruling was to stay; the ruling
+  prefers one place to download from. As it stood: if moved, two things in ONE commit, or the
+  tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
   in `update-cask.yml` (both in `rexenv/homebrew-tap`). **Plus a trigger** (11 Sep 2026):
   the bump now fires on the tap's OWN `release: published`, which a release in
   `rexenv/rexenv` never sends — restore a schedule or a `repository_dispatch`, or the cask

@@ -9,10 +9,10 @@
 #
 # Five jobs. Four build lanes run in parallel, each ending in the platform's §A0 artefact
 # check and an uploaded run artifact; `publish` waits for ALL of them and drafts one
-# release on `rexenv/homebrew-tap` (the public home of the cask: the cask, the one-command
-# installers, the apt and update-manifest publishers and the website sync all read the tap's
-# releases, and its own publish event bumps the cask) with every asset attached. A lane that
-# fails means no draft:
+# release HERE, on `rexenv/rexenv`, with every asset attached — since 30 Sep 2026, the owner's
+# ruling once the repo went public: every download comes from the source repository. The
+# Homebrew cask and the one-command installers stay in `rexenv/homebrew-tap` and read the
+# releases here (release-published.yml tells the tap). A lane that fails means no draft:
 # a release is all three OSes or nothing.
 #
 # The release is created as a DRAFT on purpose: CI can prove everything about the
@@ -36,12 +36,13 @@
 # draft's assets 404 for everyone") because nothing in the publish step replaced it (fixed
 # by hand 28 Sep 2026). The gate reminder lives in the run's summary, which never ships.
 #
-# One secret: TAP_TOKEN, a fine-grained PAT with `contents: write` on rexenv/homebrew-tap and
-# nothing else (Settings → Secrets → Actions). The draft is created with it because the
-# workflow token cannot write another repository. This repo went PUBLIC on 30 Sep 2026: the
-# pipeline runs here again (free minutes; the 27–30 Sep interim copy in rexenv/runtimes is
-# retired), and the draft still lands on the tap — whether it ever moves here is the
-# flip-back row in docs/TODO.md, an owner ruling, not a consequence of visibility.
+# No secret for the draft: it is created here with the workflow token. TAP_TOKEN (a
+# fine-grained PAT, `contents: write` on rexenv/homebrew-tap and nothing else) is used by
+# release-published.yml, which tells the tap a release was PUBLISHED (`repository_dispatch`)
+# so its cask bumps and its installer test runs. From 27 to 30 Sep 2026 the draft landed on
+# the tap instead (this repo was private and `brew` fetches anonymously; the tap's own publish
+# event bumped the cask with no token); 0.8.8–0.8.10 were mirrored here, byte-identical, when
+# the host moved.
 name: Release
 
 on:
@@ -373,7 +374,7 @@ jobs:
   # ── The draft: every OS's assets on ONE release on the tap. Nothing here builds; it
   #    only refuses to draft anything unless all four lanes delivered.
   publish:
-    name: Draft the release on rexenv/homebrew-tap
+    name: Draft the release here
     needs: [macos, windows, linux]
     runs-on: ubuntu-latest
     steps:
@@ -399,31 +400,30 @@ jobs:
             sha256sum -c "$want.sha256" >/dev/null || { echo "::error::$want does not match its .sha256"; exit 1; }
           done
           echo "all eight assets present, every digest matches"
-      - name: Draft the release on the tap
+      - name: Draft the release here
         env:
-          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
-          SOURCE_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [ -n "$GH_TOKEN" ] || { echo "::error::TAP_TOKEN is not set — a fine-grained PAT with contents:write on rexenv/homebrew-tap (docs/RELEASING.md, one-time setup)"; exit 1; }
           V="${TAG#v}"
-          if gh release view "$TAG" --repo rexenv/homebrew-tap >/dev/null 2>&1; then
-            echo "::error::release $TAG already exists on rexenv/homebrew-tap — never re-issue a version's bytes; bump and tag again"; exit 1
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::release $TAG already exists on $GITHUB_REPOSITORY — never re-issue a version's bytes; bump and tag again"; exit 1
           fi
           # The notes are the tag's body and nothing else: they become public on publish,
           # so no maintainer instruction goes in them (0.8.8/0.8.9, see the header).
-          GH_TOKEN="$SOURCE_TOKEN" ./scripts/tag-notes.sh "$TAG" > notes.md
+          ./scripts/tag-notes.sh "$TAG" > notes.md
           # The dmg's name must be the only asset ending in `_universal.dmg`: the tap's
           # update-cask.yml selects the cask's asset by that suffix.
           gh release create "$TAG" \
-            --repo rexenv/homebrew-tap \
+            --repo "$GITHUB_REPOSITORY" \
             --draft \
+            --verify-tag \
             --title "rexenv $V" \
             --notes-file notes.md \
             out/*
-          echo "draft release $TAG created on rexenv/homebrew-tap with $(ls out | wc -l) files — run §A on the dmg, then publish it"
+          echo "draft release $TAG created on $GITHUB_REPOSITORY with $(ls out | wc -l) files — run §A on the dmg, then publish it"
           {
-            echo "### ⚠️ rexenv $V is a DRAFT on rexenv/homebrew-tap"
-            echo "Publish only after docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing auto-updates the Homebrew cask and is what makes every asset reachable — a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8)."
+            echo "### ⚠️ rexenv $V is a DRAFT on $GITHUB_REPOSITORY"
+            echo "Publish only after docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing fires release-published.yml → the tap's Update cask (from the published dmg's hash) and its installer test — and is what makes every asset reachable; a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8)."
             echo "Built on GitHub-hosted runners only: macos-14, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)."
           } >> "$GITHUB_STEP_SUMMARY"

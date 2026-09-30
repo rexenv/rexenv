@@ -145,7 +145,7 @@ echo "  size            $(wc -c < "$ZIP" | tr -d ' ') bytes"
 echo
 echo "Publish beside the macOS assets on the SAME tag (the tap's update-cask.yml"
 echo "selects the dmg by its _universal.dmg suffix; nothing here ends in that):"
-echo "  gh release upload \"v$VERSION\" --repo rexenv/homebrew-tap \\"
+echo "  gh release upload \"v$VERSION\" --repo rexenv/rexenv \\"
 echo "    \"$SETUP\" \"$SETUP.sha256\" \"$ZIP\" \"$ZIP.sha256\""
 echo "Then: rexenv/runtimes → 'Publish app update manifest' for WINDOWS"
 echo "(app-manifest-windows.json), and scripts/check-app-manifest.sh --windows"

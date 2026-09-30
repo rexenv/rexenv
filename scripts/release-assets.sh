@@ -121,7 +121,7 @@ echo
 echo "Publish (assets never end in _universal.dmg except the dmg — the tap's"
 echo "update-cask.yml selects by that suffix):"
 echo
-echo "  gh release create \"v$V\" --repo rexenv/homebrew-tap --draft \\"
+echo "  gh release create \"v$V\" --repo rexenv/rexenv --draft \\"
 echo "    --title \"rexenv $V\" \\"
 echo "    \"$DMG\" \\"
 echo "    \"$DMG.sha256\" \\"

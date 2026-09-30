@@ -54,7 +54,7 @@ descriptor() {
   "generatedAt": "2026-09-13T10:37:29Z",
   "release": {
     "version": "$3",
-    "url": "https://github.com/rexenv/homebrew-tap/releases/download/v$3/rexenv_$3_universal.app.tar.gz",
+    "url": "https://github.com/rexenv/rexenv/releases/download/v$3/rexenv_$3_universal.app.tar.gz",
     "sha256": "e21b3525e7d1de3d04f27f29d04560a60cc84ce476137b1d45eed095c9fce859",
     "sizeBytes": 29014289,
     "minAppVersion": "",

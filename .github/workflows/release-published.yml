@@ -1,0 +1,54 @@
+# A release PUBLISHED here → tell rexenv/homebrew-tap (`repository_dispatch`, event
+# `rexenv-release`), whose update-cask.yml bumps the Homebrew cask from the published dmg's
+# hash and whose install-scripts.yml installs the release on every OS — and tell the website,
+# which otherwise polls twice an hour.
+#
+# Why a dispatch and not the tap's own event: since 30 Sep 2026 the release lives HERE (the
+# owner's ruling once the repo went public — every download from the source repository), and
+# a release in another repository is an event the tap never sees. Until then the draft landed
+# on the tap and its own `release: published` did this with no token at all (docs/RELEASING.md).
+#
+# TAP_TOKEN: a fine-grained PAT with `contents: write` on rexenv/homebrew-tap and nothing else
+# — the same secret the draft used while it landed on the tap. A missing token FAILS this run
+# loudly: the cask silently not moving, with every workflow green, is the failure the flip-back
+# row in docs/TODO.md was written against. The tap also polls once a day as the fallback.
+name: Release published
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    name: Tell the tap and the website
+    runs-on: ubuntu-latest
+    steps:
+      - name: repository_dispatch → rexenv/homebrew-tap (cask bump + installer test)
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          [ -n "${GH_TOKEN:-}" ] || { echo "::error::TAP_TOKEN is not set — the tap's cask will not bump; run its Update cask by hand (Actions → rexenv/homebrew-tap) and set the secret (docs/RELEASING.md, one-time setup)"; exit 1; }
+          gh api "repos/rexenv/homebrew-tap/dispatches" \
+            -f event_type=rexenv-release \
+            -F "client_payload[tag]=$TAG"
+          echo "dispatched rexenv-release $TAG to rexenv/homebrew-tap"
+      - name: repository_dispatch → rexenv/website (optional — it polls twice an hour)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice::WEBSITE_DISPATCH_TOKEN is not set — the website picks $TAG up on its own poll (within ~30 minutes). Nothing is broken."
+            exit 0
+          fi
+          gh api "repos/rexenv/website/dispatches" \
+            -f event_type=rexenv-release \
+            -F "client_payload[tag]=$TAG" \
+            || echo "::warning::the website dispatch failed; it polls on its own"

@@ -41,7 +41,7 @@ design behind them is `docs/archive/PLAN-install-scripts.md`.
 
 Other routes: Homebrew on macOS (`brew tap rexenv/tap && brew trust rexenv/tap && brew install
 --cask rexenv`), or the `.dmg`, `setup.exe`, `.deb` and AppImage on the
-[releases page](https://github.com/rexenv/homebrew-tap/releases). rexenv is open source and
+[releases page](https://github.com/rexenv/rexenv/releases). rexenv is open source and
 not code-signed, so a BROWSER download meets Gatekeeper's or SmartScreen's dialog once;
 `docs/INSTALL.md` has each one word for word, the first-run prompts per OS, and uninstalling
 (do the in-app step first). One user account per machine: `:443`, the `.rex` route and the
@@ -269,7 +269,7 @@ rexenv/
 1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test` (now `*.rex`).
 2. **Phase 2 core** — ✅ done. Multi-PHP (7.4–8.5; 7.4 is rexenv's OWN build, hosted in `rexenv/runtimes` — static-php.dev publishes none), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed stays blocked upstream — no macOS binary exists (`docs/TODO.md` "Blocked").*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
-4. **Release** — ✅ shipping since 0.1.0. Since 27 Sep 2026 one tag builds macOS, Windows and Linux on GitHub Actions and drafts one release on `rexenv/homebrew-tap`; a human publishes (`docs/RELEASING.md`). The app updates itself on every OS, and the one-command install (`install.sh` / `install.ps1`, Sep 2026) sits beside the cask. Audit history in `docs/archive/`.
+4. **Release** — ✅ shipping since 0.1.0. Since 27 Sep 2026 one tag builds macOS, Windows and Linux on GitHub Actions and drafts one release — on `rexenv/rexenv` since 0.8.11 (30 Sep 2026; on the tap before, while this repo was private); a human publishes (`docs/RELEASING.md`). The app updates itself on every OS, and the one-command install (`install.sh` / `install.ps1`, Sep 2026) sits beside the cask. Audit history in `docs/archive/`.
 5. **Phase 4/5** — ✅ Windows (first installer 0.8.0, 19 Sep 2026) and Linux (the port 24 Sep 2026, first release 0.8.8 on 27 Sep), each by filling the `platform/` stubs with `core/` untouched — `docs/PLAN-windows-port.md`, `docs/PLAN-linux-port.md`.
 
 Founding spec (historical): `docs/archive/PROJECT_SPEC.md`. Current system reference: `docs/ARCHITECTURE.md`.

@@ -116,8 +116,11 @@ pub fn manifest_urls_for(os: &str, variant: Option<&str>) -> (String, String) {
 ///
 /// PREFIXES, not hosts. `https://github.com/` alone would let any GitHub account
 /// serve the bytes this app replaces itself with, and anyone can create an
-/// account. Two entries because the dmg ships from the public tap while
-/// `rexenv/rexenv` is private, and moves back when it is not — both are ours.
+/// account. Two entries, both ours: the artefacts shipped from the public tap while
+/// `rexenv/rexenv` was private (0.6.0–0.8.10) and from `rexenv/rexenv` since 0.8.11
+/// (30 Sep 2026, once the repo was public). The tap entry STAYS: a descriptor
+/// published before the move names a tap asset, and an app built after it must
+/// still verify that document.
 pub const ALLOWED_RELEASE_PREFIXES: &[&str] = &[
     "https://github.com/rexenv/homebrew-tap/releases/download/",
     "https://github.com/rexenv/rexenv/releases/download/",

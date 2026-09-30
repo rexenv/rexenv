@@ -301,7 +301,7 @@ login keychain.
 ## Windows
 
 > **Installable since 0.8.0** — `rexenv_<version>_x64-setup.exe` on every release of
-> [`rexenv/homebrew-tap`](https://github.com/rexenv/homebrew-tap/releases), or the one
+> [`rexenv/rexenv`](https://github.com/rexenv/rexenv/releases) (on the tap until 0.8.10), or the one
 > command at the top of this file. (Until 28 Sep 2026 this banner said "not yet installable"
 > — written before the installer existed and left standing for nine releases.)
 >
@@ -479,7 +479,7 @@ store, and the `rex` copy on your `Path`.
 
 > **Installable since 0.8.8 (27 Sep 2026)** — `rexenv_<version>_<amd64|arm64>.deb` and an
 > AppImage per architecture on every release of
-> [`rexenv/homebrew-tap`](https://github.com/rexenv/homebrew-tap/releases), or the one
+> [`rexenv/rexenv`](https://github.com/rexenv/rexenv/releases) (on the tap until 0.8.10), or the one
 > command at the top of this file (it installs the `.deb` through `apt`). Proven through the
 > installed `.deb` on an Ubuntu 22.04 arm64 VM and on Ubuntu 26.04 x86_64 under WSL2
 > (`docs/PLAN-linux-port.md`). (Until 28 Sep 2026 this banner said "not yet run anywhere".)

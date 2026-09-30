@@ -96,7 +96,8 @@ SIG_URL="${CHECK_APP_MANIFEST_SIG_URL:-$DOC_URL.sig}"
 # The committed file itself, not the CDN's copy of it (API cache: 60 s, raw: 300 s).
 API_DOC_URL="${CHECK_APP_MANIFEST_API_DOC_URL:-https://api.github.com/repos/rexenv/runtimes/contents/$DOC_NAME}"
 API_SIG_URL="${CHECK_APP_MANIFEST_API_SIG_URL:-$API_DOC_URL.sig}"
-TAP="rexenv/homebrew-tap"
+# The releases: rexenv/rexenv since 0.8.11 (30 Sep 2026); the descriptor's `url` names an asset there.
+RELEASES="rexenv/rexenv"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -162,7 +163,7 @@ if [ "${CHECK_APP_MANIFEST_OFFLINE:-0}" != "1" ] && command -v gh >/dev/null 2>&
 fi
 LATEST="${CHECK_APP_MANIFEST_TAP_LATEST:-}"
 if [ -z "$LATEST" ] && [ "$HAVE_GH" = "1" ]; then
-  LATEST="$(gh release list --repo "$TAP" --limit 1 --exclude-drafts --exclude-pre-releases \
+  LATEST="$(gh release list --repo "$RELEASES" --limit 1 --exclude-drafts --exclude-pre-releases \
               --json tagName --jq '.[0].tagName // ""' 2>/dev/null || true)"
 fi
 LATEST="${LATEST#v}"
@@ -202,7 +203,7 @@ fi
 # ── 3. Is the artifact really there, with that digest? ───────────────────────
 if [ "$HAVE_GH" = "1" ] && [ -n "$URL" ]; then
   ASSET="${URL##*/}"
-  DIGEST="$(gh api "repos/$TAP/releases/tags/v$VERSION" \
+  DIGEST="$(gh api "repos/$RELEASES/releases/tags/v$VERSION" \
               --jq ".assets[] | select(.name == \"$ASSET\") | .digest // \"\"" 2>/dev/null | head -1 || true)"
   DIGEST="${DIGEST#sha256:}"
   if [ -z "$DIGEST" ]; then
