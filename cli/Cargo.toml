@@ -1,6 +1,6 @@
 [package]
 name = "rexenv-cli"
-version = "0.8.10"
+version = "0.8.11"
 description = "rex — remote control for the running rexenv app"
 license = "Apache-2.0"
 edition = "2021"
