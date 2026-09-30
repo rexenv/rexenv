@@ -5,14 +5,24 @@
 # asserted macOS's answer, neither able to fail on a Mac). A gate that only ever
 # runs on one OS is a gate for one OS.
 #
-# `workflow_dispatch` for now, deliberately: while `rexenv/rexenv` is private
-# every minute here is billed at the Windows 2× rate, so this is run when
-# someone asks for it. When the repo goes public (hosted runners are free and
-# unmetered there) add the `push` trigger and let it run on every change.
+# Runs on every push to master that touches code (the repo went public on 30 Sep
+# 2026 — hosted runners are free and unmetered there; until then every minute was
+# billed at the Windows 2× rate and this ran only when someone asked). The
+# `workflow_dispatch` stays for a re-run on demand.
 name: verify (Windows)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "src-tauri/**"
+      - "cli/**"
+      - "scripts/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/windows-verify.yml"
 
 permissions:
   contents: read

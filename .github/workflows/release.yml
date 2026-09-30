@@ -9,8 +9,10 @@
 #
 # Five jobs. Four build lanes run in parallel, each ending in the platform's §A0 artefact
 # check and an uploaded run artifact; `publish` waits for ALL of them and drafts one
-# release on `rexenv/homebrew-tap` (the public home of the cask — this repo is private, and
-# `brew` fetches anonymously) with every asset attached. A lane that fails means no draft:
+# release on `rexenv/homebrew-tap` (the public home of the cask: the cask, the one-command
+# installers, the apt and update-manifest publishers and the website sync all read the tap's
+# releases, and its own publish event bumps the cask) with every asset attached. A lane that
+# fails means no draft:
 # a release is all three OSes or nothing.
 #
 # The release is created as a DRAFT on purpose: CI can prove everything about the
@@ -36,9 +38,10 @@
 #
 # One secret: TAP_TOKEN, a fine-grained PAT with `contents: write` on rexenv/homebrew-tap and
 # nothing else (Settings → Secrets → Actions). The draft is created with it because the
-# workflow token cannot write another repository. When the source repo goes public the
-# draft can move back here (and the tap's SOURCE_REPO with it) — one commit, RELEASING.md
-# "Going public later".
+# workflow token cannot write another repository. This repo went PUBLIC on 30 Sep 2026: the
+# pipeline runs here again (free minutes; the 27–30 Sep interim copy in rexenv/runtimes is
+# retired), and the draft still lands on the tap — whether it ever moves here is the
+# flip-back row in docs/TODO.md, an owner ruling, not a consequence of visibility.
 name: Release
 
 on:

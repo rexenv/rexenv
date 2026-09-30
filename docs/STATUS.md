@@ -33,37 +33,37 @@ App version **0.8.11** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 ### Release gates (human, scripted — see the docs named) — 12
 
 - `TODO.md:1696` PUBLISH-TESTING §D
-- `TODO.md:1714` Flip the release host back when `rexenv/rexenv` goes public
-- `TODO.md:1728` The in-app update's remaining human rows (macOS)
-- `TODO.md:1735` PUBLISH-TESTING §K
-- `TODO.md:1736` PUBLISH-TESTING §F
-- `TODO.md:1737` PUBLISH-TESTING §G
-- `TODO.md:1743` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1749` Tunnel probe session
-- `TODO.md:1753` Intel spot-run
-- `TODO.md:1756` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1796` In-app verifies owed
-- `TODO.md:1808` PUBLISH-TESTING §E / §L
+- `TODO.md:1714` The release host, now that `rexenv/rexenv` IS public (30 Sep 2026): stay on the tap, or move the draft here?
+- `TODO.md:1734` The in-app update's remaining human rows (macOS)
+- `TODO.md:1741` PUBLISH-TESTING §K
+- `TODO.md:1742` PUBLISH-TESTING §F
+- `TODO.md:1743` PUBLISH-TESTING §G
+- `TODO.md:1749` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1755` Tunnel probe session
+- `TODO.md:1759` Intel spot-run
+- `TODO.md:1762` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1802` In-app verifies owed
+- `TODO.md:1814` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 4
 
-- `TODO.md:1814` The live pool swap is still L3
-- `TODO.md:1818` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:1826` Install WordPress into an empty LINKED folder
-- `TODO.md:1833` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1820` The live pool swap is still L3
+- `TODO.md:1824` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1832` Install WordPress into an empty LINKED folder
+- `TODO.md:1839` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 6
 
-- `TODO.md:1848` `rexenv/website`'s "Release sync" has not run since 0.8.7
-- `TODO.md:1856` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:1867` Xdebug on PHP 8.0
-- `TODO.md:1872` SMAppService privileged helper
-- `TODO.md:1874` Developer ID signing + notarization
-- `TODO.md:1876` OpenLiteSpeed override server
+- `TODO.md:1854` `rexenv/website`'s "Release sync" has not run since 0.8.7
+- `TODO.md:1862` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:1873` Xdebug on PHP 8.0
+- `TODO.md:1878` SMAppService privileged helper
+- `TODO.md:1880` Developer ID signing + notarization
+- `TODO.md:1882` OpenLiteSpeed override server
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:1886` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1892` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

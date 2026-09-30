@@ -1711,8 +1711,14 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   Two teeth grown from the first real run: the cask hash bump now compares sha256
   as well as version (a placeholder hash under an unchanged version silently
   skipped), and `brew trust rexenv/tap` is a required user-facing install step.
-- [ ] **Flip the release host back when `rexenv/rexenv` goes public** — two things
-  in ONE commit, or the tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
+- [ ] **The release host, now that `rexenv/rexenv` IS public (30 Sep 2026): stay on the tap, or
+  move the draft here?** An owner ruling. What visibility settled the same day is done: the
+  pipeline runs here again (`release.yml` on the tag push, free minutes), the runtimes interim
+  copies and `REXENV_SRC_TOKEN` are retired, RELEASING.md's interim section is gone. What is
+  left is the draft's HOME. Recommendation: stay on the tap — every consumer (cask, install
+  scripts, apt, update manifests, website sync) reads the tap's releases and its own publish
+  event bumps the cask with no cross-repo token; moving buys a user nothing. If moved, two
+  things in ONE commit, or the tap's guard fails the bump: the cask's `url` and `SOURCE_REPO`
   in `update-cask.yml` (both in `rexenv/homebrew-tap`). **Plus a trigger** (11 Sep 2026):
   the bump now fires on the tap's OWN `release: published`, which a release in
   `rexenv/rexenv` never sends — restore a schedule or a `repository_dispatch`, or the cask

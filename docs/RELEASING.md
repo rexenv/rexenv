@@ -3,18 +3,16 @@
 Releases are driven **from GitHub**: a tag builds everything, a human click publishes
 it, and the Homebrew tap updates itself. Two workflows implement this.
 
-> **Interim (27 Sep 2026 → the day this repo goes public): the pipeline RUNS FROM
-> `rexenv/runtimes`** — `rexenv-release.yml` and `rexenv-verify.yml` there are these two
-> workflows with a cross-repo checkout (`REXENV_SRC_TOKEN`, Contents: read on this repo),
-> because this repo's Actions quota ran out on the first run (macOS lanes bill 10× on a
-> private repo, the arm64 runner is a larger runner) and a public repo's minutes are free.
-> Push the tag here (the pre-push hook checks the version), then Actions → runtimes →
-> "rexenv release (from runtimes)" → the version. Step output is public there.
-> **A change to `release.yml` here is not live until the runtimes copy carries it** —
-> in the same change. The release-notes fix (`63e602ac`, ledger #736) landed here only, and
-> the 0.8.10 cut found the runtimes copy still drafting with the "Draft until §A …" warning
-> as the public notes; ported 29 Sep 2026 (runtimes `356db55`), with `GITHUB_REPOSITORY=rexenv/rexenv` on
-> `tag-notes.sh`, since on that runner the variable names runtimes.
+> **Public since 30 Sep 2026 — the pipeline runs HERE again.** `release.yml` builds on the
+> tag push (free minutes on a public repository). From 27 to 30 Sep 2026, after this repo's
+> Actions quota ran out on the first run (macOS lanes bill 10× on a private repo, the arm64
+> runner was a larger runner), the same two workflows ran from `rexenv/runtimes` with a
+> cross-repo checkout (`REXENV_SRC_TOKEN`); 0.8.8–0.8.11 were drafted from there. That interim
+> is retired: the runtimes copies (`rexenv-release.yml`, `rexenv-verify.yml`) and the token are
+> gone, and a change to `release.yml` here is live at once. Lesson kept from the interim: the
+> release-notes fix (`63e602ac`, ledger #736) landed here and the 0.8.10 cut found the copy
+> still shipping the "Draft until §A …" warning as the public notes — two copies of a
+> pipeline drift.
 >
 > **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
 > (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
@@ -108,11 +106,15 @@ to a tap release by hand; Windows on the Dell; Linux on a VM. The owner's ruling
 a release is what `release.yml` builds on hosted runners, nothing else, and it is all three
 OSes or nothing. What is still true in this section is WHERE the artefacts go and why.
 
-**Why it can't be.** `brew` fetches a cask's `url` with **no authentication**. A private
-repo's release asset answers **404** to an unauthenticated GET — so a cask pointing at a
-release here installs for nobody, and the tap's poller cannot read this repo's releases
-either. Publishing the *source* and publishing the *artefact* are separate decisions:
-the source stays private, the dmg goes somewhere public.
+**Why the tap, still.** Until 30 Sep 2026 the reason was privacy: `brew` fetches a cask's
+`url` with **no authentication**, and a private repo's release asset answers **404** — a cask
+pointing at a release here installed for nobody. The source is public now, and the artefacts
+stay on the tap for a different reason: every consumer reads the tap's releases (the cask,
+`install.sh`/`install.ps1`, the apt publisher, the update-manifest publishers, the website's
+release sync), and the tap's own `release: published` bumps the cask with no cross-repo
+credential. Moving the host would add a `repository_dispatch` and a second token between a
+publish and the bump for nothing a user can see — the flip-back row in `docs/TODO.md` holds
+that question for the owner's ruling.
 
 **Where it goes.** Into a GitHub Release on **`rexenv/homebrew-tap`** — already public,
 already the home of the cask, and same-repo so `update-cask.yml` still needs no secret
