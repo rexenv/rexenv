@@ -60,6 +60,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **The update card gives one download two sizes** (found 30 Sep 2026 recording the tutorial
+  videos): the header reads "rexenv 0.8.11 · 29.9 MB" (`fmtBytes`, base 1024 —
+  `src/components/settings/AppUpdateCard.tsx:159` via `shell/DownloadPanel.tsx`) while the consent
+  sentence under it says "Downloads rexenv 0.8.11 (31 MB)" (`consent_sentence`, `/ 1_000_000` —
+  `src-tauri/src/core/app_update.rs:1034`). Same card, same file; it reads like two different
+  downloads. Common code, so all three OSes show it. *Done when:* both numbers come from one rule
+  (the consent sentence is Rust's, so the header uses the same unit or Rust sends the formatted
+  size), and a test pins that the two agree for a size where base 1000 and 1024 round differently.
+- [ ] **A running site with an empty log is told to start itself** (found 30 Sep 2026 recording
+  the tutorial videos): Site detail → Overview → "Recent logs" prints "No recent activity — start
+  the site to see logs here." whenever `recent.length === 0` (`src/routes/SiteDetail.tsx:1647`),
+  never asking whether the site is running — so a site serving right now, whose log is merely
+  empty, is told to start. *Done when:* the empty state follows the site's state (running: an
+  empty-log sentence; stopped: the start hint), on all three OSes (frontend, common).
 - [x] **Tutorial videos: the full series, the launch intro and the feature tour** ✓ 1 Oct 2026 —
   `scripts/video/`: 22 narrated tutorials (`videos.json` + `record-all.mjs` + `make-index.mjs`, one
   `scenes/<name>.ts` each mirroring its Rust flow), "Introducing rexenv" in landscape and 1080×1920
