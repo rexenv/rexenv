@@ -1,0 +1,156 @@
+[
+  {
+    "name": "intro",
+    "tier": "Launch",
+    "title": "Introducing rexenv",
+    "about": "The ~65 s launch video: why rexenv exists (no Docker, any framework, any OS), then what sets it apart — importing from Local/Valet/Herd in place, WordPress without wp-admin, Git-native sites, AI agents with guardrails, safe defaults, every PHP/server/database. 1920×1080."
+  },
+  {
+    "name": "intro-vertical",
+    "script": "intro",
+    "args": [
+      "portrait"
+    ],
+    "tier": "Launch",
+    "title": "Introducing rexenv — vertical",
+    "about": "The same video, same voice, laid out 1080×1920 for Shorts / Reels / TikTok."
+  },
+  {
+    "name": "tour",
+    "tier": "Launch",
+    "title": "The rexenv tour",
+    "about": "Every feature in ~3 minutes, one beat each: install, new sites (WordPress, Laravel, PHP, Git, linked folder), import, blueprints, the WordPress manager, multisite, Git plugins, debugging, PHP, web servers, databases, domains, stopping a site, mail, sharing, the rex CLI, AI agents, the menu bar and updates."
+  },
+  {
+    "name": "install",
+    "tier": 1,
+    "title": "Install rexenv",
+    "about": "The one-command install in Terminal, then the four-step first run: components, domains & SSL, done."
+  },
+  {
+    "name": "wp-install",
+    "tier": 1,
+    "title": "One-click WordPress",
+    "about": "New site → WordPress → name it → Install; the provision card streams the real phases."
+  },
+  {
+    "name": "import",
+    "tier": 1,
+    "title": "Import from Local, Valet & Herd",
+    "about": "The Sites banner → the read-only scan → taking over Valet's .test → importing three sites with their databases."
+  },
+  {
+    "name": "mail",
+    "tier": 1,
+    "title": "Mail catching",
+    "about": "Mail grouped by site; a WordPress password reset arrives; text and HTML previews; Mark all read."
+  },
+  {
+    "name": "share",
+    "tier": 1,
+    "title": "Share a site",
+    "about": "A Cloudflare quick tunnel: Starting → Live, the admin/admin warning, Copy, Stop."
+  },
+  {
+    "name": "php",
+    "tier": 1,
+    "title": "Multiple PHP versions",
+    "about": "Switch a site to PHP 7.4 (confirm, EOL note), raise 8.3's limits, apply a patch update."
+  },
+  {
+    "name": "database",
+    "tier": 1,
+    "title": "Databases",
+    "about": "Four engines on their own ports, a version switch, the Database Browser, export and import a dump."
+  },
+  {
+    "name": "wp-manager",
+    "tier": 1,
+    "title": "WordPress manager",
+    "about": "Search and install WooCommerce, update Yoast, themes, users, Magic Login."
+  },
+  {
+    "name": "git-site",
+    "tier": 2,
+    "title": "A site from Git",
+    "about": "New site → Laravel → From Git: Fetch, pick a branch, and the job clones, wires .env, runs composer, artisan migrate and the asset build — log live."
+  },
+  {
+    "name": "link-folder",
+    "tier": 2,
+    "title": "Serve an existing folder",
+    "about": "Existing folder → detected Laravel serving public/ → Link site → the external tag. Nothing copied or moved."
+  },
+  {
+    "name": "multisite",
+    "tier": 2,
+    "title": "WordPress multisite",
+    "about": "Convert a site to a subdomain network from WordPress → Network, add a sub-site, manage the network; the New site toggle."
+  },
+  {
+    "name": "debugging",
+    "tier": 2,
+    "title": "Debugging",
+    "about": "Xdebug for one site, WP_DEBUG from Tools, the live debug.log in Logs, and the Terminal tab with the site's PHP and WP-CLI."
+  },
+  {
+    "name": "rex-cli",
+    "tier": 2,
+    "title": "The rex command line",
+    "about": "Install rex from Settings, then status, site list, site create, PHP switch, db export and doctor — and the app showing the result."
+  },
+  {
+    "name": "mcp-agent",
+    "tier": 2,
+    "title": "AI agents (MCP)",
+    "about": "Turn on the MCP endpoint, the connect command, an agent's calls in the feed (a scratch site, a refused change), the Agent access dial, Agent scratch sites."
+  },
+  {
+    "name": "repo-panel",
+    "tier": 2,
+    "title": "Plugins & themes from Git",
+    "about": "From Git → Fetch → Add plugin → clone + detect → one click per dependency step → Activate → the git badge → Pull."
+  },
+  {
+    "name": "domains",
+    "tier": 3,
+    "title": "Domains",
+    "about": "The default ending for new sites (.local refused, .test saved) and an extra name on a site — certificate re-issued."
+  },
+  {
+    "name": "site-stop",
+    "tier": 3,
+    "title": "Stop one site",
+    "about": "Stop site → “Stopped by you” → the Stopped filter → Start site. Shared services keep running."
+  },
+  {
+    "name": "servers",
+    "tier": 3,
+    "title": "Web servers & Redis",
+    "about": "Switch a site to FrankenPHP (embedded PHP 8.5), Apache for .htaccess, and Redis from Services on :16379."
+  },
+  {
+    "name": "blueprints",
+    "tier": 3,
+    "title": "Blueprints",
+    "about": "Save a WordPress setup in Settings; start a new site from it — the “applying blueprint” phase installs WooCommerce + Storefront."
+  },
+  {
+    "name": "self-update",
+    "tier": 3,
+    "title": "Updates",
+    "about": "The Settings badge → About → the consent sentence → Install → the restart question. (0.8.11 is a demo offer.)"
+  },
+  {
+    "name": "new-sites",
+    "tier": 3,
+    "title": "Laravel & plain PHP",
+    "about": "A fresh Laravel app (installer, MySQL .env, migrations) and a Blank PHP site with its seeded starter database."
+  },
+  {
+    "name": "tray",
+    "tier": 3,
+    "title": "The menu-bar app",
+    "about": "Close the window — nothing stops; the tray menu (drawn from core/tray.rs); Open rexenv; Start at login."
+  }
+]

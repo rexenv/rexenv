@@ -1,5 +1,10 @@
 /** The scripted backend the tutorial videos run against.
  *
+ *  Scenes: a video can load `scenes/<name>.ts` (`?scene=<name>` on demo.html).
+ *  Its default export receives the shared state (`ctx`) and returns handlers
+ *  that answer before the base switch below — so each video carries its own
+ *  fixtures and its own replayed jobs without growing this file.
+ *
  *  Answers the IPC commands the recorded screens call, with demo data shaped
  *  like a real developer's machine (a few sites, the stack running). The New
  *  Site provision job is replayed with the SAME phase list, labels and log
@@ -24,7 +29,7 @@ import type { ServiceInfo, Site, SiteProvisionState } from "@/types";
 
 type Args = Record<string, unknown> | undefined;
 
-const site = (s: Partial<Site> & Pick<Site, "id" | "name" | "domain" | "type">): Site => ({
+export const site = (s: Partial<Site> & Pick<Site, "id" | "name" | "domain" | "type">): Site => ({
   status: "running",
   phpVersion: "8.3",
   webServer: "nginx",
@@ -40,7 +45,7 @@ const site = (s: Partial<Site> & Pick<Site, "id" | "name" | "domain" | "type">):
   ...s,
 });
 
-const sites: Site[] = [
+export const sites: Site[] = [
   site({ id: "1", name: "Agency Blog", domain: "agency-blog.rex", type: "wordpress", createdAt: "2026-08-21 09:30:00" }),
   site({ id: "2", name: "Shop Staging", domain: "shop-staging.rex", type: "wordpress", phpVersion: "8.2", createdAt: "2026-09-02 14:10:00" }),
   site({ id: "3", name: "Booking API", domain: "booking-api.rex", type: "laravel", phpVersion: "8.4", dbName: "lv_booking_api_rex", createdAt: "2026-09-10 11:05:00" }),
@@ -48,7 +53,7 @@ const sites: Site[] = [
 ];
 
 // The whole stack up, the state a tutorial starts from.
-const services: ServiceInfo[] = mockServices.map((s) =>
+export const services: ServiceInfo[] = mockServices.map((s) =>
   s.running ? s : { ...s, running: true, pid: 1300 + s.port % 97, ramMb: s.kind === "database" ? 96 : 18 },
 );
 
@@ -64,7 +69,10 @@ const globalStatus = () => ({
 
 let provision: SiteProvisionState | null = null;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** `?speed=0.4` runs every replayed job (provision, import, downloads…) at
+ *  40% of its recorded length — the fast-paced intro uses it. */
+const SPEED = Number(new URLSearchParams(location.search).get("speed") ?? "1") || 1;
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms * SPEED));
 
 /** Replays one WordPress provision job: phase boundaries, wp-cli's lines, the
  *  bar's pct, then settle-ok — the order `run_provision_job` emits them in. */
@@ -116,10 +124,11 @@ async function runProvision(job: SiteProvisionState, newSite: Site) {
   state({ status: "ok", pct: 100, summary: `created — serving at https://${job.domain}` });
 }
 
-export function handle(cmd: string, args: Args): unknown {
+function base(cmd: string, args: Args): unknown {
   switch (cmd) {
+    // The release this video depicts, not the dev mock's 0.1.0.
     case "app_info":
-      return mockAppInfo;
+      return { ...mockAppInfo, version: "0.8.10", commit: "0a12913", builtAt: "2026-09-29" };
     case "platform_words":
       return mockPlatformWords;
     case "global_status":
@@ -151,6 +160,73 @@ export function handle(cmd: string, args: Args): unknown {
       return "rex";
     case "list_blueprints":
       return [];
+    case "services_status":
+      return services;
+    // Set up, healthy: the state every video after onboarding starts from.
+    case "dns_status":
+      return { running: true, mode: "agent", port: 15353, resolverInstalled: true, resolverPath: "/etc/resolver/rex", caTrusted: true };
+    case "mailpit_status":
+      return { running: true, smtpPort: 11025, httpPort: 18025, uiUrl: "http://127.0.0.1:18025" };
+    // A site's own detail screen (any tab).
+    case "wp_info": {
+      const s = sites.find((x) => x.id === (args?.id as string));
+      return { isWordpress: s?.type === "wordpress", version: s?.type === "wordpress" ? "7.1" : null, multisite: (s?.multisite ?? "none") !== "none" };
+    }
+    case "repo_site_info": {
+      const s = sites.find((x) => x.id === (args?.siteId as string));
+      return { present: false, projectRoot: s?.path ?? "", clonedFrom: null };
+    }
+    case "log_targets": {
+      const s = sites.find((x) => x.id === (args?.siteId as string));
+      const d = s?.domain ?? "site.rex";
+      return [
+        { key: `nginx-${d}-access.log`, label: "Access log", category: "server", path: `~/Library/Application Support/dev.rexenv.rexenv/logs/nginx-${d}-access.log` },
+        { key: `nginx-${d}-error.log`, label: "Error log", category: "server", path: `~/Library/Application Support/dev.rexenv.rexenv/logs/nginx-${d}-error.log` },
+      ];
+    }
+    case "tail_log":
+      return [];
+    case "agent_activity":
+    case "list_terminals":
+      return [];
+    case "wp_default_creds":
+      return false;
+    // A site's Settings tab.
+    case "site_cert_info": {
+      const s = sites.find((x) => x.id === (args?.id as string));
+      return {
+        notBefore: "2026-08-21 09:30:00",
+        notAfter: "2027-09-23 09:30:00",
+        daysLeft: 358,
+        sans: s ? [s.domain, `*.${s.domain}`] : [],
+        certDir: `/Users/demo/Library/Application Support/dev.rexenv.rexenv/certs/${s?.domain ?? ""}`,
+      };
+    }
+    case "site_domains":
+      return [sites.find((x) => x.id === (args?.id as string))?.domain].filter(Boolean);
+    case "list_site_env":
+      return [];
+    // Settings → DNS & SSL: every ending allowed, no resolver owned by another tool.
+    case "tld_policy":
+      return { allowed: true, warn: false, reason: "" };
+    case "resolver_tld_status":
+      return { tld: args?.tld, owner: "absent", path: `/etc/resolver/${args?.tld}`, theirContent: null, ourContent: "nameserver 127.0.0.1\nport 15353\n", rexenvSites: 0 };
+    case "unresolvable_tlds":
+      return [];
+    case "sites_folder":
+      return "/Users/demo/Sites";
+    // `rex` is on PATH, pointing at this app's bundled copy.
+    case "cli_status":
+      return { available: true, installed: true, current: true, linkPath: "/usr/local/bin/rex", bundledPath: "/Applications/rexenv.app/Contents/MacOS/rex", onPath: null };
+    case "wp_cli_packages":
+      return null;
+    // Settings: mail caught (the default), rexenv starting at login.
+    case "mail_catch_all":
+    case "autostart_status":
+      return true;
+    case "legacy_notice":
+    case "setup_edge_conflict":
+      return null;
     // The quiet rest of the shell: nothing to report, nothing running beside the sites.
     case "init_error":
       return null;
@@ -166,6 +242,12 @@ export function handle(cmd: string, args: Args): unknown {
       return [];
     case "downloads_state":
       return { batch: null, items: [], seq: 0 };
+    // The Databases screen's version pickers and the Adminer card.
+    case "db_engine_versions":
+      return { mysql: ["8.4.6", "8.0.44"], mariadb: ["12.3.2", "11.4.12"], postgres: ["18.6.0", "17.11.0", "16.15.0"], redis: ["8.8.0"] };
+    case "adminer_status":
+    case "adminer_update_check":
+      return { staged: "6.1.1", effective: "6.1.1", pinned: "6.1.1", updatable: null };
     case "databases_status":
       return mockDatabases.map((d) => ({ ...d, running: true, pid: d.pid ?? 1402, ramMb: d.ramMb || 96 }));
     case "mailpit_messages":
@@ -238,4 +320,43 @@ export function handle(cmd: string, args: Args): unknown {
       return null;
     }
   }
+}
+
+export type Handlers = Record<string, (args: Args) => unknown>;
+export type SceneCtx = {
+  sites: Site[];
+  services: ServiceInfo[];
+  site: typeof site;
+  sleep: typeof sleep;
+  emit: typeof emit;
+  /** The base answer for a command, for a scene that only adjusts it. */
+  base: (cmd: string, args?: Args) => unknown;
+};
+type SceneModule = { default: (ctx: SceneCtx) => Handlers | Promise<Handlers> };
+
+const sceneModules = import.meta.glob<SceneModule>("./scenes/*.ts");
+
+/** The IPC handler for one video: the scene's handlers first, then the base. */
+export async function createBackend(scene: string | null) {
+  let handlers: Handlers = {};
+  // `a,b`: several scenes in one app, so a montage moves between their screens
+  // through the sidebar instead of reloading the app (a reload costs ~1.5 s of
+  // empty stage). A later scene's handler wins a shared command.
+  for (const name of scene ? scene.split(",") : []) {
+    const load = sceneModules[`./scenes/${name}.ts`];
+    if (!load) throw new Error(`no scene "${name}" in scripts/video/scenes/`);
+    handlers = { ...handlers, ...(await (await load()).default({ sites, services, site, sleep, emit, base })) };
+  }
+  const calls: string[] = [];
+  (window as unknown as { __demoCalls: string[] }).__demoCalls = calls;
+  // Every answer is a fresh copy, as a real IPC reply (fresh JSON) is. Handing
+  // back the same mutated array let React Query's structural sharing see "no
+  // change": the sidebar kept saying 4 sites beside a list of 7.
+  const fresh = (v: unknown) => (v === undefined ? null : structuredClone(v));
+  return (cmd: string, args: Args) => {
+    calls.push(cmd);
+    const h = handlers[cmd];
+    const out = h ? h(args) : base(cmd, args);
+    return out instanceof Promise ? out.then(fresh) : fresh(out);
+  };
 }

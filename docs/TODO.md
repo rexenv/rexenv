@@ -60,6 +60,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Tutorial videos: the full series, the launch intro and the feature tour** ✓ 1 Oct 2026 —
+  `scripts/video/`: 22 narrated tutorials (`videos.json` + `record-all.mjs` + `make-index.mjs`, one
+  `scenes/<name>.ts` each mirroring its Rust flow), "Introducing rexenv" in landscape and 1080×1920
+  (`record-intro.mjs [portrait]`, ~65 s) and "The rexenv tour" (`record-tour.mjs`, 2:52, every
+  feature); recorded in Chromium against the scripted backend, owner-reviewed, MP4s made.
+
 - [ ] **Linux: the 0.8.10 → 0.8.11 in-app update ends in onboarding's Welcome with "resolver
   MISSING" over a route that still works** (30 Sep 2026, 22.04 VM, §M): the relaunched 0.8.11 does
   not classify 0.8.10's route unit (`ExecStop=/sbin/ip link del rexenv0`) as its own, although

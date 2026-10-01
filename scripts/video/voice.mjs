@@ -10,6 +10,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 export const VOICE = process.env.VIDEO_VOICE ?? "en-US-AndrewNeural";
+/** Speaking rate for edge-tts ("+15%" = faster); openStage({ rate }) sets it. */
+let RATE_ARG = "+0%";
+export const setRate = (r) => (RATE_ARG = r ?? "+0%");
 const RATE = 24000; // every clip is converted to 24 kHz mono 16-bit, so they splice as raw samples
 const EDGE_TTS = path.join(import.meta.dirname, ".venv", "bin", "edge-tts");
 
@@ -23,11 +26,22 @@ export function synthesize(lines, cacheDir) {
   const out = {};
   for (const [key, line] of Object.entries(lines)) {
     const spoken = line.say ?? line.text;
-    const id = createHash("sha1").update(`${VOICE}\n${spoken}`).digest("hex").slice(0, 16);
+    const id = createHash("sha1").update(`${VOICE}\n${RATE_ARG === "+0%" ? "" : RATE_ARG + "\n"}${spoken}`).digest("hex").slice(0, 16);
     const mp3 = path.join(cacheDir, `${id}.mp3`);
     const wav = path.join(cacheDir, `${id}.wav`);
     if (!existsSync(wav)) {
-      execFileSync(EDGE_TTS, ["--voice", VOICE, "--text", spoken, "--write-media", mp3]);
+      // The read-aloud service drops a request now and then: retry before failing the run.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          execFileSync(EDGE_TTS, ["--voice", VOICE, `--rate=${RATE_ARG}`, "--text", spoken, "--write-media", mp3], { stdio: "pipe" });
+          // Back-to-back requests are what it drops: leave a breath between lines.
+          execFileSync("sleep", ["1"]);
+          break;
+        } catch (e) {
+          if (attempt >= 5) throw e;
+          execFileSync("sleep", [String(attempt * 3)]);
+        }
+      }
       execFileSync("afconvert", ["-f", "WAVE", "-d", `LEI16@${RATE}`, "-c", "1", mp3, wav]);
     }
     const samples = readWav(wav);

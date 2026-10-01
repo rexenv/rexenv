@@ -5,13 +5,32 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
-import { synthesize, writeNarration } from "./voice.mjs";
+import { setRate, synthesize, writeNarration } from "./voice.mjs";
 
 export const BASE = process.env.VIDEO_BASE_URL ?? "http://localhost:5199";
 const OUT = path.join(import.meta.dirname, "out");
 
-/** narration: { key: { text, say? } } — optional; see voice.mjs. */
-export async function openStage({ narration } = {}) {
+/** narration: { key: { text, say? } } — optional; see voice.mjs.
+ *  scene: scenes/<scene>.ts for this video's fixtures; path: the screen the app
+ *  opens on; ready: a selector inside the app that means "booted". */
+export async function openStage({
+  narration,
+  scene,
+  path: appPath = "/sites",
+  ready = "text=Sites",
+  timezoneId,
+  // The intro's knobs: a 1080×1920 stage, jobs replayed faster, a faster
+  // voice, a shorter breath between narration lines, and a shorter pause
+  // after a scene switch.
+  orient = "landscape",
+  speed = 1,
+  rate = "+0%",
+  gap: lineGap = 250,
+  switchSettle = 350,
+} = {}) {
+  const W = orient === "portrait" ? 1080 : 1920;
+  const H = orient === "portrait" ? 1920 : 1080;
+  setRate(rate);
   mkdirSync(OUT, { recursive: true });
   // Synthesised BEFORE recording starts: the scene paces itself on each line's
   // real length, so it must be known up front.
@@ -26,10 +45,18 @@ export async function openStage({ narration } = {}) {
   const engine = process.env.VIDEO_ENGINE === "webkit" ? webkit : chromium;
   const browser = await engine.launch();
   const context = await browser.newContext({
-    viewport: { width: 1920, height: 1080 },
+    viewport: { width: W, height: H },
     colorScheme: "dark",
-    recordVideo: { dir: OUT, size: { width: 1920, height: 1080 } },
+    // Dates and times render with the browser's locale; pin it so a video
+    // reads the same on every machine that records it.
+    locale: "en-US",
+    // Recorded at night, a mail list reads "03:47 AM"; a scene can move the clock's zone.
+    ...(timezoneId ? { timezoneId } : {}),
+    recordVideo: { dir: OUT, size: { width: W, height: H } },
   });
+  // "Copy" buttons use navigator.clipboard, which headless Chromium refuses
+  // without the grant — the button would never say "Copied".
+  if (engine === chromium) await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const page = await context.newPage();
   const t0 = Date.now();
   const problems = [];
@@ -37,9 +64,11 @@ export async function openStage({ narration } = {}) {
   page.on("console", (m) => {
     if (m.type() === "error" || m.text().includes("[demo-backend] unanswered")) problems.push(m.text());
   });
-  await page.goto(`${BASE}/scripts/video/stage.html`);
+  const extra = { ...(orient === "portrait" ? { orient } : {}), ...(speed !== 1 ? { speed: String(speed) } : {}) };
+  const q = new URLSearchParams({ path: appPath, ...(scene ? { scene } : {}), ...extra });
+  await page.goto(`${BASE}/scripts/video/stage.html?${q}`);
   await page.evaluate(() => window.stage.ready());
-  const app = await waitForApp(page);
+  const app = await waitForApp(page, ready);
   // The recorder's clock and the video's are NOT the same clock: WebKit's
   // frames reach the video ~0.5s after they happen, a constant (measured with
   // flashes at 2/6/12/20s: 0.48–0.53). Uncorrected, every line of narration
@@ -54,7 +83,13 @@ export async function openStage({ narration } = {}) {
   const startedAt = (Date.now() - t0) / 1000;
 
   const box = async (loc) => {
-    await loc.waitFor({ state: "visible" });
+    try {
+      await loc.waitFor({ state: "visible" });
+    } catch (e) {
+      // What the stage showed when a step's target never appeared.
+      await page.screenshot({ path: path.join(OUT, "_fail.png") }).catch(() => {});
+      throw e;
+    }
     // Scroll the element's own scroller only — never scrollIntoView, which
     // also scrolls the stage around the iframe.
     await loc.evaluate((el) => {
@@ -66,11 +101,21 @@ export async function openStage({ narration } = {}) {
       if (r.top < pr.top) p.scrollBy({ top: r.top - pr.top - 12, behavior: "smooth" });
       else if (r.bottom > pr.bottom) p.scrollBy({ top: r.bottom - pr.bottom + 12, behavior: "smooth" });
     });
-    await page.waitForTimeout(250);
-    return loc.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      return { x: r.x, y: r.y, w: r.width, h: r.height };
-    });
+    // A smooth scroll can outlast any fixed wait (a long page took >250 ms,
+    // and the click landed below the window): read until the rect holds still.
+    const rect = () =>
+      loc.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+    let prev = null;
+    for (let i = 0; i < 20; i++) {
+      await page.waitForTimeout(i === 0 ? 150 : 60);
+      const r = await rect();
+      if (prev && r.x === prev.x && r.y === prev.y) return r;
+      prev = r;
+    }
+    return prev;
   };
 
   const s = {
@@ -79,9 +124,36 @@ export async function openStage({ narration } = {}) {
     wait: (ms) => page.waitForTimeout(ms),
     stage: (fn, arg) => page.evaluate(fn, arg),
     caption: (html, at) => page.evaluate(([h, a]) => window.stage.caption(h, a), [html, at]),
-    title: (h, p) => page.evaluate(([a, b]) => window.stage.title(a, b), [h, p]),
+    title: (h, p, fast = false, code = "") => page.evaluate(([a, b, c, d]) => window.stage.title(a, b, c, d), [h, p, fast, code]),
     spotlight: (rect) => page.evaluate((r) => window.stage.spotlight(r), rect),
     box,
+
+    /** Swap the app for another scene mid-recording — one video, one voice
+     *  track. The window fades out while the iframe reloads; the app frame
+     *  object survives the navigation, so `s.app` stays valid. */
+    async switchScene(nextScene, nextPath = "/sites", nextReady = "text=Sites", params = {}) {
+      await page.evaluate(() => window.stage.showWindow(false));
+      await page.evaluate(() => window.stage.camera(null));
+      await page.waitForTimeout(250);
+      const q = new URLSearchParams({ path: nextPath, ...(nextScene ? { scene: nextScene } : {}), ...extra, ...params });
+      await page.evaluate((search) => window.stage.loadScene(search), q.toString());
+      await app.locator(nextReady).first().waitFor({ timeout: 15_000 });
+      await page.evaluate(() => window.stage.showWindow(true));
+      await page.waitForTimeout(switchSettle);
+    },
+    layout: (mode) => page.evaluate((m) => window.stage.layout(m), mode),
+    headline: (h, sub = "") => page.evaluate(([a, b]) => window.stage.headline(a, b), [h, sub]),
+
+    /** The stage's terminal window (stage.ts): show/hide/clear/print/type/idle. */
+    term: {
+      show: (o = {}) => page.evaluate((x) => window.stage.terminal.show(x), o),
+      hide: () => page.evaluate(() => window.stage.terminal.hide()),
+      clear: () => page.evaluate(() => window.stage.terminal.clear()),
+      print: (lines, gap = 0) => page.evaluate(([l, g]) => window.stage.terminal.print(l, g), [lines, gap]),
+      type: (cmd, o = {}) => page.evaluate(([c, x]) => window.stage.terminal.type(c, x), [cmd, o]),
+      idle: (prompt) => page.evaluate((p) => window.stage.terminal.idle(p), prompt),
+      bar: (ms) => page.evaluate((m) => window.stage.terminal.bar(m), ms),
+    },
 
     /** Move the camera and wait for it to SETTLE: the real mouse is aimed from
      *  the drawn cursor's on-screen position, which is wrong mid-transition. */
@@ -90,10 +162,29 @@ export async function openStage({ narration } = {}) {
       await page.waitForTimeout(950);
     },
 
+    /** The rect of the first ancestor of `loc` at least `minWidth` app-px wide
+     *  — "the card this button sits in", without knowing the card's markup. */
+    async containerOf(loc, minWidth = 400, pad = 0) {
+      await box(loc);
+      return loc.evaluate((el, [mw, p]) => {
+        let e = el;
+        while (e.parentElement && e.getBoundingClientRect().width < mw) e = e.parentElement;
+        const r = e.getBoundingClientRect();
+        return { x: r.x - p, y: r.y - p, w: r.width + 2 * p, h: r.height + 2 * p };
+      }, [minWidth, pad]);
+    },
+
     /** The app-px rect covering every locator, padded. */
     async union(locs, pad = 16) {
+      for (const l of locs) await box(l);
+      // Scrolling a later one into view moves the earlier ones: read every
+      // rect after the last scroll (the PHP 7.4–8.5 zoom landed off-centre).
       const bs = [];
-      for (const l of locs) bs.push(await box(l));
+      for (const l of locs)
+        bs.push(await l.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, w: r.width, h: r.height };
+        }));
       const x = Math.min(...bs.map((b) => b.x)) - pad;
       const y = Math.min(...bs.map((b) => b.y)) - pad;
       const r = Math.max(...bs.map((b) => b.x + b.w)) + pad;
@@ -112,15 +203,25 @@ export async function openStage({ narration } = {}) {
 
     async click(loc, opts) {
       await s.moveTo(loc, opts);
-      await page.waitForTimeout(140);
-      const t = await page.evaluate(() => window.stage.tip());
+      // `pre`/`post`: the beat before and after the press — a tutorial's pace
+      // by default; a montage passes shorter ones.
+      await page.waitForTimeout(opts?.pre ?? 140);
+      let t = await page.evaluate(() => window.stage.tip());
+      // A camera zoomed on a card that has since moved can leave the target
+      // off-frame, and a click outside the viewport lands nowhere (it silently
+      // failed to stop a tunnel once). Pull the camera back and aim again.
+      if (t.x < 8 || t.y < 8 || t.x > W - 8 || t.y > H - 8) {
+        await s.camera(null);
+        await s.moveTo(loc, { ...opts, ms: 400 });
+        t = await page.evaluate(() => window.stage.tip());
+      }
       await Promise.all([page.evaluate(() => window.stage.press()), page.mouse.click(t.x, t.y)]);
-      await page.waitForTimeout(220);
+      await page.waitForTimeout(opts?.post ?? 220);
     },
 
     /** Start a narration line — after the previous one has finished, so lines
      *  never overlap. Returns at once; the scene keeps acting while it plays. */
-    async say(key, gap = 250) {
+    async say(key, gap = lineGap) {
       const line = lines[key];
       if (!line) throw new Error(`no narration line "${key}"`);
       await s.voiceDone(gap);
@@ -128,8 +229,11 @@ export async function openStage({ narration } = {}) {
       voiceEnd = Date.now() + line.dur * 1000;
     },
 
+    /** A narration line's length in seconds (known before recording starts). */
+    dur: (key) => lines[key].dur,
+
     /** Wait for the current line to finish (+ a breath). */
-    async voiceDone(gap = 250) {
+    async voiceDone(gap = lineGap) {
       const left = voiceEnd + gap - Date.now();
       if (voiceEnd && left > 0) await page.waitForTimeout(left);
     },
@@ -145,6 +249,8 @@ export async function openStage({ narration } = {}) {
     /** Close the recording and write out/<name>.webm, trimmed to start where
      *  the stage was ready (the page load before it is blank frames). */
     async save(name) {
+      const unknown = await app.evaluate(() => window.__demoUnknown).catch(() => null);
+      if (unknown) problems.push(`unanswered IPC: ${JSON.stringify(unknown)}`);
       const video = page.video();
       await context.close();
       await browser.close();
@@ -224,11 +330,11 @@ function playwrightFfmpeg() {
   return null;
 }
 
-async function waitForApp(page) {
+async function waitForApp(page, ready) {
   for (let i = 0; i < 100; i++) {
     const f = page.frames().find((fr) => fr !== page.mainFrame() && !fr.url().includes("demo.html"));
     if (f) {
-      await f.locator("text=Sites").first().waitFor();
+      await f.locator(ready).first().waitFor();
       return f;
     }
     await page.waitForTimeout(100);

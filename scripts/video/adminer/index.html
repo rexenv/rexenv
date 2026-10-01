@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- A stand-in for the Database Browser's frame. The real one is Adminer served
+     through the app's own `rexdb://` scheme, which exists only inside the
+     Tauri webview; the demo backend points `dbBrowserOrigin` here instead, and
+     this page reads the same query the app builds (`server`/`pgsql`, `db`). -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Adminer</title>
+    <style>
+      body { margin: 0; background: #17181d; color: #d7d8de; font: 13px/1.5 -apple-system, "Segoe UI", sans-serif; display: flex; min-height: 100vh; }
+      a { color: #8fb4ff; text-decoration: none; }
+      #menu { width: 230px; flex: none; background: #1d1f26; border-right: 1px solid #2b2e38; padding: 14px 16px; }
+      #menu h1 { margin: 0 0 10px; font-size: 20px; font-weight: 600; color: #e9e9ef; }
+      #menu h1 span { font-size: 12px; font-weight: 400; color: #8a8c98; }
+      #menu .links { font-size: 12px; margin: 8px 0 12px; }
+      #menu .links a { margin-right: 8px; }
+      #menu select { width: 100%; background: #14151a; color: #d7d8de; border: 1px solid #333744; border-radius: 4px; padding: 4px; margin: 6px 0 12px; font-size: 12px; }
+      #menu ul { list-style: none; padding: 0; margin: 0; }
+      #menu li { padding: 2px 0; font-size: 12px; white-space: nowrap; }
+      #menu li a.select { color: #8a8c98; margin-right: 6px; }
+      #content { flex: 1; padding: 14px 22px; }
+      #breadcrumb { color: #8a8c98; font-size: 12px; margin: 0 0 8px; }
+      h2 { margin: 0 0 12px; font-size: 18px; font-weight: 600; color: #e9e9ef; }
+      table { border-collapse: collapse; width: 100%; font-size: 12px; }
+      th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid #2b2e38; }
+      th { color: #9a9ca8; font-weight: 600; background: #1d1f26; }
+      td.n { text-align: right; font-variant-numeric: tabular-nums; }
+      .tabs { margin: 0 0 12px; font-size: 12px; }
+      .tabs a { margin-right: 12px; }
+      .muted { color: #8a8c98; }
+    </style>
+  </head>
+  <body>
+    <div id="menu">
+      <h1>Adminer <span>6.1.1</span></h1>
+      <div class="links"><a href="#">SQL command</a><a href="#">Import</a><a href="#">Export</a><a href="#">Create table</a></div>
+      <div class="muted">DB:</div>
+      <select id="dbsel"></select>
+      <ul id="tables"></ul>
+    </div>
+    <div id="content"></div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const pg = q.has("pgsql");
+      const server = q.get("server") || q.get("pgsql") || "127.0.0.1:13306";
+      const db = q.get("db");
+      const system = pg ? "PostgreSQL" : "MySQL";
+      const DBS = pg
+        ? ["postgres", "lv_booking_api_rex"]
+        : ["information_schema", "lv_booking_api_rex", "mysql", "performance_schema", "sys", "wp_agency_blog_rex", "wp_shop_staging_rex"];
+      const WP = [
+        ["wp_commentmeta", 0, "48 KB"], ["wp_comments", 1, "96 KB"], ["wp_links", 0, "32 KB"],
+        ["wp_options", 184, "1.1 MB"], ["wp_postmeta", 412, "208 KB"], ["wp_posts", 96, "480 KB"],
+        ["wp_term_relationships", 38, "32 KB"], ["wp_term_taxonomy", 9, "48 KB"], ["wp_termmeta", 0, "48 KB"],
+        ["wp_terms", 9, "48 KB"], ["wp_usermeta", 42, "48 KB"], ["wp_users", 2, "64 KB"],
+      ];
+      const sel = document.getElementById("dbsel");
+      sel.innerHTML = `<option></option>` + DBS.map((d) => `<option${d === db ? " selected" : ""}>${d}</option>`).join("");
+      const content = document.getElementById("content");
+      if (db) {
+        document.getElementById("tables").innerHTML = WP.map(([t]) => `<li><a class="select" href="#">select</a><a href="#">${t}</a></li>`).join("");
+        content.innerHTML =
+          `<p id="breadcrumb">${system} » ${server} » Database: ${db}</p><h2>Database: ${db}</h2>` +
+          `<div class="tabs"><a href="#">Alter database</a><a href="#">Database schema</a><a href="#">Privileges</a></div>` +
+          `<table><tr><th>Table</th><th>Engine</th><th>Collation</th><th>Data Length</th><th>Rows</th></tr>` +
+          WP.map(([t, r, s]) => `<tr><td><a href="#">${t}</a></td><td>InnoDB</td><td>utf8mb4_unicode_520_ci</td><td class="n">${s}</td><td class="n">${r}</td></tr>`).join("") +
+          `</table><p class="muted">${WP.length} tables</p>`;
+      } else {
+        content.innerHTML =
+          `<p id="breadcrumb">${system} » ${server}</p><h2>Select database</h2>` +
+          `<div class="tabs"><a href="#">Create database</a><a href="#">Privileges</a><a href="#">Process list</a><a href="#">Variables</a><a href="#">Status</a></div>` +
+          `<p class="muted">${system} version: ${pg ? "18.6" : "8.4.6"} through PHP extension ${pg ? "PgSQL" : "MySQLi"}<br>Logged as: ${pg ? "postgres" : "root@localhost"}</p>` +
+          `<table><tr><th>Database</th><th>Collation</th><th>Tables</th></tr>` +
+          DBS.map((d) => `<tr><td><a href="#">${d}</a></td><td>${pg ? "" : "utf8mb4_0900_ai_ci"}</td><td class="n">${d.startsWith("wp_") ? 12 : d.startsWith("lv_") ? 9 : ""}</td></tr>`).join("") +
+          `</table>`;
+      }
+    </script>
+  </body>
+</html>

@@ -10,7 +10,7 @@
       /* `clip`, not `hidden`: a scrollIntoView inside the iframe also scrolls
          every ancestor document that CAN scroll, and a hidden-overflow stage
          still can — it slid the captions into the middle of the frame. */
-      html, body { margin: 0; width: 1920px; height: 1080px; overflow: clip; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: clip; } /* stage.ts resizes for ?orient=portrait */
       #cam, #caption, #title { position: fixed !important; }
       body, #title {
         background:
@@ -39,6 +39,26 @@
         translate: 0 24px;
       }
       #win.shown { opacity: 1; translate: 0 0; }
+      #win { transition: opacity 600ms ease, translate 700ms cubic-bezier(0.22, 1, 0.36, 1), left 650ms cubic-bezier(0.65, 0, 0.35, 1), top 650ms cubic-bezier(0.65, 0, 0.35, 1), transform 650ms cubic-bezier(0.65, 0, 0.35, 1); }
+      /* The intro's headline: left of the window (landscape), above it (portrait). */
+      #headline { position: fixed; z-index: 18; left: 72px; top: 50%; width: 470px; translate: -24px -50%; opacity: 0; pointer-events: none; transition: opacity 260ms ease, translate 320ms cubic-bezier(0.22, 1, 0.36, 1); color: #fff; }
+      #headline.shown { opacity: 1; translate: 0 -50%; }
+      body.zoomed #headline { opacity: 0; }
+      #headline .h { font: 700 64px/1.06 "Space Grotesk", sans-serif; letter-spacing: -0.025em; }
+      #headline .s { margin-top: 20px; font: 500 25px/1.4 "Inter", sans-serif; color: #b9b5cc; }
+      #headline .h em { font-style: normal; color: #a58bff; }
+      body.portrait #headline { left: 64px; right: 64px; width: auto; top: auto; bottom: 1149px; translate: 0 -16px; text-align: center; }
+      body.portrait #headline.shown { translate: 0 0; }
+      body.portrait #headline .h { font-size: 84px; }
+      body.portrait #headline .s { font-size: 32px; }
+      #title.fast { transition: opacity 180ms ease; }
+      #title-c { display: flex; flex-direction: column; gap: 14px; margin-top: 18px; align-items: center; }
+      #title-c div { font: 500 24px "JetBrains Mono", monospace; color: #e6e3f5; background: rgba(255,255,255,0.06); box-shadow: 0 0 0 1px rgba(255,255,255,0.12); border-radius: 10px; padding: 12px 20px; }
+      #title-c span { color: #8a86a0; margin-right: 14px; font-family: "Inter", sans-serif; font-size: 20px; }
+      #title-c small { margin-top: 10px; font: 400 19px "Inter", sans-serif; color: #8a86a0; }
+      body.portrait #title-c div { font-size: 22px; }
+      body.portrait #title h1 { font-size: 104px; text-align: center; padding: 0 40px; }
+      body.portrait #title p { font-size: 36px; text-align: center; padding: 0 60px; }
       #win iframe { width: 1180px; height: 760px; border: 0; display: block; }
       /* macOS draws the traffic lights over the content (titleBarStyle Overlay). */
       #lights { position: absolute; left: 14px; top: 14px; display: flex; gap: 8px; pointer-events: none; }
@@ -66,16 +86,18 @@
         color: #f2f1fa; font-size: 30px; font-weight: 500; letter-spacing: -0.01em; line-height: 1.3;
         text-align: center; opacity: 0; transition: opacity 350ms ease, translate 350ms ease;
         z-index: 20;
+        /* Over the app like every other stage layer: it must never take a click. */
+        pointer-events: none;
       }
       #caption.shown { opacity: 1; translate: -50% 0; }
       #caption.top { bottom: auto; top: 44px; translate: -50% -12px; }
       #caption.top.shown { translate: -50% 0; }
-      #spot {
+      .spot {
         position: absolute; pointer-events: none; z-index: 8; border-radius: 10px; opacity: 0;
         box-shadow: 0 0 0 2px rgba(160, 138, 255, 0.95), 0 0 28px 6px rgba(124, 92, 255, 0.45);
         transition: opacity 400ms ease;
       }
-      #spot.shown { opacity: 1; animation: pulse 1600ms ease-in-out infinite; }
+      .spot.shown { opacity: 1; animation: pulse 1600ms ease-in-out infinite; }
       @keyframes pulse { 50% { box-shadow: 0 0 0 2px rgba(160, 138, 255, 0.6), 0 0 16px 2px rgba(124, 92, 255, 0.25); } }
       #caption code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 0.9em; color: #b9a8ff; }
       #title {
@@ -83,6 +105,42 @@
         gap: 22px; color: #fff; z-index: 30; opacity: 0; transition: opacity 600ms ease; pointer-events: none;
       }
       #title.shown { opacity: 1; }
+      /* A terminal window drawn on the stage, for the parts of a flow that happen
+         in a shell (install, rex CLI, an AI agent). Never a real shell. */
+      #term {
+        position: fixed; z-index: 15; width: 1280px; height: 640px; left: 320px; top: 220px;
+        border-radius: 12px; overflow: hidden; background: #111318;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 30px 90px rgba(0, 0, 0, 0.6);
+        opacity: 0; translate: 0 24px; transition: opacity 450ms ease, translate 550ms cubic-bezier(0.22, 1, 0.36, 1);
+        /* Display only: while hidden (opacity 0) it would still sit over the app and eat its clicks. */
+        pointer-events: none;
+        font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 25px; line-height: 1.5; color: #e6e6ea;
+      }
+      #term.shown { opacity: 1; translate: 0 0; }
+      #term .bar { height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #1c1e25; border-bottom: 1px solid rgba(255,255,255,0.06); position: relative; }
+      #term .bar span.dot { width: 12px; height: 12px; border-radius: 50%; }
+      #term .bar .ttl { position: absolute; left: 0; right: 0; text-align: center; font-family: "Inter", sans-serif; font-size: 15px; color: #9a9aa6; pointer-events: none; }
+      #term .body { padding: 18px 22px; height: calc(100% - 40px); box-sizing: border-box; overflow: hidden; white-space: pre-wrap; word-break: break-all; }
+      #term .p { color: #8b70ff; }
+      #term .dim { color: #8a8a96; }
+      #term .ok { color: #3ddc84; }
+      #term .warn { color: #f5c451; }
+      #term .caret { display: inline-block; width: 0.6em; height: 1.1em; vertical-align: -0.2em; background: #e6e6ea; animation: blink 1s steps(1) infinite; }
+      @keyframes blink { 50% { opacity: 0; } }
+      /* The macOS menu bar and rexenv's tray menu, drawn — the real ones are
+         native and outside the webview. Items come from core/tray.rs. */
+      #menubar { position: fixed; top: 0; left: 0; right: 0; height: 46px; z-index: 12; display: none; align-items: center; justify-content: flex-end; gap: 26px; padding: 0 30px; background: rgba(28, 28, 34, 0.62); backdrop-filter: blur(20px); color: #f2f2f5; font: 500 20px "Inter", sans-serif; pointer-events: none; }
+      #menubar.shown { display: flex; }
+      #menubar img { width: 28px; height: 28px; filter: invert(1); opacity: 0.95; padding: 3px 6px; border-radius: 5px; }
+      #menubar img.on { background: rgba(255, 255, 255, 0.22); }
+      .traymenu { position: fixed; z-index: 13; min-width: 330px; padding: 8px; border-radius: 12px; background: rgba(40, 40, 48, 0.86); backdrop-filter: blur(24px); box-shadow: 0 0 0 1px rgba(255,255,255,0.12), 0 18px 50px rgba(0,0,0,0.5); color: #f0f0f4; font: 400 21px "Inter", sans-serif; pointer-events: none; }
+      .traymenu div.i { padding: 6px 16px; border-radius: 7px; white-space: nowrap; display: flex; justify-content: space-between; gap: 24px; }
+      .traymenu div.i.dis { color: rgba(240, 240, 244, 0.42); }
+      .traymenu div.i.hl { background: #5b5bd6; color: #fff; }
+      .traymenu hr { border: 0; border-top: 1px solid rgba(255, 255, 255, 0.12); margin: 5px 8px; }
+      #scursor { position: fixed; left: 0; top: 0; z-index: 25; pointer-events: none; opacity: 0; transition: opacity 250ms ease; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.45)); }
+      #scursor svg { display: block; transform-origin: 3px 2px; transition: transform 90ms ease; }
+      #scursor.down svg { transform: scale(0.86); }
       /* The sync flash (lib.mjs): shown once before the trim point, never in a
          finished video. Magenta, because the page-load frames are WHITE — a white
          flash was mistaken for the load and measured a 0.03s lag that was 0.5s. */
@@ -97,8 +155,7 @@
   <body>
     <div id="cam">
       <div id="win">
-        <iframe id="app" src="/scripts/video/demo.html"></iframe>
-        <div id="spot"></div>
+        <iframe id="app"></iframe>
         <div id="lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
         <div id="cursor">
           <svg width="22" height="30" viewBox="0 0 22 30" aria-hidden="true">
@@ -108,11 +165,16 @@
       </div>
     </div>
     <div id="caption"></div>
+    <div id="headline"><div class="h" id="hl-h"></div><div class="s" id="hl-s"></div></div>
     <div id="title">
       <div class="brand"><img src="/src/assets/rexenv-logo.svg" alt="" />rexenv</div>
       <h1 id="title-h"></h1>
       <p id="title-p"></p>
+      <div id="title-c"></div>
     </div>
+    <div id="term"><div class="bar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><div class="ttl" id="term-title">zsh</div></div><div class="body" id="term-body"></div></div>
+    <div id="menubar"><img id="trayicon" src="/src-tauri/icons/menubar.png" alt="" /><span id="clock">Tue Sep 30  12:24 PM</span></div>
+    <div id="scursor"><svg width="29" height="39" viewBox="0 0 22 30" aria-hidden="true"><path d="M2 2 L2 24 L7.6 18.8 L11.4 27.4 L15 25.8 L11.3 17.4 L18.8 17.4 Z" fill="#000" stroke="#fff" stroke-width="1.6" stroke-linejoin="round" /></svg></div>
     <div id="sync"></div>
     <script type="module" src="/scripts/video/stage.ts"></script>
   </body>
