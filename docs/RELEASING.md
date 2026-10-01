@@ -333,7 +333,10 @@ release** — which is the property that makes a stolen key survivable. Ledger
    `src-tauri/target/winget/<version>/` — the installer URL and sha256 from the PUBLISHED
    asset, downloaded and hashed here rather than trusted from the API, `Scope: user` because
    that is the only mode rexenv ships, and `AppsAndFeaturesEntries` naming the uninstall entry
-   the NSIS installer writes (`ProductCode: rexenv`). `winget validate --manifest <dir>` on a
+   the NSIS installer writes (`ProductCode: rexenv`) — with NO `DisplayVersion`: that field is for
+   an installer whose registry version differs from `PackageVersion`, ours is the same string, and
+   winget-pkgs' moderation bot sent the first submission back for carrying it (1 Oct 2026, after
+   every pipeline stage had passed). `winget validate --manifest <dir>` on a
    Windows machine says "Manifest validation succeeded" (measured 19 Sep 2026 against the
    first installer, rendered from `--local`; again 30 Sep 2026 for 0.8.11 on the Win11 VM). **Every
    URL in it must be one the PUBLIC can open**: while `rexenv/rexenv` was private (to 30 Sep 2026)

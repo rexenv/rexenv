@@ -30,6 +30,13 @@
 #     entry (`DisplayName` rexenv, `ProductCode` rexenv — the key's leaf under
 #     HKCU\…\Uninstall, which is what `platform/windows/app_bundle_rules.rs`
 #     names too), and `Scope: user` because that is the only mode rexenv ships (D5).
+#     NO `DisplayVersion` in that entry: the field exists for an installer whose
+#     registry version differs from `PackageVersion`, and ours is the same string
+#     (NSIS writes the release version, `app_bundle.rs` rewrites it on self-update).
+#     The first submission carried `DisplayVersion: 0.8.11` beside `PackageVersion:
+#     0.8.11` and winget-pkgs' moderation bot asked for it to be removed as
+#     "not recommended" (PR 437674, 1 Oct 2026) — a manifest that passed every
+#     pipeline stage still stalled on it.
 #
 # # What winget-pkgs will do with it, read from their docs on 19 Sep 2026
 #
@@ -142,7 +149,6 @@ ReleaseDate: $PUBLISHED_AT
 AppsAndFeaturesEntries:
 - DisplayName: rexenv
   Publisher: rexenv
-  DisplayVersion: $V
   ProductCode: rexenv
 Installers:
 - Architecture: x64

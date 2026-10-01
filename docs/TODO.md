@@ -982,6 +982,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       Manifest Policy, Catalog Content, Installation Validation, Installer Metadata, Validation
       Completed all pass; labels `Azure-Pipeline-Passed` + `Validation-Completed` again. Left: the
       moderator's approval, a community volunteer's — nothing on our side.
+      **1 Oct 2026: the 0.8.11 manifests passed every stage (01–10 + CLA) and the moderation bot
+      asked for one change** — `DisplayVersion` in `AppsAndFeaturesEntries` was the same string as
+      `PackageVersion`, "not recommended, should be removed" (`Needs-Author-Feedback`). Fixed in the
+      generator (the field is for an installer whose registry version differs from the package's;
+      ours never does), re-rendered from the published `setup.exe` (same sha), the installer manifest
+      replaced on the fork branch (`4dc6166`, the other two files byte-identical), answered on the PR.
+      A moderator's approval is what remains.
   - [ ] W12 — launch gates: verify on the Windows runner, SMOKE-TEST + INSTALL Windows
     sections, clean Windows 11 VM pass
     **✓ verify on the Windows RUNNER — green 21 Sep 2026**, `.github/workflows/windows-verify.yml`
