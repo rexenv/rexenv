@@ -1956,8 +1956,9 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   it — owed since §M on 7 Sep 2026; no run recorded.**
 - [x] **The offer arrives on its own.** With a newer release published, launch rexenv and
   open About without pressing anything: the version and size are named before any click, and
-  the consent sentence is above the button. **Tell:** a button with no sentence, or a size
-  that disagrees with the release asset. ✓ 7 Sep 2026 (dev Mac, 0.6.1: "the offer arrived with
+  the consent sentence is above the button. **Tell:** a button with no sentence, a size
+  that disagrees with the release asset, or a header size the consent sentence does not repeat
+  (they read "29.9 MB" and "(31 MB)" until 1 Oct 2026, ledger #766). ✓ 7 Sep 2026 (dev Mac, 0.6.1: "the offer arrived with
   no click"). ✓ 18 Sep 2026 (clean VM, → 0.7.2). ✓ 27 Sep 2026 (15.8 VM): About read "rexenv
   0.8.8 · 27.0 MB has been published".
 - [x] **A real update applies.** Press Install. Expect real bytes in the footer's download

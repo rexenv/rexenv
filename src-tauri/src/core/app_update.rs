@@ -617,10 +617,10 @@ impl Refusal {
                 crate::platform::words::current().take_ownership
             ),
             Self::NotEnoughSpace { need, have } => format!(
-                "Not enough free space to install the update: it needs about {} MB free and \
-                 there is {} MB. Nothing was downloaded.",
-                need / 1_000_000,
-                have / 1_000_000
+                "Not enough free space to install the update: it needs about {} free and \
+                 there is {}. Nothing was downloaded.",
+                size_label(*need),
+                size_label(*have)
             ),
         }
     }
@@ -1030,11 +1030,31 @@ pub fn restart_sentence(version: &str) -> String {
     )
 }
 
+/// A size as the update card's header and progress line print it: the TSX's
+/// `fmtBytes` (`src/components/shell/DownloadPanel.tsx`), base 1024, one decimal
+/// from MB up, halves rounded up as `toFixed` does. The consent sentence used to
+/// divide by 1_000_000, so one card called one download "29.9 MB" in its header
+/// and "31 MB" in the sentence under it.
+fn size_label(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    let b = bytes as f64;
+    let tenths = |v: f64| (v * 10.0).round() / 10.0;
+    if b >= KIB * KIB * KIB {
+        format!("{:.1} GB", tenths(b / (KIB * KIB * KIB)))
+    } else if b >= KIB * KIB {
+        format!("{:.1} MB", tenths(b / (KIB * KIB)))
+    } else if b >= KIB {
+        format!("{} KB", (b / KIB).round() as u64)
+    } else {
+        format!("{bytes} B")
+    }
+}
+
 pub fn consent_sentence(offer: &Offer, homebrew: bool) -> String {
-    let mb = (offer.size_bytes as f64 / 1_000_000.0).round() as u64;
+    let size = size_label(offer.size_bytes);
     let words = crate::platform::words::current();
     let mut s = format!(
-        "Downloads rexenv {} ({mb} MB), checks its signature and checksum, replaces \
+        "Downloads rexenv {} ({size}), checks its signature and checksum, replaces \
          {} in one step, then ASKS before it closes and reopens on {}. Your sites, \
          databases and DNS keep running throughout — services outlive the app. Open \
          terminals and running jobs close with it, exactly as they do when you quit.",
@@ -1920,6 +1940,43 @@ mod tests {
         );
     }
 
+    /// The update card prints the offer's size three times — the header and the
+    /// progress line through the TSX's `fmtBytes`, the consent sentence through
+    /// `size_label` — so the two must be one rule (ledger #766). 31_000_000 is
+    /// where they parted: 29.6 in base 1024, 31 in base 1000.
+    #[test]
+    fn the_update_card_gives_one_download_one_size() {
+        assert_eq!(size_label(31_000_000), "29.6 MB");
+        // An exact half: toFixed rounds it up, Rust's `{:.1}` alone would not.
+        assert_eq!(size_label(30_670_848), "29.3 MB");
+        assert_eq!(size_label(3 * 1024 * 1024 * 1024 / 2), "1.5 GB");
+        assert_eq!(size_label(1536), "2 KB");
+        assert_eq!(size_label(900), "900 B");
+        assert!(Refusal::NotEnoughSpace { need: 62_000_000, have: 31_000_000 }
+            .message()
+            .contains("about 59.1 MB free and there is 29.6 MB"));
+
+        // The TSX twin: if its rule moves, this test names the sentence that
+        // would then disagree with it.
+        const PANEL: &str = include_str!("../../../src/components/shell/DownloadPanel.tsx");
+        let start = PANEL.find("export function fmtBytes").expect("fmtBytes in DownloadPanel.tsx");
+        let end = start + PANEL[start..].find("\n}").expect("the end of fmtBytes");
+        let body = &PANEL[start..end];
+        for rule in [
+            "if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;",
+            "if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;",
+            "if (n >= 1024) return `${Math.round(n / 1024)} KB`;",
+            "return `${n} B`;",
+        ] {
+            assert!(
+                body.contains(rule),
+                "fmtBytes no longer reads `{rule}` — change size_label in core/app_update.rs to \
+                 match, or the update card's header and its consent sentence name one download \
+                 in two sizes again"
+            );
+        }
+    }
+
     #[test]
     fn the_consent_sentence_names_the_size_the_quit_and_what_keeps_running() {
         let offer = Offer {
@@ -1931,7 +1988,7 @@ mod tests {
             published_at: String::new(),
         };
         let s = consent_sentence(&offer, false);
-        assert!(s.contains("0.6.0") && s.contains("31 MB"), "{s}");
+        assert!(s.contains("0.6.0") && s.contains("(29.6 MB)"), "{s}");
         assert!(s.contains("signature") && s.contains("checksum"), "{s}");
         // The two things a user actually worries about: does my stack go down,
         // and what closes.

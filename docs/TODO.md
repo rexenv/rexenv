@@ -60,8 +60,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **The update card gives one download two sizes** (found 30 Sep 2026 recording the tutorial
-  videos): the header reads "rexenv 0.8.11 · 29.9 MB" (`fmtBytes`, base 1024 —
+- [x] **The update card gives one download two sizes** ✓ 1 Oct 2026 — the consent sentence and the
+  not-enough-space refusal print through `size_label` (`core/app_update.rs`), `fmtBytes`' rule (base
+  1024): 31_000_000 bytes is "29.6 MB" in all three places; `the_update_card_gives_one_download_one_size`
+  pins both sides (planted), ledger #766. Found 30 Sep 2026 recording the tutorial videos: the header reads "rexenv 0.8.11 · 29.9 MB" (`fmtBytes`, base 1024 —
   `src/components/settings/AppUpdateCard.tsx:159` via `shell/DownloadPanel.tsx`) while the consent
   sentence under it says "Downloads rexenv 0.8.11 (31 MB)" (`consent_sentence`, `/ 1_000_000` —
   `src-tauri/src/core/app_update.rs:1034`). Same card, same file; it reads like two different
