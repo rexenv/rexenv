@@ -70,8 +70,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   downloads. Common code, so all three OSes show it. *Done when:* both numbers come from one rule
   (the consent sentence is Rust's, so the header uses the same unit or Rust sends the formatted
   size), and a test pins that the two agree for a size where base 1000 and 1024 round differently.
-- [ ] **A running site with an empty log is told to start itself** (found 30 Sep 2026 recording
-  the tutorial videos): Site detail → Overview → "Recent logs" prints "No recent activity — start
+- [x] **A running site with an empty log is told to start itself** ✓ 1 Oct 2026 — `RecentLogs`
+  takes the page's `isServing`: serving reads "No recent activity yet — new lines appear here as they
+  are logged.", the start hint only when the site is not serving; both seen rendered against the
+  video demo backend (Agency Blog serving; Shop Staging after Stop site). Found 30 Sep 2026 recording
+  the tutorial videos: Site detail → Overview → "Recent logs" prints "No recent activity — start
   the site to see logs here." whenever `recent.length === 0` (`src/routes/SiteDetail.tsx:1647`),
   never asking whether the site is running — so a site serving right now, whose log is merely
   empty, is told to start. *Done when:* the empty state follows the site's state (running: an

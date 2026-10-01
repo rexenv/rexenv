@@ -751,7 +751,7 @@ function Overview({
         </div>
       </div>
 
-      <RecentLogs siteId={site.id} onViewAll={onViewLogs} />
+      <RecentLogs siteId={site.id} serving={isServing} onViewAll={onViewLogs} />
       <SiteAgentActivity siteId={site.id} />
     </>
   );
@@ -1613,7 +1613,15 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
   );
 }
 
-function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => void }) {
+function RecentLogs({
+  siteId,
+  serving,
+  onViewAll,
+}: {
+  siteId: string;
+  serving: boolean;
+  onViewAll: () => void;
+}) {
   const { data: targets = [] } = useQuery({
     queryKey: ["log-targets", siteId],
     queryFn: () => logTargets(siteId),
@@ -1643,8 +1651,13 @@ function RecentLogs({ siteId, onViewAll }: { siteId: string; onViewAll: () => vo
       </div>
       <div className="rounded-[11px] border border-rex-well-border bg-rex-well-deep px-[14px] py-3 font-mono text-[0.71875rem] leading-[1.95]">
         {recent.length === 0 ? (
+          // An empty log on a site that is serving is just quiet: telling it to
+          // start (the only sentence here until 1 Oct 2026) sent the reader to a
+          // button for a site already up.
           <div className="text-rex-text-muted">
-            No recent activity — start the site to see logs here.
+            {serving
+              ? "No recent activity yet — new lines appear here as they are logged."
+              : "No recent activity — start the site to see logs here."}
           </div>
         ) : (
           recent.map((l, i) => (
