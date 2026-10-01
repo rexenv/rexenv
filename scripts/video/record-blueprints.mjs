@@ -58,7 +58,7 @@ await s.voiceDone(200);
 await s.say("apply");
 await s.caption("…then <b>applying blueprint</b>: WooCommerce + Storefront");
 await s.click(dialog.getByRole("button", { name: "Install WordPress" }), { ms: 700 });
-const card = app.locator('[data-probe="provision-card"]');
+const card = dialog.locator('[data-probe="provision-card"]');
 await card.waitFor();
 await s.click(card.getByText("Show log"), { ms: 600 });
 await s.camera(await s.containerOf(card.getByText("Hide log"), 470, 6), 0.85);

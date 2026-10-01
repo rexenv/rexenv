@@ -1,15 +1,17 @@
 /** In-app self-update. A (demo) 0.8.11 is offered; the consent and restart
  *  sentences are the Rust ones for macOS, not installed via Homebrew
- *  (`core/app_update.rs` + `platform/words.rs`). The download shows as item
- *  `rexenv-0.8.11` on `download-progress`; apply resolves with the restart
- *  notice, and OK calls `app_update_restart`. */
+ *  (`core/app_update.rs` + `platform/words.rs`), with the size printed by
+ *  `fmtBytes` — the rule Rust's `size_label` follows (ledger #766). The
+ *  download shows as item `rexenv-0.8.11` on `download-progress`; apply
+ *  resolves with the restart notice, and OK calls `app_update_restart`. */
 import type { SceneCtx } from "../demo-backend";
 import type { AppUpdateState, DownloadItem } from "@/types";
+import { fmtBytes } from "@/components/shell/DownloadPanel";
 
 const V = "0.8.11";
 const SIZE = 31_400_000;
 const CONSENT =
-  `Downloads rexenv ${V} (31 MB), checks its signature and checksum, replaces rexenv.app in one step, then ASKS before it closes and reopens on ${V}. ` +
+  `Downloads rexenv ${V} (${fmtBytes(SIZE)}), checks its signature and checksum, replaces rexenv.app in one step, then ASKS before it closes and reopens on ${V}. ` +
   "Your sites, databases and DNS keep running throughout — services outlive the app. Open terminals and running jobs close with it, exactly as they do when you quit. " +
   "macOS may ask again for permissions it had granted this copy: rexenv has no Apple developer signature yet, so each build is a new identity to it.";
 const NOTICE =

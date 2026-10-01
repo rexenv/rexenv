@@ -87,7 +87,7 @@ await s.camera(null);
 await s.say("job");
 await s.caption("Clone → database → .env → composer → migrate → build");
 await s.click(dialog.getByRole("button", { name: "Create site" }), { ms: 800 });
-const card = app.locator('[data-probe="provision-card"]');
+const card = dialog.locator('[data-probe="provision-card"]');
 await card.waitFor();
 await s.wait(300);
 await s.click(card.getByText("Show log"), { ms: 700 });

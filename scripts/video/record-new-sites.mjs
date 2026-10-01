@@ -23,7 +23,7 @@ async function create(kind, name, show) {
   await s.type(name, 80);
   if (show) await show();
   await s.click(dialog.getByRole("button", { name: "Create site" }), { ms: 700 });
-  const card = app.locator('[data-probe="provision-card"]');
+  const card = dialog.locator('[data-probe="provision-card"]');
   await card.waitFor();
   await s.click(card.getByText("Show log"), { ms: 500 });
   await s.camera(await s.containerOf(card.getByText("Hide log"), 470, 6), 0.85);

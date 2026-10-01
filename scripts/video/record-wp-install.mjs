@@ -95,7 +95,7 @@ await s.say("install");
 await s.caption("Then <b>Install WordPress</b>", "top");
 await s.click(dialog.getByRole("button", { name: "Install WordPress" }), { ms: 800 });
 
-const card = app.locator('[data-probe="provision-card"]');
+const card = dialog.locator('[data-probe="provision-card"]');
 await card.waitFor();
 await s.say("provision", 100);
 await s.caption("rexenv starts the database, downloads WordPress and installs it — live");

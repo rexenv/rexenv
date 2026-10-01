@@ -41,7 +41,9 @@ const tap = (loc, o = {}) => s.click(loc, { ms: 300, pre: 70, post: 120, ...o })
 const T0 = Date.now();
 const mark = (label) => console.log(`${((Date.now() - T0) / 1000).toFixed(1)}s ${label}`);
 const dialog = app.locator("div.w-\\[516px\\]");
-const card = app.locator('[data-probe="provision-card"]');
+// The dialog's own card: since #763 the Sites list shows the same card in the
+// new site's "Setting up" row, so an app-wide locator finds two.
+const card = dialog.locator('[data-probe="provision-card"]');
 
 /** A beat: its headline and line first, then its screen loads under the voice. */
 async function beat(key, h, sub, scene, path, ready, params) {
