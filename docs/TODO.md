@@ -1577,6 +1577,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
+  **Re-checked 2 Oct 2026:** still v2.12.0 (`gh api repos/wp-cli/wp-cli/releases/latest`,
+  published 2025-05-07) — nothing to bump; the containment stays.
 - [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
   fix for #251
   — **and as of 31 Aug 2026 the exposure is MEASURED rather than described, which is new**.
