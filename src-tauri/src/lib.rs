@@ -1504,6 +1504,12 @@ pub fn run() {
                 tauri::RunEvent::ExitRequested { api, .. } => {
                     if !commands::tunnels::confirm_quit_or_prompt(app) {
                         api.prevent_exit();
+                        // A "Keep sharing" with a swapped build waiting IS the user choosing to
+                        // keep rexenv running — the one moment the About card may say so
+                        // (ledger #771). An ordinary quit declined arms nothing and says nothing.
+                        if relaunch_armed() {
+                            core::app_update::note_restart_declined();
+                        }
                     }
                 }
                 // Repo install/build jobs AND tunnels die WITH the app
@@ -1769,6 +1775,12 @@ pub fn relaunch_after_exit(bundle: std::path::PathBuf) {
     if let Ok(mut slot) = RELAUNCH_AFTER_EXIT.lock() {
         *slot = Some(bundle);
     }
+}
+
+/// Is a reopen armed — i.e. is the quit being asked for the one that opens a swapped build?
+/// Read by the quit gate: a declined quit counts as "keep rexenv running" only then (#771).
+pub fn relaunch_armed() -> bool {
+    RELAUNCH_AFTER_EXIT.lock().map(|s| s.is_some()).unwrap_or(false)
 }
 
 /// Where a SWAPPED build is waiting, between the swap and the user agreeing to

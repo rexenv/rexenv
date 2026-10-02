@@ -110,10 +110,16 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
     ? downloads.items.find((i) => i.id === `rexenv-${offered.version}`)
     : undefined;
   const installing = apply.isPending || item?.phase === "downloading" || item?.phase === "preparing";
+  // "installed" is the state whose paragraph says the user CHOSE to keep rexenv running, so it
+  // needs the fact that they did (`restartDeclined`: the quit gate was told no with a relaunch
+  // armed). A swapped build still waiting for its answer is "pending": the header already says
+  // what is true, and the card adds nothing (ledger #771).
   const phase = installing
     ? "installing"
     : st.installedPending
-      ? "installed"
+      ? st.restartDeclined
+        ? "installed"
+        : "pending"
       : st.skipped && st.skipped === offered?.version
         ? "skipped"
         : ready?.refusal
@@ -146,6 +152,7 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       data-phase={phase}
       data-auto-check={String(st.autoCheck)}
       data-installed-pending={st.installedPending ?? ""}
+      data-restart-declined={String(st.restartDeclined)}
       data-check-refusal={st.checkRefusal ?? ""}
     >
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px] last:border-b-0">

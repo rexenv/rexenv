@@ -1026,6 +1026,18 @@ export function DevUiReview() {
                 ...base,
                 offered: null,
                 installedPending: "0.6.0",
+                restartDeclined: true,
+                noOfferReason: "rexenv 0.6.0 is installed and takes effect when rexenv next opens",
+              };
+            // Swapped, and NOTHING chosen yet: the restart dialog is up, or the quit
+            // gate's "Stop sharing?" is unanswered. The card must not say the user
+            // chose to keep rexenv running — it said exactly that here (#771).
+            case "installed-undecided":
+              return {
+                ...base,
+                offered: null,
+                installedPending: "0.6.0",
+                restartDeclined: false,
                 noOfferReason: "rexenv 0.6.0 is installed and takes effect when rexenv next opens",
               };
             case "dark":

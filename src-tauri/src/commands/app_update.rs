@@ -205,6 +205,8 @@ pub fn app_update_restart(app: tauri::AppHandle) -> Result<()> {
     // the quit gate has already agreed — a cancelled quit therefore leaves no
     // helper waiting.
     crate::relaunch_after_exit(bundle);
+    // This OK is a fresh answer: whatever the gate was told last time is not it (ledger #771).
+    core::app_update::clear_restart_declined();
     app.exit(0);
     Ok(())
 }

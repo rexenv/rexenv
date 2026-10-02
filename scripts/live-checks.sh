@@ -84,6 +84,7 @@ adopt_check                    demo    all
 apache_site_check              sandbox macos
 app_bundle_swap_check          sandbox macos
 app_relaunch_check             sandbox macos
+linux_route_shape_check        sandbox linux
 windows_app_bundle_swap_check  sandbox windows
 windows_app_relaunch_check     sandbox windows
 windows_job_guard_check        sandbox windows

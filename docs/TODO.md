@@ -104,6 +104,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   + 0.8.10's unit shape (plant-proven), TEXT on the command (plant-proven). **Still open — the VM leg:**
   the VM's unit is already the current shape, so the proof is a hand-written 0.8.10 unit there
   (`docs/SMOKE-TEST.md` § Linux): installed + the notice, Re-apply once, no Welcome.
+  ✓ **The classification RAN on the VM later the same day** (`linux_route_shape_check`, built in
+  the `linux-check` image): 0.8.10's unit by hand → this build `Ours` + the notice while the route
+  routed — and the installed 0.8.11 still said "installed", because 0.8.11 compared only the
+  SCRIPT; the 30 Sep install had 0.8.10's script AND unit. **Still open:** the repair verb's
+  re-apply on the VM with this build's deb (one polkit, the notice gone).
 - [x] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
   Sep 2026, 22.04 VM): the CLI's `println!` on a closed pipe aborts with a Rust panic on stderr.
   *Done when:* a closed stdout ends the command quietly (SIGPIPE default, or the writes checked)
@@ -190,6 +195,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **30 Sep 2026, §M for 0.8.11 (the first update on the #757 build, 22.04 arm64 VM):** 0.8.10 →
   0.8.11 through the app, ONE polkit, the app came back by itself, `/var/crash` empty, no dialog —
   0 of 1 with the mitigation; the row stays open until the next update makes it 0 of 2 or more.
+- [ ] **macOS: "Background Items Added" notifications pile up — eleven on the 15.8 VM** (seen 2 Oct
+  2026 while running T3 on the installed 0.8.11; screenshot in the session): Notification Centre
+  held 11+ identical "Background Items Added — 'rexenv' is an item that can run in the background.
+  You can manage this in Login Items & Extensions." cards. macOS posts one each time a login item
+  or LaunchAgent is (re)registered, so something re-registers rexenv's on every launch or on a
+  schedule — the DNS agent's LaunchAgent (`#764`'s launcher plist?), the login item, or the edge
+  daemon — instead of once. Find which registration repeats (`log show --predicate 'subsystem ==
+  "com.apple.backgroundtaskmanagement"' --last 1d` on the VM names the item and the caller) and
+  make it idempotent: register only when the on-disk definition differs. *Done when:* a launch of an
+  already-set-up app posts no new card, and the VM's stack of cards stops growing across three
+  launches. Also seen in the same screenshot: the DNS card on that VM reads "in-process — Running
+  inside the app", not "agent" (the 0.8.10 → 0.8.11 update's #761 race left the agent down and
+  nothing restored it — `rex status` "answering (in-process, udp 15353)"); the row above about the
+  reopen covers that install, but the degraded mode surviving a relaunch is worth a look of its own.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
@@ -505,7 +524,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       `\\?\C:\…` form (Rust's documented behaviour — read, not yet measured) — which
       `services::nginx_path` would render as `//?/C:/…`. Measure what nginx does with it and strip
       the verbatim prefix at that one place (the one-click path, `<sites_dir>\<domain>`, never
-      canonicalizes and is not affected)
+      canonicalizes and is not affected). ✓ **Stripped at the ONE storage point, 2 Oct 2026
+      (ledger #770):** `sites::plain_path` drops `\\?\` (and `\\?\UNC\` → `\\`) from the path
+      `validate_linked_docroot_on` returns — AFTER every canonical-vs-canonical comparison, which
+      keeps the raw form (#642). L0 on literal paths + a TEXT guard that the return goes through it
+      (both plant-proven). **Still open — the Windows run:** link a folder on the Dell, read the
+      stored path and the nginx `root` line (SMOKE § Windows).
     - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
       (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
       It is php-fpm's per-request ini; php-cgi has none. Measured who sets one: ONLY the Adminer
@@ -521,8 +545,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       the Windows store, and WordPress/WP-CLI/Composer ship their own bundles). Owner ruled: not now.
       The fix when it comes is a pinned CA bundle for `curl.cainfo` — a new artifact, notices row and
       sweep target — or another route
-    - [ ] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
-      php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed
+    - [x] Download planning (`core/downloads.rs`) names `php-fpm` for every PHP it plans; on a
+      php-cgi platform it must plan `php` — found writing W4 step 1, not yet changed. ✓ **Was
+      already fixed (ledger #627, 19 Sep 2026)** — every plan asks `PoolModel::catalog_name` for
+      the pool binary, never a literal; this row had stayed open on paper (ticked 2 Oct 2026).
   - [x] W5 — Caddy :443 edge + CurrentUser Root CA trust → valid lock in Edge/Chrome/Firefox.
     ✓ 14 Sep 2026 — Dell `windows_browser_lock_check` PASS in the desktop session (Medium token, the owner
     answering both prompts): Edge 153, Chrome 152 and Firefox 105, each headless on a fresh profile, REJECTED
@@ -992,10 +1018,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     2026 on the VM** (SMOKE-TEST run 6): the published 0.8.4 → 0.8.5 swapped the real
     `%LOCALAPPDATA%\rexenv`, and with a live share the restart went THROUGH the quit gate ("Stop
     sharing?" → Quit) and reopened once on 0.8.5. Two things it found, both small:
-    - [ ] The update card says **"You chose to keep rexenv running, so the new version is waiting"**
+    - [x] The update card says **"You chose to keep rexenv running, so the new version is waiting"**
       while the quit gate's "Stop sharing?" is still on screen, unanswered — the card read the
       restart call's "not quitting (yet)" as the user's answer. Only "Keep sharing" should put it
-      there; while the gate is open it should say nothing new.
+      there; while the gate is open it should say nothing new. ✓ **2 Oct 2026 (ledger #771):** the
+      decline is its own fact — `core::app_update::restart_declined`, noted by the quit gate ONLY
+      while a relaunch is armed, cleared by the restart dialog's OK before it asks to quit again,
+      carried as `AppUpdateState.restartDeclined` — and the card's "installed" phase (that
+      paragraph) needs it; a swapped build still waiting for its answer is "pending": the header
+      states the fact, the card adds nothing. L0 + TEXT (plant-proven ×2); L2 `uireview`
+      `appupdate-installed-undecided` renders the pending card without the sentence (passes, with
+      `appupdaterestart`). Common code — the same card on all three OSes.
     - [ ] **Uninstalling from Apps & Features without the in-app step leaves a live agent.** Measured
       21 Sep 2026 on the VM (SMOKE-TEST run 6): `uninstall.exe` removed everything it owns except
       `rexenv.exe`, because the `\rexenv\dns-agent` task — per-user, and left registered — re-ran the
@@ -1005,9 +1038,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       end and delete it without UAC (a Tauri NSIS `installerHooks` pre-uninstall: `schtasks /End` +
       `/Delete /TN \rexenv\dns-agent /F`, then stop the agent) — NRPT and the CA still need the
       in-app step, and the uninstaller should keep saying so.
-    - [ ] `%LOCALAPPDATA%\rexenv\rexenv-0.8.3.bak` (38 MB, 19 Sep) sits beside the app for good: a
+    - [x] `%LOCALAPPDATA%\rexenv\rexenv-0.8.3.bak` (38 MB, 19 Sep) sits beside the app for good: a
       pre-#695 swap left it, and the launch sweep looks only for `.rexenv-update-*`. Sweep the old
-      name once, or say why not.
+      name once, or say why not. ✓ **Why not, 2 Oct 2026:** no code in this tree's history ever
+      wrote a `-<version>.bak` name (`git log -S"bak"` over `src-tauri/src` finds only unrelated
+      "backup" hits), so the sweep has no shape of rexenv's own to match — and a launch sweep that
+      deletes a directory rexenv cannot prove it created is the wrong trade for 38 MB. The VM's copy
+      is a hand `rmdir`; the sweep stays scoped to the names rexenv writes.
     **winget, 19 Sep 2026:** `scripts/winget-manifest.sh` renders the version, installer and
     locale manifests from the PUBLISHED asset (downloaded and hashed, the API digest cross-checked),
     or from a local installer with `--local` before a release exists. Rendered from the first
@@ -1371,9 +1408,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   - [x] T2 — `cert_trust_prompt_check` live ✓ 12 Sep 2026 — PASS, owner answering: Cancel →
     "Keychain permission was cancelled — …"; approve → trusted; approve untrust →
     untrusted; all on a spawned thread; throwaway CA removed by its SHA-1 (#579)
-  - [ ] T3 — the title from the REAL app: in a packaged build (the installed
+  - [x] T3 — the title from the REAL app: in a packaged build (the installed
     `/Applications/rexenv.app` predates this), Settings → re-trust the CA and read the
-    dialog — "rexenv" + logo. Rides SMOKE first-run; #579 stays ◐ until then
+    dialog — "rexenv" + logo. Rides SMOKE first-run; #579 stays ◐ until then. ✓ **2 Oct 2026,
+    the 15.8 UTM VM, the installed 0.8.11:** Settings → DNS & SSL → Re-trust (AX-pressed over
+    ssh) → the SecurityAgent dialog read "rexenv" with the lock + logo badge, "You are making
+    changes to your Certificate Trust Settings.", Update Settings / Cancel; Cancel → the app's
+    cancel toast; the CA stayed trusted. #579 → ✅.
 
 - [ ] **In-app self-update — a dmg user has no update path at all**
   — 6 Sep 2026, planned in `docs/archive/PLAN-self-update.md`; supersedes the Phase 4+ row

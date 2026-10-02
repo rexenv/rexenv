@@ -219,6 +219,7 @@ export const mockAppUpdateState: AppUpdateState = {
   checkedAt: null,
   skipped: null,
   installedPending: null,
+  restartDeclined: false,
   checkRefusal: null,
 };
 

@@ -1185,7 +1185,10 @@ honest footer —
   Cmd+Q for an identical consequence — the consent sentence says instead that terminals and
   jobs close with it. At the next launch `finish_at_launch` reports the version the new
   process reads from ITSELF, sweeps the leftovers, and only then deletes the previous
-  bundle.
+  bundle. **Between the swap and the restart the card says only what is true** (#771, 2 Oct
+  2026): "you chose to keep rexenv running" needs `restart_declined` — the gate told no while a
+  relaunch was armed; cleared by the next OK — and a swapped build still waiting for its answer
+  is `pending`, the header stating the fact and nothing added.
   **The check is a read everywhere; the install is a click and nowhere else.** `rex status`
   prints one line naming the version when a verified offer exists, `--json` and the MCP
   `stack_status` tool carry the same field, and all three read the in-process snapshot — a

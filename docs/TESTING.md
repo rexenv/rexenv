@@ -893,6 +893,14 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   asserts the record** (ledger #768): the helper is given `--log <fixture root>` — the REAL
   binary would otherwise write the real app's `relaunch.log` — and after each leg the file must
   say `parent <pid> exited after …s` / `(open exit 0)`, then `was already gone` for the stranger.
+- `linux_route_shape_check` (sandbox, Linux only, READ-ONLY) — how THIS build classifies the DNS
+  route installed on the machine (ledger #769): the real marker, the real `resolvectl status
+  rexenv0`, the real script and unit, through the same `route_owner` / `route_notice` that `rex
+  status`, the Settings card and onboarding's gate read. Prints the unit's `ExecStop`, the link's
+  scope/server/domain, the owner and the notice; `--expect clean|notice|absent` makes it a check.
+  Writes nothing and spawns nothing for effect — the re-apply the SMOKE row then runs is the app's
+  own `rex tld --repair rex`. Built for the 22.04 arm64 VM inside the `linux-check` image
+  (`docker run … cargo build --example linux_route_shape_check`) because the VM has no toolchain.
 - `windows_app_bundle_swap_check` (sandbox, Windows only) — the Windows SWAP, on fixtures:
   a real install directory whose executable is THIS build's `rexenv.exe` (the only `.exe`
   around with VERSIONINFO, its version read back through PowerShell as an oracle that shares

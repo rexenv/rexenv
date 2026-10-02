@@ -179,6 +179,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   cross builds are for examples.
 - **The resolver answers on :53** (NRPT has no port). A UI line saying 15353 on Windows is
   macOS's number leaking.
+- **`std::fs::canonicalize` answers the verbatim form** (`\\?\C:\Users\x`). Compare canonical
+  against canonical (#642 — plain against verbatim answered false on the Dell), and STORE the
+  plain form: a linked docroot goes through `sites::plain_path` once, at the storage point
+  (#770), or the nginx config would carry `//?/C:/…`.
 - **`hosts` is never touched** — shared by every tool on the machine.
 - **NRPT has no fallback** — with the agent down, `.rex` fails rather than asking the interface's
   server, so a host running rexenv upstream cannot mask a broken Windows route (measured on the

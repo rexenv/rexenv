@@ -2318,6 +2318,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [ ] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
+      folder (`C:\Users\<you>\Sites\shop`) → the site's stored path (Site Settings, `rex site
+      info`) reads `C:\Users\…`, never `\\?\C:\Users\…`; the generated nginx `root` line is
+      `C:/Users/…`; the site serves. **Tell:** `//?/C:/` in `config/nginx/*.conf`, or a 404 on a
+      linked site whose files are there.
 - [x] **`rex` with a reader that left** (ledger #767): `C:\Users\Public\rexenv-smoke\closed-reader.ps1
       [path\to\rex.exe]` starts `rex -h` with stdout redirected, closes its read end at once and
       prints rex's exit code and stderr — PowerShell's own `| Select-Object -First 1` reads the whole
@@ -2980,7 +2985,14 @@ rexenv0 <name>` and read `Current Scopes:`.
       throughout)", the unit's `ExecStop` is `/usr/bin/resolvectl revert rexenv0` again, the notice gone;
       `rex tld --repair rex` once more → "already resolves here — nothing to repair", no prompt. **Why:**
       the 0.8.10 → 0.8.11 update (30 Sep 2026) read that unit as MISSING and opened Welcome over three
-      sites.
+      sites. **◐ 2 Oct 2026 (22.04 arm64 VM):** the classification half RAN through
+      `linux_route_shape_check --expect clean|notice` (this build, compiled in the `linux-check`
+      image, scp'd over): current unit → ours, no notice; 0.8.10's unit by hand → ours + the notice
+      while `probe.rex` still resolved on `rexenv0`; restored → clean. Two things learned: the
+      installed 0.8.11 read "resolver installed" with only the UNIT swapped (it compared the script;
+      the 30 Sep install had 0.8.10's script and unit — swap `/usr/local/lib/rexenv/dns-route.sh` for
+      an older copy too to see 0.8.11's MISSING), and the repair verb's leg needs THIS build's deb on
+      the VM — still owed.
 - [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user") — from 0.8.11 on, the UPDATE's sentence, "rexenv

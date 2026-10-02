@@ -1227,6 +1227,25 @@ pub fn has_custom_valet_driver(root: &Path) -> bool {
     root.join("LocalValetDriver.php").exists()
 }
 
+/// A canonical path in the form it is STORED and rendered: Windows' `canonicalize` answers the
+/// extended-length form (`\\?\C:\Users\x\site`, `\\?\UNC\server\share\p`), which the generated
+/// nginx config would carry as `//?/C:/…` (`services::nginx_path`) and every "where is my site"
+/// sentence would show with four punctuation marks the user never typed. The prefix is dropped
+/// here, ONCE, at the point a linked docroot is stored (ledger #770); nothing else is changed —
+/// a Unix path, or a path without the prefix, comes back as it went in. Comparisons must keep
+/// using the raw canonical path (both sides verbatim, #642); this is for storage only.
+pub fn plain_path(p: PathBuf) -> PathBuf {
+    let text = p.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    p
+}
+
+
 /// Preflight for LINKING an existing folder as a site's docroot (Stage 0).
 ///
 /// The folder is the USER'S — we never created it and will never delete it — so
@@ -1390,7 +1409,9 @@ pub fn validate_linked_docroot_on(
             )));
         }
     }
-    Ok(canon)
+    // The STORED form: canonical, without the verbatim prefix Windows' `canonicalize` adds
+    // (`\\?\C:\…`, #770) — every comparison above ran on the raw canonical path.
+    Ok(plain_path(canon))
 }
 
 /// The first character a generated server config cannot carry, judged inside each folder NAME
@@ -2869,6 +2890,23 @@ pub fn rebuild_configs_for(
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #770 — **a linked docroot is stored without Windows' verbatim prefix**: the
+    /// extended-length form `canonicalize` answers there would reach the nginx config as
+    /// `//?/C:/…`. Literal strings, so the rule is asserted from every host; the Windows run
+    /// (what nginx does with the plain form) is the SMOKE row.
+    #[test]
+    fn a_stored_docroot_has_no_verbatim_prefix() {
+        assert_eq!(plain_path(PathBuf::from(r"\\?\C:\Users\dell\Sites\shop")), PathBuf::from(r"C:\Users\dell\Sites\shop"));
+        assert_eq!(plain_path(PathBuf::from(r"\\?\UNC\nas\web\shop")), PathBuf::from(r"\\nas\web\shop"), "a UNC path keeps its two leading slashes");
+        assert_eq!(plain_path(PathBuf::from("/Users/x/Sites/shop")), PathBuf::from("/Users/x/Sites/shop"));
+        assert_eq!(plain_path(PathBuf::from(r"C:\Users\dell\site")), PathBuf::from(r"C:\Users\dell\site"), "a plain Windows path is untouched");
+        assert_eq!(plain_path(PathBuf::from(r"\\nas\web")), PathBuf::from(r"\\nas\web"), "a plain UNC path is untouched");
+        let prod = include_str!("sites.rs").split("\n#[cfg(test)]").next().unwrap_or_default();
+        let f = &prod[prod.find("pub fn validate_linked_docroot_on(").expect("the validation")..];
+        let f = &f[..f.find("\n}\n").unwrap_or(f.len())];
+        assert!(f.contains("Ok(plain_path(canon))"), "the linked docroot must be STORED through plain_path");
+    }
+
     /// `rex site create s1.rex` names the site `s1`, as the dialog would pair them —
     /// not `s1.rex` (a name that repeats the domain beside it).
     #[test]

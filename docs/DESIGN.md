@@ -37,6 +37,10 @@ the shipped UI toward one.
   sites (30 Sep 2026, #769). The shape on disk is now an amber NOTICE beside "installed" with a
   Re-apply — the sentence is the backend's — and "not installed" is reserved for a route that does
   not route.
+- **A choice is reported only once it was made.** The update card said "You chose to keep
+  rexenv running" from the moment the swap landed — under the restart dialog, over the quit
+  gate's unanswered confirm (#771). The sentence now waits for the fact (`restartDeclined`), and
+  an undecided state shows the header's plain fact and nothing more.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".

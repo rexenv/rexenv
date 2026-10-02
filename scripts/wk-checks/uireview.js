@@ -142,6 +142,7 @@ const SCENARIOS = [
   ["appupdate-installing", "view=appupdate&state=installing", []],
   ["appupdate-auto-off", "view=appupdate&state=auto-off", []],
   ["appupdate-installed-pending", "view=appupdate&state=installed-pending", []],
+  ["appupdate-installed-undecided", "view=appupdate&state=installed-undecided", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
   // what `theme activate` takes. The third fixture row has no title at all.
@@ -198,6 +199,14 @@ const PROBES = {
         must: ["is installed", "next time rexenv opens", "keep rexenv running"],
         mustNot: ["Skip this version"],
       },
+      // Swapped, nothing chosen yet (the restart dialog up, or the gate's confirm
+      // unanswered): the header states the fact and the card adds NO sentence
+      // about a choice — it said "you chose to keep rexenv running" here (#771).
+      "installed-undecided": {
+        button: false,
+        must: ["is installed", "next time rexenv opens"],
+        mustNot: ["keep rexenv running", "Skip this version"],
+      },
       "auto-off": {
         button: false,
         must: ["Check for new releases automatically", "contacts nothing on its own"],
@@ -236,7 +245,9 @@ const PROBES = {
           ? "none"
           : state === "installed-pending"
             ? "installed"
-            : state;
+            : state === "installed-undecided"
+              ? "pending"
+              : state;
       if (phase !== expected) problems.push(`${state}: data-phase is "${phase}"`);
 
       // The auto-check switch must AGREE with the value the card is rendering

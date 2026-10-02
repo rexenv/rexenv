@@ -877,8 +877,13 @@ pub struct AppUpdateState {
     /// The version the user skipped, if any.
     pub skipped: Option<String>,
     /// A version already swapped onto disk that this process is not running —
-    /// an update whose quit was cancelled. `None` in every ordinary state.
+    /// an update still waiting for its restart. `None` in every ordinary state.
     pub installed_pending: Option<String>,
+    /// The user DECLINED the restart's quit — "Keep sharing" at the quit gate with a swapped
+    /// build waiting (ledger #771). Only then may the card say "you chose to keep rexenv
+    /// running": between the swap and that answer (the restart dialog up, the gate's confirm
+    /// open) nothing has been chosen, and the card used to say it had.
+    pub restart_declined: bool,
     /// The sentence for a check whose fetched descriptor was REFUSED — a stale
     /// serial, a bad signature — as opposed to one that could not be fetched.
     /// `None` from [`state`]; only the interactive check sets it, for that one
@@ -930,6 +935,7 @@ pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
             checked_at: check.map(|c| c.checked_at),
             skipped,
             installed_pending: pending.clone(),
+            restart_declined: restart_declined(),
             check_refusal: None,
         };
     }
@@ -954,8 +960,30 @@ pub fn state(conn: &Connection, document: &str) -> AppUpdateState {
         checked_at: check.map(|c| c.checked_at),
         skipped,
         installed_pending: None,
+        restart_declined: false,
         check_refusal: None,
     }
+}
+
+/// Whether the quit that would have opened the swapped build was DECLINED — process-local, like
+/// the swap it qualifies: a declined restart in this process is a fact about this process, and
+/// the next launch is the restart. The quit gate notes it (`lib.rs`, `RunEvent::ExitRequested`,
+/// only while a relaunch is armed); the OK of the restart dialog clears it before it asks to quit
+/// again, so a second attempt starts undecided.
+static RESTART_DECLINED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The quit gate said no with a swapped build waiting (ledger #771).
+pub fn note_restart_declined() {
+    RESTART_DECLINED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// A restart is being asked for again: whatever was declined before is not this answer.
+pub fn clear_restart_declined() {
+    RESTART_DECLINED.store(false, std::sync::atomic::Ordering::SeqCst);
+}
+
+pub fn restart_declined() -> bool {
+    RESTART_DECLINED.load(std::sync::atomic::Ordering::SeqCst)
 }
 
 /// The flag that turns this binary into the detached relauncher.
@@ -2182,6 +2210,39 @@ mod tests {
                 "{os}: the record must go to the --log dir, else the app's log dir"
             );
         }
+    }
+
+    /// Ledger #771 — **"you chose to keep rexenv running" is said only after the quit gate was
+    /// told no with a swapped build waiting.** The card drew that sentence from `installed_pending`
+    /// alone — true from the moment of the swap, while the restart dialog was still up and while
+    /// the gate's "Stop sharing?" was unanswered — so it told the user what they had chosen before
+    /// they had chosen it. The fact is now its own: noted by the gate, only while a relaunch is
+    /// armed; cleared by the OK that asks to quit again; carried by the state the card reads.
+    #[test]
+    fn the_restart_decline_is_its_own_fact_noted_by_the_gate_and_cleared_by_the_next_ok() {
+        clear_restart_declined();
+        assert!(!restart_declined());
+        note_restart_declined();
+        assert!(restart_declined());
+        clear_restart_declined();
+        assert!(!restart_declined());
+        // The gate notes it ONLY while a relaunch is armed — a "Keep sharing" on an ordinary
+        // Cmd+Q, hours before any update, must not pre-decide a later one.
+        let lib = include_str!("../lib.rs");
+        let gate = lib.find("tauri::RunEvent::ExitRequested { api, .. } => {").expect("the quit gate");
+        let arm = &lib[gate..lib[gate..].find("tauri::RunEvent::Exit =>").map(|e| gate + e).unwrap_or(lib.len())];
+        assert!(arm.contains("api.prevent_exit();"), "the gate's refusal moved");
+        assert!(
+            arm.contains("if relaunch_armed() {") && arm.contains("core::app_update::note_restart_declined();"),
+            "the gate must note a declined restart, and only while a relaunch is armed:\n{arm}"
+        );
+        // The OK of the restart dialog clears it BEFORE it asks to quit.
+        let cmd = include_str!("../commands/app_update.rs");
+        let restart = cmd.find("pub fn app_update_restart(").expect("the restart command");
+        let body = &cmd[restart..cmd[restart..].find("\n}\n").map(|e| restart + e).unwrap_or(cmd.len())];
+        let clear = body.find("core::app_update::clear_restart_declined();").expect("the restart command must clear the decline");
+        let exit = body.find("app.exit(0);").expect("the quit");
+        assert!(clear < exit, "cleared before the quit is asked for, not after");
     }
 
     #[test]
