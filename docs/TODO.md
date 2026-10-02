@@ -376,8 +376,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       marked for another OS and keep an unmarked one (every pre-field document), and an
       app-manifest release marked for another OS is refused as malformed — the reader's lock
       beside the publisher's (the sub-row below), on every host's own `std::env::consts::OS`.
-    - [ ] `rexenv/runtimes` publisher: refuse an OS marker or a foreign arch in the macOS
-      documents, and any per-OS row whose `os` is not the file's
+    - [x] `rexenv/runtimes` publisher: refuse an OS marker or a foreign arch in the macOS
+      documents, and any per-OS row whose `os` is not the file's ✓ **2 Oct 2026, `rexenv/runtimes`
+      `4f90c8f` (local, not yet pushed):** `scripts/manifest-guard.py` runs in BOTH publishers on the
+      bytes about to be signed — the macOS documents refuse any row with an `os` key and any `arch`
+      outside what `Family::arch_ok` resolves (arm64/x86_64 for php*, any for adminer); a per-OS
+      document refuses a row marked for another OS. `--self-test` proves 17 shapes; every published
+      document passes as its own kind. Both guards the ruling asked for now exist (the reader's,
+      #755, since 30 Sep).
     - [x] ✓ 19 Sep 2026 (`manifest_urls_on`, ledger #690; a pre-`a0d4868f` build reading the macOS
       document is what run 1 of the VM pass saw). W11: the Windows reader fetches `manifest-windows.json` / `app-manifest-windows.json`
       only
