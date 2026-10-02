@@ -385,8 +385,10 @@ const LINK = "https://example.test/a//b";
         let ledger = std::fs::read_to_string(root.join("../docs/CLAIM-LEDGER.md"))
             .expect("the ledger must exist — this guard is about it");
 
-        // Everything that can BE the evidence: a Rust test fn in either crate,
-        // an example (L1), or a wk-check (L2).
+        // Everything that can BE the evidence: a Rust test fn in either crate —
+        // the cli crate's `tests/` included: its first integration test (2 Oct
+        // 2026, #767) was cited and this walk, which knew only `cli/src`, called
+        // it never written — an example (L1), or a wk-check (L2).
         let mut known: Vec<String> = Vec::new();
         fn walk(dir: &std::path::Path, known: &mut Vec<String>) {
             let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -423,7 +425,7 @@ const LINK = "https://example.test/a//b";
                 }
             }
         }
-        for dir in ["src", "examples", "../cli/src", "../scripts/wk-checks"] {
+        for dir in ["src", "examples", "../cli/src", "../cli/tests", "../scripts/wk-checks"] {
             walk(&root.join(dir), &mut known);
         }
         assert!(known.len() > 500, "only {} names found — the walk is broken", known.len());

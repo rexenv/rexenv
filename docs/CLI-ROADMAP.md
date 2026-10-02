@@ -42,6 +42,14 @@ over both sockets — as a side effect of `rex status` inside a shell script. Th
 says "the installed app" because `open -a` resolves through LaunchServices, which does
 not know about a dev build run out of `target/`.
 
+**A reader that leaves ends `rex` quietly** (ledger #767, 2 Oct 2026): `rex status | head -1`
+closes the pipe after one line, and every byte rex prints goes through one checked writer, so
+the command ends there with exit 0 and nothing on stderr — on all three OSes, with no SIGPIPE
+disposition to differ by OS. Before, std's print macros panicked ("failed printing to stdout:
+Broken pipe (os error 32)", exit 101 — Windows spells it "The pipe is being closed. (os error
+232)"). Any other write failure still panics: a reply silently dropped is the thing this CLI
+exists to avoid.
+
 **`open -a rexenv` is ambiguous whenever two copies of the bundle exist**, and this bit
 on 1 Sep 2026: with a freshly built `target/release/bundle/macos/rexenv.app` on disk and
 the same build installed in `/Applications`, `open -a rexenv` launched the one under

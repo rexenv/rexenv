@@ -1496,6 +1496,14 @@ bloating the fast path:
   §D then found `rex --version` hanging forever on an app that accepts and never
   answers (ledger #300). A crate that ships and a crate the gate visits are now the
   same set; keep them that way when a third crate appears.
+  **The `cli` crate's first integration test (2 Oct 2026, `cli/tests/closed_reader.rs`, ledger
+  #767):** `cargo test` in `cli/` now also builds `rex` and runs it against a pipe whose reader was
+  dropped before the spawn — the one proof the lib tests cannot give, that the BINARY ends quietly
+  (exit 0, silent) when `head` leaves, where std's print macros panicked. It runs wherever the cli
+  tests run: the dev Mac, and on Linux by hand inside the `linux-check` image (`docker run … -w
+  /work/cli … cargo test`, 2 Oct 2026, 31 green). The Windows test VM has no toolchain, so the
+  Windows run was the cross-built `rex.exe` through `closed-reader.ps1` (SMOKE § Windows) — a .NET
+  parent that closes its read end first — with a planted std-panic build as the control.
 - **`scripts/check-app-manifest-test.sh`, inside `verify.sh` (13 Sep 2026):** drives the release
   step's `check-app-manifest.sh` offline — two descriptors signed with a throwaway ed25519 key,
   served over `file://` as "what the CDN returns" and "what is committed", the tap's latest

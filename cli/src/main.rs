@@ -82,6 +82,92 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+// ── Output ───────────────────────────────────────────────────────────────────
+/// Where a line of `rex` output goes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Out {
+    Stdout,
+    Stderr,
+}
+
+impl Out {
+    fn name(self) -> &'static str {
+        match self {
+            Out::Stdout => "stdout",
+            Out::Stderr => "stderr",
+        }
+    }
+}
+
+/// What one write to the terminal came to.
+#[derive(Debug)]
+enum WriteOutcome {
+    Done,
+    /// The reader closed its end — `rex status | head -1` once `head` has its line. EPIPE on
+    /// macOS and Linux (os error 32); Windows reports the same kind for a pipe its reader closed
+    /// (`ERROR_BROKEN_PIPE` 109, `ERROR_NO_DATA` 232 — "The pipe is being closed").
+    ReaderGone,
+    /// Anything else: a failure the caller must not hide.
+    Failed(std::io::Error),
+}
+
+fn write_outcome(result: std::io::Result<()>) -> WriteOutcome {
+    match result {
+        Ok(()) => WriteOutcome::Done,
+        Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => WriteOutcome::ReaderGone,
+        Err(e) => WriteOutcome::Failed(e),
+    }
+}
+
+/// **Every byte `rex` prints leaves through here — the ONE place stdout and stderr are written**
+/// (ledger #767). std's print macros PANIC when a write fails, and a reader that stopped
+/// listening is a write failure: `rex status | head -1` ended in `thread 'main' panicked …
+/// failed printing to stdout: Broken pipe (os error 32)` on the 22.04 VM (30 Sep 2026), and
+/// `rex -h | true` reproduces it on every OS. A reader closing early is the reader's decision,
+/// not rex's failure, so the command ends right there, quietly, exit 0 — the SIGPIPE behaviour
+/// of every Unix tool, written as ONE rule for the three OSes rather than a signal disposition
+/// Windows does not have. Any OTHER write error still panics with std's own words: a reply
+/// silently dropped is the lie this CLI exists to avoid. The source guard
+/// `every_line_rex_prints_goes_through_emit` keeps std's macros out of the crate, so this stays
+/// the only writer.
+fn emit(to: Out, args: std::fmt::Arguments<'_>, newline: bool) {
+    fn finish(mut w: impl Write, args: std::fmt::Arguments<'_>, newline: bool) -> std::io::Result<()> {
+        w.write_fmt(args)?;
+        if newline {
+            w.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+    let result = match to {
+        Out::Stdout => finish(std::io::stdout().lock(), args, newline),
+        Out::Stderr => finish(std::io::stderr().lock(), args, newline),
+    };
+    match write_outcome(result) {
+        WriteOutcome::Done => {}
+        WriteOutcome::ReaderGone => exit(0),
+        WriteOutcome::Failed(e) => panic!("failed printing to {}: {e}", to.name()),
+    }
+}
+
+/// `rex`'s stdout line — std's macro with the closed-reader rule of `emit`.
+macro_rules! outln {
+    () => { emit(Out::Stdout, format_args!(""), true) };
+    ($($arg:tt)*) => { emit(Out::Stdout, format_args!($($arg)*), true) };
+}
+/// `rex`'s stdout write without a newline.
+macro_rules! out {
+    ($($arg:tt)*) => { emit(Out::Stdout, format_args!($($arg)*), false) };
+}
+/// `rex`'s stderr line.
+macro_rules! errln {
+    () => { emit(Out::Stderr, format_args!(""), true) };
+    ($($arg:tt)*) => { emit(Out::Stderr, format_args!($($arg)*), true) };
+}
+/// `rex`'s stderr write without a newline.
+macro_rules! err {
+    ($($arg:tt)*) => { emit(Out::Stderr, format_args!($($arg)*), false) };
+}
+
 /// How long `soft_request` waits for an app that has accepted the connection.
 /// Best-effort by contract, so a wedged app costs a pause, never the command.
 const SOFT_DEADLINE: Duration = Duration::from_secs(2);
@@ -308,7 +394,7 @@ fn windows_pipe_path(kind: &str) -> PathBuf {
     match windows_config_dir(std::env::var("LOCALAPPDATA").ok().as_deref()) {
         Some(dir) => PathBuf::from(pipe_name(kind, &dir)),
         None => {
-            eprintln!("rex: %LOCALAPPDATA% is not set, so rex cannot find rexenv's folder");
+            errln!("rex: %LOCALAPPDATA% is not set, so rex cannot find rexenv's folder");
             exit(1)
         }
     }
@@ -339,7 +425,7 @@ fn socket_path() -> PathBuf {
     }
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
-        eprintln!("rex: this platform is not supported yet");
+        errln!("rex: this platform is not supported yet");
         exit(1)
     }
 }
@@ -377,7 +463,7 @@ fn mcp_socket_path() -> PathBuf {
     }
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
     {
-        eprintln!("rex: this platform is not supported yet");
+        errln!("rex: this platform is not supported yet");
         exit(1)
     }
 }
@@ -461,14 +547,14 @@ fn run_mcp_bridge() -> ! {
         // ENOENT (never bound) and ECONNREFUSED (stale after a crash): nothing serves MCP. Whether the app is
         // there at all is the CLI endpoint's question — the endpoint is opt-in and off by default.
         Err(_) => {
-            eprintln!("{}", mcp_unreachable_message(connect(socket_path()).is_ok()));
+            errln!("{}", mcp_unreachable_message(connect(socket_path()).is_ok()));
             exit(2);
         }
     };
     let mut sock_write = match socket.try_clone() {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("rex: could not set up the MCP bridge: {e}");
+            errln!("rex: could not set up the MCP bridge: {e}");
             exit(1);
         }
     };
@@ -555,11 +641,11 @@ fn run_mcp_bridge() -> ! {
 fn print_provision_progress(p: &Value) {
     let pct = p["pct"].as_u64().unwrap_or(0);
     match p["phase"]["label"].as_str() {
-        Some(label) => eprintln!("  [{pct:>3}%] {label}"),
+        Some(label) => errln!("  [{pct:>3}%] {label}"),
         // A record with no phase is a status change (the job finished, failed
         // or was cancelled between polls) — still worth a line, because the
         // alternative is a terminal that goes quiet with no explanation.
-        None => eprintln!("  [{pct:>3}%] {}", p["status"].as_str().unwrap_or("working")),
+        None => errln!("  [{pct:>3}%] {}", p["status"].as_str().unwrap_or("working")),
     }
 }
 
@@ -583,7 +669,7 @@ fn request_inner(
     let mut sock = match connect(&path) {
         Ok(s) => s,
         Err(_) => {
-            eprintln!("{NOT_RUNNING}");
+            errln!("{NOT_RUNNING}");
             exit(2);
         }
     };
@@ -593,7 +679,7 @@ fn request_inner(
         .and_then(|_| sock.flush())
         .is_err()
     {
-        eprintln!("{NOT_RUNNING}");
+        errln!("{NOT_RUNNING}");
         exit(2);
     }
     let mut reply = String::new();
@@ -602,7 +688,7 @@ fn request_inner(
     // that has gone deaf looks exactly like one that is working, so say so
     // rather than leaving a terminal with no output at all.
     let waiting = stall_notice(STALL_NOTICE_AFTER, || {
-        eprintln!(
+        errln!(
             "rex: no reply yet after {}s — the app is either still working or wedged. \
              Ctrl-C is safe; nothing is sent twice.",
             STALL_NOTICE_AFTER.as_secs()
@@ -628,13 +714,13 @@ fn request_inner(
     };
     waiting.store(true, Ordering::Relaxed);
     if read.is_err() || reply.trim().is_empty() {
-        eprintln!("rex: the app closed the connection without replying");
+        errln!("rex: the app closed the connection without replying");
         exit(1);
     }
     let envelope: Value = match serde_json::from_str(reply.trim()) {
         Ok(v) => v,
         Err(e) => {
-            eprintln!("rex: unreadable reply from the app: {e}");
+            errln!("rex: unreadable reply from the app: {e}");
             exit(1);
         }
     };
@@ -642,7 +728,7 @@ fn request_inner(
         envelope["data"].clone()
     } else {
         let msg = envelope["error"].as_str().unwrap_or("unknown error");
-        eprintln!("rex: {msg}");
+        errln!("rex: {msg}");
         // Only for the one error that is ALWAYS a build mismatch. A typo is
         // caught client-side by `rex`'s own match, so an unknown command
         // reaching the app means it sent something this app does not answer.
@@ -650,7 +736,7 @@ fn request_inner(
         // all on every other path.
         if msg.contains("unknown command") {
             if let Some(skew) = version_skew() {
-                eprintln!("rex: {skew}");
+                errln!("rex: {skew}");
             }
         }
         exit(1);
@@ -797,7 +883,7 @@ fn main() {
         match arg.as_str() {
             "--json" => json_output = true,
             "-h" | "--help" | "help" => {
-                println!("{USAGE}");
+                outln!("{USAGE}");
                 return;
             }
             // Native version: must work WITHOUT the app (unlike `rex version`,
@@ -817,15 +903,15 @@ fn main() {
             // commit under them invites reading the commit as belonging to
             // either.
             "-v" | "-V" | "--version" => {
-                print!("rex {} ({})", env!("CARGO_PKG_VERSION"), env!("REX_GIT_COMMIT"));
+                out!("rex {} ({})", env!("CARGO_PKG_VERSION"), env!("REX_GIT_COMMIT"));
                 if let Some(app) = soft_request("version") {
-                    print!(
+                    out!(
                         " · app rexenv {} ({})",
                         app["version"].as_str().unwrap_or("?"),
                         app["commit"].as_str().unwrap_or("?"),
                     );
                 }
-                println!();
+                outln!();
                 return;
             }
             _ => words.push(arg),
@@ -846,13 +932,13 @@ fn main() {
         None | Some("completions") => {} // native output, no app needed
         _ => {
             if connect(socket_path()).is_err() {
-                eprintln!("{NOT_RUNNING}");
+                errln!("{NOT_RUNNING}");
                 exit(2);
             }
         }
     }
     match words.first().map(String::as_str) {
-        None => println!("{USAGE}"),
+        None => outln!("{USAGE}"),
         Some("status") => cmd_status(json_output),
         Some("open") => cmd_open_app(json_output),
         Some("start") => cmd_lifecycle(&["start"], json_output),
@@ -876,10 +962,10 @@ fn main() {
                 print_json(&data);
             } else {
                 match data["blueprints"].as_array().filter(|b| !b.is_empty()) {
-                    None => println!("no saved blueprints (create them in the app: Settings → Blueprints)"),
+                    None => outln!("no saved blueprints (create them in the app: Settings → Blueprints)"),
                     Some(rows) => {
                         for b in rows {
-                            println!("{}", b["name"].as_str().unwrap_or("?"));
+                            outln!("{}", b["name"].as_str().unwrap_or("?"));
                         }
                     }
                 }
@@ -892,7 +978,7 @@ fn main() {
             Some("versions") => cmd_db_versions(&words[2..], json_output),
             Some("browse") => open_url("https://adminer.rexenv.rex"),
             _ => {
-                eprintln!("rex: usage: rex db <export|import|reset|versions|browse>\n\n{USAGE}");
+                errln!("rex: usage: rex db <export|import|reset|versions|browse>\n\n{USAGE}");
                 exit(1);
             }
         },
@@ -919,19 +1005,19 @@ fn main() {
             Some("open") => cmd_site_open(&words[2..]),
             Some("login") => cmd_site_login(&words[2..], json_output),
             _ => {
-                eprintln!("rex: usage: rex site <list|create|delete|info|open|login>\n\n{USAGE}");
+                errln!("rex: usage: rex site <list|create|delete|info|open|login>\n\n{USAGE}");
                 exit(1);
             }
         },
         Some(other) => {
-            eprintln!("rex: unknown command `{other}`\n\n{USAGE}");
+            errln!("rex: unknown command `{other}`\n\n{USAGE}");
             exit(1);
         }
     }
 }
 
 fn print_json(data: &Value) {
-    println!("{}", serde_json::to_string_pretty(data).unwrap_or_else(|_| data.to_string()));
+    outln!("{}", serde_json::to_string_pretty(data).unwrap_or_else(|_| data.to_string()));
 }
 
 // ── start / stop / restart ───────────────────────────────────────────────────
@@ -948,9 +1034,9 @@ fn print_json(data: &Value) {
 fn cmd_open_app(json_output: bool) {
     request("app.open", Value::Null);
     if json_output {
-        println!("{}", json!({ "opened": true }));
+        outln!("{}", json!({ "opened": true }));
     } else {
-        println!("✓ rexenv window opened");
+        outln!("✓ rexenv window opened");
     }
 }
 
@@ -960,13 +1046,13 @@ fn cmd_lifecycle(steps: &[&str], json_output: bool) {
     for step in steps {
         if !json_output {
             match *step {
-                "start" => println!("starting services… (first run may download binaries)"),
-                _ => println!("stopping services…"),
+                "start" => outln!("starting services… (first run may download binaries)"),
+                _ => outln!("stopping services…"),
             }
         }
         request(step, Value::Null);
         if !json_output {
-            println!("✓ {step} done");
+            outln!("✓ {step} done");
         }
     }
     if json_output {
@@ -982,10 +1068,10 @@ fn cmd_site_list(json_output: bool) {
         return print_json(&data);
     }
     let Some(sites) = data["sites"].as_array() else {
-        return println!("(no sites)");
+        return outln!("(no sites)");
     };
     if sites.is_empty() {
-        return println!("no sites yet — create one with the app or `rex site create <domain>`");
+        return outln!("no sites yet — create one with the app or `rex site create <domain>`");
     }
     // `serving` is the app's ONE status derivation (edge up AND the site's
     // upstream up, provisioned, not stopped); its `disabled` is the user's own
@@ -1018,7 +1104,7 @@ fn cmd_site_list(json_output: bool) {
             .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
             .unwrap_or_default()
     };
-    println!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
+    outln!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
     for s in sites {
         let domain = s["domain"].as_str().unwrap_or("?");
         let (up, stopped) = serving
@@ -1026,7 +1112,7 @@ fn cmd_site_list(json_output: bool) {
             .find(|(d, _, _)| *d == domain)
             .map(|(_, up, stopped)| (*up, *stopped))
             .unwrap_or((false, false));
-        println!(
+        outln!(
             "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  {}",
             domain,
             s["name"].as_str().unwrap_or("?"),
@@ -1105,7 +1191,7 @@ fn flag_value(words: &[String], flag: &str) -> Option<String> {
 /// flags, so the two cannot drift apart in different files.
 fn reject_unknown_flags(words: &[String], command: &str, known: &[&str], usage: &str) {
     if let Some(bad) = unknown_flag(words, known) {
-        eprintln!("rex: unknown flag `{bad}` for `{command}`\n{usage}");
+        errln!("rex: unknown flag `{bad}` for `{command}`\n{usage}");
         exit(2);
     }
 }
@@ -1172,7 +1258,7 @@ fn create_known_flags() -> Vec<&'static str> {
 
 fn cmd_site_create(words: &[String], json_output: bool) {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("{CREATE_USAGE}");
+        errln!("{CREATE_USAGE}");
         exit(1);
     };
     // A misspelt flag here does not fail — it is IGNORED, and the site is
@@ -1203,7 +1289,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         args.insert("starterDb".into(), json!(true));
     }
     if !json_output {
-        println!("creating {domain}… (WordPress sites install on first create — this can take a minute)");
+        outln!("creating {domain}… (WordPress sites install on first create — this can take a minute)");
     }
     let created = if json_output {
         request("site.create", Value::Object(args))
@@ -1213,7 +1299,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&created);
     }
-    println!(
+    outln!(
         "✓ created {} ({}, PHP {}, {}, {}) → https://{}",
         created["domain"].as_str().unwrap_or(domain),
         created["type"].as_str().unwrap_or("?"),
@@ -1226,7 +1312,7 @@ fn cmd_site_create(words: &[String], json_output: bool) {
     // core records the starter database only where the question was asked, so
     // echoing our own argument would claim a seed the site may not have.
     if created["starterDb"] == json!(true) {
-        println!("  starter database seeded — `starter_items` and a db.php your index.php can require");
+        outln!("  starter database seeded — `starter_items` and a db.php your index.php can require");
     }
 }
 
@@ -1257,7 +1343,7 @@ fn alias_owner(data: &Value, domain: &str) -> Option<(String, String)> {
 /// exits with a helpful error otherwise. Any name the site answers on works.
 fn find_site(words: &[String], usage: &str) -> Value {
     let Some(domain) = words.first().filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: {usage}");
+        errln!("rex: usage: {usage}");
         exit(1);
     };
     // The spelling the app stores: `dig` prints a trailing dot and people
@@ -1278,7 +1364,7 @@ fn find_site(words: &[String], usage: &str) -> Value {
     match site {
         Some(site) => site,
         None => {
-            eprintln!("rex: no site answers on `{domain}` (see `rex site list`)");
+            errln!("rex: no site answers on `{domain}` (see `rex site list`)");
             exit(1);
         }
     }
@@ -1287,7 +1373,7 @@ fn find_site(words: &[String], usage: &str) -> Value {
 /// macOS default-browser open; prints the URL either way so the command is
 /// still useful over SSH or when `open` is unavailable.
 fn open_url(url: &str) {
-    println!("{url}");
+    outln!("{url}");
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(url).status();
@@ -1301,7 +1387,7 @@ fn cmd_site_info(words: &[String], json_output: bool) {
         return print_json(&data);
     }
     let s = &data["site"];
-    let field = |label: &str, v: String| println!("{label:<12} {v}");
+    let field = |label: &str, v: String| outln!("{label:<12} {v}");
     let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
     field("domain", format!("https://{}", str_of(&s["domain"])));
     // Extra domains (v42) on their own line, and only when there are any: this
@@ -1375,7 +1461,7 @@ fn cmd_site_login(words: &[String], json_output: bool) {
     reject_unknown_flags(words, "site login", &["--print"], LOGIN_USAGE);
     let site = find_site(words, LOGIN_USAGE.trim_start_matches("rex: usage: "));
     if site["type"] != json!("wordpress") {
-        eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
+        errln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
         exit(1);
     }
     let data = request("site.login", json!({ "id": site["id"] }));
@@ -1384,7 +1470,7 @@ fn cmd_site_login(words: &[String], json_output: bool) {
     }
     let url = data["url"].as_str().unwrap_or_default();
     if words.iter().any(|w| w == "--print") {
-        println!("{url}");
+        outln!("{url}");
     } else {
         open_url(url);
     }
@@ -1399,8 +1485,8 @@ fn cmd_php(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&data);
             }
-            let Some(versions) = data["versions"].as_array() else { return println!("(none)") };
-            println!(
+            let Some(versions) = data["versions"].as_array() else { return outln!("(none)") };
+            outln!(
                 "{:<7} {:<9} {:<6} {:<10} {:<8} NOTE",
                 "MINOR", "PATCH", "PORT", "INSTALLED", "DEFAULT"
             );
@@ -1420,7 +1506,7 @@ fn cmd_php(words: &[String], json_output: bool) {
                     }
                     note.push_str(&format!("{upstream} exists"));
                 }
-                println!(
+                outln!(
                     "{:<7} {:<9} {:<6} {:<10} {:<8} {}",
                     v["minor"].as_str().unwrap_or("?"),
                     v["patch"].as_str().unwrap_or("?"),
@@ -1433,15 +1519,15 @@ fn cmd_php(words: &[String], json_output: bool) {
         }
         Some("default") => {
             let Some(minor) = words.get(1) else {
-                eprintln!("rex: usage: rex php default <minor>");
+                errln!("rex: usage: rex php default <minor>");
                 exit(1);
             };
             request("php.default", json!({ "minor": minor }));
-            println!("✓ PHP {minor} is the default for new sites");
+            outln!("✓ PHP {minor} is the default for new sites");
         }
         Some("settings") => {
             let Some(minor) = words.get(1).filter(|w| !w.starts_with("--")) else {
-                eprintln!("rex: usage: rex php settings <minor> [set K=V]");
+                errln!("rex: usage: rex php settings <minor> [set K=V]");
                 exit(1);
             };
             match words.get(2).map(String::as_str) {
@@ -1451,7 +1537,7 @@ fn cmd_php(words: &[String], json_output: bool) {
                         return print_json(&data);
                     }
                     for s in data["settings"].as_array().map(Vec::as_slice).unwrap_or_default() {
-                        println!(
+                        outln!(
                             "{:<24} {}",
                             s["key"].as_str().unwrap_or("?"),
                             s["value"]
@@ -1463,7 +1549,7 @@ fn cmd_php(words: &[String], json_output: bool) {
                 }
                 Some("set") => {
                     let Some((k, v)) = words.get(3).and_then(|kv| kv.split_once('=')) else {
-                        eprintln!("rex: usage: rex php settings <minor> set KEY=value");
+                        errln!("rex: usage: rex php settings <minor> set KEY=value");
                         exit(1);
                     };
                     // The backend applies the FULL submitted set — resend every
@@ -1487,27 +1573,27 @@ fn cmd_php(words: &[String], json_output: bool) {
                     if json_output {
                         return print_json(&r);
                     }
-                    println!("✓ {k}={v} (PHP {minor} pool restarted if live)");
+                    outln!("✓ {k}={v} (PHP {minor} pool restarted if live)");
                 }
                 _ => {
-                    eprintln!("rex: usage: rex php settings <minor> [set K=V]");
+                    errln!("rex: usage: rex php settings <minor> [set K=V]");
                     exit(1);
                 }
             }
         }
         Some(action @ ("install" | "uninstall")) => {
             let Some(minor) = words.get(1) else {
-                eprintln!("rex: usage: rex php {action} <minor>");
+                errln!("rex: usage: rex php {action} <minor>");
                 exit(1);
             };
             if action == "install" {
-                println!("installing PHP {minor}… (binaries download on first start)");
+                outln!("installing PHP {minor}… (binaries download on first start)");
             }
             request("php.installed", json!({ "minor": minor, "installed": action == "install" }));
-            println!("✓ PHP {minor} {}", if action == "install" { "installed" } else { "uninstalled" });
+            outln!("✓ PHP {minor} {}", if action == "install" { "installed" } else { "uninstalled" });
         }
         _ => {
-            eprintln!("rex: usage: rex php <list|default|install|uninstall>\n\n{USAGE}");
+            errln!("rex: usage: rex php <list|default|install|uninstall>\n\n{USAGE}");
             exit(1);
         }
     }
@@ -1515,7 +1601,7 @@ fn cmd_php(words: &[String], json_output: bool) {
 
 /// Print the post-switch site line the backend returns (the updated row).
 fn print_site_update(site: &Value) {
-    println!(
+    outln!(
         "✓ {} — PHP {}{} on {}",
         site["domain"].as_str().unwrap_or("?"),
         site["phpVersion"].as_str().unwrap_or("?"),
@@ -1527,11 +1613,11 @@ fn print_site_update(site: &Value) {
 fn cmd_site_php(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site php <domain> <minor>");
     let Some(minor) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site php <domain> <minor>");
+        errln!("rex: usage: rex site php <domain> <minor>");
         exit(1);
     };
     if !json_output {
-        println!("switching {} to PHP {minor}…", site["domain"].as_str().unwrap_or("?"));
+        outln!("switching {} to PHP {minor}…", site["domain"].as_str().unwrap_or("?"));
     }
     let updated = request("site.php", json!({ "id": site["id"], "version": minor }));
     if json_output {
@@ -1546,7 +1632,7 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
         Some("on") => true,
         Some("off") => false,
         _ => {
-            eprintln!("rex: usage: rex site xdebug <domain> on|off");
+            errln!("rex: usage: rex site xdebug <domain> on|off");
             exit(1);
         }
     };
@@ -1561,21 +1647,21 @@ fn cmd_site_xdebug(words: &[String], json_output: bool) {
 /// can't stream, so output arrives AT COMPLETION — say so up front and tick
 /// dots on stderr while waiting (live output is in the app panel / job log).
 fn request_long(cmd: &str, args: Value, doing: &str) -> Value {
-    eprintln!("{doing} — output appears when it finishes (watch live in the app panel)…");
+    errln!("{doing} — output appears when it finishes (watch live in the app panel)…");
     let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let s2 = stop.clone();
     let ticker = std::thread::spawn(move || {
         while !s2.load(std::sync::atomic::Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_secs(2));
             if !s2.load(std::sync::atomic::Ordering::Relaxed) {
-                eprint!(".");
+                err!(".");
             }
         }
     });
     let data = request(cmd, args);
     stop.store(true, std::sync::atomic::Ordering::Relaxed);
     let _ = ticker.join();
-    eprintln!();
+    errln!();
     data
 }
 
@@ -1595,10 +1681,10 @@ fn print_repo_job(data: &Value, json_output: bool) {
                 "running" => "…",
                 _ => "·",
             };
-            println!("{glyph} {}", st["label"].as_str().unwrap_or("?"));
+            outln!("{glyph} {}", st["label"].as_str().unwrap_or("?"));
             if let Some(e) = st["error"].as_str() {
                 for line in e.lines() {
-                    println!("    {line}");
+                    outln!("    {line}");
                 }
             }
         }
@@ -1613,18 +1699,18 @@ fn print_repo_job(data: &Value, json_output: bool) {
             })
             .unwrap_or_default();
         if !pending_offers.is_empty() {
-            println!(
+            outln!(
                 "! dependency steps offered, not run: {} — re-run with --install, or use the app panel",
                 pending_offers.join(", ")
             );
         }
         if let Some(w) = data["job"]["nodeWarning"].as_str() {
-            println!("! {w}");
+            outln!("! {w}");
         }
         if let Some(log) = data["log"].as_array().filter(|l| !l.is_empty()) {
-            println!("── job output ──");
+            outln!("── job output ──");
             for l in log {
-                println!("{}", l.as_str().unwrap_or(""));
+                outln!("{}", l.as_str().unwrap_or(""));
             }
         }
     }
@@ -1655,13 +1741,13 @@ const REPO_USAGE: &str =
 /// app that does not send the field is told so, rather than guessing.
 fn follow_watch_log(w: &Value, dir: &str) {
     let Some(key) = w["logKey"].as_str().filter(|k| !k.is_empty()) else {
-        eprintln!(
+        errln!(
             "rex: this app build does not report the watcher's log file, so `--tail` has \
              nothing to follow — `rex version` will say if the app is older than this rex"
         );
         exit(1);
     };
-    eprintln!("— following {dir} ({key}); Ctrl-C to stop watching the LOG (the watcher keeps running) —");
+    errln!("— following {dir} ({key}); Ctrl-C to stop watching the LOG (the watcher keeps running) —");
     tail_loop(json!({ "key": key }), 200, true);
 }
 
@@ -1677,21 +1763,21 @@ fn cmd_repo(words: &[String], json_output: bool) {
         if let Some(rows) = data["tools"].as_array() {
             for t in rows {
                 if t["ok"] == json!(true) {
-                    println!(
+                    outln!(
                         "{:<9} {:<28} {}",
                         t["name"].as_str().unwrap_or("?"),
                         t["version"].as_str().unwrap_or("?"),
                         t["path"].as_str().unwrap_or(""),
                     );
                 } else {
-                    println!("{:<9} MISSING", t["name"].as_str().unwrap_or("?"));
+                    outln!("{:<9} MISSING", t["name"].as_str().unwrap_or("?"));
                     for line in t["error"].as_str().unwrap_or("").lines() {
-                        println!("          {line}");
+                        outln!("          {line}");
                     }
                 }
             }
         }
-        println!("{:<9} bundled composer.phar (runs on each site's PHP)", "composer");
+        outln!("{:<9} bundled composer.phar (runs on each site's PHP)", "composer");
         return;
     }
 
@@ -1726,7 +1812,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
         match rest.first() {
             Some(d) => (*d).clone(),
             None => {
-                eprintln!("rex: usage: {usage}");
+                errln!("rex: usage: {usage}");
                 exit(1);
             }
         }
@@ -1739,7 +1825,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             let Some(rows) = data["assets"].as_array().filter(|a| !a.is_empty()) else {
-                return println!(
+                return outln!(
                     "no git-backed assets (add one in the app, or: rex repo <domain> adopt <dir>)"
                 );
             };
@@ -1761,7 +1847,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 } else {
                     String::new()
                 };
-                println!(
+                outln!(
                     "{:<7} {:<28} {:<8} {}{}",
                     a["kind"].as_str().unwrap_or("?"),
                     a["dirName"].as_str().unwrap_or("?"),
@@ -1784,10 +1870,10 @@ fn cmd_repo(words: &[String], json_output: bool) {
             } else {
                 data["branch"].as_str().unwrap_or("?").to_string()
             };
-            println!("branch     {head}");
+            outln!("branch     {head}");
             let (ch, un) =
                 (data["changed"].as_u64().unwrap_or(0), data["untracked"].as_u64().unwrap_or(0));
-            println!(
+            outln!(
                 "tree       {}",
                 if ch + un == 0 {
                     "clean".to_string()
@@ -1796,21 +1882,21 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 }
             );
             match data["upstream"].as_str() {
-                Some(up) => println!(
+                Some(up) => outln!(
                     "upstream   {up} (↑{} ↓{})",
                     data["ahead"].as_u64().unwrap_or(0),
                     data["behind"].as_u64().unwrap_or(0)
                 ),
-                None => println!("upstream   (none)"),
+                None => outln!("upstream   (none)"),
             }
             if let Some(r) = data["remote"].as_str() {
-                println!("remote     {r}");
+                outln!("remote     {r}");
             }
             if let Some(t) = data["linkTarget"].as_str() {
-                println!("linked →   {t}");
+                outln!("linked →   {t}");
             }
             if let Some(w) = data["lossWarning"].as_str() {
-                println!("at risk    {w}");
+                outln!("at risk    {w}");
             }
         }
         Some("branches") => {
@@ -1822,16 +1908,16 @@ fn cmd_repo(words: &[String], json_output: bool) {
             let current = data["current"].as_str().unwrap_or("");
             for b in data["local"].as_array().unwrap_or(&vec![]) {
                 let name = b.as_str().unwrap_or("?");
-                println!("{} {name}", if name == current { "*" } else { " " });
+                outln!("{} {name}", if name == current { "*" } else { " " });
             }
             for b in data["remote"].as_array().unwrap_or(&vec![]) {
-                println!("  {}", b.as_str().unwrap_or("?"));
+                outln!("  {}", b.as_str().unwrap_or("?"));
             }
             let tags = data["tags"].as_array().cloned().unwrap_or_default();
             if !tags.is_empty() {
-                println!("tags:");
+                outln!("tags:");
                 for t in &tags {
-                    println!("  {}", t.as_str().unwrap_or("?"));
+                    outln!("  {}", t.as_str().unwrap_or("?"));
                 }
             }
         }
@@ -1854,11 +1940,11 @@ fn cmd_repo(words: &[String], json_output: bool) {
             }
             let prs = data.as_array().cloned().unwrap_or_default();
             if prs.is_empty() {
-                println!("(no PR/MR refs advertised by the remote)");
+                outln!("(no PR/MR refs advertised by the remote)");
             }
             for p in &prs {
                 let sha = p["sha"].as_str().unwrap_or("?");
-                println!(
+                outln!(
                     "#{:<6} {:.7}  {}",
                     p["number"].as_u64().unwrap_or(0),
                     sha,
@@ -1873,7 +1959,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&st);
             }
-            println!(
+            outln!(
                 "adopted {dir} — branch {}, remote {} (metadata only; nothing on disk changed)",
                 st["branch"].as_str().unwrap_or("?"),
                 st["remote"].as_str().unwrap_or("(none)"),
@@ -1884,7 +1970,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
             let target = match std::fs::canonicalize(&raw) {
                 Ok(t) => t.to_string_lossy().into_owned(),
                 Err(e) => {
-                    eprintln!("rex: {raw}: {e}");
+                    errln!("rex: {raw}: {e}");
                     exit(1);
                 }
             };
@@ -1899,15 +1985,15 @@ fn cmd_repo(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&data);
             }
-            println!(
+            outln!(
                 "linked as {} ({})",
                 data["dirName"].as_str().unwrap_or("?"),
                 if data["isGit"] == json!(true) { "git checkout" } else { "not a git repo" },
             );
             if data["wp"]["kind"] == json!("none") {
-                println!("note: no plugin/theme header at the folder root — WordPress won't list it until one exists");
+                outln!("note: no plugin/theme header at the folder root — WordPress won't list it until one exists");
             }
-            println!("deleting this asset later removes ONLY the link — the folder stays.");
+            outln!("deleting this asset later removes ONLY the link — the folder stays.");
         }
         Some("watch") => match words.get(2).map(String::as_str) {
             Some("list") | None => {
@@ -1916,10 +2002,10 @@ fn cmd_repo(words: &[String], json_output: bool) {
                     return print_json(&data);
                 }
                 match data["watchers"].as_array().filter(|w| !w.is_empty()) {
-                    None => println!("no watchers running"),
+                    None => outln!("no watchers running"),
                     Some(rows) => {
                         for w in rows {
-                            println!(
+                            outln!(
                                 "{:<28} {:<12} {}{}",
                                 w["dirName"].as_str().unwrap_or("?"),
                                 w["script"].as_str().unwrap_or("?"),
@@ -1941,7 +2027,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                     words.get(3).filter(|w| !w.starts_with("--")),
                     words.get(4).filter(|w| !w.starts_with("--")),
                 ) else {
-                    eprintln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme] [--tail]\n\
+                    errln!("rex: usage: rex repo <domain> watch start <dir> <script> [--theme] [--tail]\n\
                                Put <dir> and <script> before the flags.");
                     exit(1);
                 };
@@ -1952,7 +2038,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 if json_output {
                     return print_json(&w);
                 }
-                println!(
+                outln!(
                     "watching {dir} — {script} (runs inside the app; output in the app panel \
                      and logs/repo-*-watch.log; stops when the app quits, never auto-restarts)"
                 );
@@ -1965,7 +2051,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
             // started from the app and the terminal wants to see it.
             Some("tail") => {
                 let Some(dir) = words.get(3) else {
-                    eprintln!("rex: usage: rex repo <domain> watch tail <dir>");
+                    errln!("rex: usage: rex repo <domain> watch tail <dir>");
                     exit(1);
                 };
                 let data = request("repo.watch.list", json!({ "id": id }));
@@ -1974,7 +2060,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                     .and_then(|rows| rows.iter().find(|w| w["dirName"] == json!(dir.as_str())))
                     .cloned();
                 let Some(w) = found else {
-                    eprintln!(
+                    errln!(
                         "rex: no watcher running for `{dir}` (see `rex repo <domain> watch list`)"
                     );
                     exit(1);
@@ -1983,16 +2069,16 @@ fn cmd_repo(words: &[String], json_output: bool) {
             }
             Some("stop") => {
                 let Some(dir) = words.get(3) else {
-                    eprintln!("rex: usage: rex repo <domain> watch stop <dir> [--theme]");
+                    errln!("rex: usage: rex repo <domain> watch stop <dir> [--theme]");
                     exit(1);
                 };
                 request("repo.watch.stop", json!({ "id": id, "dir": dir, "theme": theme }));
                 if !json_output {
-                    println!("stopped watching {dir}");
+                    outln!("stopped watching {dir}");
                 }
             }
             _ => {
-                eprintln!(
+                errln!(
                     "rex: usage: rex repo <domain> watch list | start <dir> <script> [--tail] | \
                      tail <dir> | stop <dir>"
                 );
@@ -2024,7 +2110,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
                 match rest.get(1) {
                     Some(r) => Some((*r).clone()),
                     None => {
-                        eprintln!("rex: usage: {usage}");
+                        errln!("rex: usage: {usage}");
                         exit(1);
                     }
                 }
@@ -2046,7 +2132,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
             let usage = "rex repo <domain> run <dir> <script> [--theme]";
             let dir = dir_arg(usage);
             let Some(script) = rest.get(1) else {
-                eprintln!("rex: usage: {usage}");
+                errln!("rex: usage: {usage}");
                 exit(1);
             };
             let data = request_long(
@@ -2072,25 +2158,25 @@ fn cmd_repo(words: &[String], json_output: bool) {
             } else {
                 "clean and pushed — nothing at risk.".to_string()
             };
-            eprintln!("{dir}: {preview}");
+            errln!("{dir}: {preview}");
             if !words.iter().any(|w| w == "--yes") {
-                eprint!("delete this {}? [y/N] ", if theme { "theme" } else { "plugin" });
+                err!("delete this {}? [y/N] ", if theme { "theme" } else { "plugin" });
                 let mut a = String::new();
                 if std::io::stdin().read_line(&mut a).is_err()
                     || !matches!(a.trim(), "y" | "Y" | "yes")
                 {
-                    eprintln!("aborted");
+                    errln!("aborted");
                     exit(1);
                 }
             }
             let key = if theme { "wp.theme.delete" } else { "wp.plugin.delete" };
             request(key, json!({ "id": id, "names": [dir] }));
             if !json_output {
-                println!("deleted {dir}");
+                outln!("deleted {dir}");
             }
         }
         _ => {
-            eprintln!("rex: usage: {REPO_USAGE}");
+            errln!("rex: usage: {REPO_USAGE}");
             exit(1);
         }
     }
@@ -2111,7 +2197,7 @@ fn cmd_completions(shell: Option<&str>) {
     const REPO: &str =
         "list status branches prs check adopt link watch add pull fetch checkout push run delete";
     match shell {
-        Some("zsh") => println!(
+        Some("zsh") => outln!(
             "#compdef rex\n\
              local -a words2\n\
              case $CURRENT in\n\
@@ -2129,7 +2215,7 @@ fn cmd_completions(shell: Option<&str>) {
              4) case $words[2] in wp) compadd {WPA} ;; repo) compadd {REPO} ;; esac ;;\n\
              esac"
         ),
-        Some("bash") => println!(
+        Some("bash") => outln!(
             "_rex() {{\n\
              local cur=${{COMP_WORDS[COMP_CWORD]}}\n\
              case $COMP_CWORD in\n\
@@ -2150,7 +2236,7 @@ fn cmd_completions(shell: Option<&str>) {
              complete -F _rex rex"
         ),
         _ => {
-            eprintln!("rex: usage: rex completions zsh|bash");
+            errln!("rex: usage: rex completions zsh|bash");
             exit(1);
         }
     }
@@ -2161,7 +2247,7 @@ fn cmd_completions(shell: Option<&str>) {
 fn cmd_site_server(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site server <domain> nginx|frankenphp|apache");
     let Some(server) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site server <domain> nginx|frankenphp|apache");
+        errln!("rex: usage: rex site server <domain> nginx|frankenphp|apache");
         exit(1);
     };
     let updated = request("site.server", json!({ "id": site["id"], "server": server }));
@@ -2196,7 +2282,7 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
     };
     let (add, remove) = (flag("--add"), flag("--remove"));
     if add.is_some() && remove.is_some() {
-        eprintln!("rex: pass --add or --remove, not both");
+        errln!("rex: pass --add or --remove, not both");
         exit(1);
     }
     let r = request(
@@ -2213,8 +2299,8 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
     for (i, d) in domains.iter().enumerate() {
         let name = d.as_str().unwrap_or("?");
         match i {
-            0 => println!("https://{name}   (primary)"),
-            _ => println!("https://{name}"),
+            0 => outln!("https://{name}   (primary)"),
+            _ => outln!("https://{name}"),
         }
     }
     // WordPress decides its own canonical address from `siteurl`, so an extra
@@ -2224,7 +2310,7 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
     // how the useful notes stop being read.
     if domains.len() > 1 && site["type"] == json!("wordpress") {
         let primary = domains.first().and_then(Value::as_str).unwrap_or("?");
-        println!(
+        outln!(
             "\nnote: WordPress sends visitors to {primary} — the extra names reach this site \
              and then redirect there."
         );
@@ -2260,17 +2346,17 @@ fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
         let total = r["total"].as_u64().unwrap_or(0);
         let changed = r["changed"].as_u64().unwrap_or(0);
         let skipped = r["skippedUnprovisioned"].as_u64().unwrap_or(0);
-        println!(
+        outln!(
             "{total} site(s) {} now ({changed} changed) — rexenv's services were not touched",
             if enabled { "served" } else { "stopped" },
         );
         if skipped > 0 {
-            println!(
+            outln!(
                 "{skipped} site(s) skipped: their setup never finished (rex site retry <domain>)"
             );
         }
         if let Some(note) = r["note"].as_str() {
-            println!("{note}");
+            outln!("{note}");
         }
         return;
     }
@@ -2283,13 +2369,13 @@ fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
     // The backend's own words when it has something to say (a started site that
     // still is not serving); otherwise the fact plus its blast radius.
     if let Some(note) = r["note"].as_str() {
-        println!("{note}");
+        outln!("{note}");
         return;
     }
     if enabled {
-        println!("started {domain} — https://{domain} is serving again");
+        outln!("started {domain} — https://{domain} is serving again");
     } else {
-        println!(
+        outln!(
             "stopped {domain} — https://{domain} now answers \"site stopped\"\n\
              your other sites keep running (this is not `rex stop`, which stops the whole stack)"
         );
@@ -2314,13 +2400,13 @@ fn cmd_site_restart(words: &[String], json_output: bool) {
     let minor = str_of(&r["phpMinor"]);
     let on_pool = r["sitesOnPool"].as_u64().unwrap_or(0);
     match r["kind"].as_str().unwrap_or("") {
-        "backend" => println!(
+        "backend" => outln!(
             "restarted {} for {domain} on 127.0.0.1:{}",
             str_of(&r["server"]),
             r["port"].as_u64().unwrap_or(0)
         ),
         "refused" => {
-            eprintln!(
+            errln!(
                 "rex: {domain}'s {} backend was adopted from another session and this process \
                  may not stop it — restart it from the app",
                 str_of(&r["server"])
@@ -2328,17 +2414,17 @@ fn cmd_site_restart(words: &[String], json_output: bool) {
             exit(1);
         }
         _ => {
-            println!("reloaded {domain}: config rebuilt, nginx + edge reloaded");
-            println!(
+            outln!("reloaded {domain}: config rebuilt, nginx + edge reloaded");
+            outln!(
                 "  {domain} has no backend of its own — it is served by the shared nginx and \
                  the php-{minor} pool, which {on_pool} site(s) share"
             );
         }
     }
     if r["poolRestarted"].as_bool().unwrap_or(false) {
-        println!("  restarted the php-{minor} pool ({on_pool} site(s) affected)");
+        outln!("  restarted the php-{minor} pool ({on_pool} site(s) affected)");
     } else if on_pool > 0 {
-        println!("  add --pool to bounce the php-{minor} pool as well ({on_pool} site(s) affected)");
+        outln!("  add --pool to bounce the php-{minor} pool as well ({on_pool} site(s) affected)");
     }
 }
 
@@ -2346,14 +2432,14 @@ fn cmd_site_rename(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site rename <domain> <name>");
     let name = words[1..].iter().filter(|w| !w.starts_with("--")).cloned().collect::<Vec<_>>().join(" ");
     if name.is_empty() {
-        eprintln!("rex: usage: rex site rename <domain> <name>");
+        errln!("rex: usage: rex site rename <domain> <name>");
         exit(1);
     }
     let r = request("site.rename", json!({ "id": site["id"], "name": name }));
     if json_output {
         return print_json(&r);
     }
-    println!("✓ {} is now named “{name}”", site["domain"].as_str().unwrap_or("?"));
+    outln!("✓ {} is now named “{name}”", site["domain"].as_str().unwrap_or("?"));
 }
 
 const DOMAIN_USAGE: &str = "rex: usage: rex site domain <domain> <new-domain> [--yes]";
@@ -2365,17 +2451,17 @@ fn cmd_site_domain(words: &[String], json_output: bool) {
     let site = find_site(words, DOMAIN_USAGE.trim_start_matches("rex: usage: "));
     let old = site["domain"].as_str().unwrap_or("?").to_string();
     let Some(new_domain) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("{DOMAIN_USAGE}");
+        errln!("{DOMAIN_USAGE}");
         exit(1);
     };
     if !words.iter().any(|w| w == "--yes") {
-        eprint!(
+        err!(
             "change {old} → {new_domain}? WordPress URLs are rewritten across the \
              database (a backup is taken first). [y/N] "
         );
         let mut a = String::new();
         if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
-            eprintln!("aborted (domain unchanged)");
+            errln!("aborted (domain unchanged)");
             exit(1);
         }
     }
@@ -2383,7 +2469,7 @@ fn cmd_site_domain(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&r);
     }
-    println!(
+    outln!(
         "✓ {old} → https://{} ({} URL replacement{}{})",
         r["site"]["domain"].as_str().unwrap_or(new_domain),
         r["replacements"].as_u64().unwrap_or(0),
@@ -2399,13 +2485,13 @@ fn cmd_site_domain(words: &[String], json_output: bool) {
 fn cmd_site_move(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site move <domain> <dest-parent>");
     let Some(dest) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site move <domain> <dest-parent>");
+        errln!("rex: usage: rex site move <domain> <dest-parent>");
         exit(1);
     };
     let dest = match std::fs::canonicalize(dest) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("rex: cannot use {dest}: {e}");
+            errln!("rex: cannot use {dest}: {e}");
             exit(1);
         }
     };
@@ -2416,7 +2502,7 @@ fn cmd_site_move(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&r);
     }
-    println!("✓ moved → {}", r["path"].as_str().unwrap_or("?"));
+    outln!("✓ moved → {}", r["path"].as_str().unwrap_or("?"));
 }
 
 /// `rex site relink <domain> <path>` — re-point a LINKED or imported site at a
@@ -2430,7 +2516,7 @@ fn cmd_site_move(words: &[String], json_output: bool) {
 fn cmd_site_relink(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site relink <domain> <path>");
     let Some(path) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex site relink <domain> <path>");
+        errln!("rex: usage: rex site relink <domain> <path>");
         exit(1);
     };
     // Canonicalised HERE as well as backend-side: the backend canonicalises the
@@ -2440,7 +2526,7 @@ fn cmd_site_relink(words: &[String], json_output: bool) {
     let path = match std::fs::canonicalize(path) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("rex: cannot use {path}: {e}");
+            errln!("rex: cannot use {path}: {e}");
             exit(1);
         }
     };
@@ -2448,7 +2534,7 @@ fn cmd_site_relink(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&r);
     }
-    println!("✓ now serving from {}", r["path"].as_str().unwrap_or("?"));
+    outln!("✓ now serving from {}", r["path"].as_str().unwrap_or("?"));
 }
 
 /// `rex site retry <domain>` — finish a site whose provisioning stopped part-way.
@@ -2467,7 +2553,7 @@ fn cmd_site_relink(words: &[String], json_output: bool) {
 fn cmd_site_retry(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site retry <domain>");
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
-    eprintln!("retrying {domain}… (downloads and installs may take a minute)");
+    errln!("retrying {domain}… (downloads and installs may take a minute)");
     let r = if json_output {
         request("site.retry", json!({ "id": site["id"] }))
     } else {
@@ -2480,8 +2566,8 @@ fn cmd_site_retry(words: &[String], json_output: bool) {
     // Report what the job SAYS, never a cheerful default: a retry that failed
     // again is the case this command exists for, and it has to be readable.
     match status {
-        "ok" => println!("✓ {domain} finished provisioning"),
-        "running" => println!(
+        "ok" => outln!("✓ {domain} finished provisioning"),
+        "running" => outln!(
             "… {domain} is still running after the wait — open rexenv to watch it, or check {}",
             r["logKey"].as_str().unwrap_or("the provision log")
         ),
@@ -2491,7 +2577,7 @@ fn cmd_site_retry(words: &[String], json_output: bool) {
                 .and_then(|p| p.iter().find(|x| x["status"] == json!("failed")))
                 .and_then(|x| x["label"].as_str())
                 .unwrap_or("?");
-            eprintln!(
+            errln!(
                 "rex: {domain} {other} at phase `{phase}`{}",
                 r["error"].as_str().map(|e| format!(" — {e}")).unwrap_or_default()
             );
@@ -2522,16 +2608,16 @@ fn cmd_site_env(words: &[String], json_output: bool) {
             }
             let vars = fetch();
             if vars.is_empty() {
-                return println!("(no env vars)");
+                return outln!("(no env vars)");
             }
             for (k, v) in vars {
-                println!("{k}={v}");
+                outln!("{k}={v}");
             }
         }
         // The backend replaces the whole set — merge client-side.
         Some("set") => {
             let Some((k, v)) = words.get(2).and_then(|kv| kv.split_once('=')) else {
-                eprintln!("rex: usage: rex site env <domain> set KEY=value");
+                errln!("rex: usage: rex site env <domain> set KEY=value");
                 exit(1);
             };
             let mut vars = fetch();
@@ -2543,18 +2629,18 @@ fn cmd_site_env(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {k}={v} (site backend reloaded)");
+            outln!("✓ {k}={v} (site backend reloaded)");
         }
         Some("unset") => {
             let Some(k) = words.get(2) else {
-                eprintln!("rex: usage: rex site env <domain> unset KEY");
+                errln!("rex: usage: rex site env <domain> unset KEY");
                 exit(1);
             };
             let mut vars = fetch();
             let before = vars.len();
             vars.retain(|(name, _)| name != k);
             if vars.len() == before {
-                eprintln!("rex: no env var `{k}` on this site");
+                errln!("rex: no env var `{k}` on this site");
                 exit(1);
             }
             let payload: Vec<Value> =
@@ -2563,10 +2649,10 @@ fn cmd_site_env(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ removed {k}");
+            outln!("✓ removed {k}");
         }
         _ => {
-            eprintln!("rex: usage: rex site env <domain> [set K=V | unset K]");
+            errln!("rex: usage: rex site env <domain> [set K=V | unset K]");
             exit(1);
         }
     }
@@ -2585,7 +2671,7 @@ fn cmd_site_cert(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        println!("✓ fresh certificate issued (edge reloaded)");
+        outln!("✓ fresh certificate issued (edge reloaded)");
         return;
     }
     let data = request("site.cert", json!({ "id": site["id"] }));
@@ -2593,9 +2679,9 @@ fn cmd_site_cert(words: &[String], json_output: bool) {
         return print_json(&data);
     }
     if data.is_null() {
-        return println!("no certificate yet (issued on first serve)");
+        return outln!("no certificate yet (issued on first serve)");
     }
-    println!(
+    outln!(
         "expires {} ({} days left)\nSANs: {}",
         data["notAfter"].as_str().unwrap_or("?"),
         data["daysLeft"].as_i64().unwrap_or(0),
@@ -2616,7 +2702,7 @@ fn cmd_service(words: &[String], json_output: bool) {
     if let (Some(action @ ("start" | "stop")), Some(name @ ("nginx" | "edge" | "caddy"))) =
         (action, name)
     {
-        eprintln!(
+        errln!(
             "rex: the web tier has no single-service {action} — {name} serves every site on it. \
              Use `rex service restart {name}` to bounce it on a fresh config, or `rex {action}` \
              for the whole stack."
@@ -2625,7 +2711,7 @@ fn cmd_service(words: &[String], json_output: bool) {
     }
     if action == Some("restart") {
         let Some(target) = name else {
-            eprintln!("rex: usage: rex service restart <nginx|edge|php-8.3>");
+            errln!("rex: usage: rex service restart <nginx|edge|php-8.3>");
             exit(1);
         };
         let r = request("service.restart", json!({ "target": target }));
@@ -2634,24 +2720,24 @@ fn cmd_service(words: &[String], json_output: bool) {
         }
         let service = r["service"].as_str().unwrap_or(target);
         match r["outcome"].as_str().unwrap_or("") {
-            "restarted" => println!("✓ {service} restarted on a freshly generated config"),
-            "reloaded" => println!(
+            "restarted" => outln!("✓ {service} restarted on a freshly generated config"),
+            "reloaded" => outln!(
                 "✓ {service} reloaded (new config live). The edge is a supervised root daemon — \
                  a true restart is Stop all → Start in the app."
             ),
             "notRunning" => {
-                eprintln!("rex: {service} is not running — `rex start` brings the stack up in order");
+                errln!("rex: {service} is not running — `rex start` brings the stack up in order");
                 exit(1);
             }
             other => {
-                eprintln!("rex: {service} was not restarted ({other})");
+                errln!("rex: {service} was not restarted ({other})");
                 exit(1);
             }
         }
         return;
     }
     let (Some(action @ ("start" | "stop")), Some(name)) = (action, name) else {
-        eprintln!(
+        errln!(
             "rex: usage: rex service start|stop <mysql|mariadb|postgres|redis|mailpit>\n                    rex service restart <nginx|edge|php-8.3>"
         );
         exit(1);
@@ -2665,7 +2751,7 @@ fn cmd_service(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&r);
     }
-    println!("✓ {name} {}", if running { "started" } else { "stopped" });
+    outln!("✓ {name} {}", if running { "started" } else { "stopped" });
 }
 
 /// `rex config get|set` — the settings the CLI is allowed to touch.
@@ -2683,7 +2769,7 @@ fn cmd_config(words: &[String], json_output: bool) {
     match words.first().map(String::as_str) {
         Some("get") => {
             let Some(key) = words.get(1) else {
-                eprintln!("rex: usage: rex config get <key>");
+                errln!("rex: usage: rex config get <key>");
                 exit(1);
             };
             let r = request("config.get", json!({ "key": key }));
@@ -2693,23 +2779,23 @@ fn cmd_config(words: &[String], json_output: bool) {
             match r["value"].as_str() {
                 // An unset key is not an error: `sites_dir` empty means "the
                 // default", and printing nothing says that better than a fake.
-                Some(v) => println!("{v}"),
-                None => eprintln!("rex: {key} is not set"),
+                Some(v) => outln!("{v}"),
+                None => errln!("rex: {key} is not set"),
             }
         }
         Some("set") => {
             let (Some(key), Some(value)) = (words.get(1), words.get(2)) else {
-                eprintln!("rex: usage: rex config set <key> <value>");
+                errln!("rex: usage: rex config set <key> <value>");
                 exit(1);
             };
             let r = request("config.set", json!({ "key": key, "value": value }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {key} = {value}");
+            outln!("✓ {key} = {value}");
         }
         _ => {
-            eprintln!("rex: usage: rex config get <key> | rex config set <key> <value>");
+            errln!("rex: usage: rex config get <key> | rex config set <key> <value>");
             exit(1);
         }
     }
@@ -2760,15 +2846,15 @@ fn cmd_mail(words: &[String], json_output: bool) {
             // reads as a bug in the listing — observed on the first live run of
             // `--unread`, which is what a filter with no label always looks like.
             if shown < total {
-                println!(
+                outln!(
                     "{shown} of {total} message{} shown ({unread} unread in the mailbox)",
                     if total == 1 { "" } else { "s" }
                 );
             } else {
-                println!("{total} message{} ({unread} unread)", if total == 1 { "" } else { "s" });
+                outln!("{total} message{} ({unread} unread)", if total == 1 { "" } else { "s" });
             }
             for m in data["messages"].as_array().map(Vec::as_slice).unwrap_or_default() {
-                println!(
+                outln!(
                     "{} {:<28} {}",
                     if m["read"] == json!(true) { " " } else { "•" },
                     m["from"]["address"].as_str().unwrap_or("?"),
@@ -2788,10 +2874,10 @@ fn cmd_mail(words: &[String], json_output: bool) {
         }
         Some("clear") => {
             if !words.iter().any(|w| w == "--yes") {
-                eprint!("delete ALL caught messages? [y/N] ");
+                err!("delete ALL caught messages? [y/N] ");
                 let mut a = String::new();
                 if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
-                    eprintln!("aborted");
+                    errln!("aborted");
                     exit(1);
                 }
             }
@@ -2799,7 +2885,7 @@ fn cmd_mail(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ mailbox cleared");
+            outln!("✓ mailbox cleared");
         }
         Some("mark-read") => {
             // The last unreachable arm of the whole dispatch table: the server
@@ -2812,10 +2898,10 @@ fn cmd_mail(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ all messages marked read");
+            outln!("✓ all messages marked read");
         }
         _ => {
-            eprintln!("rex: usage: rex mail [list [--unread] [query] | open | mark-read | clear]");
+            errln!("rex: usage: rex mail [list [--unread] [query] | open | mark-read | clear]");
             exit(1);
         }
     }
@@ -2843,25 +2929,25 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
             }
             let tunnels = data["tunnels"].as_array().map(Vec::as_slice).unwrap_or_default();
             if tunnels.is_empty() {
-                return println!("no public tunnels running");
+                return outln!("no public tunnels running");
             }
             for t in tunnels {
-                println!("{:<24} {}", t["domain"].as_str().unwrap_or("?"), t["url"].as_str().unwrap_or(""));
+                outln!("{:<24} {}", t["domain"].as_str().unwrap_or("?"), t["url"].as_str().unwrap_or(""));
                 if let Some(w) = t["warning"].as_str() {
-                    println!("{:<24} warning: {w}", "");
+                    outln!("{:<24} warning: {w}", "");
                 }
             }
         }
         Some(act @ ("start" | "stop")) => {
             let site = find_site(&words[1..], "rex tunnel start|stop <domain>");
             if act == "start" && !words.iter().any(|w| w == "--yes") {
-                eprint!(
+                err!(
                     "expose {} PUBLICLY via a cloudflared tunnel? [y/N] ",
                     site["domain"].as_str().unwrap_or("?")
                 );
                 let mut a = String::new();
                 if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
-                    eprintln!("aborted (nothing exposed)");
+                    errln!("aborted (nothing exposed)");
                     exit(1);
                 }
             }
@@ -2870,19 +2956,19 @@ fn cmd_tunnel(words: &[String], json_output: bool) {
                 return print_json(&r);
             }
             if act == "start" {
-                println!("✓ public URL: {}", r["url"].as_str().unwrap_or("?"));
+                outln!("✓ public URL: {}", r["url"].as_str().unwrap_or("?"));
                 // A share of a STOPPED site is allowed and never silent: the
                 // link works, and what visitors get is rexenv's stop page. The
                 // sentence is the app's own (one source, `core::tunnels`).
                 if let Some(w) = r["warning"].as_str() {
-                    println!("warning: {w}");
+                    outln!("warning: {w}");
                 }
             } else {
-                println!("✓ tunnel stopped");
+                outln!("✓ tunnel stopped");
             }
         }
         _ => {
-            eprintln!("rex: usage: rex tunnel [list|start <domain>|stop <domain>]");
+            errln!("rex: usage: rex tunnel [list|start <domain>|stop <domain>]");
             exit(1);
         }
     }
@@ -2907,7 +2993,7 @@ fn cmd_tld(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        return println!(
+        return outln!(
             "✓ .{} resolves here again — sites on it should load now",
             r["tld"].as_str().unwrap_or(&tld)
         );
@@ -2922,9 +3008,9 @@ fn cmd_tld(words: &[String], json_output: bool) {
         }
         let tld = tld.trim_start_matches('.');
         return if r["removed"] == json!(true) {
-            println!("✓ removed the resolver file for .{tld} — nothing here answered on it")
+            outln!("✓ removed the resolver file for .{tld} — nothing here answered on it")
         } else {
-            println!("nothing to remove — there was no resolver file for .{tld}")
+            outln!("nothing to remove — there was no resolver file for .{tld}")
         };
     }
     if let Some(tld) = flag_value(words, "--set") {
@@ -2932,13 +3018,13 @@ fn cmd_tld(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        return println!("✓ new sites default to .{tld}");
+        return outln!("✓ new sites default to .{tld}");
     }
     let data = request("tld.get", Value::Null);
     if json_output {
         return print_json(&data);
     }
-    println!(".{}", data["tld"].as_str().unwrap_or("?"));
+    outln!(".{}", data["tld"].as_str().unwrap_or("?"));
 }
 
 fn cmd_version(json_output: bool) {
@@ -2948,7 +3034,7 @@ fn cmd_version(json_output: bool) {
     }
     // The commit is the point: "is the running app the code I just changed?"
     // should be one command, not a forensic exercise.
-    println!(
+    outln!(
         "rexenv {} ({}) · rex {}\n  app built {} from {}\n  cli built {} from {}",
         data["version"].as_str().unwrap_or("?"),
         data["platform"].as_str().unwrap_or("?"),
@@ -2972,7 +3058,7 @@ fn cmd_version(json_output: bool) {
         env!("REX_GIT_COMMIT"),
         data["commit"].as_str().unwrap_or(""),
     ) {
-        eprintln!("\nrex: {skew}");
+        errln!("\nrex: {skew}");
     }
 }
 
@@ -2991,7 +3077,7 @@ fn generate_password() -> String {
     )
     .is_err()
     {
-        eprintln!("rex: could not read /dev/urandom");
+        errln!("rex: could not read /dev/urandom");
         exit(1);
     }
     bytes.iter().map(|b| CHARS[(*b as usize) % CHARS.len()] as char).collect()
@@ -3016,7 +3102,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
     );
     let site = find_site(words, WP_USAGE);
     if site["type"] != json!("wordpress") {
-        eprintln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
+        errln!("rex: `{}` is not a WordPress site", site["domain"].as_str().unwrap_or("?"));
         exit(1);
     }
     let id = site["id"].clone();
@@ -3030,9 +3116,9 @@ fn cmd_wp(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&data);
             }
-            let Some(rows) = data["plugins"].as_array() else { return println!("(none)") };
+            let Some(rows) = data["plugins"].as_array() else { return outln!("(none)") };
             for p in rows {
-                println!(
+                outln!(
                     "{:<32} {:<9} {:<10} {}",
                     p["name"].as_str().unwrap_or("?"),
                     p["status"].as_str().unwrap_or(""),
@@ -3043,34 +3129,34 @@ fn cmd_wp(words: &[String], json_output: bool) {
         }
         (Some("plugin"), Some("install")) => {
             let Some(slug) = rest.first() else {
-                eprintln!("rex: usage: rex wp <domain> plugin install <slug> [--activate]");
+                errln!("rex: usage: rex wp <domain> plugin install <slug> [--activate]");
                 exit(1);
             };
             let r = request("wp.plugin.install", json!({ "id": id, "slug": slug, "activate": activate }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
+            outln!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
         }
         (Some("plugin"), Some(act @ ("activate" | "deactivate" | "update" | "delete"))) => {
             if rest.is_empty() {
-                eprintln!("rex: usage: rex wp <domain> plugin {act} <name…>");
+                errln!("rex: usage: rex wp <domain> plugin {act} <name…>");
                 exit(1);
             }
             let r = request(&format!("wp.plugin.{act}"), json!({ "id": id, "names": rest }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {act}d: {}", rest.join(", "));
+            outln!("✓ {act}d: {}", rest.join(", "));
         }
         (Some("theme"), Some("list")) | (Some("theme"), None) => {
             let data = request("wp.themes", json!({ "id": id }));
             if json_output {
                 return print_json(&data);
             }
-            let Some(rows) = data["themes"].as_array() else { return println!("(none)") };
+            let Some(rows) = data["themes"].as_array() else { return outln!("(none)") };
             for t in rows {
-                println!(
+                outln!(
                     "{:<32} {:<9} {:<10} {}",
                     t["name"].as_str().unwrap_or("?"),
                     t["status"].as_str().unwrap_or(""),
@@ -3081,46 +3167,46 @@ fn cmd_wp(words: &[String], json_output: bool) {
         }
         (Some("theme"), Some("install")) => {
             let Some(slug) = rest.first() else {
-                eprintln!("rex: usage: rex wp <domain> theme install <slug> [--activate]");
+                errln!("rex: usage: rex wp <domain> theme install <slug> [--activate]");
                 exit(1);
             };
             let r = request("wp.theme.install", json!({ "id": id, "slug": slug, "activate": activate }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
+            outln!("✓ installed {slug}{}", if activate { " (activated)" } else { "" });
         }
         (Some("theme"), Some("activate")) => {
             let Some(name) = rest.first() else {
-                eprintln!("rex: usage: rex wp <domain> theme activate <name>");
+                errln!("rex: usage: rex wp <domain> theme activate <name>");
                 exit(1);
             };
             let r = request("wp.theme.activate", json!({ "id": id, "name": name }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ activated {name}");
+            outln!("✓ activated {name}");
         }
         (Some("theme"), Some(act @ ("update" | "delete"))) => {
             if rest.is_empty() {
-                eprintln!("rex: usage: rex wp <domain> theme {act} <name…>");
+                errln!("rex: usage: rex wp <domain> theme {act} <name…>");
                 exit(1);
             }
             let r = request(&format!("wp.theme.{act}"), json!({ "id": id, "names": rest }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {act}d: {}", rest.join(", "));
+            outln!("✓ {act}d: {}", rest.join(", "));
         }
         (Some("user"), Some("list")) | (Some("user"), None) => {
             let data = request("wp.users", json!({ "id": id }));
             if json_output {
                 return print_json(&data);
             }
-            let Some(rows) = data["users"].as_array() else { return println!("(none)") };
-            println!("{:<5} {:<20} {:<30} ROLES", "ID", "LOGIN", "EMAIL");
+            let Some(rows) = data["users"].as_array() else { return outln!("(none)") };
+            outln!("{:<5} {:<20} {:<30} ROLES", "ID", "LOGIN", "EMAIL");
             for u in rows {
-                println!(
+                outln!(
                     "{:<5} {:<20} {:<30} {}",
                     u["id"].as_u64().unwrap_or(0),
                     u["login"].as_str().unwrap_or("?"),
@@ -3131,7 +3217,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
         }
         (Some("user"), Some("create")) => {
             let (Some(login), Some(email)) = (rest.first(), rest.get(1)) else {
-                eprintln!("rex: usage: rex wp <domain> user create <login> <email> [--role R]");
+                errln!("rex: usage: rex wp <domain> user create <login> <email> [--role R]");
                 exit(1);
             };
             let role = flag_value(words, "--role").unwrap_or_else(|| "subscriber".into());
@@ -3143,7 +3229,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ created {login} ({role})\n  password: {password}   (shown once — store it now)");
+            outln!("✓ created {login} ({role})\n  password: {password}   (shown once — store it now)");
         }
         (Some("search-replace"), from_word) => {
             // Grammar: rex wp <domain> search-replace <from> <to> [--dry-run] [--yes]
@@ -3154,14 +3240,14 @@ fn cmd_wp(words: &[String], json_output: bool) {
             // so a rehearsal becomes a real replace across the database.
             reject_unknown_flags(words, "wp search-replace", &["--dry-run", "--yes"], SR_USAGE);
             let (Some(from), Some(to)) = (from_word, words.get(3).map(String::as_str)) else {
-                eprintln!("{SR_USAGE}");
+                errln!("{SR_USAGE}");
                 exit(1);
             };
             // …and the positionals must be VALUES. `search-replace old --dry-run new`
             // otherwise reads `to` as the flag and writes the literal string
             // `--dry-run` across every row it matches.
             if from.starts_with("--") || to.starts_with("--") {
-                eprintln!(
+                errln!(
                     "rex: `{from}` → `{to}`: a flag cannot be the text to search for or write. \
                      Put <from> and <to> before the flags.\n{SR_USAGE}"
                 );
@@ -3169,13 +3255,13 @@ fn cmd_wp(words: &[String], json_output: bool) {
             }
             let dry = words.iter().any(|w| w == "--dry-run");
             if !dry && !words.iter().any(|w| w == "--yes") {
-                eprint!(
+                err!(
                     "replace `{from}` → `{to}` across the database? (tip: --dry-run first, \
                      `rex db export` for a backup) [y/N] "
                 );
                 let mut a = String::new();
                 if std::io::stdin().read_line(&mut a).is_err() || !matches!(a.trim(), "y" | "Y" | "yes") {
-                    eprintln!("aborted (nothing replaced)");
+                    errln!("aborted (nothing replaced)");
                     exit(1);
                 }
             }
@@ -3186,7 +3272,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!(
+            outln!(
                 "✓ {} replacement{}{}",
                 r["replacements"].as_u64().unwrap_or(0),
                 if r["replacements"] == json!(1) { "" } else { "s" },
@@ -3198,14 +3284,14 @@ fn cmd_wp(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {}", r["message"].as_str().unwrap_or("cache flushed"));
+            outln!("✓ {}", r["message"].as_str().unwrap_or("cache flushed"));
         }
         (Some("cron"), Some("run")) => {
             let r = request("wp.cron-run", json!({ "id": id }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {}", r["message"].as_str().unwrap_or("due events run"));
+            outln!("✓ {}", r["message"].as_str().unwrap_or("due events run"));
         }
         (Some("maintenance"), mode) => {
             let on = match mode {
@@ -3213,7 +3299,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 Some("off") => Some(false),
                 None => None,
                 _ => {
-                    eprintln!("rex: usage: rex wp <domain> maintenance [on|off]");
+                    errln!("rex: usage: rex wp <domain> maintenance [on|off]");
                     exit(1);
                 }
             };
@@ -3225,7 +3311,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
             if json_output {
                 return print_json(&r);
             }
-            println!("maintenance {}", if r["on"] == json!(true) { "ON" } else { "off" });
+            outln!("maintenance {}", if r["on"] == json!(true) { "ON" } else { "off" });
         }
         (Some("core"), Some("versions")) => {
             let data = request("wp.core-versions", Value::Null);
@@ -3233,20 +3319,20 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             for v in data["versions"].as_array().map(Vec::as_slice).unwrap_or_default() {
-                println!("{:<10} {}", v["version"].as_str().unwrap_or("?"), v["status"].as_str().unwrap_or(""));
+                outln!("{:<10} {}", v["version"].as_str().unwrap_or("?"), v["status"].as_str().unwrap_or(""));
             }
         }
         (Some("core"), Some("switch")) => {
             let Some(version) = rest.first() else {
-                eprintln!("rex: usage: rex wp <domain> core switch <version>");
+                errln!("rex: usage: rex wp <domain> core switch <version>");
                 exit(1);
             };
-            println!("switching core to {version}… (download + install)");
+            outln!("switching core to {version}… (download + install)");
             let r = request("wp.core-switch", json!({ "id": id, "version": version }));
             if json_output {
                 return print_json(&r);
             }
-            println!(
+            outln!(
                 "✓ core is now {}{}",
                 r["version"].as_str().unwrap_or(version),
                 if r["dbUpdateRequired"] == json!(true) {
@@ -3257,16 +3343,16 @@ fn cmd_wp(words: &[String], json_output: bool) {
             );
         }
         (Some("core"), Some("update")) => {
-            println!("updating WordPress core… (this can take a minute)");
+            outln!("updating WordPress core… (this can take a minute)");
             let r = request("wp.core-update", json!({ "id": id }));
             if json_output {
                 return print_json(&r);
             }
-            println!("✓ {}", r["message"].as_str().unwrap_or("core updated"));
+            outln!("✓ {}", r["message"].as_str().unwrap_or("core updated"));
         }
         (Some("user"), Some("delete")) => {
             let Some(who) = rest.first() else {
-                eprintln!(
+                errln!(
                     "rex: usage: rex wp <domain> user delete <login|id> --reassign <login|id> \
                      | --delete-posts"
                 );
@@ -3283,7 +3369,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
                             us.iter().find(|u| u["login"] == json!(who)).and_then(|u| u["id"].as_u64())
                         })
                         .unwrap_or_else(|| {
-                            eprintln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
+                            errln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
                             exit(1);
                         })
                 })
@@ -3306,12 +3392,12 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 // the two sent a user who had over-specified looking for the
                 // flag they had already typed. Found live, 3 Sep 2026.
                 if delete_posts {
-                    eprintln!(
+                    errln!(
                         "rex: `--reassign` and `--delete-posts` are the two answers to the same \
                          question about {who}'s posts — pick one"
                     );
                 } else {
-                    eprintln!(
+                    errln!(
                         "rex: say what happens to {who}'s posts: `--reassign <login|id>` to keep \
                          them under another account, or `--delete-posts` to delete them too"
                     );
@@ -3331,13 +3417,13 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 return print_json(&r);
             }
             match reassign_to {
-                Some(to) => println!("✓ deleted {who}; their posts now belong to user {to}"),
-                None => println!("✓ deleted {who} and their posts"),
+                Some(to) => outln!("✓ deleted {who}; their posts now belong to user {to}"),
+                None => outln!("✓ deleted {who} and their posts"),
             }
         }
         (Some("user"), Some(act @ ("set-password" | "set-role"))) => {
             let Some(who) = rest.first() else {
-                eprintln!("rex: usage: rex wp <domain> user {act} <login|id> [role]");
+                errln!("rex: usage: rex wp <domain> user {act} <login|id> [role]");
                 exit(1);
             };
             // Accept a login or a numeric id; resolve via the app's own list.
@@ -3348,7 +3434,7 @@ fn cmd_wp(words: &[String], json_output: bool) {
                         users.iter().find(|u| u["login"] == json!(who)).and_then(|u| u["id"].as_u64())
                     })
                     .unwrap_or_else(|| {
-                        eprintln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
+                        errln!("rex: no user `{who}` on this site (see `rex wp … user list`)");
                         exit(1);
                     })
             });
@@ -3361,21 +3447,21 @@ fn cmd_wp(words: &[String], json_output: bool) {
                 if json_output {
                     return print_json(&r);
                 }
-                println!("✓ password reset for {who}\n  password: {password}   (shown once — store it now)");
+                outln!("✓ password reset for {who}\n  password: {password}   (shown once — store it now)");
             } else {
                 let Some(role) = rest.get(1) else {
-                    eprintln!("rex: usage: rex wp <domain> user set-role <login|id> <role>");
+                    errln!("rex: usage: rex wp <domain> user set-role <login|id> <role>");
                     exit(1);
                 };
                 let r = request("wp.user.role", json!({ "id": id, "userId": user_id, "role": role }));
                 if json_output {
                     return print_json(&r);
                 }
-                println!("✓ {who} is now {role}");
+                outln!("✓ {who} is now {role}");
             }
         }
         _ => {
-            eprintln!("rex: usage: {WP_USAGE}\n\n{USAGE}");
+            errln!("rex: usage: {WP_USAGE}\n\n{USAGE}");
             exit(1);
         }
     }
@@ -3386,13 +3472,13 @@ fn cmd_wp(words: &[String], json_output: bool) {
 fn cmd_db_export(words: &[String], json_output: bool) {
     let site = find_site(words, "rex db export <domain>");
     if !json_output {
-        println!("exporting {}…", site["domain"].as_str().unwrap_or("?"));
+        outln!("exporting {}…", site["domain"].as_str().unwrap_or("?"));
     }
     let data = request("db.export", json!({ "id": site["id"] }));
     if json_output {
         return print_json(&data);
     }
-    println!("✓ exported → {}", data["path"].as_str().unwrap_or("?"));
+    outln!("✓ exported → {}", data["path"].as_str().unwrap_or("?"));
 }
 
 fn cmd_db_import(words: &[String], json_output: bool) {
@@ -3405,7 +3491,7 @@ fn cmd_db_import(words: &[String], json_output: bool) {
     let site = find_site(words, "rex db import <domain> <file.sql> [--yes]");
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
     let Some(file) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        eprintln!("rex: usage: rex db import <domain> <file.sql> [--yes]");
+        errln!("rex: usage: rex db import <domain> <file.sql> [--yes]");
         exit(1);
     };
     // Absolute path client-side: the APP resolves relative paths against ITS
@@ -3413,12 +3499,12 @@ fn cmd_db_import(words: &[String], json_output: bool) {
     let file = match std::fs::canonicalize(file) {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("rex: cannot read {file}: {e}");
+            errln!("rex: cannot read {file}: {e}");
             exit(1);
         }
     };
     if !words.iter().any(|w| w == "--yes") {
-        eprint!(
+        err!(
             "import into {domain}? The dump's tables OVERWRITE existing ones \
              (tip: `rex db export {domain}` first). [y/N] "
         );
@@ -3426,7 +3512,7 @@ fn cmd_db_import(words: &[String], json_output: bool) {
         if std::io::stdin().read_line(&mut answer).is_err()
             || !matches!(answer.trim(), "y" | "Y" | "yes")
         {
-            eprintln!("aborted (nothing imported)");
+            errln!("aborted (nothing imported)");
             exit(1);
         }
     }
@@ -3437,7 +3523,7 @@ fn cmd_db_import(words: &[String], json_output: bool) {
     if json_output {
         return print_json(&result);
     }
-    println!("✓ imported {} into {domain}", file.display());
+    outln!("✓ imported {} into {domain}", file.display());
 }
 
 // ── db reset / versions ──────────────────────────────────────────────────────
@@ -3454,7 +3540,7 @@ fn cmd_db_reset(words: &[String], json_output: bool) {
     // Nuclear: drop + reinstall. Typed confirmation (the UI's model), never
     // just --yes; scripts pass --confirm <domain>.
     let confirmed = flag_value(words, "--confirm").is_some_and(|c| c == domain) || {
-        eprint!(
+        err!(
             "RESET {domain}? This DROPS the database and reinstalls WordPress.\n\
              Type the domain to confirm: "
         );
@@ -3462,14 +3548,14 @@ fn cmd_db_reset(words: &[String], json_output: bool) {
         std::io::stdin().read_line(&mut a).is_ok() && a.trim() == domain
     };
     if !confirmed {
-        eprintln!("aborted (nothing reset)");
+        errln!("aborted (nothing reset)");
         exit(1);
     }
     let r = request("db.reset", json!({ "id": site["id"] }));
     if json_output {
         return print_json(&r);
     }
-    println!("✓ {domain} reset — fresh WordPress install");
+    outln!("✓ {domain} reset — fresh WordPress install");
 }
 
 const DB_VERSIONS_USAGE: &str = "rex: usage: rex db versions [--set <engine> <version>]";
@@ -3486,7 +3572,7 @@ fn cmd_db_versions(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        return println!("✓ {engine} → {version} (engine restarted if it was running)");
+        return outln!("✓ {engine} → {version} (engine restarted if it was running)");
     }
     let data = request("db.versions", Value::Null);
     if json_output {
@@ -3498,7 +3584,7 @@ fn cmd_db_versions(words: &[String], json_output: bool) {
             .as_array()
             .map(|v| v.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "))
             .unwrap_or_default();
-        println!(
+        outln!(
             "{:<10} {:<9} {:<8} available: {avail}",
             key,
             e["version"].as_str().unwrap_or("?"),
@@ -3560,13 +3646,13 @@ fn cmd_doctor(json_output: bool) {
             findings += 1;
         }
         if !json_output {
-            println!("{mark} {label:<9} {msg}");
+            outln!("{mark} {label:<9} {msg}");
         }
     };
 
     let app = &data["app"];
     if !json_output {
-        println!("rexenv {} ({})", app["version"].as_str().unwrap_or("?"), app["platform"].as_str().unwrap_or("?"));
+        outln!("rexenv {} ({})", app["version"].as_str().unwrap_or("?"), app["platform"].as_str().unwrap_or("?"));
     }
 
     let dns = &data["dns"];
@@ -3668,7 +3754,7 @@ fn cmd_doctor(json_output: bool) {
         if !minors.is_empty() {
             let n = cr["sites"].as_u64().unwrap_or(0);
             let pad = " ".repeat(12);
-            println!(
+            outln!(
                 // Continuation lines align under the MESSAGE column (2 for the
                 // mark + 9 for the label + 1 space), so the note reads as one
                 // block rather than a stray paragraph.
@@ -3748,7 +3834,7 @@ fn cmd_doctor(json_output: bool) {
 
     if findings > 0 {
         if !json_output {
-            println!("\n{findings} finding{}", if findings == 1 { "" } else { "s" });
+            outln!("\n{findings} finding{}", if findings == 1 { "" } else { "s" });
         }
         exit(1);
     }
@@ -3771,7 +3857,7 @@ fn tail_loop(base_args: Value, lines: u64, follow: bool) {
     };
     let mut prev = fetch(lines);
     for l in &prev {
-        println!("{l}");
+        outln!("{l}");
     }
     if !follow {
         return;
@@ -3784,7 +3870,7 @@ fn tail_loop(base_args: Value, lines: u64, follow: bool) {
             .find(|&k| prev[prev.len() - k..] == new[..k])
             .unwrap_or(0);
         for l in &new[overlap..] {
-            println!("{l}");
+            outln!("{l}");
         }
         prev = new;
     }
@@ -3806,9 +3892,9 @@ fn cmd_logs(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&data);
         }
-        let Some(files) = data["files"].as_array() else { return println!("(no logs)") };
+        let Some(files) = data["files"].as_array() else { return outln!("(no logs)") };
         for f in files {
-            println!("{:>9}  {}", format!("{} B", f["bytes"].as_u64().unwrap_or(0)), f["key"].as_str().unwrap_or("?"));
+            outln!("{:>9}  {}", format!("{} B", f["bytes"].as_u64().unwrap_or(0)), f["key"].as_str().unwrap_or("?"));
         }
         return;
     };
@@ -3832,10 +3918,10 @@ fn cmd_site_logs(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&data);
         }
-        let Some(targets) = data["targets"].as_array() else { return println!("(no sources)") };
-        println!("sources (pass one via --source):");
+        let Some(targets) = data["targets"].as_array() else { return outln!("(no sources)") };
+        outln!("sources (pass one via --source):");
         for t in targets {
-            println!("  {:<28} {}", t["key"].as_str().unwrap_or("?"), t["label"].as_str().unwrap_or(""));
+            outln!("  {:<28} {}", t["key"].as_str().unwrap_or("?"), t["label"].as_str().unwrap_or(""));
         }
         return;
     };
@@ -3857,7 +3943,7 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     // command does not have (`--force`, `--keep-db`) and got a delete anyway.
     reject_unknown_flags(words, "site delete", &["--yes"], DELETE_USAGE);
     let Some(domain) = words.first() else {
-        eprintln!("{DELETE_USAGE}");
+        errln!("{DELETE_USAGE}");
         exit(1);
     };
     // Resolve domain → id through the app (same list the UI shows). By the
@@ -3873,13 +3959,13 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
         .cloned();
     let Some(site) = site else {
         if let Some((_, primary)) = alias_owner(&data, &domain) {
-            eprintln!(
+            errln!(
                 "rex: `{domain}` is an extra domain of `{primary}` — delete the site as \
                  `rex site delete {primary}`, or drop just this name with \
                  `rex site domains {primary} --remove {domain}`"
             );
         } else {
-            eprintln!("rex: no site with domain `{domain}` (see `rex site list`)");
+            errln!("rex: no site with domain `{domain}` (see `rex site list`)");
         }
         exit(1);
     };
@@ -3892,12 +3978,12 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
         } else {
             "This also removes its folder.".to_string()
         };
-        eprint!("delete {domain}? This drops its database. {folder} [y/N] ");
+        err!("delete {domain}? This drops its database. {folder} [y/N] ");
         let mut answer = String::new();
         if std::io::stdin().read_line(&mut answer).is_err()
             || !matches!(answer.trim(), "y" | "Y" | "yes")
         {
-            eprintln!("aborted (nothing deleted)");
+            errln!("aborted (nothing deleted)");
             exit(1);
         }
     }
@@ -3912,14 +3998,14 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     // skips the prompt, so for the user most likely to be scripting, the false
     // sentence was the only thing printed.
     if site["docrootManaged"].as_bool() == Some(false) {
-        println!(
+        outln!(
             "✓ deleted {domain} (database removed; your folder at {} is untouched)",
             site["path"].as_str().unwrap_or("?")
         );
     } else if has_database(&site) {
-        println!("✓ deleted {domain} (database + files removed)");
+        outln!("✓ deleted {domain} (database + files removed)");
     } else {
-        println!("✓ deleted {domain} (files removed — it had no database)");
+        outln!("✓ deleted {domain} (files removed — it had no database)");
     }
 }
 
@@ -3936,7 +4022,7 @@ fn cmd_status(json_output: bool) {
         let port = &dns["port"];
         let resolver = dns["resolverInstalled"] == json!(true);
         let ca = dns["caTrusted"] == json!(true);
-        println!(
+        outln!(
             "DNS      {} ({mode}, udp {port}) · resolver {} · CA {}",
             if running { "answering" } else { "DOWN" },
             if resolver { "installed" } else { "MISSING" },
@@ -3949,11 +4035,11 @@ fn cmd_status(json_output: bool) {
     // install one (ledger #530).
     if let Some(u) = data["update"].as_object() {
         if let Some(v) = u["version"].as_str() {
-            println!("update   rexenv {v} can be installed from Settings → About");
+            outln!("update   rexenv {v} can be installed from Settings → About");
         }
     }
     let Some(services) = data["services"].as_array() else {
-        return println!("(no services reported)");
+        return outln!("(no services reported)");
     };
     let name_w = services
         .iter()
@@ -3962,11 +4048,11 @@ fn cmd_status(json_output: bool) {
         .max()
         .unwrap_or(4)
         .max(4);
-    println!("{:<name_w$}  {:<8} {:>7}  {:>6}  {:>6}  {:>8}", "NAME", "STATE", "PID", "PORT", "CPU%", "RAM");
+    outln!("{:<name_w$}  {:<8} {:>7}  {:>6}  {:>6}  {:>8}", "NAME", "STATE", "PID", "PORT", "CPU%", "RAM");
     for s in services {
         let running = s["running"] == json!(true);
         let pid = s["pid"].as_u64().map(|p| p.to_string()).unwrap_or_else(|| "-".into());
-        println!(
+        outln!(
             "{:<name_w$}  {:<8} {:>7}  {:>6}  {:>6.1}  {:>6} MB",
             pool_display_name(s["name"].as_str().unwrap_or("?")),
             if running { "running" } else { "idle" },
@@ -3980,6 +4066,52 @@ fn cmd_status(json_output: bool) {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #767 — **every line rex prints goes through `emit`**: std's print macros panic on a reader that
+    /// closed its end (`rex status | head -1`, the 22.04 VM, 30 Sep 2026), so none may remain in this crate's
+    /// production code, and no raw stdout/stderr writer may appear beside `emit` and the MCP bridge's pump
+    /// (which checks every write itself and ends on the first failure).
+    #[test]
+    fn every_line_rex_prints_goes_through_emit() {
+        let main = include_str!("main.rs");
+        let prod = main.split("\n#[cfg(test)]").next().expect("the production half of main.rs");
+        assert!(prod.contains("fn emit(to: Out, args: std::fmt::Arguments<'_>, newline: bool)"), "emit is gone — the guard has nothing to guard");
+        assert!(prod.contains("WriteOutcome::ReaderGone => exit(0),"), "a closed reader no longer ends the command quietly");
+        let std_macros = ["println!(", "print!(", "eprintln!(", "eprint!("];
+        let mut leaks = Vec::new();
+        for (file, src) in [("main.rs", prod), ("pipe.rs", include_str!("pipe.rs"))] {
+            for (i, line) in src.lines().enumerate() {
+                if std_macros.iter().any(|m| line.contains(m)) {
+                    leaks.push(format!("{file}:{} {}", i + 1, line.trim()));
+                }
+            }
+        }
+        assert!(leaks.is_empty(), "std's print macros panic on a closed pipe — use outln!/out!/errln!/err!:\n{}", leaks.join("\n"));
+        assert_eq!(prod.matches("std::io::stdout()").count(), 2, "stdout is written by emit and the MCP bridge's pump only — a new raw writer must check its own writes");
+        assert_eq!(prod.matches("std::io::stderr()").count(), 1, "stderr is written by emit only");
+    }
+
+    /// Ledger #767 — the closed-reader rule: a broken pipe is the reader's exit, every other write error stays a
+    /// failure rex must not hide. Asserts the platform's own errno for it, not one OS's number.
+    #[test]
+    fn a_closed_reader_is_told_apart_from_a_failed_write() {
+        use std::io::{Error, ErrorKind};
+        assert!(matches!(write_outcome(Ok(())), WriteOutcome::Done));
+        assert!(matches!(write_outcome(Err(Error::from(ErrorKind::BrokenPipe))), WriteOutcome::ReaderGone));
+        #[cfg(unix)]
+        let gone = Error::from_raw_os_error(32); // EPIPE, macOS and Linux
+        #[cfg(windows)]
+        let gone = Error::from_raw_os_error(109); // ERROR_BROKEN_PIPE
+        #[cfg(not(any(unix, windows)))]
+        let gone = Error::from(ErrorKind::BrokenPipe);
+        assert!(
+            matches!(write_outcome(Err(gone)), WriteOutcome::ReaderGone),
+            "the platform's broken-pipe errno must read as the reader leaving"
+        );
+        for kind in [ErrorKind::PermissionDenied, ErrorKind::WriteZero, ErrorKind::Other] {
+            assert!(matches!(write_outcome(Err(Error::from(kind))), WriteOutcome::Failed(_)), "{kind:?} must stay a failure");
+        }
+    }
+
     /// The STATE words are the app's classification, not the stack's belief:
     /// a half-provisioned site is `incomplete` (never `serving`, never a plain
     /// `down`), a user's stop is `stopped`, and `site info` renders each verdict

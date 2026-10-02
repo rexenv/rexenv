@@ -150,6 +150,7 @@ rexenv/
 │   └── src/main.rs             # never links the app lib: one JSON line over the
 │                               #   app's private 0600 socket; app not running → exit 2
 │       pipe.rs                 # Windows: the app's owner-only named pipe (tokio)
+│   └── tests/closed_reader.rs  # the built `rex` on a pipe whose reader left → exit 0, silent
 ├── scripts/                    # verify.sh (THE pre-commit bar) · verify-full.sh
 │   │                           #   live-checks.sh (tiered L1 runner) · build-cli.sh
 │   │                           #   windows-check.sh (Windows x64 compile check, cargo-xwin)

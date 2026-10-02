@@ -2041,6 +2041,10 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   updates did not record the TCC log.
 
 ## Robustness (spot-check) — §2
+- [x] **`rex status | head -1` ends quietly** (ledger #767): in a terminal, `rex status | true` and
+  `rex -h | true` → exit 0 (`echo $pipestatus` / `${PIPESTATUS[0]}`), nothing on stderr — no
+  "failed printing to stdout: Broken pipe" panic. ✓ 2 Oct 2026 (dev Mac, this tree's build;
+  0.8.11's installed `rex` still panics there, exit 101).
 - [x] Quit with another app on :443, relaunch → a clear "port in use" message (no crash).
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
 - [x] Cancel an admin prompt once → a clear "permission cancelled, try again" state; retry
@@ -2307,6 +2311,12 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [x] **`rex` with a reader that left** (ledger #767): `C:\Users\Public\rexenv-smoke\closed-reader.ps1
+      [path\to\rex.exe]` starts `rex -h` with stdout redirected, closes its read end at once and
+      prints rex's exit code and stderr — PowerShell's own `| Select-Object -First 1` reads the whole
+      output and never closes the pipe early, so the harness IS the row. Expect `exit=0`, empty
+      stderr. ✓ 2 Oct 2026 (Win11 ARM VM, this tree's x64 `rex.exe`); the control, a build with std's
+      panic put back, read `exit=101` and "The pipe is being closed. (os error 232)".
 - [ ] **`setup.exe /S` with rexenv RUNNING** (30 Sep 2026, Win11 VM): today it returns 0 and leaves
       the old `rexenv.exe` on disk — `rex --version` then reads two hashes (`rex … · app …`).
       Quit the app first for a silent install until `docs/TODO.md`'s row lands; after the fix the
@@ -2652,6 +2662,10 @@ reconciled into one row per step, each open row saying what it is still waiting 
 **Still open on Linux, in one list** (re-derived from the unticked rows, 28 Sep 2026): P4 the
 tunnel guard's normal-stop leg. (The `.deb` in-app update's relaunch closed 29 Sep 2026, 0.8.9 →
 0.8.10.)
+- [x] **`rex status | head -1` ends quietly** (ledger #767): `rex -h | true; echo ${PIPESTATUS[0]}` →
+      0, no panic on stderr. ✓ 2 Oct 2026 (Ubuntu 22.04 arm64 in the `linux-check` image: the cli
+      crate's 31 tests green and `rex -h | true` → 0, silent — a container, not the VM's installed
+      deb; the next update on the VM is the place to see it on the real one).
 - [x] **A slow edge unit at boot is waited for** (ledger #743, 0.8.11): toggle on, the edge unit
       enabled, reboot → login-start's log shows no "needs Start all" even if `rexenv-edge` comes up
       after it; the edge is adopted. After a Stop all (unit disabled) the line appears at once.

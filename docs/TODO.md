@@ -94,10 +94,19 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   its existing sites. *Done when:* an app whose route works but whose unit is an older rexenv
   shape says so ("route from an older rexenv — re-apply" with the one prompt) or re-applies it
   in the update's own polkit, and never opens the Welcome screen over an install with sites.
-- [ ] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
+- [x] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
   Sep 2026, 22.04 VM): the CLI's `println!` on a closed pipe aborts with a Rust panic on stderr.
   *Done when:* a closed stdout ends the command quietly (SIGPIPE default, or the writes checked)
-  on all three OSes.
+  on all three OSes. ✓ **2 Oct 2026** — every print in `cli/` goes through `emit`
+  (`outln!`/`out!`/`errln!`/`err!`): a `BrokenPipe` ends the command with exit 0 and nothing said,
+  any other write error keeps std's panic — ONE rule for the three OSes, no signal disposition
+  (ledger #767). Source-guarded (`every_line_rex_prints_goes_through_emit`, plant-proven), the
+  platform's errno classified (`a_closed_reader_is_told_apart_from_a_failed_write`), and the cli
+  crate's first integration test (`cli/tests/closed_reader.rs`) runs the built `rex -h` on a pipe
+  whose reader was dropped before the spawn (plant-proven). Run on all three: dev Mac (`rex status
+  | true` 101 → 0, silent); Ubuntu 22.04 arm64 in the `linux-check` image (31 tests green, `rex -h
+  | true` → 0); Win11 ARM VM (`closed-reader.ps1`: a planted std-panic build exits 101 "The pipe is
+  being closed. (os error 232)", the fixed build 0 with empty stderr).
 - [ ] **macOS: the in-app update's automatic reopen did not happen once (1 of 2, 0.8.10 → 0.8.11
   on the 15.8 VM, 30 Sep 2026)** — OK on "rexenv 0.8.11 is installed" → the app quit ("reopening
   … once this process exits" logged 15:05:41) → nothing for two minutes: no launch line, no crash
