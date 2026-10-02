@@ -43,7 +43,7 @@
 
 use super::app_bundle_rules as rules;
 use super::pe;
-use crate::core::app_update::RelaunchArgs;
+use crate::core::app_update::{ParentWait, RelaunchArgs, RelaunchLog};
 use crate::error::{Error, Result};
 use crate::platform::traits::{
     AppBundle, Arch, BundleFacts, InstallKind, Leftover, StagedBundle, StagedExpect, SwapFailure,
@@ -570,38 +570,64 @@ impl AppBundle for WindowsAppBundle {
 const CAP_MS: u32 = 120_000;
 
 /// The detached relauncher (`main.rs`, before Tauri boots): wait for the process
-/// that swapped the directory to be gone, then start the new `rexenv.exe`.
+/// that swapped the directory to be gone, then start the new `rexenv.exe`. Its record goes
+/// to `relaunch.log` (ledger #768): what it was told, how the wait ended, how the start ended.
 ///
 /// The parent's start token is checked BEFORE the wait, as on macOS: a pid the
 /// kernel recycled belongs to a stranger, and a mismatch means "already gone".
 pub fn run_relauncher(args: RelaunchArgs) -> i32 {
-    let RelaunchArgs { parent, parent_start, bundle } = args;
-    if creation_ticks(parent).map(rules::relaunch_token).as_deref() == Some(parent_start.as_str()) {
-        // SAFETY: a handle opened for SYNCHRONIZE, waited on once, closed once.
-        unsafe {
-            let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, parent);
-            if !h.is_null() {
-                let rc = WaitForSingleObject(h, CAP_MS);
-                CloseHandle(h);
-                if rc != WAIT_OBJECT_0 {
-                    eprintln!("relauncher: pid {parent} did not exit within {}s; starting anyway", CAP_MS / 1000);
-                }
-            }
-        }
+    let RelaunchArgs { parent, parent_start, bundle, log_dir } = args;
+    let log = RelaunchLog::in_dir(&log_dir.unwrap_or_else(crate::platform::log_dir_or_temp));
+    let exe = bundle.join("rexenv.exe");
+    log.note(&format!(
+        "started: waiting for pid {parent} (token {parent_start}) to exit, then starting {}",
+        exe.display()
+    ));
+    let began = std::time::Instant::now();
+    let waited = wait_for_parent(parent, &parent_start);
+    log.note(&format!("parent {parent} {} after {:.1}s", waited.describe(), began.elapsed().as_secs_f64()));
+    if waited == ParentWait::TimedOut {
+        eprintln!("relauncher: pid {parent} did not exit within {}s; starting anyway", CAP_MS / 1000);
     }
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x0000_0008;
-    match std::process::Command::new(bundle.join("rexenv.exe"))
+    match std::process::Command::new(&exe)
         .creation_flags(DETACHED_PROCESS)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
     {
-        Ok(_) => 0,
+        Ok(child) => {
+            log.note(&format!("started {} (pid {})", exe.display(), child.id()));
+            0
+        }
         Err(e) => {
-            eprintln!("relauncher: could not start {}: {e}", bundle.join("rexenv.exe").display());
+            log.note(&format!("could not start {}: {e}", exe.display()));
+            eprintln!("relauncher: could not start {}: {e}", exe.display());
             1
+        }
+    }
+}
+
+/// Block until `parent` exits, turns out to be somebody else, or [`CAP_MS`] passes — and say which.
+fn wait_for_parent(parent: u32, parent_start: &str) -> ParentWait {
+    if creation_ticks(parent).map(rules::relaunch_token).as_deref() != Some(parent_start) {
+        return ParentWait::AlreadyGone;
+    }
+    const WAIT_TIMEOUT: u32 = 0x0000_0102;
+    // SAFETY: a handle opened for SYNCHRONIZE, waited on once, closed once.
+    unsafe {
+        let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, parent);
+        if h.is_null() {
+            return ParentWait::Unwatchable;
+        }
+        let rc = WaitForSingleObject(h, CAP_MS);
+        CloseHandle(h);
+        match rc {
+            WAIT_OBJECT_0 => ParentWait::Exited,
+            WAIT_TIMEOUT => ParentWait::TimedOut,
+            _ => ParentWait::Unwatchable,
         }
     }
 }

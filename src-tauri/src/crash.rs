@@ -60,10 +60,7 @@ pub fn install_at(dir: Option<PathBuf>) {
 
 /// The log directory when the platform has one, else the temp directory.
 fn crash_dir() -> PathBuf {
-    crate::platform::current()
-        .paths()
-        .log_dir()
-        .unwrap_or_else(|_| std::env::temp_dir())
+    crate::platform::log_dir_or_temp()
 }
 
 fn message(payload: &(dyn std::any::Any + Send)) -> String {

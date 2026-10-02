@@ -30,7 +30,7 @@
 // `clippy -D warnings` on the other OS (W12) -- and only there.
 #![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
 
-use rexenv_lib::core::app_update::{parse_relaunch_args, RelaunchArgs, RELAUNCH_FLAG};
+use rexenv_lib::core::app_update::{parse_relaunch_args, RelaunchArgs, RELAUNCH_FLAG, RELAUNCH_LOG, RELAUNCH_LOG_FLAG};
 use std::path::Path;
 use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
@@ -145,6 +145,7 @@ async fn main() -> ExitCode {
                 parent: 4242,
                 parent_start: "TOKEN".into(),
                 bundle: "/Applications/rexenv.app".into(),
+                log_dir: None,
             }),
         &format!("{:?}", parse_relaunch_args(&argv)),
     );
@@ -185,11 +186,15 @@ async fn main() -> ExitCode {
     let pid = parent.id();
     let token = rexenv_lib::platform::process_start_token(pid)
         .expect("the fixture parent has a start token");
+    // `--log <root>`: the record goes into the sandbox, never the real app's log dir —
+    // the helper is the real binary, and without this it would write where production does.
     let mut helper = Command::new(&exe)
         .arg(RELAUNCH_FLAG)
         .arg(pid.to_string())
         .arg(&token)
         .arg(&bundle)
+        .arg(RELAUNCH_LOG_FLAG)
+        .arg(&root)
         .spawn()
         .expect("spawn the relauncher");
 
@@ -213,6 +218,13 @@ async fn main() -> ExitCode {
     // Reaped rather than dropped: `Child::drop` neither kills nor waits, and a
     // dropped handle leaves a zombie for the life of this process.
     let _ = helper.wait();
+    // ── 2b. The record (ledger #768): the wait and the open, in the --log dir ──
+    let record = std::fs::read_to_string(root.join(RELAUNCH_LOG)).unwrap_or_default();
+    checks.is(
+        "relaunch.log names the parent's exit and open's exit code",
+        record.contains(&format!("parent {pid} exited after")) && record.contains("(open exit 0)"),
+        &format!("relaunch.log:\n{record}"),
+    );
 
     // ── 3. A recycled pid is not waited on ───────────────────────────────────
     //
@@ -227,6 +239,8 @@ async fn main() -> ExitCode {
         .arg(other.id().to_string())
         .arg("not-the-token-this-pid-wears")
         .arg(&bundle)
+        .arg(RELAUNCH_LOG_FLAG)
+        .arg(&root)
         .spawn()
         .expect("spawn the relauncher with a wrong token");
     checks.is(
@@ -235,6 +249,12 @@ async fn main() -> ExitCode {
         "the relauncher waited on a process it could not identify",
     );
     let _ = wrong.wait();
+    let record = std::fs::read_to_string(root.join(RELAUNCH_LOG)).unwrap_or_default();
+    checks.is(
+        "relaunch.log says the stranger was already gone, in ParentWait's words",
+        record.contains(&format!("parent {} was already gone", other.id())),
+        &format!("relaunch.log:\n{record}"),
+    );
     checks.is(
         "and it did not wait for that unrelated process to exit",
         other.try_wait().ok().flatten().is_none(),

@@ -983,9 +983,15 @@ pub struct RelaunchArgs {
     /// still on disk in the staging directory at that moment, and `open -b`
     /// would be free to choose it.
     pub bundle: PathBuf,
+    /// Where the relauncher writes its record (`--log <dir>`, optional, since 2 Oct 2026):
+    /// `None` — every build before it, and the app itself — means the app's log dir. The
+    /// live check hands a fixture dir here so the real one is never written by a test.
+    pub log_dir: Option<PathBuf>,
 }
 
-/// `["…", "--relaunch-after", "<pid>", "<token>", "<bundle>"]` → args.
+/// `["…", "--relaunch-after", "<pid>", "<token>", "<bundle>"]` → args; an optional
+/// `--log <dir>` after them names the record's directory (`RelaunchArgs::log_dir`). A `--log`
+/// with no directory is ignored, not refused: the four words that relaunch are the contract.
 pub fn parse_relaunch_args(argv: &[String]) -> Option<RelaunchArgs> {
     let at = argv.iter().position(|a| a == RELAUNCH_FLAG)?;
     let parent = argv.get(at + 1)?.parse().ok()?;
@@ -994,7 +1000,100 @@ pub fn parse_relaunch_args(argv: &[String]) -> Option<RelaunchArgs> {
     if parent == 0 || parent_start.is_empty() || bundle.as_os_str().is_empty() {
         return None;
     }
-    Some(RelaunchArgs { parent, parent_start, bundle })
+    let log_dir = argv
+        .get(at + 4)
+        .filter(|a| *a == RELAUNCH_LOG_FLAG)
+        .and_then(|_| argv.get(at + 5))
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from);
+    Some(RelaunchArgs { parent, parent_start, bundle, log_dir })
+}
+
+/// `--log <dir>`: the relauncher's optional fifth and sixth words (`RelaunchArgs::log_dir`).
+pub const RELAUNCH_LOG_FLAG: &str = "--log";
+
+/// The relauncher's record: `relaunch.log` in the app's log dir (or the `--log` dir).
+///
+/// Why it exists: on 30 Sep 2026 (15.8 VM, 0.8.10 → 0.8.11) the app quit through the update's
+/// gate, logged "reopening … once this process exits", and nothing came back for two minutes —
+/// no launch line, no crash report, no helper process to catch. The relauncher's stderr goes to
+/// `/dev/null` by design (it must outlive the app, detached), so a failed `open`, a wrong parent
+/// token or a wait that gave up left NO trace anywhere. This file is that trace: three lines per
+/// update, written as they happen — what it was told, how the wait ended, how the launch ended.
+pub const RELAUNCH_LOG: &str = "relaunch.log";
+/// Past this the file steps aside as `relaunch.log.old` before the next line. A relaunch is a
+/// few lines per update, so this is years of them; bounded all the same, the crash log's rule.
+pub const RELAUNCH_LOG_MAX_BYTES: u64 = 256 * 1024;
+
+/// What the relauncher found when it waited for the process that swapped the bundle — the
+/// words `relaunch.log` carries for it, the same on every OS (kqueue, pidfd or a process
+/// handle underneath).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParentWait {
+    /// The pid no longer wears the start token it was given: already exited, or recycled by
+    /// the kernel — "gone" either way, and never waited on.
+    AlreadyGone,
+    /// Its exit was observed.
+    Exited,
+    /// The cap passed with the parent still alive — a "Keep sharing" at the quit gate, or an
+    /// exit that hung. The launch proceeds, as it always did.
+    TimedOut,
+    /// The OS refused the registration (no kqueue, no pidfd, no handle); nothing was waited on.
+    Unwatchable,
+}
+
+impl ParentWait {
+    /// One clause a person reads after "it did not come back".
+    pub fn describe(self) -> &'static str {
+        match self {
+            Self::AlreadyGone => "was already gone (the pid no longer wore the start token it was given)",
+            Self::Exited => "exited",
+            Self::TimedOut => "was still alive when the wait gave up (the cap passed) — starting anyway",
+            Self::Unwatchable => "could not be watched (the OS refused the registration) — starting anyway",
+        }
+    }
+}
+
+/// The relauncher's log — see [`RELAUNCH_LOG`]. Every line is appended as it happens, and a
+/// line that cannot be written is dropped: the record exists to explain a relaunch that did
+/// not happen, and must never become the reason one does not.
+pub struct RelaunchLog {
+    path: PathBuf,
+}
+
+impl RelaunchLog {
+    pub fn in_dir(dir: &std::path::Path) -> Self {
+        Self { path: dir.join(RELAUNCH_LOG) }
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    /// Append one line: when, which build, which process, `what`.
+    pub fn note(&self, what: &str) {
+        let _ = self.append(&relaunch_log_line(what));
+    }
+
+    fn append(&self, line: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        if let Some(dir) = self.path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        if std::fs::metadata(&self.path).is_ok_and(|m| m.len() > RELAUNCH_LOG_MAX_BYTES) {
+            let _ = std::fs::rename(&self.path, self.path.with_extension("log.old"));
+        }
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&self.path)?;
+        f.write_all(line.as_bytes())
+    }
+}
+
+/// `<RFC 3339 UTC> rexenv <version> relauncher[<pid>]: <what>\n`.
+pub fn relaunch_log_line(what: &str) -> String {
+    let when = time::OffsetDateTime::now_utc()
+        .format(&time::format_description::well_known::Rfc3339)
+        .unwrap_or_else(|_| "(time unavailable)".to_string());
+    format!("{when} rexenv {} relauncher[{}]: {what}\n", env!("CARGO_PKG_VERSION"), std::process::id())
 }
 
 /// What the process that swapped the bundle leaves behind for the NEXT one.
@@ -2016,6 +2115,17 @@ mod tests {
         assert_eq!(got.parent, 4242);
         assert_eq!(got.parent_start, "TOKEN");
         assert_eq!(got.bundle, PathBuf::from("/Applications/x.app"));
+        assert_eq!(got.log_dir, None, "every build before 2 Oct 2026 spawns without --log");
+        let mut with_log = argv.clone();
+        with_log.extend([RELAUNCH_LOG_FLAG.to_string(), "/tmp/fixture".to_string()]);
+        assert_eq!(parse_relaunch_args(&with_log).expect("parses").log_dir, Some(PathBuf::from("/tmp/fixture")));
+        let mut bare = argv.clone();
+        bare.push(RELAUNCH_LOG_FLAG.to_string());
+        assert_eq!(
+            parse_relaunch_args(&bare).expect("parses").log_dir,
+            None,
+            "--log without a directory is ignored, not a refusal — the four words still relaunch"
+        );
         // A malformed invocation must open NOTHING rather than fall back to a
         // default — this flag is a cross-version contract, written by the build
         // being replaced and read by the one replacing it.
@@ -2023,6 +2133,55 @@ mod tests {
             assert!(parse_relaunch_args(bad).is_none());
         }
         assert!(parse_relaunch_args(&argv[..1]).is_none());
+    }
+
+    /// Ledger #768 — **the relauncher leaves a record a person can read**: RFC 3339 first, the
+    /// build and the process, then what happened; the file steps aside as `.old` past its cap.
+    #[test]
+    fn the_relauncher_log_appends_readable_lines_and_rotates_past_its_cap() {
+        let dir = std::env::temp_dir().join(format!("rexenv-relaunch-log-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let log = RelaunchLog::in_dir(&dir); // the directory does not exist yet
+        log.note("started: waiting for pid 1 (token T) to exit");
+        log.note("parent 1 exited after 0.3s");
+        let text = std::fs::read_to_string(log.path()).expect("relaunch.log");
+        let lines: Vec<&str> = text.lines().collect();
+        assert_eq!(lines.len(), 2, "{text}");
+        let stamp = format!("rexenv {} relauncher[{}]: ", env!("CARGO_PKG_VERSION"), std::process::id());
+        for l in &lines {
+            assert!(l.starts_with("20") && l.contains('T') && l.contains(&stamp), "{l}");
+        }
+        assert!(lines[1].ends_with("parent 1 exited after 0.3s"), "{}", lines[1]);
+        std::fs::write(log.path(), vec![b'x'; RELAUNCH_LOG_MAX_BYTES as usize + 1]).expect("oversize");
+        log.note("after the cap");
+        assert!(dir.join("relaunch.log.old").exists(), "the oversized file is kept, not deleted");
+        assert!(std::fs::read_to_string(log.path()).expect("fresh log").ends_with("after the cap\n"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ledger #768 — **every OS's relauncher records the wait and the launch in `relaunch.log`**:
+    /// the macOS reopen that did not happen (30 Sep 2026) left no trace because the helper's
+    /// stderr is `/dev/null` by design. Three notes at least — what it was told, how the wait
+    /// ended (in `ParentWait`'s words), how the launch ended — to the `--log` dir, else the
+    /// app's log dir.
+    #[test]
+    fn every_os_relauncher_records_the_wait_and_the_launch() {
+        for (os, src, entry) in [
+            ("macos", include_str!("../platform/macos/relauncher.rs"), "pub fn run(args: RelaunchArgs)"),
+            ("linux", include_str!("../platform/linux/app_bundle.rs"), "pub fn run_relauncher(args: RelaunchArgs)"),
+            ("windows", include_str!("../platform/windows/app_bundle.rs"), "pub fn run_relauncher(args: RelaunchArgs)"),
+        ] {
+            let prod = src.split("\n#[cfg(test)]").next().unwrap_or_default();
+            let at = prod.find(entry).unwrap_or_else(|| panic!("{os}: no `{entry}`"));
+            let run = &prod[at..];
+            let notes = run.matches("log.note(").count();
+            assert!(notes >= 3, "{os}: {notes} note(s) — started, the wait's outcome and the launch result are the minimum");
+            assert!(run.contains(".describe()"), "{os}: the wait's outcome is not written in ParentWait's words");
+            assert!(
+                run.contains("RelaunchLog::in_dir(&log_dir.unwrap_or_else(crate::platform::log_dir_or_temp))"),
+                "{os}: the record must go to the --log dir, else the app's log dir"
+            );
+        }
     }
 
     #[test]

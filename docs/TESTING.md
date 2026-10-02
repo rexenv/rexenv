@@ -889,7 +889,10 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   (#441). Runs the REAL app binary in relauncher mode and refuses a stale one, because
   `cargo run --example` does not rebuild it — the failure `tunnel_parent_death_check`
   records, where both plants came back green against yesterday's build. **Plant-proven**:
-  deleting the wait makes the ordering leg fail. Ledger #531.
+  deleting the wait makes the ordering leg fail. Ledger #531. **Since 2 Oct 2026 it also
+  asserts the record** (ledger #768): the helper is given `--log <fixture root>` — the REAL
+  binary would otherwise write the real app's `relaunch.log` — and after each leg the file must
+  say `parent <pid> exited after …s` / `(open exit 0)`, then `was already gone` for the stranger.
 - `windows_app_bundle_swap_check` (sandbox, Windows only) — the Windows SWAP, on fixtures:
   a real install directory whose executable is THIS build's `rexenv.exe` (the only `.exe`
   around with VERSIONINFO, its version read back through PowerShell as an oracle that shares
@@ -921,6 +924,8 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
+  **Carries the same record assertions as `app_relaunch_check` since 2 Oct 2026** (#768) — not
+  yet run: the Dell was unreachable that day, and the ledger row stays ◐ until it is.
 ## Proving a Windows claim
 
 `verify.sh`'s `windows-check` cross-compiles both crates for x64 Windows. That is a COMPILE

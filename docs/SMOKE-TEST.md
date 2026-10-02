@@ -1942,6 +1942,13 @@ itself the first check.
 §M); the clean UTM VM (macOS 15.6.1 arm64), 18 Sep 2026 — build `39610cc7` then the in-app
 update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 dmg → the published
 0.8.8 (`docs/PUBLISH-TESTING.md` §A 0.8.8).
+- [ ] **The relauncher's record** (ledger #768): after an in-app update, `logs/relaunch.log` under
+  the app data folder has three new lines — `started: waiting for pid <old pid> …`, `parent <pid>
+  exited after N.Ns`, `opened /Applications/rexenv.app (open exit 0)`. If the app did NOT come back
+  (30 Sep 2026, 1 of 2 on the 15.8 VM), this file is the first thing to read: `open exited …`,
+  `could not run /usr/bin/open …`, or `was still alive when the wait gave up`. On macOS the OLD
+  side's binary runs the relauncher, so the file first appears on the update FROM a build carrying
+  #768. **Open:** the VM leg of `docs/TODO.md`'s row.
 
 - [x] **The menu bar offers it, and only opens it.** With a newer release published, the
   tray menu's FIRST item reads `Update to <version>…`; clicking it shows the window on
@@ -2448,6 +2455,11 @@ fixture can do is the real install directory, the real quit gate and the real re
 The first installed copy (`276fc7cb`, before per-OS descriptors) read the macOS descriptor and
 logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on fetch
 `app-manifest-windows.json`, and that sentence is OS-neutral.
+- [ ] **The relauncher's record** (ledger #768): after an in-app update,
+      `%LOCALAPPDATA%\rexenv\logs\relaunch.log` has three new lines — `started: waiting for pid …`,
+      `parent <pid> exited after N.Ns`, `started …\rexenv.exe (pid …)`. The NEW build's own
+      `rexenv.exe` runs the relauncher here, so the first update TO a build carrying #768 writes
+      it. If the app did not come back, read this file first.
 - [x] With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
       attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
       offers the update; the consent sentence is the Windows one ("replaces rexenv's program
@@ -2983,6 +2995,11 @@ rexenv0 <name>` and read `Current Scopes:`.
       leftover(s)", "updated from 0.8.9", the agent answering. One blemish: Ubuntu's "Problem in
       WebKitWebProcess — closed unexpectedly" dialog — the OLD instance's web process (reparented
       to `systemd --user`) died on SIGSEGV as the old app exited; `docs/TODO.md`.
+- [ ] **The relauncher's record** (ledger #768): after an in-app update (`.deb` or AppImage),
+      `~/.local/share/rexenv/logs/relaunch.log` has three new lines — `started: waiting for pid …`,
+      `parent <pid> exited after N.Ns`, `started /usr/bin/rexenv (pid …)` (or the AppImage path).
+      The NEW package's `/usr/bin/rexenv` runs the relauncher (#729), so the first update TO a build
+      carrying #768 writes it. If the app did not come back, read this file first.
 - [x] AppImage in a folder you own, an older version: Check now reads
       `app-manifest-linux-appimage-<arch>.json`; Update swaps the file with NO prompt; the app
       comes back as the new version FROM THE SAME PATH; the folder holds no `.rexenv-update-*`

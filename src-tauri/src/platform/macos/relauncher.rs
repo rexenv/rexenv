@@ -30,7 +30,7 @@
 //! is checked before the wait: a mismatch means the parent we were told about is
 //! already gone, which is the answer, not an error.
 
-use crate::core::app_update::RelaunchArgs;
+use crate::core::app_update::{ParentWait, RelaunchArgs, RelaunchLog};
 use std::time::Duration;
 
 /// How long to wait before giving up.
@@ -43,38 +43,53 @@ use std::time::Duration;
 const CAP: Duration = Duration::from_secs(120);
 
 pub fn run(args: RelaunchArgs) -> i32 {
-    let RelaunchArgs { parent, parent_start, bundle } = args;
-    wait_for_parent(parent, &parent_start);
+    let RelaunchArgs { parent, parent_start, bundle, log_dir } = args;
+    // The record (ledger #768): a reopen that does not happen used to leave no trace —
+    // stderr is `/dev/null` by design and `open`'s exit code died with this process (1 of 2
+    // on the 15.8 VM, 30 Sep 2026). `relaunch.log` carries the wait and the open result.
+    let log = RelaunchLog::in_dir(&log_dir.unwrap_or_else(crate::platform::log_dir_or_temp));
+    log.note(&format!(
+        "started: waiting for pid {parent} (token {parent_start}) to exit, then opening {}",
+        bundle.display()
+    ));
+    let began = std::time::Instant::now();
+    let waited = wait_for_parent(parent, &parent_start);
+    log.note(&format!("parent {parent} {} after {:.1}s", waited.describe(), began.elapsed().as_secs_f64()));
     // `open` the PATH, never `open -b dev.rexenv.rexenv`: at this moment the
     // PREVIOUS bundle is still on disk in the staging directory, and a bundle-id
     // launch is free to pick it — which would silently start the version the
     // user just replaced.
     match std::process::Command::new("/usr/bin/open").arg(&bundle).status() {
-        Ok(s) if s.success() => 0,
+        Ok(s) if s.success() => {
+            log.note(&format!("opened {} (open exit 0)", bundle.display()));
+            0
+        }
         Ok(s) => {
+            log.note(&format!("open exited {:?} for {}", s.code(), bundle.display()));
             eprintln!("relauncher: open exited {:?}", s.code());
             1
         }
         Err(e) => {
+            log.note(&format!("could not run /usr/bin/open for {}: {e}", bundle.display()));
             eprintln!("relauncher: could not open {}: {e}", bundle.display());
             1
         }
     }
 }
 
-/// Block until `parent` exits, it turns out to be somebody else, or [`CAP`].
-fn wait_for_parent(parent: u32, parent_start: &str) {
+/// Block until `parent` exits, it turns out to be somebody else, or [`CAP`] — and say which.
+fn wait_for_parent(parent: u32, parent_start: &str) -> ParentWait {
     if !super::process_start_token(parent).is_some_and(|t| t == parent_start) {
         // Either it already exited, or that pid belongs to a different process
         // now. Both mean the same thing here: stop waiting.
-        return;
+        return ParentWait::AlreadyGone;
     }
     // SAFETY: kqueue/kevent with a locally-owned fd and stack-allocated event
     // structs; every raw pointer below points at a live local.
     unsafe {
         let kq = libc::kqueue();
         if kq < 0 {
-            return;
+            return ParentWait::Unwatchable;
         }
         let mut ev: libc::kevent = std::mem::zeroed();
         ev.ident = parent as usize;
@@ -82,23 +97,30 @@ fn wait_for_parent(parent: u32, parent_start: &str) {
         ev.flags = libc::EV_ADD | libc::EV_ONESHOT;
         ev.fflags = libc::NOTE_EXIT;
         if libc::kevent(kq, &ev, 1, std::ptr::null_mut(), 0, std::ptr::null()) < 0 {
-            // ESRCH: the pid is gone. That is the answer.
+            // ESRCH: the pid is gone. That is the answer; anything else is the kernel
+            // refusing to watch it.
+            let errno = std::io::Error::last_os_error().raw_os_error();
             libc::close(kq);
-            return;
+            return if errno == Some(libc::ESRCH) { ParentWait::AlreadyGone } else { ParentWait::Unwatchable };
         }
         // Re-check AFTER registering: a pid that died and was replaced between
         // the check above and this registration would have registered a
         // stranger, and we would wait on their lifetime instead.
         if !super::process_start_token(parent).is_some_and(|t| t == parent_start) {
             libc::close(kq);
-            return;
+            return ParentWait::AlreadyGone;
         }
         let timeout = libc::timespec {
             tv_sec: CAP.as_secs() as libc::time_t,
             tv_nsec: 0,
         };
         let mut out: libc::kevent = std::mem::zeroed();
-        libc::kevent(kq, std::ptr::null(), 0, &mut out, 1, &timeout);
+        let n = libc::kevent(kq, std::ptr::null(), 0, &mut out, 1, &timeout);
         libc::close(kq);
+        match n {
+            0 => ParentWait::TimedOut,
+            n if n > 0 => ParentWait::Exited,
+            _ => ParentWait::Unwatchable,
+        }
     }
 }

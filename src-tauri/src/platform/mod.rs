@@ -261,6 +261,12 @@ pub fn send_output_to(log: &std::path::Path) {
     let _ = log;
 }
 
+/// The app's log directory, or the temp directory when `Paths` cannot answer — where a detached
+/// process mode (the crash hook, the relauncher) leaves what it has to say.
+pub fn log_dir_or_temp() -> std::path::PathBuf {
+    current().paths().log_dir().unwrap_or_else(|_| std::env::temp_dir())
+}
+
 /// When this process was started as Windows' elevated step (`rexenv.exe --elevated-step`, W6 S3, ledger
 /// #619), run it and return its exit code; `None` otherwise — and always `None` off Windows. Checked by
 /// `main.rs` before anything else starts: the step opens no window and touches no app state.

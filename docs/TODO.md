@@ -118,6 +118,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the VM either reopens twice in a row or names why not. The 0.8.10 → 0.8.11 update also
   showed "rexenv quit unexpectedly" once (the DNS agent, #761's race under the 0.8.10 plist —
   expected exactly once per 0.8.10 install, never again after the #764 launcher is written).
+  ✓ **The record, 2 Oct 2026 (ledger #768):** every OS's relauncher writes `logs/relaunch.log`
+  under rexenv's data folder — what it was told, how the wait ended (`ParentWait`: exited /
+  already gone / still alive at the cap / unwatchable, with the seconds) and how the launch
+  ended (`open`'s exit code or the spawn error) — to a `--log <dir>` when given (the live checks'
+  fixture root), else the app's log dir; L0 format/rotation/parse + a TEXT guard over the three
+  relaunchers (plant-proven), `app_relaunch_check` asserts the record (PASS, dev Mac).
+  **Still open — the VM leg:** the next update on the 15.8 VM reopens, or `relaunch.log` names
+  why not (`docs/SMOKE-TEST.md` § In-app self-update; on macOS the OLD side's binary runs the
+  relauncher, so the file first appears on the update FROM a build carrying #768).
 - [ ] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
   place** (found 30 Sep 2026 on the Win11 VM, 0.8.11's third draft over its second): the
   silent install wrote the registry (`DisplayVersion` 0.8.11), `rex.exe` and the task, but the

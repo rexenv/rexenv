@@ -20,6 +20,7 @@
 //! `PrivilegeManager`** — the macOS rules, kept.
 
 use super::app_bundle_rules as rules;
+use crate::core::app_update::{ParentWait, RelaunchArgs};
 use crate::error::{Error, Result};
 use crate::platform::traits::{
     AppBundle, BundleFacts, InstallKind, Leftover, PromptReason, StagedBundle, StagedExpect,
@@ -346,11 +347,19 @@ impl AppBundle for LinuxAppBundle {
 }
 
 /// The relauncher: wait for the swapping process to be gone (pidfd, capped), then start the
-/// bundle — `/usr/bin/rexenv` or the AppImage — detached in its own session.
-pub fn run_relauncher(args: crate::core::app_update::RelaunchArgs) -> i32 {
-    use crate::core::app_update::RelaunchArgs;
-    let RelaunchArgs { parent, parent_start, bundle } = args;
-    wait_for_parent(parent, &parent_start);
+/// bundle — `/usr/bin/rexenv` or the AppImage — detached in its own session. Its record goes to
+/// `relaunch.log` (ledger #768): what it was told, how the wait ended, how the start ended.
+pub fn run_relauncher(args: RelaunchArgs) -> i32 {
+    use crate::core::app_update::RelaunchLog;
+    let RelaunchArgs { parent, parent_start, bundle, log_dir } = args;
+    let log = RelaunchLog::in_dir(&log_dir.unwrap_or_else(crate::platform::log_dir_or_temp));
+    log.note(&format!(
+        "started: waiting for pid {parent} (token {parent_start}) to exit, then starting {}",
+        bundle.display()
+    ));
+    let began = std::time::Instant::now();
+    let waited = wait_for_parent(parent, &parent_start);
+    log.note(&format!("parent {parent} {} after {:.1}s", waited.describe(), began.elapsed().as_secs_f64()));
     let mut cmd = crate::platform::command(&bundle);
     cmd.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     {
@@ -358,8 +367,12 @@ pub fn run_relauncher(args: crate::core::app_update::RelaunchArgs) -> i32 {
         cmd.process_group(0);
     }
     match cmd.spawn() {
-        Ok(_) => 0,
+        Ok(child) => {
+            log.note(&format!("started {} (pid {})", bundle.display(), child.id()));
+            0
+        }
         Err(e) => {
+            log.note(&format!("could not start {}: {e}", bundle.display()));
             eprintln!("relauncher: could not start {}: {e}", bundle.display());
             1
         }
@@ -367,27 +380,36 @@ pub fn run_relauncher(args: crate::core::app_update::RelaunchArgs) -> i32 {
 }
 
 /// Block until `parent` exits, turns out to be somebody else, or two minutes pass — the
-/// macOS cap, for the macOS reason (a "Keep sharing" at the quit gate keeps the pid alive).
-fn wait_for_parent(parent: u32, parent_start: &str) {
+/// macOS cap, for the macOS reason (a "Keep sharing" at the quit gate keeps the pid alive) —
+/// and say which.
+fn wait_for_parent(parent: u32, parent_start: &str) -> ParentWait {
     let ours = || super::process_start_token(parent).is_some_and(|t| t == parent_start);
     if !ours() {
-        return;
+        return ParentWait::AlreadyGone;
     }
     // SAFETY: a raw syscall with integer arguments; the descriptor is closed below.
     let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, parent as libc::pid_t, 0 as libc::c_uint) };
     if fd < 0 {
-        return;
+        // ESRCH: gone between the check and the open — the answer. Anything else: no pidfd.
+        let errno = std::io::Error::last_os_error().raw_os_error();
+        return if errno == Some(libc::ESRCH) { ParentWait::AlreadyGone } else { ParentWait::Unwatchable };
     }
     let fd = fd as libc::c_int;
     if !ours() {
         // SAFETY: closing a descriptor this function opened.
         unsafe { libc::close(fd) };
-        return;
+        return ParentWait::AlreadyGone;
     }
     let mut pfd = libc::pollfd { fd, events: libc::POLLIN, revents: 0 };
     // SAFETY: `pfd` is a live local; the timeout is the cap in milliseconds.
-    unsafe {
-        libc::poll(&mut pfd, 1, 120_000);
+    let n = unsafe {
+        let n = libc::poll(&mut pfd, 1, 120_000);
         libc::close(fd);
+        n
+    };
+    match n {
+        0 => ParentWait::TimedOut,
+        n if n > 0 => ParentWait::Exited,
+        _ => ParentWait::Unwatchable,
     }
 }

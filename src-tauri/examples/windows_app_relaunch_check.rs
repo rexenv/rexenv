@@ -26,7 +26,7 @@
 
 #![cfg_attr(not(target_os = "windows"), allow(dead_code, unused_imports))]
 
-use rexenv_lib::core::app_update::{parse_relaunch_args, RelaunchArgs, RELAUNCH_FLAG};
+use rexenv_lib::core::app_update::{parse_relaunch_args, RelaunchArgs, RELAUNCH_FLAG, RELAUNCH_LOG, RELAUNCH_LOG_FLAG};
 use std::path::Path;
 use std::process::{Command, ExitCode};
 use std::time::{Duration, Instant};
@@ -138,6 +138,7 @@ async fn main() -> ExitCode {
                 parent: 4242,
                 parent_start: "133000000000000000".into(),
                 bundle: "C:\\Users\\x\\AppData\\Local\\rexenv".into(),
+                log_dir: None,
             }),
         &format!("{:?}", parse_relaunch_args(&argv)),
     );
@@ -171,6 +172,9 @@ async fn main() -> ExitCode {
         .arg(pid.to_string())
         .arg(&token)
         .arg(&bundle)
+        // `--log <root>`: the record goes into the sandbox, never the real app's log dir.
+        .arg(RELAUNCH_LOG_FLAG)
+        .arg(&root)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -194,6 +198,13 @@ async fn main() -> ExitCode {
         "the relauncher never started the bundle after its parent exited",
     );
     let _ = helper.wait();
+    // The record (ledger #768): the wait and the start, in the --log dir.
+    let record = std::fs::read_to_string(root.join(RELAUNCH_LOG)).unwrap_or_default();
+    checks.is(
+        "relaunch.log names the parent's exit and the started rexenv.exe",
+        record.contains(&format!("parent {pid} exited after")) && record.contains("started ") && record.contains("rexenv.exe (pid "),
+        &format!("relaunch.log:\n{record}"),
+    );
 
     // ── 3. A recycled pid is not waited on ───────────────────────────────────
     let mut other = spawn_parent().expect("second fixture parent");
@@ -203,6 +214,8 @@ async fn main() -> ExitCode {
         .arg(other.id().to_string())
         .arg("1")
         .arg(&bundle)
+        .arg(RELAUNCH_LOG_FLAG)
+        .arg(&root)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -214,6 +227,12 @@ async fn main() -> ExitCode {
         "the relauncher waited on a process it could not identify",
     );
     let _ = wrong.wait();
+    let record = std::fs::read_to_string(root.join(RELAUNCH_LOG)).unwrap_or_default();
+    checks.is(
+        "relaunch.log says the stranger was already gone, in ParentWait's words",
+        record.contains(&format!("parent {} was already gone", other.id())),
+        &format!("relaunch.log:\n{record}"),
+    );
     checks.is(
         "and it did not wait for that unrelated process to exit",
         other.try_wait().ok().flatten().is_none(),

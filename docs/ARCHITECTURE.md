@@ -1159,6 +1159,12 @@ honest footer —
   a build that is neither asks for none and `fetch` refuses rather than guess (ledger #729,
   #730; `linux_app_swap_check` is the L1). The relauncher is the same `--relaunch-after`
   self-exec, waiting on a pidfd and then starting `/usr/bin/rexenv` or the image detached.
+  **Every OS's relauncher leaves `logs/relaunch.log`** under rexenv's data folder (#768, 2 Oct
+  2026): what it was told, how the wait ended (`ParentWait` — exited, already gone, still alive
+  at the cap, unwatchable — with the seconds), how the launch ended (`open`'s exit code, or the
+  spawn error). The 30 Sep reopen that did not happen on the 15.8 VM had left no trace at all:
+  the helper's stderr is `/dev/null` by design. The live checks pass `--log <fixture dir>` so
+  the real file is never a test's.
   **The relaunch** (T4) is a QUIT: `app_update_apply` ends in `app.exit(0)`, so
   `ExitRequested` runs the same live-share confirm every other quit passes through, and
   `RunEvent::Exit` — reached only once that gate agreed — spawns a detached helper
