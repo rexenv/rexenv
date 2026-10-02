@@ -72,7 +72,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `linux/` — real since 24 Sep 2026 (`libcompat.rs`: the `libaio.so.1 → .1t64` shim MySQL needs on 24.04+, #731; `docs/PLAN-linux-port.md`): `mod.rs` the twelve impls (XDG paths,
   `pkexec`, `/proc` + `ss` supervision, `xdg-open`/D-Bus reveal, PATH-found editors/browsers/terminals,
   an autostart `.desktop`, systemd user unit for the DNS agent and system unit for the edge, a
-  a dummy-link DNS route per TLD (`dnsroute.rs` — the resolved drop-in it replaced is measured wrong
+  a dummy-link DNS route per TLD (`dnsroute.rs` — `classify` weighs marker, liveness and this build's shape, an older shape a `route_notice` never MISSING, #769; the resolved drop-in it replaced is measured wrong
   there), NSS + system-store CA trust; in-app update in `app_bundle.rs` — `.deb` via `dpkg -i`
   in the polkit step, AppImage via `renameat2` exchange, `run_relauncher` on a pidfd, ledger
   #729/#730), with the pure

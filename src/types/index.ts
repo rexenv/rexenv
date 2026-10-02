@@ -1080,7 +1080,16 @@ export interface DnsStatus {
   port: number;
   resolverInstalled: boolean; // this OS routes the TLD to rexenv
   resolverPath: string;
+  /** The backbone route works but an older rexenv wrote it (Linux) — the backend's sentence,
+   *  shown beside "installed" with a Re-apply; null everywhere else (ledger #769). */
+  routeNotice: string | null;
   caTrusted: boolean; // local CA trusted for THIS user (per-user, unlike the resolver)
+}
+
+/** What `repairResolver` did (mirrors the Rust RepairOutcome, ledger #769). */
+export interface RepairOutcome {
+  tld: string;
+  action: "installed" | "reapplied" | "unchanged";
 }
 
 /** One WordPress.org plugin-directory search hit (mirrors the Rust WpOrgPlugin). */

@@ -2993,10 +2993,14 @@ fn cmd_tld(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        return outln!(
-            "✓ .{} resolves here again — sites on it should load now",
-            r["tld"].as_str().unwrap_or(&tld)
-        );
+        let tld = r["tld"].as_str().unwrap_or(&tld);
+        // Three outcomes, three sentences (ledger #769): a repair that found nothing to do must
+        // not claim a fix, and a re-apply must say the route worked throughout.
+        return match r["action"].as_str() {
+            Some("reapplied") => outln!("✓ .{tld} route re-applied — this version's route is in place (it kept working throughout)"),
+            Some("unchanged") => outln!("✓ .{tld} already resolves here — nothing to repair"),
+            _ => outln!("✓ .{tld} resolves here again — sites on it should load now"),
+        };
     }
     // `--remove` takes a resolver file back OUT — ours only, and only for a
     // TLD no site answers on. Nothing does this automatically (a site delete
@@ -4028,6 +4032,11 @@ fn cmd_status(json_output: bool) {
             if resolver { "installed" } else { "MISSING" },
             if ca { "trusted" } else { "NOT TRUSTED" },
         );
+        // A route an older rexenv wrote still works, so it is a note UNDER the line, never
+        // "MISSING" (ledger #769): the sentence is the app's, the verb to type is this CLI's.
+        if let Some(notice) = dns["routeNotice"].as_str() {
+            outln!("         {notice} → rex tld --repair rex");
+        }
     }
     // One line, and only when there IS one — an update line on every status
     // call would be noise on the 99 runs where nothing is offered. It names

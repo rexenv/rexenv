@@ -94,6 +94,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   its existing sites. *Done when:* an app whose route works but whose unit is an older rexenv
   shape says so ("route from an older rexenv — re-apply" with the one prompt) or re-applies it
   in the update's own polkit, and never opens the Welcome screen over an install with sites.
+  ✓ **Code, 2 Oct 2026 (ledger #769):** a Linux route that still routes is installed whatever rexenv
+  wrote its script/unit — `dnsroute::classify` weighs marker + liveness + this build's shape, an older
+  shape becomes `DnsManager::route_notice` (Linux only; macOS/Windows `None`): `rex status` prints the
+  sentence under the DNS line with `rex tld --repair rex`, Settings shows it with a Re-apply button, and
+  the repair verb (`core::dns::repair_resolver`: installed / re-applied / unchanged — CLI, Settings, MCP)
+  re-applies it with ONE polkit; `ensure_resolver` leaves a working route alone, so the update itself
+  never prompts. No Welcome: `resolverInstalled` stays true. L0 on the VM's verbatim `resolvectl` output
+  + 0.8.10's unit shape (plant-proven), TEXT on the command (plant-proven). **Still open — the VM leg:**
+  the VM's unit is already the current shape, so the proof is a hand-written 0.8.10 unit there
+  (`docs/SMOKE-TEST.md` § Linux): installed + the notice, Re-apply once, no Welcome.
 - [x] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
   Sep 2026, 22.04 VM): the CLI's `println!` on a closed pipe aborts with a Rust panic on stderr.
   *Done when:* a closed stdout ends the command quietly (SIGPIPE default, or the writes checked)

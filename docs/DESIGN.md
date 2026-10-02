@@ -32,6 +32,11 @@ the shipped UI toward one.
 ## Honest-UI rules (design-level, enforced in code)
 
 - Status derives from reality (ownership AND liveness) — no fake per-site toggles.
+- **A thing that works is never shown as missing.** A Linux DNS route an older rexenv wrote still
+  routed every name, and 0.8.11 said "resolver MISSING" and opened onboarding's Welcome over three
+  sites (30 Sep 2026, #769). The shape on disk is now an amber NOTICE beside "installed" with a
+  Re-apply — the sentence is the backend's — and "not installed" is reserved for a route that does
+  not route.
 - Progress moves only on real completions; 100% only when settled; failure/cancel
   FREEZE the bar in place, never roll it back.
 - Refusals name the consequence ("a tunnel would publish X"), never "busy".

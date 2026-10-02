@@ -1460,7 +1460,7 @@ impl<Rt: tauri::Runtime> user_sites::SystemOps for AppSiteCreator<Rt> {
         Box::pin(async move { crate::commands::settings::set_default_tld(self.state()?, tld) })
     }
     fn repair_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
-        Box::pin(async move { crate::commands::system::repair_resolver(self.state()?, tld).await })
+        Box::pin(async move { crate::commands::system::repair_resolver(self.state()?, tld).await.map(|o| o.action.as_str().to_string()) })
     }
     fn remove_resolver<'a>(&'a self, tld: String) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
         Box::pin(async move { crate::commands::system::remove_resolver(self.state()?, tld).await })

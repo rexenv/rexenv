@@ -2969,6 +2969,18 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
+- [ ] **A route an older rexenv wrote is installed, with a notice — never MISSING, never the Welcome
+      screen** (ledger #769): write 0.8.10's unit by hand — `sudo sed -i 's|^ExecStop=.*|ExecStop=/sbin/ip
+      link del rexenv0|' /etc/systemd/system/rexenv-dns-route.service && sudo systemctl daemon-reload`
+      (the route keeps routing: `resolvectl query -i rexenv0 probe.rex` → 127.0.0.1) → `rex status`
+      reads `resolver installed` AND the line under it "Your .rex route was set up by an older rexenv.
+      It works — re-apply it once … → rex tld --repair rex"; Settings → DNS shows the same sentence with
+      **Re-apply**; the app opens on Sites, not onboarding. Re-apply (or `rex tld --repair rex`) → ONE
+      polkit → "✓ .rex route re-applied — this version's route is in place (it kept working
+      throughout)", the unit's `ExecStop` is `/usr/bin/resolvectl revert rexenv0` again, the notice gone;
+      `rex tld --repair rex` once more → "already resolves here — nothing to repair", no prompt. **Why:**
+      the 0.8.10 → 0.8.11 update (30 Sep 2026) read that unit as MISSING and opened Welcome over three
+      sites.
 - [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user") — from 0.8.11 on, the UPDATE's sentence, "rexenv

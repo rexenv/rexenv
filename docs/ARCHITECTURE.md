@@ -459,6 +459,13 @@ Live-proven end to end by `site_stop_start_check`.
   lose (29 Sep 2026 something reverted them after a re-setup while status said "resolver installed"),
   and a lost route reading `Absent` is what sends the app to its setup step to re-apply it. The file
   and the NRPT rule need no such check: on macOS and Windows they ARE the live state.
+  **And liveness, not the shape on disk, decides "installed"** (#769, 2 Oct 2026): 0.8.11 read 0.8.10's
+  unit as not installed while the route routed, and opened Welcome over an install with sites. A
+  script or unit that is not this build's is `DnsManager::route_notice` — a sentence beside
+  "installed" in Settings and `rex status`, re-applied with one polkit by the repair verb
+  (`core::dns::repair_resolver`: installed / re-applied / unchanged) — and `ensure_resolver` leaves a
+  working route alone, so an update never prompts on its own; only a machine without `resolvectl`
+  keeps the older rule (an older script reads Absent).
 - **On Windows a TLD's route is an NRPT rule** (#618, W6 S4): `WindowsDns` reads every rule from the
   registry (`DnsPolicyConfig`, local and Group Policy — readable without elevation, measured) and
   `windows/nrpt_rules.rs` decides. Ours is exactly: a local rule, comment `rexenv`, the one namespace

@@ -169,21 +169,13 @@ impl Paths for LinuxPaths {
 /// A marker per TLD under `/etc/rexenv/dns.d`, applied to the dummy link `rexenv0` by a root
 /// unit (`dnsroute.rs` — why not a resolved drop-in is measured there).
 pub struct LinuxDns;
-impl DnsManager for LinuxDns {
-    fn route_label(&self, tld: &str) -> String {
-        dnsroute::marker_path(tld).display().to_string()
-    }
-    fn route_contents(&self, port: u16) -> String {
-        dnsroute::signature(port)
-    }
-    /// Ours only while the link is LIVE too (`dnsroute::live_given`, ledger #741): a route whose
-    /// marker is in place but that resolved no longer routes reads as not installed, so the app
-    /// offers its setup step and the unit re-applies. macOS and Windows need no such check — the
-    /// resolver file and the NRPT rule ARE the live state; nothing else can quietly lose them.
-    fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
-        let marker = dnsroute::owner_of(tld, port);
+impl LinuxDns {
+    /// The three facts `dnsroute::classify` weighs: the marker's owner, `resolvectl status rexenv0`
+    /// (`None` when there is no `resolvectl`, `Err` when the call failed), and the script + unit on disk.
+    fn verdict(&self, tld: &str, port: u16) -> dnsroute::RouteVerdict {
+        let marker = dnsroute::marker_owner(tld, port);
         if marker != ResolverOwner::Ours {
-            return marker;
+            return dnsroute::RouteVerdict { owner: marker, older_shape: false };
         }
         let status = which("resolvectl").map(|r| {
             crate::platform::command(r)
@@ -194,7 +186,34 @@ impl DnsManager for LinuxDns {
                 .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
                 .ok_or(())
         });
-        dnsroute::live_given(marker, status.as_ref().map(|r| r.as_deref().map_err(|_| ())), tld, port)
+        let (script, unit) = dnsroute::installed_files();
+        dnsroute::classify(
+            marker,
+            status.as_ref().map(|r| r.as_deref().map_err(|_| ())),
+            script.as_deref(),
+            unit.as_deref(),
+            tld,
+            port,
+        )
+    }
+}
+impl DnsManager for LinuxDns {
+    fn route_label(&self, tld: &str) -> String {
+        dnsroute::marker_path(tld).display().to_string()
+    }
+    fn route_contents(&self, port: u16) -> String {
+        dnsroute::signature(port)
+    }
+    /// Ours only while the link is LIVE too (`dnsroute::classify`, ledger #741): a route whose
+    /// marker is in place but that resolved no longer routes reads as not installed, so the app
+    /// offers its setup step and the unit re-applies. A route that routes but whose script or unit
+    /// an older rexenv wrote stays Ours — `route_notice` carries that (#769). macOS and Windows need
+    /// no such check — the resolver file and the NRPT rule ARE the live state.
+    fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner {
+        self.verdict(tld, port).owner
+    }
+    fn route_notice(&self, tld: &str, port: u16) -> Option<String> {
+        self.verdict(tld, port).older_shape.then(|| dnsroute::older_shape_notice(tld))
     }
     fn our_route_tlds(&self, port: u16) -> Vec<String> {
         dnsroute::our_tlds(port)

@@ -235,6 +235,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   something reverted them after a re-setup (29 Sep 2026; `resolvectl revert rexenv0` reproduces the
   state). The marker alone therefore never says "installed": Linux `route_owner` also asks resolved
   whether the link routes the TLD (#741).
+- **A route that routes is installed; the shape on disk is advice** (#769, 2 Oct 2026): 0.8.11 read
+  0.8.10's unit (`ExecStop=/sbin/ip link del`) as "not installed" while resolved still routed `~rex`
+  through `rexenv0`, and opened onboarding's Welcome over an install with sites. `classify` now lets
+  liveness decide and makes an older script/unit a `route_notice` (Settings' Re-apply, `rex tld
+  --repair`, one polkit); only where `resolvectl` is missing does the 28 Sep script rule still read
+  an older script as Absent.
 - **A VM's or WSL's upstream DNS is the HOST's, and a host running rexenv answers `.rex` itself.**
   That hid the dead route above through every Linux proof for four days. Ask WHICH link answered
   (`resolvectl query -i rexenv0`, `Current Scopes:`), never only what the answer was — the same

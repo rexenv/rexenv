@@ -904,9 +904,17 @@ function DnsSslSetting() {
   });
   const repair = useMutation({
     mutationFn: (tld: string) => repairResolver(tld),
-    onSuccess: (tld) => {
+    onSuccess: ({ tld, action }) => {
       void qc.invalidateQueries({ queryKey: ["unresolvable-tlds"] });
-      toast.success(`.${tld} resolves here again — sites on it should load now.`);
+      void qc.invalidateQueries({ queryKey: ["dns-status"] });
+      // Three outcomes, three sentences: a repair that found nothing to do must not claim a fix.
+      toast.success(
+        action === "reapplied"
+          ? `.${tld} route re-applied — this version's route is in place (it kept working throughout).`
+          : action === "unchanged"
+            ? `.${tld} already resolves here — nothing to repair.`
+            : `.${tld} resolves here again — sites on it should load now.`,
+      );
     },
     onError: (e) => toastBackendError(e),
   });
@@ -969,6 +977,23 @@ function DnsSslSetting() {
               </div>
             </div>
           </div>
+        {dns?.routeNotice && (
+          <div className="col-span-2 mt-3 flex items-center justify-between gap-3 rounded-[11px] border border-status-warning-border bg-rex-well px-[14px] py-[11px]">
+            {/* The sentence is the backend's — the rule lives beside the Linux route it describes.
+                A route an older rexenv wrote still WORKS, so this is amber advice beside
+                "installed", never the not-installed state that sent 0.8.11 back to onboarding's
+                Welcome over an install with sites (30 Sep 2026, ledger #769). */}
+            <div className="text-[0.71875rem] leading-snug text-rex-text-muted">{dns.routeNotice}</div>
+            <Button
+              variant="secondary"
+              disabled={repair.isPending}
+              // The status card reports the BACKBONE route (`core::tld::BACKBONE_TLD`).
+              onClick={() => repair.mutate("rex")}
+            >
+              {repair.isPending ? "Re-applying…" : "Re-apply"}
+            </Button>
+          </div>
+        )}
         {unresolvable.length > 0 && (
           <div className="mt-3 rounded-[11px] border border-status-warning-border bg-rex-well px-[14px] py-[11px]">
             <div className="text-[0.8125rem] font-medium text-rex-text">

@@ -120,8 +120,16 @@ pub struct UnresolvableTld {
 /// must run the same code the UI would (#57): the Settings screen is the
 /// obvious second caller, and a repair button there must not be a second
 /// implementation of this rule.
+/// What `repair_resolver` did for which TLD — the CLI and Settings word their line from `action`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepairOutcome {
+    pub tld: String,
+    pub action: core::dns::RepairAction,
+}
+
 #[tauri::command]
-pub async fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<String> {
+pub async fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<RepairOutcome> {
     let tld = tld.trim().trim_start_matches('.').to_ascii_lowercase();
     let in_use = {
         let conn = state
@@ -139,16 +147,12 @@ pub async fn repair_resolver(state: State<'_, AppState>, tld: String) -> Result<
     }
     // `async` + `while_prompting`: as a sync command this ran on the MAIN thread,
     // and the whole window froze for as long as the admin prompt stayed open.
-    core::prompt::while_prompting(|| {
-        core::dns::ensure_resolver(
-            state.platform.as_ref(),
-            &tld,
-            core::dns::DEFAULT_DNS_PORT,
-            // The user asked for exactly this; prompting is the point.
-            core::dns::ResolverPrompt::Allow,
-        )
+    let action = core::prompt::while_prompting(|| {
+        // The user asked for exactly this; prompting is the point — and a working route an older
+        // rexenv wrote is RE-APPLIED here, the one verb that does (`core::dns::repair_resolver`, #769).
+        core::dns::repair_resolver(state.platform.as_ref(), &tld, core::dns::DEFAULT_DNS_PORT)
     })?;
-    Ok(tld)
+    Ok(RepairOutcome { tld, action })
 }
 
 /// Remove the OS resolver file for a TLD NO site answers on any more — the
@@ -423,6 +427,10 @@ pub struct DnsStatus {
     /// The backbone OS resolver file (`/etc/resolver/rex`) is installed.
     pub resolver_installed: bool,
     pub resolver_path: String,
+    /// The backbone route is ours and works, but an older rexenv wrote it (Linux: the script or
+    /// unit on disk is not this build's) — the sentence to show beside "installed", with a
+    /// Re-apply; `None` everywhere else (ledger #769). Never a reason to say "not installed".
+    pub route_notice: Option<String>,
     /// The local CA is trusted for THIS OS user (macOS: login keychain). Per-user,
     /// unlike the resolver file — a fresh account needs its own trust step even
     /// when the resolver already exists, so first-run routing checks BOTH.
@@ -455,6 +463,7 @@ pub fn dns_status(
         port,
         resolver_installed: route.route_owner(core::tld::BACKBONE_TLD, port) != core::dns::ResolverOwner::Absent,
         resolver_path: route.route_label(core::tld::BACKBONE_TLD),
+        route_notice: route.route_notice(core::tld::BACKBONE_TLD, port),
         ca_trusted: state.platform.cert_trust().is_trusted(&state.ca.cert_path),
     }
 }

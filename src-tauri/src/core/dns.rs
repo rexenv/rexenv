@@ -568,6 +568,49 @@ pub fn ensure_resolver(
     }
 }
 
+/// What the repair verb did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RepairAction {
+    /// The route was missing and is now ours.
+    Installed,
+    /// The route was ours and working, but an older rexenv had written it (`route_notice`); this
+    /// build's shape is now in place.
+    Reapplied,
+    /// The route was ours and this build's already — nothing to do, said so.
+    Unchanged,
+}
+
+impl RepairAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Installed => "installed",
+            Self::Reapplied => "reapplied",
+            Self::Unchanged => "unchanged",
+        }
+    }
+}
+
+/// The repair verb — `rex tld --repair`, Settings' Repair and Re-apply, MCP `tld repair`: put back
+/// a missing route, RE-APPLY one an older rexenv wrote, say so when there is nothing to do. One
+/// prompt at most; a foreign route is refused like everywhere else. This is the ONE verb that
+/// re-applies a working route (ledger #769): `ensure_resolver` — site creation, setup — leaves a
+/// working route alone, because a prompt the user did not ask for is not how an update finishes.
+pub fn repair_resolver(platform: &dyn Platform, tld: &str, port: u16) -> Result<RepairAction> {
+    match resolver_owner(platform, tld, port) {
+        ResolverOwner::Absent => {
+            ensure_resolver(platform, tld, port, ResolverPrompt::Allow)?;
+            Ok(RepairAction::Installed)
+        }
+        ResolverOwner::Ours if platform.dns().route_notice(tld, port).is_some() => {
+            configure_resolver(platform, tld, port)?;
+            Ok(RepairAction::Reapplied)
+        }
+        ResolverOwner::Ours => Ok(RepairAction::Unchanged),
+        ResolverOwner::Foreign { .. } => Err(foreign_resolver_error(&platform.dns().route_label(tld))),
+    }
+}
+
 /// May this operation raise a privileged password prompt to install a missing
 /// resolver file — or must it FAIL instead?
 ///
@@ -930,6 +973,23 @@ pub fn port_bound(port: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #769 — **the repair command is the ONE verb that re-applies a working route**: it goes
+    /// through `core::dns::repair_resolver` (install / re-apply / unchanged), never straight to
+    /// `ensure_resolver`, which leaves a working route alone by design — and the CLI and MCP arms run
+    /// that same command (#57).
+    #[test]
+    fn the_repair_command_runs_the_repair_verb_not_ensure() {
+        let src = include_str!("../commands/system.rs");
+        let at = src.find("pub async fn repair_resolver(").expect("the repair command");
+        let end = src[at..].find("\n}\n").map(|e| at + e).unwrap_or(src.len());
+        let body = &src[at..end];
+        assert!(body.contains("core::dns::repair_resolver("), "the command must run the repair verb");
+        assert!(!body.contains("ensure_resolver("), "a repair that calls ensure_resolver leaves an older route unapplied");
+        for (what, hay) in [("cli_server", include_str!("../cli_server.rs")), ("mcp", include_str!("../mcp_server.rs"))] {
+            assert!(hay.contains("commands::system::repair_resolver("), "{what}: the arm must run the same command the UI invokes");
+        }
+    }
+
     /// **The watchdog kicks the agent only after `PROBE_MISS_POLLS` consecutive silent
     /// polls, each of `PROBE_TRIES` datagrams** — one missed datagram, or one missed poll,
     /// is a slow VM, not a dead agent (the 27–29 Sep 2026 false kicks). The patient probe

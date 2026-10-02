@@ -87,6 +87,16 @@ pub trait DnsManager: Send + Sync {
     fn route_contents(&self, port: u16) -> String;
     /// Who owns `tld`'s route now. One that exists but cannot be read is Foreign, never Absent.
     fn route_owner(&self, tld: &str, port: u16) -> ResolverOwner;
+    /// A route that is ours and WORKS but was written by an older rexenv — one sentence for the status
+    /// surfaces (Settings, `rex status`), or `None`. Linux in practice: its route is a script and a
+    /// systemd unit whose shape changes between builds (#762), and the 0.8.10 → 0.8.11 update read the
+    /// older shape as MISSING and opened onboarding's Welcome over an install with sites (30 Sep 2026,
+    /// ledger #769). macOS's resolver file and Windows' NRPT rule have ONE shape each, so the default —
+    /// `None` — is their true answer, not a stub. The repair verb (`rex tld --repair`, Settings'
+    /// Re-apply, MCP `tld repair`) re-applies such a route with one prompt (`core::dns::repair_resolver`).
+    fn route_notice(&self, _tld: &str, _port: u16) -> Option<String> {
+        None
+    }
     /// Every TLD whose route is ours, sorted — valid TLD labels only.
     fn our_route_tlds(&self, port: u16) -> Vec<String>;
     /// Every TLD another tool routes, sorted — valid TLD labels only.

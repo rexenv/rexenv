@@ -75,6 +75,7 @@ mod tests {
         ("dns", "take_over_resolver"),
         ("dns", "hand_back_resolver"),
         ("dns", "remove_resolver"),
+        ("dns", "repair_resolver"),
         ("proxy", "start_privileged"),
         ("proxy", "start_edge_daemon"),
         ("proxy", "stop_edge_daemon"),

@@ -20,8 +20,9 @@
 //! **…but "what works" was measured through a host that answered `.rex` itself.** On 28 Sep
 //! 2026 the link turned out to carry NO DNS scope (`Current Scopes: none`): resolved ignores a
 //! link whose only address is link-local, and every `.rex` answer had come from the VM's
-//! upstream — the Mac, running rexenv. The link now carries `LINK_ADDR` (a TEST-NET `/32`), and
-//! a route script older than this build's reads as not installed, so setup rewrites it. Ask
+//! upstream — the Mac, running rexenv. The link now carries `LINK_ADDR` (a TEST-NET `/32`). A
+//! script or unit older than this build's is a NOTICE while the route is live (re-apply once, one
+//! prompt — `classify`, #769), and reads as not installed only where liveness cannot be asked. Ask
 //! resolved WHICH link answered (`resolvectl query -i rexenv0`), never just what the answer was.
 //!
 //! **The shape.** One marker file per TLD under `/etc/rexenv/dns.d/<tld>` — its bytes are the
@@ -85,16 +86,22 @@ pub(crate) fn signature(port: u16) -> String {
     format!("nameserver 127.0.0.1\nport {port}\n")
 }
 
-pub(crate) fn owner_of(tld: &str, port: u16) -> ResolverOwner {
-    let installed = std::fs::read_to_string(SCRIPT_PATH).ok();
-    owner_given(resolver_files::owner_of(&marker_path(tld), &signature(port)), installed.as_deref(), port)
+/// Who owns `tld`'s marker — the shared macOS-shaped classification, nothing else.
+pub(crate) fn marker_owner(tld: &str, port: u16) -> ResolverOwner {
+    resolver_files::owner_of(&marker_path(tld), &signature(port))
 }
 
-/// A marker of ours counts as INSTALLED only while the route script beside it is the one this
-/// build writes. An older script (0.8.8's gave the link no address, so it routed nothing) or a
-/// missing one reads as `Absent`, which is what makes the app offer its setup step again — and
-/// that step rewrites the script. Without this, an update fixes nothing on a machine that already
-/// ran setup: the marker says "installed" forever while the route stays dead.
+/// The route script and unit as installed, `None` where a file is missing — the shape `classify`
+/// compares against this build's.
+pub(crate) fn installed_files() -> (Option<String>, Option<String>) {
+    (std::fs::read_to_string(SCRIPT_PATH).ok(), std::fs::read_to_string(UNIT_PATH).ok())
+}
+
+/// Where liveness CANNOT be asked (no `resolvectl`), a marker of ours counts as INSTALLED only
+/// while the route script beside it is the one this build writes: 0.8.8's gave the link no
+/// address, so it routed nothing, and a missing one routes nothing either — `Absent` is what makes
+/// the app offer its setup step, which rewrites the script. Where liveness CAN be asked,
+/// `classify` lets the live answer decide and makes an older shape a notice instead (#769).
 pub(crate) fn owner_given(marker: ResolverOwner, installed_script: Option<&str>, port: u16) -> ResolverOwner {
     match marker {
         ResolverOwner::Ours if installed_script != Some(script_contents(port).as_str()) => ResolverOwner::Absent,
@@ -146,6 +153,53 @@ fn link_routes(status: &str, tld: &str, port: u16) -> bool {
     }
     let has = |key: &str, want: &str| fields.iter().any(|(k, v)| k == key && v.iter().any(|x| x == want));
     has("Current Scopes", "DNS") && has("DNS Servers", &format!("127.0.0.1:{port}")) && has("DNS Domain", &format!("~{tld}"))
+}
+
+/// What this build makes of a route: who owns the marker, whether resolved routes the TLD through
+/// the link, and whether the script + unit on disk are THIS build's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RouteVerdict {
+    pub owner: ResolverOwner,
+    /// Ours and live, but the shape on disk is not this build's — written by an older rexenv (or a
+    /// file is gone while the link still routes). A notice and a one-prompt re-apply, never MISSING.
+    pub older_shape: bool,
+}
+
+/// The three facts together (ledger #769). `status` is `resolvectl status rexenv0`'s stdout,
+/// `Err(())` when the call failed, `None` when it cannot be asked at all.
+///
+/// **Why the shape is a notice and not `Absent` (30 Sep 2026, 22.04 VM, 0.8.10 → 0.8.11):** the
+/// relaunched 0.8.11 found 0.8.10's unit on disk (`ExecStop=/sbin/ip link del rexenv0`, the shape
+/// #762 rewrote) while resolved still routed `~rex` through `rexenv0` and a fresh name resolved —
+/// and read it as not installed: `rex status` said MISSING and the app opened onboarding's Welcome
+/// over an install with three sites. A route that routes is installed; an older shape is advice.
+pub(crate) fn classify(
+    marker: ResolverOwner,
+    status: Option<Result<&str, ()>>,
+    installed_script: Option<&str>,
+    installed_unit: Option<&str>,
+    tld: &str,
+    port: u16,
+) -> RouteVerdict {
+    if marker != ResolverOwner::Ours {
+        return RouteVerdict { owner: marker, older_shape: false };
+    }
+    let current = installed_script == Some(script_contents(port).as_str()) && installed_unit == Some(unit_contents().as_str());
+    match status {
+        None => RouteVerdict { owner: owner_given(marker, installed_script, port), older_shape: false },
+        Some(s) => match live_given(marker, Some(s), tld, port) {
+            ResolverOwner::Ours => RouteVerdict { owner: ResolverOwner::Ours, older_shape: !current },
+            other => RouteVerdict { owner: other, older_shape: false },
+        },
+    }
+}
+
+/// The sentence the status surfaces show for an older shape — the rule's words beside the rule.
+pub(crate) fn older_shape_notice(tld: &str) -> String {
+    format!(
+        "Your .{tld} route was set up by an older rexenv. It works — re-apply it once (one administrator \
+         prompt) so this version's route is in place."
+    )
 }
 
 pub(crate) fn our_tlds(port: u16) -> Vec<String> {
@@ -374,6 +428,49 @@ mod tests {
         assert_eq!(owner_given(ResolverOwner::Absent, Some(&current), 15353), ResolverOwner::Absent);
         let foreign = ResolverOwner::Foreign { content: None };
         assert_eq!(owner_given(foreign.clone(), None, 15353), foreign, "a foreign route is never reclassified");
+    }
+
+    /// Ledger #769 — **a route an older rexenv wrote that still routes is OURS, with a notice — never
+    /// MISSING.** `unit_0810` is the shape 0.8.10 installed (`ExecStop=/sbin/ip link del rexenv0`, which
+    /// #762 rewrote); on 30 Sep 2026 the relaunched 0.8.11 read it as not installed while resolved still
+    /// routed `~rex` through `rexenv0`, and opened onboarding's Welcome over an install with three sites.
+    #[test]
+    fn an_older_route_shape_that_still_routes_is_ours_with_a_notice_never_missing() {
+        let live = "Link 9 (rexenv0)\n    Current Scopes: DNS\n         Protocols: -DefaultRoute +LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported\nCurrent DNS Server: 127.0.0.1:15353\n       DNS Servers: 127.0.0.1:15353\n        DNS Domain: ~rex\n";
+        let lost = "Link 9 (rexenv0)\nCurrent Scopes: none\n     Protocols: -DefaultRoute +LLMNR -mDNS -DNSOverTLS DNSSEC=no/unsupported\n";
+        let current_script = script_contents(15353);
+        let current_unit = unit_contents();
+        let unit_0810 = current_unit.replace("ExecStop=/usr/bin/resolvectl revert rexenv0\n", "ExecStop=/sbin/ip link del rexenv0\n");
+        assert_ne!(unit_0810, current_unit, "0.8.10's unit is the current one with the link-deleting stop");
+        let old_script = current_script.replace("/sbin/ip addr replace 192.0.2.53/32 dev rexenv0\n", "");
+        let ours = ResolverOwner::Ours;
+        let v = |status, script: &str, unit: &str| classify(ours.clone(), status, Some(script), Some(unit), "rex", 15353);
+        assert_eq!(v(Some(Ok(live)), &current_script, &current_unit), RouteVerdict { owner: ours.clone(), older_shape: false });
+        assert_eq!(
+            v(Some(Ok(live)), &current_script, &unit_0810),
+            RouteVerdict { owner: ours.clone(), older_shape: true },
+            "0.8.10's unit, still routing: ours, with the notice — the 30 Sep failure read Absent here"
+        );
+        assert!(v(Some(Ok(live)), &old_script, &current_unit).older_shape, "an older script that still routes: the same notice");
+        assert_eq!(
+            v(Some(Ok(lost)), &current_script, &unit_0810),
+            RouteVerdict { owner: ResolverOwner::Absent, older_shape: false },
+            "not routing: MISSING whatever the shape — setup re-applies (#741)"
+        );
+        assert_eq!(v(Some(Err(())), &current_script, &current_unit).owner, ResolverOwner::Absent, "resolvectl failing: not routed here");
+        // No resolvectl at all: liveness cannot be asked, so the script's shape is the only evidence (the 28 Sep rule).
+        assert_eq!(v(None, &old_script, &current_unit), RouteVerdict { owner: ResolverOwner::Absent, older_shape: false });
+        assert_eq!(v(None, &current_script, &unit_0810), RouteVerdict { owner: ours.clone(), older_shape: false });
+        assert_eq!(
+            classify(ours.clone(), Some(Ok(live)), None, None, "rex", 15353),
+            RouteVerdict { owner: ours.clone(), older_shape: true },
+            "script or unit gone while the link still routes: re-apply, not MISSING"
+        );
+        let foreign = ResolverOwner::Foreign { content: None };
+        assert_eq!(classify(foreign.clone(), Some(Ok(live)), None, None, "rex", 15353), RouteVerdict { owner: foreign, older_shape: false });
+        assert_eq!(classify(ResolverOwner::Absent, Some(Ok(live)), Some(&current_script), Some(&current_unit), "rex", 15353).owner, ResolverOwner::Absent);
+        let n = older_shape_notice("rex");
+        assert!(n.contains(".rex") && n.contains("older rexenv") && n.contains("re-apply") && n.contains("It works"), "{n}");
     }
 
     #[test]
