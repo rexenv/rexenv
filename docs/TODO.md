@@ -195,7 +195,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **30 Sep 2026, §M for 0.8.11 (the first update on the #757 build, 22.04 arm64 VM):** 0.8.10 →
   0.8.11 through the app, ONE polkit, the app came back by itself, `/var/crash` empty, no dialog —
   0 of 1 with the mitigation; the row stays open until the next update makes it 0 of 2 or more.
-- [ ] **macOS: "Background Items Added" notifications pile up — eleven on the 15.8 VM** (seen 2 Oct
+- [x] **macOS: "Background Items Added" notifications pile up — eleven on the 15.8 VM** (seen 2 Oct
   2026 while running T3 on the installed 0.8.11; screenshot in the session): Notification Centre
   held 11+ identical "Background Items Added — 'rexenv' is an item that can run in the background.
   You can manage this in Login Items & Extensions." cards. macOS posts one each time a login item
@@ -210,11 +210,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Start all over a loaded edge ran `install_command`'s `bootout` + `bootstrap system`, and each
   `bootstrap` is a new BTM registration = one card. The install shell now takes `kickstart -k`
   when the binary, wrapper and plist on disk are byte-identical and the label is loaded (L0
-  plant-proven; RUN as root on the VM twice: pid changed, Generation 11 → 11, site 200). **Residual,
-  deliberately open:** a Stop all → Start all pair still registers once — KeepAlive respawns a
-  killed daemon (`disable` + `kill TERM` measured on the VM), so a stop needs `bootout`; the way out
-  is a `KeepAlive = {PathState: <flag>}` daemon whose stop is `rm flag` + `kill`, which is a
-  change to the edge's liveness contract (#67/#155) for another day. Also seen in the same
+  plant-proven; RUN as root on the VM twice: pid changed, Generation 11 → 11, site 200). ✓ **And the
+  residual closed 3 Oct 2026 (ledger #773):** the daemon's keep-alive is now a SWITCH — `KeepAlive =
+  {PathState: <root flag>}`, no `RunAtLoad`; Stop all lowers the flag and kills (a bounded loop), the job
+  stays loaded, Start all raises the flag and kickstarts — so a Stop all/Start all pair registers nothing
+  and posts no card; a pre-#773 plist still gets `disable` + `bootout` until the first Start all rewrites
+  it. RUN on the VM: a throwaway PathState daemon first, then rexenv's edge through the generated shells
+  (stop/start ×2, start → immediate stop, Generation 12 throughout) and two reboots (flag up → the edge
+  came back by itself; flag down → stayed down, then started). **Owed:** the app-driven Stop all/Start all
+  with this build (SMOKE § Robustness). Also seen in the same
   screenshot: the DNS card on that VM reads "in-process — Running
   inside the app", not "agent" (the 0.8.10 → 0.8.11 update's #761 race left the agent down and
   nothing restored it — `rex status` "answering (in-process, udp 15353)"); the row above about the

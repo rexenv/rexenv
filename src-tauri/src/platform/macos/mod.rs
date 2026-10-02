@@ -1394,6 +1394,25 @@ const EDGE_DAEMON_LABEL: &str = "dev.rexenv.rexenv.edge";
 /// user-writable file).
 const EDGE_ROOT_DIR: &str = "/Library/Application Support/dev.rexenv.rexenv";
 
+/// The edge's ON switch: a root-owned file whose EXISTENCE is the daemon's `KeepAlive`
+/// condition (`PathState`). Start all creates it, Stop all removes it — and that is the whole
+/// stop, with a `kill`: launchd does not respawn a job whose path condition is false, and the
+/// job stays LOADED, so nothing is booted out and nothing is bootstrapped again (ledger #773).
+/// Before 3 Oct 2026 the plist said `KeepAlive=true` and a stop had to be `disable` +
+/// `bootout`; every Start all after one then `bootstrap`ped the plist again, and every
+/// bootstrap of a daemon plist is a new Background Task Management registration — a
+/// "Background Items Added — rexenv" card per Stop all/Start all pair (#772 closed the rest).
+/// Measured on the 15.8 VM with a throwaway daemon, 3 Oct 2026: bootstrap with the flag present
+/// → running; `rm flag` + `kill TERM` → `not running`, still down 14 s later; `touch flag` → running
+/// again by itself; `kickstart -k` → restarted; the item's generation unchanged throughout.
+const EDGE_ENABLED_FLAG: &str = "/Library/Application Support/dev.rexenv.rexenv/edge-enabled";
+
+impl MacosEdgeDaemon {
+    fn flag_path(&self) -> PathBuf {
+        PathBuf::from(EDGE_ENABLED_FLAG)
+    }
+}
+
 impl EdgeSupervisor for MacosEdgeDaemon {
     /// The root LaunchDaemon plist (system domain → lives under `/Library`).
     fn plist_path(&self) -> PathBuf {
@@ -1417,12 +1436,18 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         self.plist_path().exists()
     }
 
-    /// Whether launchd will run the label. `launchctl print-disabled system` is
-    /// readable WITHOUT privilege; after an explicit Stop-all the label shows
-    /// `"…edge" => disabled` (we `disable` before `bootout` so the edge stays down
-    /// across reboots). Unknown/failed reads count as enabled — a wrong "disabled"
-    /// diagnosis would mislead more than a generic one.
+    /// Whether launchd will run the label: the ON switch ([`EDGE_ENABLED_FLAG`]) exists —
+    /// a Stop all removes it — AND the label is not on launchd's system disabled list
+    /// (`launchctl print-disabled system`, readable WITHOUT privilege; a hand `launchctl
+    /// disable`, or a stop by a build before #773, leaves it there). A plist from before the
+    /// flag (`KeepAlive=true`) has no switch to read, so only the disabled list speaks for it.
+    /// Unknown/failed reads count as enabled — a wrong "disabled" diagnosis would mislead more
+    /// than a generic one.
     fn is_enabled(&self) -> bool {
+        let flag_shape = std::fs::read_to_string(self.plist_path()).is_ok_and(|p| p.contains("PathState"));
+        if flag_shape && !self.flag_path().exists() {
+            return false;
+        }
         match std::process::Command::new("launchctl").args(["print-disabled", "system"]).output()
         {
             Ok(o) if o.status.success() => {
@@ -1435,10 +1460,13 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         }
     }
 
-    /// The plist. `KeepAlive`+`RunAtLoad` = up now and after every death/boot;
-    /// `ProcessType Background` (a daemon, not the app's `Interactive`). Runs the
-    /// wrapper via `/bin/sh`; the wrapper `exec`s caddy so this label tracks the
-    /// real edge PID. Start diagnostics go to the same log the osascript path used.
+    /// The plist. `KeepAlive = {PathState: {<flag>: true}}` — up now, after every death and
+    /// after every boot WHILE the flag exists, and left alone once Stop all removes it (no
+    /// `RunAtLoad`: the path condition starts the job at load, measured; `RunAtLoad` would
+    /// start a stopped edge once at every boot). `ProcessType Background` (a daemon, not the
+    /// app's `Interactive`). Runs the wrapper via `/bin/sh`; the wrapper `exec`s caddy so
+    /// this label tracks the real edge PID. Start diagnostics go to the same log the
+    /// osascript path used.
     fn plist_contents(&self, wrapper: &Path, start_log: &Path) -> String {
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -1454,9 +1482,13 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              \t\t<string>{wrapper}</string>\n\
              \t</array>\n\
              \t<key>KeepAlive</key>\n\
-             \t<true/>\n\
-             \t<key>RunAtLoad</key>\n\
-             \t<true/>\n\
+             \t<dict>\n\
+             \t\t<key>PathState</key>\n\
+             \t\t<dict>\n\
+             \t\t\t<key>{flag}</key>\n\
+             \t\t\t<true/>\n\
+             \t\t</dict>\n\
+             \t</dict>\n\
              \t<key>ProcessType</key>\n\
              \t<string>Background</string>\n\
              \t<key>StandardOutPath</key>\n\
@@ -1467,6 +1499,7 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              </plist>\n",
             wrapper = wrapper.display(),
             log = start_log.display(),
+            flag = EDGE_ENABLED_FLAG,
         )
     }
 
@@ -1555,12 +1588,13 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         format!(
             "if cmp -s {src} {bin} && cmp -s {sw} {wrapper} && cmp -s {sp} {plist} && \
              launchctl print system/{label} >/dev/null 2>&1 ; then \
-             launchctl enable system/{label} 2>/dev/null ; launchctl kickstart -k system/{label} ; \
+             touch {flag} ; launchctl enable system/{label} 2>/dev/null ; launchctl kickstart -k system/{label} ; \
              else \
              mkdir -p {bindir} && \
              cp {src} {bin} && chown root:wheel {bin} && chmod 755 {bin} && \
              cp {sw} {wrapper} && chown root:wheel {wrapper} && chmod 755 {wrapper} && \
              cp {sp} {plist} && chown root:wheel {plist} && chmod 644 {plist} && \
+             touch {flag} && \
              {{ launchctl bootout system/{label} 2>/dev/null ; \
              i=0 ; while launchctl print system/{label} >/dev/null 2>&1 && [ $i -lt 50 ] ; do sleep 0.2 ; i=$((i+1)) ; done ; \
              launchctl enable system/{label} 2>/dev/null ; \
@@ -1574,44 +1608,67 @@ impl EdgeSupervisor for MacosEdgeDaemon {
             sp = sh_quote(staged_plist),
             plist = sh_quote(&plist),
             label = EDGE_DAEMON_LABEL,
+            flag = sh_quote(&self.flag_path()),
         )
     }
 
-    /// Privileged shell to EXPLICITLY stop the edge (Stop-all). With `KeepAlive=true`
-    /// a graceful `caddy stop` is instantly relaunched, so a real stop must bout the
-    /// daemon out of the system domain. `disable` keeps it down across reboots until
-    /// the next Start-all bootstraps it again.
+    /// Privileged shell to EXPLICITLY stop the edge (Stop-all): lower the ON switch and
+    /// `kill TERM` the job. With `KeepAlive = {PathState}` launchd does not respawn a job
+    /// whose path is gone, and the job stays LOADED — so the next Start all `touch`es the
+    /// flag and `kickstart`s instead of bootstrapping, and Background Task Management hears
+    /// nothing (ledger #773; before this, `disable` + `bootout` cost a card per pair). A plist
+    /// from before the flag (`KeepAlive=true`, still installed until the first Start all of
+    /// this build rewrites it) has no switch: for it the stop is still `disable` + `bootout`,
+    /// because `kill` alone is respawned (measured).
+    ///
+    /// The kill is a bounded LOOP, not one shot: a stop that lands in the seconds after a
+    /// bootstrap meets a job in `spawn scheduled` — the kill finds no process and launchd
+    /// spawns anyway, the decision having been taken while the switch was still up (the 15.8
+    /// VM, 3 Oct 2026: `rm` + one `kill` at that moment left the edge running). With the
+    /// switch down a second kill is final, so the shell re-reads the state and kills again
+    /// until it is not running, at most ten times half a second apart.
     fn stop_command(&self) -> String {
         format!(
-            "launchctl disable system/{label} 2>/dev/null ; \
-             launchctl bootout system/{label} 2>/dev/null ; :",
+            "if grep -q PathState {plist} 2>/dev/null ; then \
+             rm -f {flag} ; launchctl kill TERM system/{label} 2>/dev/null ; \
+             i=0 ; while launchctl print system/{label} 2>/dev/null | grep -q 'state = running' && [ $i -lt 10 ] ; do \
+             sleep 0.5 ; launchctl kill TERM system/{label} 2>/dev/null ; i=$((i+1)) ; done ; \
+             else \
+             launchctl disable system/{label} 2>/dev/null ; launchctl bootout system/{label} 2>/dev/null ; \
+             fi ; :",
             label = EDGE_DAEMON_LABEL,
+            plist = sh_quote(&self.plist_path()),
+            flag = sh_quote(&self.flag_path()),
         )
     }
 
-    /// Privileged shell to (re)start the edge after an explicit stop: re-enable then
-    /// bootstrap; if it is somehow already loaded, force a fresh start via kickstart.
+    /// Privileged shell to (re)start the edge after an explicit stop: raise the switch,
+    /// re-enable, bootstrap if it is somehow not loaded, and force a fresh start via
+    /// kickstart. (Unused by `core` today — `start_edge_daemon` always goes through
+    /// `install_command`, whose unchanged path does the same.)
     fn start_command(&self) -> String {
         let plist = self.plist_path();
         format!(
-            "launchctl enable system/{label} 2>/dev/null ; \
+            "touch {flag} ; launchctl enable system/{label} 2>/dev/null ; \
              launchctl bootstrap system {plist} 2>/dev/null ; \
              launchctl kickstart -k system/{label}",
             label = EDGE_DAEMON_LABEL,
             plist = sh_quote(&plist),
+            flag = sh_quote(&self.flag_path()),
         )
     }
 
     /// Privileged shell to fully remove the daemon (uninstall / reset): bout it out
-    /// and delete the plist, wrapper, and root-owned binary.
+    /// and delete the plist, wrapper, root-owned binary and the ON switch.
     fn uninstall_command(&self) -> String {
         format!(
             "launchctl bootout system/{label} 2>/dev/null ; \
-             rm -f {plist} {wrapper} {bin}",
+             rm -f {plist} {wrapper} {bin} {flag}",
             label = EDGE_DAEMON_LABEL,
             plist = sh_quote(&self.plist_path()),
             wrapper = sh_quote(&self.wrapper_path()),
             bin = sh_quote(&self.daemon_binary_path()),
+            flag = sh_quote(&self.flag_path()),
         )
     }
 }
@@ -3042,12 +3099,19 @@ mod tests {
 
     #[test]
     fn edge_daemon_keeps_alive_and_uses_root_owned_binary() {
-        // KeepAlive + RunAtLoad = the whole point: relaunch on ANY death and after boot.
+        // KeepAlive on the ON switch's PathState = the whole point: relaunch on ANY death and
+        // after boot WHILE the flag exists, and nothing once Stop all removed it (ledger #773).
+        // No RunAtLoad: the path condition starts the job at load (measured), and RunAtLoad
+        // would start a stopped edge once at every boot.
         let ed = MacosEdgeDaemon;
         let wrapper = ed.wrapper_path();
         let plist = ed.plist_contents(&wrapper, Path::new("/l/edge.log"));
-        assert!(plist.contains("<key>KeepAlive</key>\n\t<true/>"), "plist:\n{plist}");
-        assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
+        assert!(
+            plist.contains(&format!("<key>KeepAlive</key>\n\t<dict>\n\t\t<key>PathState</key>\n\t\t<dict>\n\t\t\t<key>{EDGE_ENABLED_FLAG}</key>\n\t\t\t<true/>")),
+            "plist:\n{plist}"
+        );
+        assert!(!plist.contains("RunAtLoad"), "RunAtLoad would start a stopped edge at boot:\n{plist}");
+        assert!(ed.flag_path().starts_with(EDGE_ROOT_DIR), "the switch lives in the root tree, where only a privileged step writes");
         // A daemon, not the app's Interactive LaunchAgent.
         assert!(plist.contains("<string>Background</string>"));
         assert!(!plist.contains("Interactive"));
@@ -3125,6 +3189,13 @@ mod tests {
         let then_end = cmd.find(" else ").expect("an else branch");
         let then_branch = &cmd[..then_end];
         assert!(then_branch.contains(&format!("launchctl kickstart -k system/{EDGE_DAEMON_LABEL}")), "the unchanged path restarts in place");
+        // Both branches raise the ON switch (#773): a Start all after a Stop all is the unchanged
+        // path, and the flag is what lets launchd keep the job alive again.
+        let flag = format!("touch {}", q(&ed.flag_path()));
+        assert!(then_branch.contains(&flag), "the unchanged path raises the switch: {then_branch}");
+        let rest = &cmd[then_end..];
+        assert!(rest.contains(&flag), "the reinstall path raises the switch before bootstrap: {cmd}");
+        assert!(rest.find(&flag).unwrap() < rest.find("launchctl bootstrap").unwrap());
         assert!(!then_branch.contains("bootstrap") && !then_branch.contains("bootout") && !then_branch.contains("cp "), "the unchanged path copies nothing and registers nothing: {then_branch}");
         assert!(then_branch.contains(&format!("launchctl enable system/{EDGE_DAEMON_LABEL}")), "a Stop all's disable is undone before the kick");
         let else_branch = &cmd[then_end..];
@@ -3132,17 +3203,31 @@ mod tests {
         assert!(cmd.trim_end().ends_with("fi"), "{cmd}");
     }
 
+    /// Ledger #773 — **an explicit stop lowers the switch and kills; it never boots the job out
+    /// of launchd on the flag-shaped plist**, so the Start all after it is an in-place restart
+    /// and Background Task Management hears nothing. The plist from before the flag has no
+    /// switch, so for it the stop is still `disable` + `bootout` (a bare `kill` is respawned —
+    /// measured on the 15.8 VM).
     #[test]
-    fn edge_daemon_stop_boots_out_so_keepalive_cannot_relaunch() {
-        // Explicit stop must remove the job from launchd — otherwise KeepAlive fights
-        // `caddy stop`. disable BEFORE bootout so it stays down across reboots.
-        let cmd = MacosEdgeDaemon.stop_command();
-        assert!(cmd.contains(&format!("launchctl disable system/{EDGE_DAEMON_LABEL}")));
-        assert!(cmd.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")));
-        assert!(
-            cmd.find("disable").unwrap() < cmd.find("bootout").unwrap(),
-            "disable must precede bootout: {cmd}"
-        );
+    fn an_explicit_stop_lowers_the_switch_and_kills_and_boots_out_only_a_legacy_plist() {
+        let ed = MacosEdgeDaemon;
+        let cmd = ed.stop_command();
+        let q = super::sh_quote;
+        let gate = format!("if grep -q PathState {} 2>/dev/null ; then", q(&ed.plist_path()));
+        assert!(cmd.starts_with(&gate), "the installed plist's shape decides: {cmd}");
+        let else_at = cmd.find(" else ").expect("the legacy branch");
+        let (new_shape, legacy) = (&cmd[..else_at], &cmd[else_at..]);
+        assert!(new_shape.contains(&format!("rm -f {}", q(&ed.flag_path()))), "the switch goes down: {new_shape}");
+        assert!(new_shape.contains(&format!("launchctl kill TERM system/{EDGE_DAEMON_LABEL}")), "and the running edge is killed: {new_shape}");
+        // The kill repeats while the job still reads `state = running`, bounded: a stop in the
+        // `spawn scheduled` seconds after a bootstrap found no process to kill and the edge
+        // came up anyway (3 Oct 2026, the VM); with the switch down the second kill is final.
+        assert!(new_shape.contains("while launchctl print system/") && new_shape.contains("grep -q 'state = running'") && new_shape.contains("[ $i -lt 10 ]"), "the kill must repeat, bounded, until the job is not running: {new_shape}");
+        assert_eq!(new_shape.matches("launchctl kill TERM").count(), 2, "one kill, then the loop's: {new_shape}");
+        assert!(!new_shape.contains("bootout") && !new_shape.contains("disable"), "nothing leaves launchd on the new shape: {new_shape}");
+        assert!(legacy.contains(&format!("launchctl disable system/{EDGE_DAEMON_LABEL}")) && legacy.contains(&format!("launchctl bootout system/{EDGE_DAEMON_LABEL}")), "the legacy plist still gets the old stop: {legacy}");
+        assert!(legacy.find("disable").unwrap() < legacy.find("bootout").unwrap(), "disable must precede bootout: {legacy}");
+        assert!(cmd.trim_end().ends_with(':'), "a stop over an uninstalled daemon is a no-op, not an error: {cmd}");
     }
 
     #[test]

@@ -551,9 +551,12 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
 }
 
 /// EXPLICITLY stop the edge daemon (Stop-all). With `KeepAlive` a graceful
-/// `caddy stop` is instantly relaunched, so a real stop must remove the job from
-/// launchd (`disable` + `bootout`) — a privileged op (one prompt). Waits for the
-/// admin socket to go quiet. No-op / best-effort if the daemon isn't installed.
+/// `caddy stop` is instantly relaunched, so a real stop goes through the supervisor's
+/// own switch (macOS: lower the ON-switch file the plist's `KeepAlive` watches, then
+/// `kill` — the job stays loaded, so the next start registers nothing new with
+/// Background Task Management, #773; a plist from before the switch is still
+/// `disable` + `bootout`) — a privileged op (one prompt). Waits for the admin
+/// socket to go quiet. No-op / best-effort if the daemon isn't installed.
 pub fn stop_edge_daemon(platform: &dyn Platform) -> Result<()> {
     platform.privileges().run_privileged(
         &platform.edge().stop_command(),
@@ -566,7 +569,7 @@ pub fn stop_edge_daemon(platform: &dyn Platform) -> Result<()> {
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
     Err(crate::error::Error::Other(
-        "the Caddy edge daemon was booted out but its admin socket is still answering.".to_string(),
+        "the Caddy edge daemon was stopped but its admin socket is still answering.".to_string(),
     ))
 }
 

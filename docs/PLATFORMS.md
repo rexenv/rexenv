@@ -80,7 +80,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | `*.rex` routed to the resolver | `/etc/resolver/<tld>` (root) | NRPT rule `.rex → 127.0.0.1` (UAC) | dummy link `rexenv0` carrying `192.0.2.53/32` + `resolvectl` link-scoped domains; markers `/etc/rexenv/dns.d/<tld>`; `rexenv-dns-route.service` (#717, #734) |
 | Resolver port (`platform::RESOLVER_PORT`) | UDP 15353 | UDP **53** (NRPT has no port field — D2) | UDP 15353 |
 | DNS agent that outlives the app | per-user LaunchAgent (`--dns-agent`) | scheduled task `\rexenv\dns-agent` at logon | systemd **user** unit |
-| Edge on `:443` | root LaunchDaemon | unelevated user process, `127.0.0.1` only (no Firewall alert) | systemd **system** unit + wrapper (#718) |
+| Edge on `:443` | root LaunchDaemon, `KeepAlive` on a root-owned ON-switch file (#773) | unelevated user process, `127.0.0.1` only (no Firewall alert) | systemd **system** unit + wrapper (#718) |
 | Edge admin (never TCP 2019) | unix socket `0600` | AF_UNIX socket via Winsock (#611) | unix socket `0600`, owned by the user across reloads |
 | Privileged step | osascript admin prompt, **foreground** | UAC (`elevation.rs`) | `pkexec` + rexenv's polkit action (#723); the in-app update under its own action + program `/usr/libexec/rexenv/privileged-update` (#747 — pkexec picks an action by program path); absolute paths (`pkexec` strips `PATH`) |
 | Boot/login files survive a power cut (#740) | the step's shell ends in `/bin/sync` (`durable::flushed_script`); the login item + DNS agent plists via `write_durable` | nothing to do: registry, NRPT, cert store, Task Scheduler are the OS's durable stores | the step's shell ends in `/bin/sync`; the autostart entry + DNS user unit via `write_durable` |
@@ -168,7 +168,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   registration — and a "Background Items Added" card.** The edge's item reached `Generation: 11`
   with eleven cards on the 15.8 VM (2 Oct 2026) because Start all always reinstalled. An
   unchanged install now `kickstart -k`s the loaded label instead (#772); `kickstart` leaves the
-  generation alone (measured). `sfltool dumpbtm` (root) shows each item's generation.
+  generation alone (measured). `sfltool dumpbtm` (root) shows each item's generation. **And a
+  `KeepAlive=true` daemon can only be stopped by `bootout`** (`disable` + `kill TERM` respawned in
+  5 s, measured) — which is a registration again at the next start. The edge's keep-alive is
+  therefore a `PathState` SWITCH (#773): stop = `rm flag` + `kill`, the job stays loaded, and the
+  flag decides boot (up → starts at load; down → stays down — both measured with reboots).
 - **Login Items names a LaunchAgent after its program's FILE NAME.** `/bin/sh -c '…'` is listed
   as "sh — Item from unidentified developer" (15.8 VM, 30 Sep 2026); `AssociatedBundleIdentifiers`
   attributes the job to the app only when both carry one Team ID, which an ad-hoc signature does

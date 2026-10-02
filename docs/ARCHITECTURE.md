@@ -354,8 +354,10 @@ Live-proven end to end by `site_stop_start_check`.
   a backgrounded osascript can't show the dialog).
 - **The edge runs under an OS supervisor that keeps it alive — `CaddyHandle::Daemon`**
   (`EdgeSupervisor` trait; macOS = a **root LaunchDaemon**, `dev.rexenv.rexenv.edge`,
-  `KeepAlive=true` + `RunAtLoad=true`). launchd relaunches the edge on ANY death —
-  external SIGTERM, crash, sleep/wake, logout, reboot — so the edge is the one service
+  `KeepAlive = {PathState: <root-owned ON switch>}`, no `RunAtLoad` — #773, 3 Oct 2026; it was
+  `KeepAlive=true` + `RunAtLoad=true` before). While the switch exists launchd relaunches the
+  edge on ANY death — external SIGTERM, crash, sleep/wake, logout, reboot — and starts it at
+  boot; with the switch down (Stop all) it leaves it alone, across reboots too. So the edge is the one service
   that recovers WITHOUT the health watchdog (which can't clear a privileged start's
   prompt). `proxy::start_edge_daemon` stages the plist + launcher-wrapper CONTENTS
   unprivileged, then runs ONE privileged `install_command` — which, when the binary, the
@@ -392,16 +394,19 @@ Live-proven end to end by `site_stop_start_check`.
   fall through to a fresh start, never a silent skip (regression-tested:
   `prepare_edge_restarts_over_a_stale_daemon_handle`,
   `watchdog_bounds_edge_restarting_and_diagnoses_the_giveup`).
-- **Explicit stop costs one prompt, and boots out FIRST.** With `KeepAlive` a graceful
-  `caddy stop` is instantly relaunched, so Stop-all removes the daemon from launchd:
-  `stop_services` runs `proxy::stop_edge_daemon` (privileged `disable` + `bootout`,
-  OUTSIDE the services lock, M4) BEFORE `stop_all` touches any manager state — while the
+- **Explicit stop costs one prompt, and lowers the switch FIRST.** With `KeepAlive` a graceful
+  `caddy stop` is instantly relaunched, so Stop-all goes through the supervisor's own switch:
+  `stop_services` runs `proxy::stop_edge_daemon` (privileged `rm <flag>` + a bounded `kill TERM`
+  loop — the job stays LOADED, so the next Start all is a `touch` + `kickstart` and Background
+  Task Management hears nothing, #773; a plist from before the switch is still `disable` +
+  `bootout`, since `kill` alone is respawned there — measured), OUTSIDE the services lock (M4)
+  BEFORE `stop_all` touches any manager state — while the
   auth prompt sits open the handle stays truthful (`Daemon` && alive), so the watchdog
   cannot re-adopt a doomed edge mid-stop (the race that once left a stale `Daemon`
   handle: edge-restarting spam + Start-all skipping the edge). A cancelled prompt stops
   nothing (all-or-nothing). `stop_all` then skips the admin-stop for a `Daemon` edge
-  (already down); `disable` keeps it down across reboots until the next Start-all
-  (whose `install_command` re-`enable`s before `bootstrap`).
+  (already down); the lowered switch keeps it down across reboots until the next Start-all
+  (whose `install_command` raises it — and `enable`s, for a label a pre-#773 stop disabled).
 - `recover_stale_edge()` (fallback, only when a live edge refuses the reload): probe OUR
   socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege needed),
   polled up to 10×500ms, then a clear error if `:443` still isn't free. Ownership-gated:

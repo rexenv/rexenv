@@ -2055,6 +2055,15 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   Start all pair may add ONE card (the job really left launchd). **◐ 2–3 Oct 2026 (15.8 VM):** the
   generated install shell run as root twice over the installed 0.8.11's edge — Generation 11 → 11,
   pid changed, 200; the app-driven Start all with this build is the row's remaining leg.
+      **And since #773 the Stop all → Start all pair adds no card either:** Stop all → `launchctl print
+      system/dev.rexenv.rexenv.edge` reads `state = not running` (the job still LOADED, the switch
+      `/Library/Application Support/dev.rexenv.rexenv/edge-enabled` gone), sites dark; Start all → running,
+      the switch back, sites 200, Generation unchanged, no card. A reboot after Stop all keeps the edge
+      down; after Start all it comes back on its own before the app. **◐ 3 Oct 2026 (15.8 VM, the
+      generated shells as root, not the app):** stop/start ×2, start → immediate stop, both reboots —
+      all as written, Generation 12 throughout; the first install of the new plist registered once
+      (11 → 12, the content changed), which a user sees as ONE card on the first Start all of this
+      build. The app-driven pair with this build is still owed.
 - [x] **`rex status | head -1` ends quietly** (ledger #767): in a terminal, `rex status | true` and
   `rex -h | true` → exit 0 (`echo $pipestatus` / `${PIPESTATUS[0]}`), nothing on stderr — no
   "failed printing to stdout: Broken pipe" panic. ✓ 2 Oct 2026 (dev Mac, this tree's build;

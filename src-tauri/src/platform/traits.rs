@@ -943,11 +943,11 @@ pub trait EdgeSupervisor: Send + Sync {
     /// Whether the edge daemon is installed (its plist is on disk) — the source of
     /// truth for "is the edge under OS supervision" (vs the legacy osascript spawn).
     fn is_installed(&self) -> bool;
-    /// Whether the supervisor will actually run the daemon (macOS: the label is not
-    /// on launchd's system disabled list — an explicit Stop-all `disable`s it).
-    /// Diagnosis input for the watchdog when a supervised edge stays down; readable
-    /// without privilege. Return `true` when the state can't be determined (avoid a
-    /// false "disabled" diagnosis).
+    /// Whether the supervisor will actually run the daemon (macOS: the ON switch the plist's
+    /// `KeepAlive` watches exists and the label is not on launchd's system disabled list — an
+    /// explicit Stop-all lowers the switch, #773). Diagnosis input for the watchdog when a
+    /// supervised edge stays down; readable without privilege. Return `true` when the state
+    /// can't be determined (avoid a false "disabled" diagnosis).
     fn is_enabled(&self) -> bool;
     /// Path of the OS supervisor definition (macOS: the root LaunchDaemon plist).
     fn plist_path(&self) -> PathBuf;
@@ -957,8 +957,9 @@ pub trait EdgeSupervisor: Send + Sync {
     /// user-writable download cache (re-execing a user-writable file as root is an
     /// LPE). Install copies our caddy here and locks it `root:wheel`.
     fn daemon_binary_path(&self) -> PathBuf;
-    /// Contents of the supervisor definition (macOS plist): keep-alive + start-at-boot,
-    /// running `wrapper`, with start diagnostics to `start_log`.
+    /// Contents of the supervisor definition (macOS plist): keep-alive while the ON switch
+    /// exists — which also starts it at boot — running `wrapper`, with start diagnostics to
+    /// `start_log`.
     fn plist_contents(&self, wrapper: &Path, start_log: &Path) -> String;
     /// Contents of the launcher: hand the admin socket to the invoking user, then
     /// `exec` caddy (so the supervisor tracks caddy's own PID).
@@ -976,8 +977,10 @@ pub trait EdgeSupervisor: Send + Sync {
         -> String;
     /// Privileged shell to (re)start after an explicit stop.
     fn start_command(&self) -> String;
-    /// Privileged shell to EXPLICITLY stop — must remove the job so keep-alive can't
-    /// relaunch it (macOS: `disable` then `bootout`).
+    /// Privileged shell to EXPLICITLY stop — keep-alive must not relaunch it, and the job
+    /// should stay registered with the OS so the next start registers nothing new (macOS:
+    /// lower the switch and `kill`; a plist from before the switch still gets `disable` +
+    /// `bootout`, #773).
     fn stop_command(&self) -> String;
     /// Privileged shell to fully remove the daemon (uninstall / reset).
     fn uninstall_command(&self) -> String;

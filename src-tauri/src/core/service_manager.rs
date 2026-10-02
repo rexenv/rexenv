@@ -48,10 +48,10 @@ struct Bins {
 enum CaddyHandle {
     #[default]
     Stopped,
-    /// Root edge under the OS supervisor (macOS LaunchDaemon `KeepAlive`) — the
-    /// default privileged edge. launchd keeps it alive; an explicit stop must
-    /// `bootout` it (`proxy::stop_edge_daemon`), and the health watchdog does NOT
-    /// mark it down on a transient socket blip (launchd is already relaunching).
+    /// Root edge under the OS supervisor (macOS LaunchDaemon, `KeepAlive` on an ON-switch
+    /// file) — the default privileged edge. launchd keeps it alive; an explicit stop lowers
+    /// the switch and kills it (`proxy::stop_edge_daemon`, #773), and the health watchdog
+    /// does NOT mark it down on a transient socket blip (launchd is already relaunching).
     Daemon,
     /// Legacy root edge started directly via PrivilegeManager/osascript (driven via
     /// the admin API). Still adopted if found live, but no longer the start path.
