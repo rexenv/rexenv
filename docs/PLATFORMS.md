@@ -164,6 +164,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   "Bootstrap failed: 5: Input/output error" while a busy caddy is still leaving (3/3 on the VM
   with connections open, 29 Sep 2026); the edge install waits for `launchctl print` to fail first
   and retries once (#744).
+- **Every `launchctl bootstrap` of a daemon plist is a new Background Task Management
+  registration — and a "Background Items Added" card.** The edge's item reached `Generation: 11`
+  with eleven cards on the 15.8 VM (2 Oct 2026) because Start all always reinstalled. An
+  unchanged install now `kickstart -k`s the loaded label instead (#772); `kickstart` leaves the
+  generation alone (measured). `sfltool dumpbtm` (root) shows each item's generation.
 - **Login Items names a LaunchAgent after its program's FILE NAME.** `/bin/sh -c '…'` is listed
   as "sh — Item from unidentified developer" (15.8 VM, 30 Sep 2026); `AssociatedBundleIdentifiers`
   attributes the job to the app only when both carry one Team ID, which an ad-hoc signature does

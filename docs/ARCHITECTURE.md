@@ -358,10 +358,14 @@ Live-proven end to end by `site_stop_start_check`.
   external SIGTERM, crash, sleep/wake, logout, reboot — so the edge is the one service
   that recovers WITHOUT the health watchdog (which can't clear a privileged start's
   prompt). `proxy::start_edge_daemon` stages the plist + launcher-wrapper CONTENTS
-  unprivileged, then runs ONE privileged `install_command` (`cp` into the root tree +
-  `launchctl bootstrap system`); an already-installed daemon takes the lighter
-  `start_command` (enable + `kickstart`, which re-execs caddy so it re-reads the current
-  Caddyfile). **Security: the daemon executes a `root:wheel 0755` COPY of caddy under
+  unprivileged, then runs ONE privileged `install_command` — which, when the binary, the
+  wrapper and the plist on disk are byte-identical and the label is loaded, is `enable` +
+  `launchctl kickstart -k` (re-execs caddy so it re-reads the current Caddyfile, and registers
+  nothing new with Background Task Management — #772, 2 Oct 2026: every `bootstrap` had been a
+  fresh registration and a "Background Items Added" card, eleven on the 15.8 VM), and otherwise
+  the `cp` into the root tree + bootout → wait → `launchctl bootstrap system` (#744). (Until 2
+  Oct 2026 this paragraph described a lighter `start_command` path that nothing called: Start
+  all always reinstalled.) **Security: the daemon executes a `root:wheel 0755` COPY of caddy under
   `/Library/Application Support/dev.rexenv.rexenv/bin/`, never the user-writable download
   cache** — re-execing a user-writable file as root is an LPE. The plist is `root:wheel
   0644` (launchd refuses a group/other-writable daemon plist). The wrapper hands the 0600

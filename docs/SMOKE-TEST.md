@@ -2048,6 +2048,13 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   updates did not record the TCC log.
 
 ## Robustness (spot-check) — §2
+- [ ] **Start all over a running edge adds no "Background Items Added" card** (ledger #772): with
+  the edge up, Start all (or `rex start`) twice → Notification Centre gains no "Background Items
+  Added — rexenv" card and `sudo sfltool dumpbtm` shows the `dev.rexenv.rexenv.edge` item's
+  `Generation` unchanged; the edge pid changed (restarted in place) and sites serve. A Stop all →
+  Start all pair may add ONE card (the job really left launchd). **◐ 2–3 Oct 2026 (15.8 VM):** the
+  generated install shell run as root twice over the installed 0.8.11's edge — Generation 11 → 11,
+  pid changed, 200; the app-driven Start all with this build is the row's remaining leg.
 - [x] **`rex status | head -1` ends quietly** (ledger #767): in a terminal, `rex status | true` and
   `rex -h | true` → exit 0 (`echo $pipestatus` / `${PIPESTATUS[0]}`), nothing on stderr — no
   "failed printing to stdout: Broken pipe" panic. ✓ 2 Oct 2026 (dev Mac, this tree's build;

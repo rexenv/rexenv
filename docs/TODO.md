@@ -205,7 +205,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   "com.apple.backgroundtaskmanagement"' --last 1d` on the VM names the item and the caller) and
   make it idempotent: register only when the on-disk definition differs. *Done when:* a launch of an
   already-set-up app posts no new card, and the VM's stack of cards stops growing across three
-  launches. Also seen in the same screenshot: the DNS card on that VM reads "in-process — Running
+  launches. ✓ **Found and fixed the same night (ledger #772):** `sfltool dumpbtm` on the VM —
+  the EDGE LaunchDaemon's item at `Generation: 11`, the login item and the DNS agent at 1: every
+  Start all over a loaded edge ran `install_command`'s `bootout` + `bootstrap system`, and each
+  `bootstrap` is a new BTM registration = one card. The install shell now takes `kickstart -k`
+  when the binary, wrapper and plist on disk are byte-identical and the label is loaded (L0
+  plant-proven; RUN as root on the VM twice: pid changed, Generation 11 → 11, site 200). **Residual,
+  deliberately open:** a Stop all → Start all pair still registers once — KeepAlive respawns a
+  killed daemon (`disable` + `kill TERM` measured on the VM), so a stop needs `bootout`; the way out
+  is a `KeepAlive = {PathState: <flag>}` daemon whose stop is `rm flag` + `kill`, which is a
+  change to the edge's liveness contract (#67/#155) for another day. Also seen in the same
+  screenshot: the DNS card on that VM reads "in-process — Running
   inside the app", not "agent" (the 0.8.10 → 0.8.11 update's #761 race left the agent down and
   nothing restored it — `rex status` "answering (in-process, udp 15353)"); the row above about the
   reopen covers that install, but the degraded mode surviving a relaunch is worth a look of its own.

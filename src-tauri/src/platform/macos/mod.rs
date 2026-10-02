@@ -1531,6 +1531,18 @@ impl EdgeSupervisor for MacosEdgeDaemon {
     /// all over a replaced app: the old edge booted out, the new one refused, the edge down
     /// until a second Start all. So the step polls `launchctl print` until the label is gone
     /// (≤ 10 s), and a refused bootstrap is tried once more a second later.
+    ///
+    /// **An UNCHANGED install restarts in place and never re-registers** (ledger #772): when
+    /// the binary, the wrapper and the plist on disk are byte-identical to what would be
+    /// copied AND the label is loaded, the shell runs `launchctl kickstart -k` instead of
+    /// the bootout/bootstrap pair. Every `bootstrap` of a legacy daemon plist is a NEW
+    /// registration with Background Task Management — the 15.8 VM's item for this label
+    /// stood at `Generation: 11` with eleven "Background Items Added — rexenv" cards in
+    /// Notification Centre (2 Oct 2026), one per Start all that reinstalled a running edge;
+    /// `kickstart -k` was measured there to leave the generation alone. A Stop all still
+    /// boots the job out (KeepAlive relaunches a killed daemon — measured: `disable` +
+    /// `kill TERM` respawned it in 5 s), so the Start all after one still registers once;
+    /// that card is honest — the item really was gone.
     fn install_command(
         &self,
         src_caddy: &Path,
@@ -1541,14 +1553,19 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         let wrapper = self.wrapper_path();
         let plist = self.plist_path();
         format!(
-            "mkdir -p {bindir} && \
+            "if cmp -s {src} {bin} && cmp -s {sw} {wrapper} && cmp -s {sp} {plist} && \
+             launchctl print system/{label} >/dev/null 2>&1 ; then \
+             launchctl enable system/{label} 2>/dev/null ; launchctl kickstart -k system/{label} ; \
+             else \
+             mkdir -p {bindir} && \
              cp {src} {bin} && chown root:wheel {bin} && chmod 755 {bin} && \
              cp {sw} {wrapper} && chown root:wheel {wrapper} && chmod 755 {wrapper} && \
              cp {sp} {plist} && chown root:wheel {plist} && chmod 644 {plist} && \
              {{ launchctl bootout system/{label} 2>/dev/null ; \
              i=0 ; while launchctl print system/{label} >/dev/null 2>&1 && [ $i -lt 50 ] ; do sleep 0.2 ; i=$((i+1)) ; done ; \
              launchctl enable system/{label} 2>/dev/null ; \
-             launchctl bootstrap system {plist} || {{ sleep 1 ; launchctl bootstrap system {plist} ; }} ; }}",
+             launchctl bootstrap system {plist} || {{ sleep 1 ; launchctl bootstrap system {plist} ; }} ; }} ; \
+             fi",
             bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
             src = sh_quote(src_caddy),
             bin = sh_quote(&bin),
@@ -3085,6 +3102,34 @@ mod tests {
         assert!(cmd.contains("[ $i -lt 50 ]") && cmd.contains("sleep 0.2"), "the wait is bounded (10 s): {cmd}");
         assert_eq!(cmd.matches("launchctl bootstrap system").count(), 2, "one retry, no more: {cmd}");
         assert!(cmd.contains("|| { sleep 1 ; launchctl bootstrap system"), "the retry runs only on a refusal: {cmd}");
+    }
+
+    /// Ledger #772 — **an unchanged edge install restarts in place and never re-registers**:
+    /// the three `cmp -s` and the loaded-label check gate a `kickstart -k`; only a changed
+    /// file or an absent job takes the bootout/bootstrap path. Each `bootstrap` is a new
+    /// Background Task Management registration and a "Background Items Added" card (11 on
+    /// the 15.8 VM, 2 Oct 2026); `kickstart -k` leaves the generation alone (measured there).
+    #[test]
+    fn an_unchanged_edge_install_restarts_in_place_and_never_re_registers() {
+        let ed = MacosEdgeDaemon;
+        let src = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/bin/caddy");
+        let sw = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/config/edge-daemon/edge-launch.sh");
+        let sp = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/config/edge-daemon/edge.plist");
+        let cmd = ed.install_command(src, sw, sp);
+        let q = super::sh_quote;
+        let cond = format!(
+            "if cmp -s {} {} && cmp -s {} {} && cmp -s {} {} && launchctl print system/{EDGE_DAEMON_LABEL} >/dev/null 2>&1 ; then",
+            q(src), q(&ed.daemon_binary_path()), q(sw), q(&ed.wrapper_path()), q(sp), q(&ed.plist_path())
+        );
+        assert!(cmd.starts_with(&cond), "all three files AND the loaded label gate the in-place path:\n{cmd}");
+        let then_end = cmd.find(" else ").expect("an else branch");
+        let then_branch = &cmd[..then_end];
+        assert!(then_branch.contains(&format!("launchctl kickstart -k system/{EDGE_DAEMON_LABEL}")), "the unchanged path restarts in place");
+        assert!(!then_branch.contains("bootstrap") && !then_branch.contains("bootout") && !then_branch.contains("cp "), "the unchanged path copies nothing and registers nothing: {then_branch}");
+        assert!(then_branch.contains(&format!("launchctl enable system/{EDGE_DAEMON_LABEL}")), "a Stop all's disable is undone before the kick");
+        let else_branch = &cmd[then_end..];
+        assert!(else_branch.contains("launchctl bootout system/") && else_branch.contains("launchctl bootstrap system "), "a changed file or an absent job still reinstalls: {else_branch}");
+        assert!(cmd.trim_end().ends_with("fi"), "{cmd}");
     }
 
     #[test]
