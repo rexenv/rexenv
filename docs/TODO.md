@@ -1413,10 +1413,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     and its whole dynamic closure declared in the deb — then a Laravel site on postgres served.** The
     download page is the tap release + website, outside this repo
 
-- [ ] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
+- [x] **The keychain (CA trust) dialog is rexenv's too** — 12 Sep 2026, owner, after the admin
   dialog got its name: the CA trust dialog still read "security". Measured first: wrapping
   `security` in the rexenv applet does NOT change the title; calling the trust API
-  in-process does (ledger #579).
+  in-process does (ledger #579). ✓ **Closed 3 Oct 2026** — T1 (the in-process trust API), T2 (the
+  live cancel/approve legs) and T3 (the packaged app's dialog on the 15.8 VM: "rexenv" + the lock
+  and logo badge, Cancel → the app's cancel toast) all ran; #579 is ✅.
   - [x] T1 — `MacosCertTrust` calls `SecCertificateAddToKeychain` +
     `SecTrustSettingsSet/RemoveTrustSettings` itself ✓ 12 Sep 2026 — 4 L0 incl.
     `a_dismissed_dialog_reads_as_a_cancel_never_a_status_code`; example
