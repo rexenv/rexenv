@@ -810,8 +810,8 @@ the rows below are the real app.
   swept on both (72fc47df).
 
 ## OpenLiteSpeed override (4 Oct 2026 — `docs/PLAN-openlitespeed.md`)
-Proven headless on macOS 26 (`openlitespeed_site_check`, sandbox tier). These are the rows only the
-running app can show.
+Proven headless on macOS 26 and the Ubuntu 22.04 arm64 VM (`openlitespeed_site_check`, sandbox
+tier). These are the rows only the running app can show.
 - [ ] **Create** a WordPress site with **OpenLiteSpeed** selected. It opens over HTTPS, wp-admin
   logs in (no redirect loop — the edge's `X-Forwarded-Proto` reaches PHP as `HTTPS=on`), and
   Settings → Permalinks → "Post name" makes `/hello-world/` work (WordPress writes `.htaccess`;
@@ -3124,7 +3124,8 @@ rexenv0 <name>` and read `Current Scopes:`.
 Result: ____ / all pass.  Issues found: ________________________________________
 
 ### OpenLiteSpeed on Linux (4 Oct 2026)
-- [ ] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb —
+- [ ] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb
+  (headless half done: `openlitespeed_site_check` green on the 22.04 arm64 VM, 4 Oct 2026) —
   the binary is the Linux build of the same recipe (glibc 2.35 floor). `openlitespeed_site_check`
   is the headless proof; the adoption-after-relaunch row matters most here, because ownership
   reads `/proc/<pid>/cmdline`, not `ps`.

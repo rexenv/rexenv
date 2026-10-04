@@ -3,7 +3,8 @@
 **Status:** IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
 clang 21). **Owner ruled §5 on 4 Oct 2026: go.** Windows refused (1), patch both (2, 3), Linux
 from the same recipe (4). P1 shipped (runtimes PR #15, release `openlitespeed-1.9.3-1`);
-**P2 shipped 4 Oct 2026** (§6) — proven on macOS, the Linux run and P3 still open. Open work is
+**P2 shipped 4 Oct 2026** (§6) — `openlitespeed_site_check` green on macOS and on the Ubuntu
+22.04 VM; the running-app SMOKE rows and P3 still open. Open work is
 the "OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
 
 ### Rulings (owner, 4 Oct 2026)

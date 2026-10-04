@@ -2073,8 +2073,9 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   Windows refusal as `PlatformWords::openlitespeed_unavailable`, ledger #774–#782. ✓ proven on
   macOS by `openlitespeed_site_check` (PHP via the pool, env + HTTPS, `.htaccess`, dotfiles,
   LSCache miss→hit, ownership through the rewritten title, runtime files under the site's root).
-  Still open: (a) the same example on the Linux VM; (b) the SMOKE rows (main body, § Windows,
-  § Linux) through the running app; (c) **P3** — the LiteSpeed Cache plugin end to end (purge on
+  ✓ Linux too: the same example green on the Ubuntu 22.04 arm64 VM (4 Oct 2026, `-t` exit 0).
+  Still open: (a) the SMOKE rows (main body, § Windows, § Linux) through the running app;
+  (b) **P3** — the LiteSpeed Cache plugin end to end (purge on
   post update) as a SMOKE row.
 
 ## Phase 4+ (next era)
