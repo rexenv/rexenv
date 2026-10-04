@@ -3,8 +3,9 @@
 **Status:** IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
 clang 21). **Owner ruled §5 on 4 Oct 2026: go.** Windows refused (1), patch both (2, 3), Linux
 from the same recipe (4). P1 shipped (runtimes PR #15, release `openlitespeed-1.9.3-1`);
-**P2 shipped 4 Oct 2026** (§6) — `openlitespeed_site_check` green on macOS and on the Ubuntu
-22.04 VM; the running-app SMOKE rows and P3 still open. Open work is
+**P2 and P3 shipped 4 Oct 2026** (§6) — `openlitespeed_site_check` green on macOS and the
+Ubuntu VM; every running-app SMOKE row 28/28 on the macOS 15.8 VM and the Ubuntu 22.04 VM,
+LSCache purge-on-edit included. Open: the Windows refusal rows (no reachable Windows host). Open work is
 the "OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
 
 ### Rulings (owner, 4 Oct 2026)
@@ -423,8 +424,14 @@ to be measured (candidates: `RewriteRule … [E=VAR:value]` in the vhost rewrite
     params; `\` and `%` escaped; a value with both quote characters refused at save and switch.
   - **`.htaccess` precedence**: OpenLiteSpeed runs vhost rules first, so the vhost's front
     controller steps aside when the docroot has a root `.htaccess` (ledger #778).
-- **P3 — the LSCache plugin end-to-end on a WordPress site** (purge on post update;
-  `X-LiteSpeed-Purge`), as a SMOKE row. Env vars moved into P2.
+- **P3 — the LSCache plugin end-to-end on a WordPress site.** **Shipped 4 Oct 2026**, as the
+  SMOKE row it was planned as, on both VMs: the plugin activates (and rewrites `.htaccess` once —
+  one watchdog restart, no churn: mtime measured stable over a minute of front and admin
+  requests); a logged-out post goes `miss → hit`; an edit through the REST API with the block
+  editor's nonce purges it (`miss`, new content, then `hit`). A wp-cli edit does not purge —
+  `X-LiteSpeed-Purge` rides an HTTP response. What the running-app runs found and fixed on
+  the way (ledger #783–#785): OLS never re-reads `.htaccess`; `-d` died with the app; an
+  adopted session lost env vars.
 
 ## 7. Where the prototype lives
 

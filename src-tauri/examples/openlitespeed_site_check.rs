@@ -133,7 +133,8 @@ async fn main() {
     let server_root = openlitespeed::server_root(&*plat, DOMAIN).unwrap();
     let log_dir = plat.paths().log_dir().unwrap();
     let env = vec![("OLSCHECK_ENV".to_string(), ENV_VALUE.to_string())];
-    let content = openlitespeed::generate_config(&openlitespeed::ConfigInput {
+    // What the ServiceManager renders — re-rendered below the way its watchdog re-renders it.
+    let render = || openlitespeed::generate_config(&openlitespeed::ConfigInput {
         basedir: &basedir,
         server_root: &server_root,
         docroot: &docroot,
@@ -144,7 +145,9 @@ async fn main() {
         mode: RewriteMode::Single,
         env: &env,
         account: &account,
+        htaccess: openlitespeed::htaccess_fingerprint(&docroot).as_deref(),
     });
+    let content = render();
     openlitespeed::write_config(&*plat, DOMAIN, &content).expect("write config");
     let t = Command::new(openlitespeed::server_bin(&basedir))
         .arg("-t")
@@ -182,9 +185,31 @@ async fn main() {
     }
     let wk = http(&format!("{base}/.well-known/probe"), &[]);
     check("/.well-known/ still serves", wk.starts_with("HTTP/1.1 200") && wk.contains("well-known-ok"));
-    // No .htaccess at all: the vhost's own front controller takes over.
+    // OpenLiteSpeed never re-reads a loaded .htaccess (ledger #783). The trigger rexenv relies
+    // on: an edit makes the rendered config differ from the loaded one — the watchdog's test.
+    std::fs::write(
+        docroot.join(".htaccess"),
+        format!("# edited\n{}", std::fs::read_to_string(docroot.join(".htaccess")).unwrap()),
+    )
+    .unwrap();
+    check(".htaccess edit changes the desired config (the restart trigger)", render() != content);
+    // No .htaccess at all: re-rendered and restarted as the watchdog would, the vhost's own
+    // front controller routes.
     std::fs::remove_file(docroot.join(".htaccess")).unwrap();
-    thread::sleep(Duration::from_millis(1100));
+    let bare_conf = render();
+    check("removing .htaccess changes it too", bare_conf != content);
+    openlitespeed::write_config(&*plat, DOMAIN, &bare_conf).expect("rewrite config");
+    let _ = plat.supervisor().stop(server.id());
+    server.reap();
+    for _ in 0..40 {
+        if !listening(PORT) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    server = Reaped::new(openlitespeed::start(&*plat, &basedir, DOMAIN, &[]).expect("restart"), PORT, "openlitespeed");
+    common::await_listening(PORT, "openlitespeed", Some(&openlitespeed::error_log_path(&*plat, DOMAIN).unwrap()));
+    thread::sleep(Duration::from_secs(3));
     let bare = http(&format!("{base}/no-htaccess/route"), &[]);
     check("without .htaccess the vhost fallback routes", bare.contains("|/no-htaccess/route|"));
     let key = format!("{base}/?k={}", std::process::id());
@@ -193,6 +218,14 @@ async fn main() {
     check(&format!("LSCache miss → hit ({first:?} → {second:?})"), first.as_deref() == Some("miss") && second.as_deref() == Some("hit"));
 
     println!("\n=== ownership, runtime files, phone-home ===");
+    // `-n`: the process we hold is the crash-guard MAIN; the event loop — which stops itself
+    // when ITS parent changes — runs in a worker the main forked, so it outlives the app
+    // (ledger #784). Seen here as: the spawned pid has a child of its own.
+    let kids = Command::new("pgrep").args(["-P", &server.id().to_string()]).output().expect("pgrep");
+    check(
+        "the event loop runs in a worker forked by the server, not in the process we spawned",
+        !String::from_utf8_lossy(&kids.stdout).trim().is_empty(),
+    );
     let marker = plat.paths().app_data_dir().unwrap().display().to_string();
     let owner = plat.supervisor().owned_master(PORT, &marker);
     check(&format!("owned_master finds pid {} through the rewritten title ({owner:?})", server.id()), owner == Some(server.id()));

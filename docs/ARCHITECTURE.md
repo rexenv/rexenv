@@ -240,10 +240,22 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     front controller rewrote every missing path to `/index.php` and a plugin's
     `.htaccess` redirect never saw its path — with a root `.htaccess` the site routes
     itself (WordPress/Laravel ship one, as on any LiteSpeed host), without one the vhost's
-    per-mode rules route it; dotfiles 404 BEFORE either. **Ownership:** OpenLiteSpeed
-    overwrites `argv[0]`, so the app-data marker is passed twice after `-d` (macOS `ps`
-    drops the last argument once the overwrite splits argv[0]); `owned_master` finds it
-    on both OSes (`openlitespeed_site_check`). **Windows: refused** — no OpenLiteSpeed
+    per-mode rules route it; dotfiles 404 BEFORE either. **OpenLiteSpeed reads a
+    directory's `.htaccess` ONCE** — a file created later, or an edit, is not seen until a
+    restart. So the step-aside is decided when the config is rendered (from the file the
+    server will load), the root `.htaccess`'s fingerprint (size + mtime) is rendered into
+    the config, and the health watchdog restarts an OLS backend whose config no longer
+    matches the one it loaded — within one tick of WordPress's permalink save or LSCache's
+    settings save (ledger #783). Subdirectory `.htaccess` edits need `rex site restart`.
+    **Process shape:** started with `-n` (no daemon, crash guard on): the event loop stops
+    itself when ITS parent changes, so under `-d` every OLS site died ~1 s after the app
+    quit; under `-n` the loop runs in a worker forked by the main (ledger #784).
+    **Ownership:** OpenLiteSpeed overwrites `argv[0]`, so the app-data marker is passed
+    twice after `-n` (macOS `ps` drops the last argument once the overwrite splits
+    argv[0]); the worker's title loses it, so `owned_master` resolves to the main — the pid
+    rexenv holds. **Adoption needs the real per-site state:** the launch loads the
+    manager's env/alias/ini mirrors before `adopt_startup` (ledger #785) — before, the OLS
+    watchdog restarted an adopted site without its env vars. **Windows: refused** — no OpenLiteSpeed
     build exists there; the refusal is `PlatformWords::openlitespeed_unavailable`.
   Each backend port is **recorded, not derived** (B20 §4): allocated collision-free
   (lowest free in the range) at create / web-server switch, stored in `sites.override_port`,

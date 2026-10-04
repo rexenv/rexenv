@@ -2067,16 +2067,11 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
-- [ ] **OpenLiteSpeed override server** — **P1 + P2 shipped 4 Oct 2026** (`docs/PLAN-openlitespeed.md`).
-  P1: rexenv/runtimes `openlitespeed-1.9.3-1` (published by the owner). P2: pinned for macOS +
-  Linux, `core/openlitespeed.rs`, the third `OverrideKind`, both pickers + `rex` + MCP, the
-  Windows refusal as `PlatformWords::openlitespeed_unavailable`, ledger #774–#782. ✓ proven on
-  macOS by `openlitespeed_site_check` (PHP via the pool, env + HTTPS, `.htaccess`, dotfiles,
-  LSCache miss→hit, ownership through the rewritten title, runtime files under the site's root).
-  ✓ Linux too: the same example green on the Ubuntu 22.04 arm64 VM (4 Oct 2026, `-t` exit 0).
-  Still open: (a) the SMOKE rows (main body, § Windows, § Linux) through the running app;
-  (b) **P3** — the LiteSpeed Cache plugin end to end (purge on
-  post update) as a SMOKE row.
+- [ ] **OpenLiteSpeed override server** — **P1, P2, P3 shipped 4 Oct 2026** (`docs/PLAN-openlitespeed.md`).
+  ✓ `openlitespeed_site_check` green on macOS and the Ubuntu 22.04 VM; ✓ every running-app SMOKE
+  row 28/28 on the macOS 15.8 VM and the Ubuntu VM (LSCache purge-on-edit = P3); the runs fixed
+  three bugs (ledger #783 `.htaccess` re-read, #784 `-n`, #785 launch mirrors). Still open: the
+  SMOKE § Windows refusal rows — no Windows host reachable on 4 Oct (L0 covers the sentence, #774).
 
 ## Phase 4+ (next era)
 

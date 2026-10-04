@@ -811,27 +811,43 @@ the rows below are the real app.
 
 ## OpenLiteSpeed override (4 Oct 2026 — `docs/PLAN-openlitespeed.md`)
 Proven headless on macOS 26 and the Ubuntu 22.04 arm64 VM (`openlitespeed_site_check`, sandbox
-tier). These are the rows only the running app can show.
-- [ ] **Create** a WordPress site with **OpenLiteSpeed** selected. It opens over HTTPS, wp-admin
+tier). The rows below ran against the RUNNING app — a release build swapped into the macOS 15.8
+VM's `/Applications` and the Ubuntu 22.04 VM's `/usr/bin` — driven by `rex` + curl with the
+rexenv CA (28/28 on each, 4 Oct 2026). The two runs before that found three real bugs, each now
+a ledger row: OpenLiteSpeed never re-reads `.htaccess` (#783), the server died ~1 s after the
+app quit (#784), and an adopted session restarted the site without its env vars (#785).
+- [x] **Create** a WordPress site with **OpenLiteSpeed** selected. It opens over HTTPS, wp-admin
   logs in (no redirect loop — the edge's `X-Forwarded-Proto` reaches PHP as `HTTPS=on`), and
   Settings → Permalinks → "Post name" makes `/hello-world/` work (WordPress writes `.htaccess`;
-  the site then routes itself).
-- [ ] **LSCache**: install the **LiteSpeed Cache** plugin, enable caching, load a post twice
+  the site then routes itself). ✓ both VMs: login lands on the Dashboard after 1 redirect; the
+  save wrote `.htaccess` (on the GET the save redirects to — a script must follow it);
+  `/hello-world/` 200 right away (the vhost fallback) and again after the watchdog restarted
+  the server for the new file (#783).
+- [x] **LSCache**: install the **LiteSpeed Cache** plugin, enable caching, load a post twice
   logged OUT: the second response carries `x-litespeed-cache: hit`. Edit the post: the next
-  load is a `miss` (the plugin's purge reached the server).
-- [ ] **A plugin's `.htaccess` redirect** (e.g. add `RewriteRule ^old-page$ /hello-world/ [R=301,L]`
-  above the WordPress block): `/old-page` redirects. The vhost's own routing must step aside for it.
-- [ ] **Env var** with a quote and a `%` (`it's 50%1`) set in Site Settings reaches `getenv()`;
-  a value with BOTH `'` and `"` is refused with the OpenLiteSpeed sentence.
-- [ ] **Switch** the site Nginx → OpenLiteSpeed → Apache → Nginx: each switch serves, the old
-  backend's process is gone (Services), and the port moves between the 84xx/83xx ranges.
-- [ ] **Rename, then delete**: `<app-data>/openlitespeed/<OLD-domain>/` and
+  load is a `miss` (the plugin's purge reached the server). ✓ both VMs: `miss → hit`; the edit
+  made through the REST API with the block editor's nonce (what the editor does) → `miss`, the
+  new content, then `hit` again. A wp-cli edit does NOT purge — it has no HTTP response to
+  carry `X-LiteSpeed-Purge`.
+- [x] **A plugin's `.htaccess` redirect** (e.g. add `RewriteRule ^old-page$ /hello-world/ [R=301,L]`
+  above the WordPress block): `/old-page` redirects. ✓ both VMs: `301 → /hello-world/` within a
+  watchdog tick, no manual restart.
+- [x] **Env var** with a quote and a `%` (`it's 50%1`) set in Site Settings reaches `getenv()`;
+  a value with BOTH `'` and `"` is refused with the OpenLiteSpeed sentence. ✓ both VMs (via
+  `rex site env`).
+- [x] **Switch** the site Nginx → OpenLiteSpeed → Apache → Nginx: each switch serves, the old
+  backend's process is gone (Services), and the port moves between the 84xx/83xx ranges. ✓ macOS
+  VM (8400 → Apache 8300 → shared nginx). Linux: Apache has no Linux pin, so that leg is refused
+  and the site stays on OpenLiteSpeed — expected.
+- [x] **Rename, then delete**: `<app-data>/openlitespeed/<OLD-domain>/` and
   `logs/openlitespeed-<OLD-domain>-*.log` are gone after the rename; everything for the new
-  name is gone after the delete.
-- [ ] **Quit and relaunch** rexenv with the site running: the backend is ADOPTED (same pid in
-  Services), not respawned — ownership survives OpenLiteSpeed's rewritten process title.
-- [ ] **Nothing outside app-data**: `ls /tmp/lshttpd /tmp/ols` shows nothing written today, and
-  the server's error log has no `HttpFetch` line.
+  name is gone after the delete. ✓ both VMs.
+- [x] **Quit and relaunch** rexenv with the site running: the backend is ADOPTED (same pid in
+  Services), not respawned — ownership survives OpenLiteSpeed's rewritten process title. ✓ both
+  VMs, with an env var set: the server outlived the app and served while it was closed, and the
+  relaunch kept its pid (#784, #785).
+- [x] **Nothing outside app-data**: `ls /tmp/lshttpd /tmp/ols` shows nothing written today, and
+  the server's error log has no `HttpFetch` line. ✓ both VMs.
 
 ## WordPress Manager
 - [x] Plugins tab lists plugins; install + activate a plugin works.
@@ -2697,6 +2713,9 @@ them is Windows' own dialog:
       the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
+Not run yet: the Dell was unreachable on 4 Oct 2026 (LAN timeout, tunnel "bad handshake") and
+the Win11 VM has no build with OpenLiteSpeed. The refusal sentence itself is L0-proven
+(`the_web_server_gate_reads_the_pins_per_os`, ledger #774).
 - [ ] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it
   exists for macOS and Linux only. Choose Nginx for this site."* — not "not available yet".
 - [ ] `rex site server <domain> openlitespeed` fails with the same sentence; the site keeps Nginx.
@@ -3124,8 +3143,9 @@ rexenv0 <name>` and read `Current Scopes:`.
 Result: ____ / all pass.  Issues found: ________________________________________
 
 ### OpenLiteSpeed on Linux (4 Oct 2026)
-- [ ] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb
-  (headless half done: `openlitespeed_site_check` green on the 22.04 arm64 VM, 4 Oct 2026) —
+- [x] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb
+  (headless half done: `openlitespeed_site_check` green on the 22.04 arm64 VM, 4 Oct 2026) — ✓ 4 Oct
+  2026, 28/28 with the release build swapped into `/usr/bin` (relaunch from the desktop session) —
   the binary is the Linux build of the same recipe (glibc 2.35 floor). `openlitespeed_site_check`
   is the headless proof; the adoption-after-relaunch row matters most here, because ownership
   reads `/proc/<pid>/cmdline`, not `ps`.

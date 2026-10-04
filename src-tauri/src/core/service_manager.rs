@@ -1408,6 +1408,7 @@ impl ServiceManager {
         let server_root = openlitespeed::server_root(platform, domain).ok()?;
         let log_dir = platform.paths().log_dir().ok()?;
         let account = platform.supervisor().service_account()?;
+        let htaccess = openlitespeed::htaccess_fingerprint(docroot);
         Some(openlitespeed::generate_config(&openlitespeed::ConfigInput {
             basedir: &basedir,
             server_root: &server_root,
@@ -1419,6 +1420,7 @@ impl ServiceManager {
             mode: rewrite,
             env,
             account: &account,
+            htaccess: htaccess.as_deref(),
         }))
     }
 
@@ -2296,6 +2298,83 @@ impl ServiceManager {
                         service: name,
                         action: "restarted",
                         detail: "backend was dead (port closed); respawned".into(),
+                    });
+                }
+                Err(e) => events.push(HealthEvent {
+                    service: name,
+                    action: "restart-failed",
+                    detail: e.to_string(),
+                }),
+            }
+        }
+
+        // OpenLiteSpeed reads a site's root `.htaccess` once, at start, and never again
+        // (ledger #783): WordPress writes it on the first permalink save, LSCache rewrites it
+        // on every settings save, and neither is seen by the running server. The config
+        // carries the file's fingerprint, so "the file changed" is "the desired config differs
+        // from the one this server loaded" — the reconcile's own test, asked here every tick
+        // because nothing else would ask it between two reloads. The restart is the graceful
+        // restart an OpenLiteSpeed admin issues by hand. Not a crash: no restart budget spent.
+        let stale_ols: Vec<(String, bool)> = self
+            .overrides
+            .iter()
+            .filter(|(_, b)| b.kind == OverrideKind::Openlitespeed)
+            .filter_map(|(domain, b)| {
+                let site = sites.iter().find(|s| {
+                    &s.domain == domain && OverrideKind::wanted_by(s) == Some(OverrideKind::Openlitespeed)
+                })?;
+                let want = self.desired_override_config(
+                    platform,
+                    domain,
+                    OverrideKind::Openlitespeed,
+                    &site.served_root(),
+                    b.port,
+                    sites::pool_port_for_site(site),
+                    sites::rewrite_mode_for(site.multisite),
+                    &self.override_env(&site.id),
+                )?;
+                let loaded = openlitespeed::config_path(platform, domain)
+                    .ok()
+                    .and_then(|p| std::fs::read_to_string(p).ok());
+                let htaccess = loaded.as_deref().and_then(openlitespeed::htaccess_line)
+                    != openlitespeed::htaccess_line(&want);
+                (loaded.as_deref() != Some(want.as_str())).then(|| (domain.clone(), htaccess))
+            })
+            .collect();
+        for (domain, htaccess) in stale_ols {
+            let Some(site) = sites.iter().find(|s| s.domain == domain) else { continue };
+            let name = format!("{} {domain}", OverrideKind::Openlitespeed.label());
+            let Some(mut backend) = self.overrides.remove(&domain) else { continue };
+            let port = backend.port;
+            if !Self::stop_override_backend(platform, &domain, &mut backend) {
+                // The guard's refusal stands (a live-check's server, not ours to bounce).
+                self.overrides.insert(domain, backend);
+                continue;
+            }
+            let env = self.override_env(&site.id);
+            let spawned = self
+                .spawn_override(
+                    platform,
+                    OverrideKind::Openlitespeed,
+                    &domain,
+                    &site.served_root(),
+                    port,
+                    sites::pool_port_for_site(site),
+                    sites::rewrite_mode_for(site.multisite),
+                    &env,
+                )
+                .await;
+            match spawned {
+                Ok(check) => {
+                    checks.push(check);
+                    events.push(HealthEvent {
+                        service: name,
+                        action: "restarted",
+                        detail: if htaccess {
+                            "its root .htaccess changed — OpenLiteSpeed reads it only at start".into()
+                        } else {
+                            "its config no longer matched the one it loaded".into()
+                        },
                     });
                 }
                 Err(e) => events.push(HealthEvent {
