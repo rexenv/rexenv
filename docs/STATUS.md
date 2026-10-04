@@ -64,7 +64,7 @@ App version **0.8.11** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:2084` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:2085` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

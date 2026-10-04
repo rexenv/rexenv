@@ -2067,17 +2067,18 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
-- [ ] **OpenLiteSpeed override server** — **unblocked on paper, waiting on rulings**
-  (`docs/PLAN-openlitespeed.md`, 4 Oct 2026). The old blockers were stale: the
-  community tap carries 1.9.1 with a macOS patch set since Aug 2026, and
-  `rexenv/runtimes` IS the hosting infra now. A macOS 1.9.3 self-build was
-  proven on the dev Mac: boots behind rexenv's shape (no admin console, loopback,
-  PHP via the existing php-fpm pool over FastCGI, `.htaccess`), **cache module ON
-  with miss→hit** — the thing the tap could not do. Still refused in CORE
-  (`ensure_server_available_on`) until a pin exists; `OverrideKind` is one new arm.
-  Owner rulings pending (PLAN §5): Windows has no OLS and never will — accept a
-  pins-refused third OS?; `/tmp` paths + boot-time quic.cloud fetch — patch or
-  accept; Linux = official tarball vs the same recipe; worth ~3–4 days at all.
+- [ ] **OpenLiteSpeed override server** — **ruled GO 4 Oct 2026**, P1 in review
+  (`docs/PLAN-openlitespeed.md`). Owner: Windows refused (OLS has no Windows build,
+  ever — CORE refusal through the pins + a `PlatformWords` sentence), `/tmp` paths and
+  phone-home PATCHED, Linux from the same recipe. **P1** = rexenv/runtimes PR #15:
+  one script, six patches, four targets; macOS arm64 + Linux aarch64 built and
+  passed every gate locally (static, PHP over FastCGI, cache miss→hit, `.htaccess`,
+  no remote fetch, nothing outside `LSWS_TMP_DIR`); the PR's CI run built all four
+  green (run 37207425654) after patch 0006 fixed a macOS-15-only request crash. Next: owner merges + publishes `openlitespeed-1.9.3-1`, then **P2**
+  (pins, `core/openlitespeed.rs`, `OverrideKind` arm, UI unlock, example, ledger,
+  SMOKE rows) per PLAN §6 — mind §3.1's traps (title rewrite defeats cmdline
+  ownership; cache needs a tick; `-t` exit 1 is fine). Still refused in CORE
+  (`ensure_server_available_on`) until a pin exists.
 
 ## Phase 4+ (next era)
 

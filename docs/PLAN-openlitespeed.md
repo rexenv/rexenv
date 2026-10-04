@@ -1,8 +1,25 @@
 # PLAN — OpenLiteSpeed as a per-site override server: the macOS self-build, proven
 
 **Status:** IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
-clang 21); no app code yet. Waiting on the owner's rulings in §5. Open work is the
-"OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
+clang 21). **Owner ruled §5 on 4 Oct 2026: go.** Windows refused (1), patch both (2, 3), Linux
+from the same recipe (4). P1 — the `rexenv/runtimes` workflow — is PR #15 there (§6). Open work is
+the "OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
+
+### Rulings (owner, 4 Oct 2026)
+
+1. **Windows: refused**, in CORE through the pins, with a `PlatformWords` sentence naming the
+   upstream fact. The first feature whose third OS is blocked by the upstream itself.
+2. **`/tmp` paths: patched** — `0003-runtime-tmp-dir`: `LSWS_TMP_DIR` replaces every compiled-in
+   `/tmp/lshttpd` use (pid, graceful pid, swap, status links, cgid and per-vhost sockets, test
+   log, core backups) and the `/tmp/ols/shm` fallback. `DEFAULT_TMP_DIR` became a function call so
+   the COMPILER proves every concatenating site was converted. The configured shm dir needed no
+   patch: `shmDefaultDir` belongs inside `tuning {}` (the prototype put it at server level,
+   which OLS ignores — §4 corrected).
+3. **Phone-home: patched** — `0004-no-remote-fetch`: `noRemoteFetch 1`. Two fetches, not one:
+   besides quic.cloud, `checkOLSUpdate()` GETs `openlitespeed.org/packages/release?ver=…&os=…`
+   on the first timer tick and every 30 minutes, reporting version, OS and platform.
+4. **Linux: same recipe** on `ubuntu-22.04` / `-arm` runners, glibc 2.35, libstdc++ static.
+5. **Scope: go.**
 
 The TODO row said OLS was blocked because no macOS artifact exists, the one community tap was
 frozen at 1.4.51, and a self-build needed hosting infra rexenv did not have. **All three were
@@ -49,6 +66,11 @@ server gid" (a `CGIRLimit`-class check; `staff` is gid 20 on macOS); "path is no
 Verify failed"** — OLS tried to download `https://quic.cloud/ips` at boot (§5.3).
 
 ## 2. The build recipe
+
+> **Superseded for the artifact by `rexenv/runtimes` `scripts/build-openlitespeed.sh` (PR #15,
+> 4 Oct 2026)** — the same recipe for all four targets, every dependency static from pinned source
+> (pcre2/zlib/expat too, no Homebrew), the six-patch set, and the gates of §3.1. The script below
+> is kept as the prototype's record; read the runtimes script for anything you will build.
 
 Reproducible from pristine sources; the seed of a `rexenv/runtimes` workflow. Build system is
 **CMake, upstream's own path** (`build.sh` → `updateSrcCMakelistfile()` + its Darwin seds), not
@@ -259,14 +281,60 @@ out.write('";\n\n')
    Caddy and OLS sits on loopback HTTP. The tap's crash is most likely defect 1 under a different
    config, but that is an inference, not a measurement.
 
+### 3.1 What P1 met (4 Oct 2026, building the artifact)
+
+Each line is a defect the runtimes gate caught, and what it costs or teaches P2.
+
+- **PlainConf silently drops an unregistered directive.** `noRemoteFetch 1` parsed, logged
+  `Not support [noremotefetch 1]` as a WARN, and the fetches still fired. Patch 0004 registers
+  the keyword. **P2:** any directive rexenv emits must appear in OLS's keyword table — a typo is a
+  WARN, not an error, and `-t` still exits 1, not 2.
+- **`-t` exit codes: 0 clean, 1 warnings, 2 errors** (`lshttpdmain.cpp`). macOS's `staff` group is
+  gid 20, under OLS's 100 minimum, so every macOS docroot draws a WARN. **P2:** treat 2 as failure,
+  1 as fine.
+- **A group-change command at every start**: `dseditgroup -o edit -a lsadm …` (macOS) /
+  `usermod -a -G … lsadm` (Linux), printing "Username and password must be provided." — patch 0005.
+- **`share/autoindex/` must exist** under the server root even with `autoIndex 0`, or the vhost
+  logs an ERROR and `-t` exits 2. The artifact ships it empty.
+- **`fileAccessControl { requiredPermissionMask 000 restrictedPermissionMask 000 }`** — OLS's
+  defaults refused a plain `0644` file in a `mktemp` docroot ("does not meet the requirements of
+  'Required bits'"). **P2:** emit both, like the prototype did by accident.
+- **The cache block must be upstream's whole default block.** A short one (no `maxCacheObjSize`
+  & co.) parses and never answers `hit`.
+- **The cache manager is not up until the first timer tick** (~1–2 s after start): requests before
+  it are served and never cached (0/6 hits without a wait, 18/18 with one). Harmless for a dev
+  site; a probe in P2 must wait.
+- **An uninitialised pointer read at the end of every request, on macOS only** — patch 0006.
+  `HttpSession`'s constructor sets `m_pAioReq(NULL)` only under the Linux/AIO `#if`, while
+  `releaseResources()` tests it unconditionally. macOS 26's heap usually handed back zeroes (one
+  crash in ~80 local starts); the `macos-15` CI runner crashed on its first request, and a
+  macOS 15.8 VM 10 times in 20. An ASan build pinned it on any macOS (`x0 = 0xbebebebe…`,
+  `LsAioReq::isPending ← cancelReleaseAio ← releaseResources`). After the patch: 0/28 on 15.8,
+  80 requests clean under ASan. **Lesson:** a gate that passes on the dev Mac proved nothing about
+  the oldest macOS the artifact claims (`minos 12.0`) — the runner on an older macOS is what
+  found it. Crash report kept in the prototype dir.
+- **Process title is rewritten** to `openlitespeed (lshttpd - main)`, so the cmdline no longer
+  carries the binary path: a `pkill -f <path>` left a server running here. **P2:** ownership for
+  `adopt_startup` cannot be the binary path in the cmdline; use the pid file under
+  `LSWS_TMP_DIR` + our fixed port, the way the edge is adopted through its admin socket.
+- **Linux:** BoringSSL's aarch64 assembly needs clang (GCC 11 rejects `__has_feature` in `.S`);
+  `libatomic` and `libaio` linked dynamically upstream — both now static; `<sys/capability.h>`
+  needs `libcap-dev` (header only). Result: `NEEDED` = glibc + `libcrypt.so.1`, highest symbol
+  `GLIBC_2.34`.
+- **Script hygiene, twice:** `nm … | grep -q` under `pipefail` reports a PASSING check as failed
+  (grep's early exit SIGPIPEs the producer), and editing a running bash script corrupts the run
+  (bash reads it lazily). The runtimes script captures before grepping; runs went from a snapshot.
+
 ## 4. What the config generator must emit (measured working set)
 
 Server (`conf/httpd_config.conf`, every path absolute and quoted-safe — app-data paths have
 spaces; OLS's plain-text format tolerates them unquoted in this prototype, verify with a spaced
 path in P2): `serverName`, `user`/`group` (the app user; OLS is never root here),
-`disableWebAdmin 1`, `statDir`, `shmDefaultDir`, `swappingDir`, `mime conf/mime.properties`
+`disableWebAdmin 1`, `noRemoteFetch 1` (patch 0004), `swappingDir`, `mime conf/mime.properties`
 (ship upstream's `dist/conf/mime.properties`), `httpdWorkers 1`, `autoRestart 0` (the
-ServiceManager watchdog owns restarts), `tuning { quicEnable 0 quicShmDir <app> … }`,
+ServiceManager watchdog owns restarts), `tuning { shmDefaultDir <app> quicEnable 0 quicShmDir <app> … }` (shmDefaultDir is read from
+`tuning`, NOT server level), and the process env `LSWS_TMP_DIR=<app>/ols/<site>/run` (patch 0003;
+`statDir` then defaults there via patch 0002),
 `listener Default { address 127.0.0.1:<override_port> secure 0 map <site> * }`,
 `extProcessor <pool> { type fcgi address 127.0.0.1:<fpm_port> autoStart 0 persistConn 1 … }`,
 `scriptHandler { add fcgi:<pool> php }`, `virtualHost <site> { vhRoot <docroot> configFile … }`,
@@ -326,6 +394,12 @@ to be measured (candidates: `RewriteRule … [E=VAR:value]` in the vhost rewrite
   macOS arm64 + x86_64 from §2 with the patch set as files in the repo, minos 12.0, checksums,
   `licenses-openlitespeed-<ver>-<os>-<arch>.tar.gz`; Linux x86_64 + aarch64 on 22.04 runners. Done
   when `scripts/check-app-manifest` sees the pins and a clean VM resolves them.
+  **State, 4 Oct 2026:** rexenv/runtimes PR #15 (branch `openlitespeed`). macOS arm64 (dev Mac)
+  and Linux aarch64 (the 22.04 VM) built and passed every gate locally; **CI run 37207425654
+  built all four targets green** (macos-15 arm64, macos-15-intel x86_64, ubuntu-22.04 x86_64,
+  ubuntu-22.04-arm aarch64): minos 12.0 on both macOS slices, `NEEDED` glibc + libcrypt only and
+  highest symbol `GLIBC_2.34` on both Linux arches, every probe served. Artifact = `bin/openlitespeed`, `conf/mime.properties`,
+  `share/autoindex/`. Owner merges, then dispatches with publish on (build 1). The pins land in P2.
 - **P2 — the app.** `core/openlitespeed.rs` (config generation per §4, loopback port range
   8400–8499 — disjoint from FrankenPHP's 8200s and Apache's 8300s so a switch never collides,
   recorded in `sites.override_port` like the others), `OverrideKind::Openlitespeed` (one arm, as
