@@ -2067,13 +2067,17 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
-- [ ] **OpenLiteSpeed override server** — no macOS artifact exists anywhere
-  (upstream ships Linux tarballs only; no homebrew-core formula; the one
-  community tap is frozen at EOL 1.4.51 and fails the trust model). A maintainer
-  self-build is plausible but needs the same hosting infra as the Xdebug build.
-  Code is ready and honest: `ensure_server_available_on` refuses OLS in CORE at
-  create AND switch, and `OverrideKind` means enabling it later is one new arm.
-  On Linux (Phase 4) this is cheap — official tarballs exist.
+- [ ] **OpenLiteSpeed override server** — **unblocked on paper, waiting on rulings**
+  (`docs/PLAN-openlitespeed.md`, 4 Oct 2026). The old blockers were stale: the
+  community tap carries 1.9.1 with a macOS patch set since Aug 2026, and
+  `rexenv/runtimes` IS the hosting infra now. A macOS 1.9.3 self-build was
+  proven on the dev Mac: boots behind rexenv's shape (no admin console, loopback,
+  PHP via the existing php-fpm pool over FastCGI, `.htaccess`), **cache module ON
+  with miss→hit** — the thing the tap could not do. Still refused in CORE
+  (`ensure_server_available_on`) until a pin exists; `OverrideKind` is one new arm.
+  Owner rulings pending (PLAN §5): Windows has no OLS and never will — accept a
+  pins-refused third OS?; `/tmp` paths + boot-time quic.cloud fetch — patch or
+  accept; Linux = official tarball vs the same recipe; worth ~3–4 days at all.
 
 ## Phase 4+ (next era)
 

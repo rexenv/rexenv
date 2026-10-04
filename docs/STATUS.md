@@ -64,7 +64,7 @@ App version **0.8.11** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:2080` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:2084` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
@@ -79,6 +79,7 @@ App version **0.8.11** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 | `docs/PLAN-linux-port.md` | IN PROGRESS — started 24 Sep 2026 (overnight, owner asleep; the agent proceeds on |
 | `docs/PLAN-local-multisite.md` | IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan), |
 | `docs/PLAN-macos-13-floor.md` | PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component); |
+| `docs/PLAN-openlitespeed.md` | IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple |
 | `docs/PLAN-windows-port.md` | IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows, |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)
