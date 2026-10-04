@@ -944,8 +944,11 @@ pub async fn set_site_web_server(
     // later edge reload failed on the binary that was never there. A record is
     // a promise about what serves the site; it is made only once the thing
     // that will serve it exists on disk. No-op when the cache is warm.
+    // …and only after every refusal the switch can meet: a server with no build for this OS
+    // has nothing to download, and its prefetch failed with "fix the connection" (#786).
     let (current, php_patches) = {
         let conn = lock(&state)?;
+        core::sites::check_switch_on(&conn, &id, server, std::env::consts::OS)?;
         (core::sites::get(&conn, &id)?, core::php::effective_patches(&conn)?)
     };
     if let Some(ref s) = current {
@@ -2296,6 +2299,20 @@ mod tests {
             !body.contains("origin") && !body.contains("expires_at"),
             "switch_php_version writes ownership state directly — Keep is ONE write (#213)"
         );
+    }
+
+    /// Ledger #786 — the switch asks every refusal BEFORE it fetches the new server's binary.
+    /// Switching a Windows site to OpenLiteSpeed answered "fix the connection … no binary
+    /// manifest" (measured on the Dell, 4 Oct 2026) because the prefetch came first. TEXT order;
+    /// the refusals themselves are `set_web_server_updates_only_the_column`'s last leg.
+    #[test]
+    fn the_switch_refuses_before_it_downloads() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let head = src.find("pub async fn set_site_web_server(").expect("the switch command");
+        let body = &src[head..];
+        let check = body.find("core::sites::check_switch_on(").expect("the switch asks its refusals");
+        let fetch = body.find("\"Switch web server\"").expect("the switch prefetches");
+        assert!(check < fetch, "the refusals must come before the download");
     }
 
     #[test]

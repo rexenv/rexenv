@@ -537,7 +537,7 @@ const HTTPD_VERSION: &str = "2.4.68";
 /// Pinned OpenLiteSpeed — OUR OWN build (`rexenv/runtimes` release `openlitespeed-1.9.3-1`,
 /// `scripts/build-openlitespeed.sh`): upstream publishes Linux tarballs only, and rexenv's build
 /// carries six patches the app depends on (`LSWS_TMP_DIR` instead of a machine-wide
-/// `/tmp/lshttpd`, `noRemoteFetch`, the macOS crash fix …; `docs/PLAN-openlitespeed.md`).
+/// `/tmp/lshttpd`, `noRemoteFetch`, the macOS crash fix …; `docs/archive/PLAN-openlitespeed.md`).
 /// macOS + Linux only: OpenLiteSpeed has no Windows build at all, so there is no Windows arm and
 /// `sites::ensure_server_available_on` refuses it there through `ships_on`. Runs per-site as a
 /// loopback OVERRIDE backend (`core/openlitespeed.rs`).

@@ -610,24 +610,9 @@ pub fn run() {
                         // someone who had deliberately turned it off.
                         let catch_mail = {
                             let conn = state.db.lock().expect("database lock poisoned");
-                            // The manager's MIRRORS of per-site state, loaded before
-                            // anything can render a config from them. Until 4 Oct 2026
-                            // only the start command loaded them, so an ADOPTED session
-                            // rendered every site with no env vars, no aliases and no
-                            // ini settings until the user pressed Start — and the
-                            // OpenLiteSpeed watchdog, which compares the config it would
-                            // render with the one the server loaded, restarted an adopted
-                            // site 10 s after launch WITHOUT its env vars (measured on
-                            // both VMs). Read failures leave a mirror empty, as before.
-                            if let Ok(env) = state::store::all_site_env(&conn) {
-                                mgr.set_site_env(env);
-                            }
-                            if let Ok(aliases) = state::store::all_site_aliases(&conn) {
-                                mgr.set_site_aliases(aliases);
-                            }
-                            if let Ok(settings) = state::store::all_php_settings(&conn) {
-                                mgr.set_php_settings(settings);
-                            }
+                            // The manager's mirrors of per-site state, BEFORE adoption —
+                            // see `load_mirrors` (ledger #785).
+                            commands::services::load_mirrors(&conn, &mut mgr);
                             core::mail::catch_all_enabled(&conn)
                         };
                         let adopted =

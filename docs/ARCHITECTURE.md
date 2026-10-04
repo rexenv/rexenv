@@ -223,7 +223,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     placeholders and are never trusted — every path (pidfile, runtime dir, logs,
     mime map) is explicit + quoted.
   - **OpenLiteSpeed** (`core/openlitespeed.rs`, macOS + Linux; rexenv's OWN build from
-    `rexenv/runtimes`, six patches — `docs/PLAN-openlitespeed.md`): loopback backend on
+    `rexenv/runtimes`, six patches — `docs/archive/PLAN-openlitespeed.md`): loopback backend on
     8400–8499. Like Apache, NO PHP of its own — `.php` goes to the site's shared pool
     (`extProcessor … type fcgi … autoStart 0`). The reason to pick it is LSCache (the
     module ships ON, so the LiteSpeed Cache plugin works as on a LiteSpeed host) plus
@@ -254,7 +254,7 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     twice after `-n` (macOS `ps` drops the last argument once the overwrite splits
     argv[0]); the worker's title loses it, so `owned_master` resolves to the main — the pid
     rexenv holds. **Adoption needs the real per-site state:** the launch loads the
-    manager's env/alias/ini mirrors before `adopt_startup` (ledger #785) — before, the OLS
+    manager's env/alias/ini mirrors (`commands::services::load_mirrors`) before `adopt_startup` (ledger #785) — before, the OLS
     watchdog restarted an adopted site without its env vars. **Windows: refused** — no OpenLiteSpeed
     build exists there; the refusal is `PlatformWords::openlitespeed_unavailable`.
   Each backend port is **recorded, not derived** (B20 §4): allocated collision-free
@@ -891,6 +891,10 @@ Live-proven end to end by `site_stop_start_check`.
   clean VM — left `server = frankenphp` in the row while nginx went on serving, and every
   later edge reload failed on the binary that was never there. The row is a promise about
   what serves the site; it is made once the thing that will serve it exists on disk.
+  **And the refusals come before the fetch** (`core::sites::check_switch_on`, #786, 4 Oct
+  2026): the prefetch used to run first, so switching a Windows site to OpenLiteSpeed (or a
+  Linux one to Apache) failed with "1 of 1 downloads failed — fix the connection … no binary
+  manifest" and left a failed row in the download panel, instead of the OS's refusal sentence.
 - **Every call that can raise a privileged prompt waits off the runtime, from an
   async caller** (`core::prompt::while_prompting`, #568). The admin-password and
   keychain dialogs stay open as long as the user takes; the platform call waits with

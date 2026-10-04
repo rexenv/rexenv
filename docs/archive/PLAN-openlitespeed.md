@@ -1,12 +1,12 @@
 # PLAN — OpenLiteSpeed as a per-site override server: the macOS self-build, proven
 
-**Status:** IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
+**Status:** SHIPPED (archived 4 Oct 2026) — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
 clang 21). **Owner ruled §5 on 4 Oct 2026: go.** Windows refused (1), patch both (2, 3), Linux
 from the same recipe (4). P1 shipped (runtimes PR #15, release `openlitespeed-1.9.3-1`);
 **P2 and P3 shipped 4 Oct 2026** (§6) — `openlitespeed_site_check` green on macOS and the
 Ubuntu VM; every running-app SMOKE row 28/28 on the macOS 15.8 VM and the Ubuntu 22.04 VM,
-LSCache purge-on-edit included. Open: the Windows refusal rows (no reachable Windows host). Open work is
-the "OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
+LSCache purge-on-edit included; the Windows refusal rows ran on the Dell (they found #786: the
+switch downloaded before it refused). Nothing is open; this file is the evidence and the recipe.
 
 ### Rulings (owner, 4 Oct 2026)
 

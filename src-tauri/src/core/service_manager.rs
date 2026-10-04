@@ -550,6 +550,12 @@ impl ServiceManager {
         self.site_env = env;
     }
 
+    /// One site's mirrored env vars — for `commands::services::load_mirrors`'s test.
+    #[cfg(test)]
+    pub(crate) fn mirrored_site_env(&self, site_id: &str) -> Vec<(String, String)> {
+        self.site_env.get(site_id).cloned().unwrap_or_default()
+    }
+
     /// Apply a changed per-site env map: swap it in and — when the stack runs —
     /// regenerate + reload (nginx picks up the new `fastcgi_param` lines; a
     /// FrankenPHP override whose config changed is restarted by the reconcile's

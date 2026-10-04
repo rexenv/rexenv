@@ -633,6 +633,54 @@ pub async fn restart_web_service(
     })
 }
 
+/// Load the ServiceManager's MIRRORS of per-site state — env vars, extra domains, ini settings —
+/// from the database. Called at launch BEFORE `adopt_startup` (`lib.rs`), so an adopted session
+/// renders every config from the user's real state. (ledger #785)
+///
+/// Until 4 Oct 2026 only the start commands loaded them, so an ADOPTED session rendered every
+/// site with no env vars, no aliases and no ini settings until the user pressed Start — and the
+/// OpenLiteSpeed watchdog, which compares the config it would render with the one the server
+/// loaded, restarted an adopted site ten seconds after launch WITHOUT its env vars (measured on
+/// the macOS 15 and Ubuntu VMs). A read failure leaves that mirror as it was.
+pub(crate) fn load_mirrors(conn: &rusqlite::Connection, mgr: &mut core::service_manager::ServiceManager) {
+    if let Ok(env) = crate::state::store::all_site_env(conn) {
+        mgr.set_site_env(env);
+    }
+    if let Ok(aliases) = crate::state::store::all_site_aliases(conn) {
+        mgr.set_site_aliases(aliases);
+    }
+    if let Ok(settings) = crate::state::store::all_php_settings(conn) {
+        mgr.set_php_settings(settings);
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    /// Ledger #785 — what `load_mirrors` loads is what an adopted manager renders from.
+    #[test]
+    fn load_mirrors_hands_the_manager_the_stored_env() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=OFF").unwrap();
+        crate::state::store::replace_site_env(&conn, "site-1", &[("Q".into(), "it's 50%1".into())])
+            .unwrap();
+        let mut mgr = crate::core::service_manager::ServiceManager::default();
+        assert!(mgr.mirrored_site_env("site-1").is_empty(), "a fresh manager knows nothing");
+        super::load_mirrors(&conn, &mut mgr);
+        assert_eq!(mgr.mirrored_site_env("site-1"), vec![("Q".to_string(), "it's 50%1".to_string())]);
+    }
+
+    /// …and the launch loads them BEFORE it adopts — the order is the whole fix: a watchdog tick
+    /// after adoption renders from whatever the mirrors hold. Text order, not behaviour (the
+    /// launch block needs an `AppHandle`); the running-app half is SMOKE R7 with an env var set.
+    #[test]
+    fn the_launch_loads_the_mirrors_before_it_adopts() {
+        let src = crate::core::copy_scan::production_source(include_str!("../lib.rs"));
+        let load = src.find("commands::services::load_mirrors(&conn, &mut mgr)").expect("the launch loads the mirrors");
+        let adopt = src.find("mgr.adopt_startup(").expect("the launch adopts");
+        assert!(load < adopt, "the mirrors must be loaded before adoption");
+    }
+}
+
 #[cfg(test)]
 mod label_tests {
     /// Ledger #651 — **the row's screen name may differ from its key, and the KEY is what

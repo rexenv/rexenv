@@ -809,7 +809,7 @@ the rows below are the real app.
   rename but `apache-<domain>-error.log` surviving delete — `apache::error_log_path` is now
   swept on both (72fc47df).
 
-## OpenLiteSpeed override (4 Oct 2026 — `docs/PLAN-openlitespeed.md`)
+## OpenLiteSpeed override (4 Oct 2026 — `docs/archive/PLAN-openlitespeed.md`)
 Proven headless on macOS 26 and the Ubuntu 22.04 arm64 VM (`openlitespeed_site_check`, sandbox
 tier). The rows below ran against the RUNNING app — a release build swapped into the macOS 15.8
 VM's `/Applications` and the Ubuntu 22.04 VM's `/usr/bin` — driven by `rex` + curl with the
@@ -838,7 +838,8 @@ app quit (#784), and an adopted session restarted the site without its env vars 
 - [x] **Switch** the site Nginx → OpenLiteSpeed → Apache → Nginx: each switch serves, the old
   backend's process is gone (Services), and the port moves between the 84xx/83xx ranges. ✓ macOS
   VM (8400 → Apache 8300 → shared nginx). Linux: Apache has no Linux pin, so that leg is refused
-  and the site stays on OpenLiteSpeed — expected.
+  and the site stays on OpenLiteSpeed — expected; since #786 the refusal comes before any
+  download (the 4 Oct run did not read which message it printed).
 - [x] **Rename, then delete**: `<app-data>/openlitespeed/<OLD-domain>/` and
   `logs/openlitespeed-<OLD-domain>-*.log` are gone after the rename; everything for the new
   name is gone after the delete. ✓ both VMs.
@@ -2713,12 +2714,14 @@ them is Windows' own dialog:
       the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
-Not run yet: the Dell was unreachable on 4 Oct 2026 (LAN timeout, tunnel "bad handshake") and
-the Win11 VM has no build with OpenLiteSpeed. The refusal sentence itself is L0-proven
-(`the_web_server_gate_reads_the_pins_per_os`, ledger #774).
-- [ ] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it
+Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.
+- [x] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it
   exists for macOS and Linux only. Choose Nginx for this site."* — not "not available yet".
-- [ ] `rex site server <domain> openlitespeed` fails with the same sentence; the site keeps Nginx.
+  ✓ Dell (screenshot: the Web server dropdown lists Nginx alone; the note carries the sentence).
+  `rex site create <d> --server openlitespeed` refuses with the same sentence and creates nothing.
+- [x] `rex site server <domain> openlitespeed` fails with the same sentence; the site keeps Nginx.
+  ✓ Dell — after #786. The FIRST run failed: the switch fetched before it refused, and answered
+  "1 of 1 downloads failed — fix the connection … no binary manifest for openlitespeed".
 
 ## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 

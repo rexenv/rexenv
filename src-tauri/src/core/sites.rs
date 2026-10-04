@@ -1448,6 +1448,29 @@ fn validate_docroot_path(path: &str) -> Result<()> {
     Ok(())
 }
 
+/// Every refusal a web-server switch can meet, asked BEFORE anything is fetched for it — the
+/// switch command calls this ahead of its binary prefetch, and [`set_web_server_on`] again
+/// before it writes. Until 4 Oct 2026 the command prefetched first, so switching a Windows site
+/// to OpenLiteSpeed answered "1 of 1 downloads failed — fix the connection … no binary manifest
+/// for openlitespeed 1.9.3 on windows" instead of the refusal sentence (measured on the Dell);
+/// a server with no pin for the OS has nothing to download, and the user was sent to fix a
+/// connection that was never broken. (ledger #786)
+pub fn check_switch_on(conn: &Connection, id: &str, server: WebServer, os: &str) -> Result<()> {
+    ensure_server_available_on(server, os)?;
+    let Some(site) = get(conn, id)? else { return Ok(()) };
+    // The site keeps its PHP version across a server switch, so the pair has to
+    // be checked here too — a 7.4 site switched to FrankenPHP is the same lie
+    // as one created that way.
+    ensure_server_runs_php(server, &site.php_version)?;
+    // The site keeps its env vars too, and OpenLiteSpeed cannot carry every value the
+    // others can (a value with both quote characters) — refused here, before the switch,
+    // rather than discovered by a backend that cannot write its config (ledger #775).
+    if server == WebServer::Openlitespeed {
+        super::openlitespeed::check_env(&store::get_site_env(conn, id)?)?;
+    }
+    Ok(())
+}
+
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
 /// — no docroot/cert/DB rebuild — and return the updated site. FrankenPHP, Apache and
 /// OpenLiteSpeed have backends of their own; nginx is the shared one. The caller brings the new
@@ -1464,17 +1487,9 @@ pub fn set_web_server_on(
     server: WebServer,
     os: &str,
 ) -> Result<Option<Site>> {
-    ensure_server_available_on(server, os)?;
-    let Some(_site) = get(conn, id)? else { return Ok(None) };
-    // The site keeps its PHP version across a server switch, so the pair has to
-    // be checked here too — a 7.4 site switched to FrankenPHP is the same lie
-    // as one created that way.
-    ensure_server_runs_php(server, &_site.php_version)?;
-    // The site keeps its env vars too, and OpenLiteSpeed cannot carry every value the
-    // others can (a value with both quote characters) — refused here, before the switch,
-    // rather than discovered by a backend that cannot write its config (ledger #775).
-    if server == WebServer::Openlitespeed {
-        super::openlitespeed::check_env(&store::get_site_env(conn, id)?)?;
+    check_switch_on(conn, id, server, os)?;
+    if get(conn, id)?.is_none() {
+        return Ok(None);
     }
     // Switching servers reallocates the recorded override port: a free port in
     // the new server's range, or None when switching to nginx (B20 §4).
@@ -5913,6 +5928,14 @@ mod tests {
         assert!(e.to_string().contains("both"), "{e}");
         assert!(matches!(get(&conn, &site.id).unwrap().unwrap().web_server, WebServer::Nginx));
         assert!(set_web_server_on(&conn, "nope", WebServer::Nginx, "macos").unwrap().is_none());
+
+        // The checks the switch COMMAND asks before it fetches anything (#786): a server with
+        // no build for the OS answers with the OS's refusal sentence, not a download failure.
+        let e = check_switch_on(&conn, &site.id, WebServer::Openlitespeed, "windows")
+            .expect_err("OpenLiteSpeed has no Windows build");
+        assert_eq!(e.to_string(), crate::platform::words::for_os("windows").openlitespeed_unavailable);
+        assert!(check_switch_on(&conn, &site.id, WebServer::Apache, "linux").is_err());
+        assert!(check_switch_on(&conn, &site.id, WebServer::Nginx, "windows").is_ok());
     }
 
     #[test]

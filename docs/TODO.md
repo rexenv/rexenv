@@ -2067,11 +2067,12 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
-- [ ] **OpenLiteSpeed override server** — **P1, P2, P3 shipped 4 Oct 2026** (`docs/PLAN-openlitespeed.md`).
+- [x] **OpenLiteSpeed override server** ✓ 4 Oct 2026 — **P1, P2, P3 shipped** (`docs/archive/PLAN-openlitespeed.md`).
   ✓ `openlitespeed_site_check` green on macOS and the Ubuntu 22.04 VM; ✓ every running-app SMOKE
   row 28/28 on the macOS 15.8 VM and the Ubuntu VM (LSCache purge-on-edit = P3); the runs fixed
-  three bugs (ledger #783 `.htaccess` re-read, #784 `-n`, #785 launch mirrors). Still open: the
-  SMOKE § Windows refusal rows — no Windows host reachable on 4 Oct (L0 covers the sentence, #774).
+  three bugs (ledger #783 `.htaccess` re-read, #784 `-n`, #785 launch mirrors); ✓ SMOKE § Windows
+  refusal rows on the Dell (installed NSIS build), which found #786 (the switch downloaded before
+  it refused); #785 L0 `load_mirrors_hands_the_manager_the_stored_env`.
 
 ## Phase 4+ (next era)
 

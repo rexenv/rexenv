@@ -6,7 +6,7 @@
 //! settings and the mail catch apply exactly as on nginx sites. Why OpenLiteSpeed at all: the
 //! LSCache module (what a WordPress developer's LiteSpeed host runs) plus `.htaccess`.
 //!
-//! The binary is rexenv's own build (`rexenv/runtimes`, six patches; `docs/PLAN-openlitespeed.md`).
+//! The binary is rexenv's own build (`rexenv/runtimes`, six patches; `docs/archive/PLAN-openlitespeed.md`).
 //! It is shared by every OLS site from the binary cache; each site gets its OWN server root
 //! under app-data (`LSWS_HOME`), because OpenLiteSpeed reads `<root>/conf/httpd_config.conf`
 //! and writes `cachedata/`, `tmp/`, `autoupdate/` beside it. Its runtime files (pid, swap,
