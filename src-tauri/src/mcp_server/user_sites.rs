@@ -786,7 +786,7 @@ static REGISTRY: &[UserTool] = &[
         description: "Restart one of the user's own sites so it picks up a change. Takes `site_id` \
                       and optional `pool` (default false). A site on the shared web server has no \
                       process of its own: rexenv rebuilds its config and reloads the web tier. A site \
-                      with its own backend (FrankenPHP, Apache) gets that backend restarted. `pool: \
+                      with its own backend (FrankenPHP, Apache, OpenLiteSpeed) gets that backend restarted. `pool: \
                       true` ALSO restarts the PHP-FPM pool for the site's PHP version — which stops \
                       every other site on that version for a moment, so the reply says how many; \
                       leave it false unless the user asked. Needs `manage` on the site.",
@@ -834,7 +834,7 @@ fn configure_params() -> Value {
             },
             "name": { "type": "string", "description": "rename: the new display name." },
             "version": { "type": "string", "description": "php: a minor like `8.3`." },
-            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "server: the web server to switch to." },
+            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp", "openlitespeed"], "description": "server: the web server to switch to." },
             "enabled": { "type": "boolean", "description": "xdebug: on or off. enabled: true serves the site, false stops serving it." },
             "key": { "type": "string", "description": "env_set / env_unset: the variable's name." },
             "value": { "type": "string", "description": "env_set: the value." },
@@ -855,7 +855,7 @@ fn create_params() -> Value {
             "domain": { "type": "string", "description": "Full hostname, e.g. `shop.rex`. The TLD must be one rexenv already resolves." },
             "type": { "type": "string", "enum": ["wordpress", "php", "laravel"] },
             "php": { "type": "string", "description": "PHP minor, e.g. `8.3`. Defaults to rexenv's default." },
-            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp"], "description": "Defaults to nginx." },
+            "server": { "type": "string", "enum": ["nginx", "apache", "frankenphp", "openlitespeed"], "description": "Defaults to nginx." },
             "db_engine": { "type": "string", "enum": ["mysql", "mariadb", "postgres"], "description": "Defaults to mysql. `postgres` is for `php` and `laravel` sites on a PHP build with pdo_pgsql — WordPress cannot use it, and the refusal says why." },
             "blueprint": { "type": "string", "description": "The NAME of a saved blueprint (WordPress only)." },
             "multisite": { "type": "string", "enum": ["subdomain", "subdirectory"], "description": "WordPress only: convert to a network after install." },

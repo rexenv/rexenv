@@ -374,6 +374,10 @@ fn stop_pid(pid: u32, grace_tries: u32, interval: Duration) -> Result<()> {
 
 pub struct MacosSupervisor;
 impl ProcessSupervisor for MacosSupervisor {
+    fn service_account(&self) -> Option<String> {
+        // SAFETY: getuid takes no arguments and cannot fail.
+        Some(unsafe { libc::getuid() }.to_string())
+    }
     fn terminate_child(&self, child: &mut Child) {
         // SIGTERM first — a php-fpm / nginx MASTER takes its workers down with it,
         // where a bare SIGKILL orphans them holding the listen socket — then

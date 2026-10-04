@@ -2,7 +2,8 @@
 
 **Status:** IN PROGRESS — prototype proven 4 Oct 2026 on the dev Mac (arm64, macOS 26.6, Apple
 clang 21). **Owner ruled §5 on 4 Oct 2026: go.** Windows refused (1), patch both (2, 3), Linux
-from the same recipe (4). P1 — the `rexenv/runtimes` workflow — is PR #15 there (§6). Open work is
+from the same recipe (4). P1 shipped (runtimes PR #15, release `openlitespeed-1.9.3-1`);
+**P2 shipped 4 Oct 2026** (§6) — proven on macOS, the Linux run and P3 still open. Open work is
 the "OpenLiteSpeed override server" row in `docs/TODO.md`; this file is the evidence and the recipe.
 
 ### Rulings (owner, 4 Oct 2026)
@@ -409,8 +410,20 @@ to be measured (candidates: `RewriteRule … [E=VAR:value]` in the vhost rewrite
   fixture-owned root, `common::Reaped`), ledger rows (admin never exposed; loopback only; cache
   dir fixture-owned), `docs/SMOKE-TEST.md` rows for macOS and Linux, `docs/PORTS.md`, `docs/MAP.md`,
   `docs/ARCHITECTURE.md` §override, `THIRD-PARTY-NOTICES.md`.
-- **P3 — site env for OLS** (§4 open item) and the LSCache plugin end-to-end on a WordPress site
-  (purge on post update; `X-LiteSpeed-Purge`), as a SMOKE row.
+  **State, 4 Oct 2026: shipped.** What P2 measured and decided, beyond §4:
+  - **One file**: the vhost is INLINE in `httpd_config.conf` (measured to work), so the
+    reconcile's config diff covers every input, as Apache's single conf does.
+  - **Per-site server root** `<app-data>/openlitespeed/<domain>/` via `LSWS_HOME` (OpenLiteSpeed
+    reads it before falling back to argv[0]); the binary stays shared in the cache.
+  - **`user <uid>`** from `ProcessSupervisor::service_account` (OLS refuses to start without a
+    resolvable `user`, even as non-root; a numeric uid is accepted).
+  - **Ownership**: argv[0] is overwritten; the app-data marker passed twice after `-d`.
+  - **Env vars solved** (the §4 open item): rewrite `E='NAME:value'` flags reach PHP as request
+    params; `\` and `%` escaped; a value with both quote characters refused at save and switch.
+  - **`.htaccess` precedence**: OpenLiteSpeed runs vhost rules first, so the vhost's front
+    controller steps aside when the docroot has a root `.htaccess` (ledger #778).
+- **P3 — the LSCache plugin end-to-end on a WordPress site** (purge on post update;
+  `X-LiteSpeed-Purge`), as a SMOKE row. Env vars moved into P2.
 
 ## 7. Where the prototype lives
 

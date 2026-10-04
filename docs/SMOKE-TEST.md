@@ -809,6 +809,30 @@ the rows below are the real app.
   rename but `apache-<domain>-error.log` surviving delete — `apache::error_log_path` is now
   swept on both (72fc47df).
 
+## OpenLiteSpeed override (4 Oct 2026 — `docs/PLAN-openlitespeed.md`)
+Proven headless on macOS 26 (`openlitespeed_site_check`, sandbox tier). These are the rows only the
+running app can show.
+- [ ] **Create** a WordPress site with **OpenLiteSpeed** selected. It opens over HTTPS, wp-admin
+  logs in (no redirect loop — the edge's `X-Forwarded-Proto` reaches PHP as `HTTPS=on`), and
+  Settings → Permalinks → "Post name" makes `/hello-world/` work (WordPress writes `.htaccess`;
+  the site then routes itself).
+- [ ] **LSCache**: install the **LiteSpeed Cache** plugin, enable caching, load a post twice
+  logged OUT: the second response carries `x-litespeed-cache: hit`. Edit the post: the next
+  load is a `miss` (the plugin's purge reached the server).
+- [ ] **A plugin's `.htaccess` redirect** (e.g. add `RewriteRule ^old-page$ /hello-world/ [R=301,L]`
+  above the WordPress block): `/old-page` redirects. The vhost's own routing must step aside for it.
+- [ ] **Env var** with a quote and a `%` (`it's 50%1`) set in Site Settings reaches `getenv()`;
+  a value with BOTH `'` and `"` is refused with the OpenLiteSpeed sentence.
+- [ ] **Switch** the site Nginx → OpenLiteSpeed → Apache → Nginx: each switch serves, the old
+  backend's process is gone (Services), and the port moves between the 84xx/83xx ranges.
+- [ ] **Rename, then delete**: `<app-data>/openlitespeed/<OLD-domain>/` and
+  `logs/openlitespeed-<OLD-domain>-*.log` are gone after the rename; everything for the new
+  name is gone after the delete.
+- [ ] **Quit and relaunch** rexenv with the site running: the backend is ADOPTED (same pid in
+  Services), not respawned — ownership survives OpenLiteSpeed's rewritten process title.
+- [ ] **Nothing outside app-data**: `ls /tmp/lshttpd /tmp/ols` shows nothing written today, and
+  the server's error log has no `HttpFetch` line.
+
 ## WordPress Manager
 - [x] Plugins tab lists plugins; install + activate a plugin works.
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
@@ -2672,6 +2696,11 @@ them is Windows' own dialog:
       beside it. (Run 2 on 19 Sep showed Tauri's stock "rexenv is running! Click OK to kill it" —
       the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
+### OpenLiteSpeed — refused, permanently (4 Oct 2026)
+- [ ] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it
+  exists for macOS and Linux only. Choose Nginx for this site."* — not "not available yet".
+- [ ] `rex site server <domain> openlitespeed` fails with the same sentence; the site keeps Nginx.
+
 ## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 
 Run everything above on Linux too, EXCEPT what this section changes or removes. Ubuntu is the
@@ -3093,3 +3122,9 @@ rexenv0 <name>` and read `Current Scopes:`.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________
+
+### OpenLiteSpeed on Linux (4 Oct 2026)
+- [ ] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb —
+  the binary is the Linux build of the same recipe (glibc 2.35 floor). `openlitespeed_site_check`
+  is the headless proof; the adoption-after-relaunch row matters most here, because ownership
+  reads `/proc/<pid>/cmdline`, not `ps`.

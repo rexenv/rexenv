@@ -52,7 +52,7 @@ resolver port are machine-wide.
 ## What it is
 
 One app to run your entire local stack — web servers (**Nginx**, per-site **FrankenPHP**
-or **Apache** with `.htaccess`; OpenLiteSpeed blocked upstream — no macOS binary exists),
+**Apache** with `.htaccess`, or **OpenLiteSpeed** with LSCache — rexenv's own build, macOS + Linux),
 multiple PHP versions (7.4–8.5), databases (**MySQL** or **MariaDB** per site,
 **PostgreSQL**, **Redis** — each engine switchable between pinned versions with
 per-version data dirs), one-click WordPress with a full plugin/theme/user/
@@ -212,7 +212,7 @@ rexenv/
         │   ├── sites.rs · site_env.rs · site_metrics.rs   # lifecycle, env vars, metrics
         │   ├── services.rs     # nginx + php-fpm config gen & control
         │   ├── php.rs · phpconf.rs  # multi-version pools (7.4–8.5); wp-config/.env readers
-        │   ├── frankenphp.rs · apache.rs   # per-site override backends (loopback, never the edge)
+        │   ├── frankenphp.rs · apache.rs · openlitespeed.rs   # per-site override backends (loopback, never the edge)
         │   ├── proxy.rs        # Caddy edge (unix-socket admin, root daemon, adoption)
         │   ├── database.rs · mariadb.rs · postgres.rs · redis.rs · db.rs   # engines + DbEngine
         │   ├── wordpress.rs · wp_login.rs · wporg.rs      # WP-CLI ops, magic login, wp.org search
@@ -268,7 +268,7 @@ rexenv/
 ## Build phases (summary)
 
 1. **Phase 1 (macOS MVP)** — ✅ done. Embedded DNS + local CA → Caddy edge → shared Nginx + PHP-FPM → site create/list → MySQL → one-click WordPress on `https://*.test` (now `*.rex`).
-2. **Phase 2 core** — ✅ done. Multi-PHP (7.4–8.5; 7.4 is rexenv's OWN build, hosted in `rexenv/runtimes` — static-php.dev publishes none), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed stays blocked upstream — no macOS binary exists (`docs/TODO.md` "Blocked").*
+2. **Phase 2 core** — ✅ done. Multi-PHP (7.4–8.5; 7.4 is rexenv's OWN build, hosted in `rexenv/runtimes` — static-php.dev publishes none), per-site FrankenPHP override, PostgreSQL via `DbEngine`, resource monitor, edge recovery. *The once-deferred services shipped later via Homebrew-bottle **bundles** (`resolve_bundle` + `prepare_binary_tree` dylib relinking): **Redis**, **MariaDB** (+ per-site MySQL/MariaDB choice at create), **Apache** override, and per-engine DB **version switching** (per-series data dirs). OpenLiteSpeed shipped 4 Oct 2026 as the third override kind — rexenv's own build for macOS + Linux, hosted in `rexenv/runtimes` (`docs/PLAN-openlitespeed.md`).*
 3. **Phase 3** — ✅ done. WordPress Manager (plugins/themes/users/network incl. multisite), Adminer deep-link, Mailpit, log viewer, terminal, Cloudflare Tunnel, blueprints, autostart. *(Xdebug toggle blocked upstream on a static-php debug build; recipe in `docs/xdebug-debug-build.md`.)*
 4. **Release** — ✅ shipping since 0.1.0. Since 27 Sep 2026 one tag builds macOS, Windows and Linux on GitHub Actions and drafts one release — on `rexenv/rexenv` since 0.8.11 (30 Sep 2026; on the tap before, while this repo was private); a human publishes (`docs/RELEASING.md`). The app updates itself on every OS, and the one-command install (`install.sh` / `install.ps1`, Sep 2026) sits beside the cask. Audit history in `docs/archive/`.
 5. **Phase 4/5** — ✅ Windows (first installer 0.8.0, 19 Sep 2026) and Linux (the port 24 Sep 2026, first release 0.8.8 on 27 Sep), each by filling the `platform/` stubs with `core/` untouched — `docs/PLAN-windows-port.md`, `docs/PLAN-linux-port.md`.

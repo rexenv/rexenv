@@ -77,16 +77,17 @@ pub fn offered_web_servers() -> Vec<WebServer> {
 /// `std::env::consts::OS` alone would have a half that cannot fail on the machine running the
 /// test, and a plant against it would read PASSED rather than proving anything.
 pub fn offered_web_servers_on(os: &str) -> Vec<WebServer> {
-    [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache]
+    [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache, WebServer::Openlitespeed]
         .into_iter()
         .filter(|s| ensure_server_available_on(*s, os).is_ok())
         .collect()
 }
 
-/// Servers with a real backend on a NAMED os. OpenLiteSpeed is BLOCKED on external work
-/// (no upstream macOS binary, no homebrew-core bottle; a maintainer self-build + self-host
-/// is the only path — see docs/TODO.md) — refused here in CORE, so no IPC path can create
-/// a site the stack would silently serve through nginx while claiming another server (M7).
+/// Servers with a real backend on a NAMED os — refused here in CORE otherwise, so no IPC path
+/// can create a site the stack would silently serve through nginx while claiming another
+/// server (M7). OpenLiteSpeed was refused everywhere until its own build landed
+/// (`rexenv/runtimes` `openlitespeed-1.9.3-1`, 4 Oct 2026); it is now pinned for macOS and
+/// Linux and still refused on Windows, where no OpenLiteSpeed build exists at all (ledger #774).
 ///
 /// The os is a parameter so BOTH answers can be measured from either host. The bar only
 /// `cargo check`s for Windows, so a gate that read `std::env::consts::OS` directly would
@@ -107,10 +108,16 @@ fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
             binaries::ships_on("frankenphp", binaries::pins().frankenphp, os)
         }
         WebServer::Apache => binaries::ships_on("httpd", binaries::pins().httpd, os),
-        _ => false,
+        WebServer::Openlitespeed => {
+            binaries::ships_on("openlitespeed", binaries::pins().openlitespeed, os)
+        }
     };
     if shipped {
         Ok(())
+    } else if server == WebServer::Openlitespeed {
+        // Not "yet": OpenLiteSpeed is a POSIX server with no Windows port anywhere. The
+        // sentence is the platform's, so it can say what is true of THIS OS.
+        Err(Error::Other(crate::platform::words::for_os(os).openlitespeed_unavailable.to_string()))
     } else {
         Err(Error::Other(format!(
             "web server {} is not available on this platform yet",
@@ -222,7 +229,8 @@ fn override_port(domain: &str, server: WebServer) -> Option<u16> {
     match server {
         WebServer::Frankenphp => Some(super::frankenphp::site_port(domain)),
         WebServer::Apache => Some(super::apache::site_port(domain)),
-        _ => None,
+        WebServer::Openlitespeed => Some(super::openlitespeed::site_port(domain)),
+        WebServer::Nginx => None,
     }
 }
 
@@ -243,7 +251,8 @@ fn override_range(server: WebServer) -> Option<(u16, u16)> {
     match server {
         WebServer::Frankenphp => Some((super::frankenphp::FRANKENPHP_BASE_PORT, 100)),
         WebServer::Apache => Some((super::apache::APACHE_BASE_PORT, 100)),
-        _ => None,
+        WebServer::Openlitespeed => Some((super::openlitespeed::OPENLITESPEED_BASE_PORT, 100)),
+        WebServer::Nginx => None,
     }
 }
 
@@ -1440,8 +1449,8 @@ fn validate_docroot_path(path: &str) -> Result<()> {
 }
 
 /// Switch a site's web server (Phase 2 §4.1): update ONLY the `web_server` column
-/// — no docroot/cert/DB rebuild — and return the updated site. Nginx, FrankenPHP
-/// and Apache have backends (OLS is still deferred). The caller brings the new
+/// — no docroot/cert/DB rebuild — and return the updated site. FrankenPHP, Apache and
+/// OpenLiteSpeed have backends of their own; nginx is the shared one. The caller brings the new
 /// backend up / old down and reloads the edge.
 pub fn set_web_server(conn: &Connection, id: &str, server: WebServer) -> Result<Option<Site>> {
     set_web_server_on(conn, id, server, std::env::consts::OS)
@@ -1461,6 +1470,12 @@ pub fn set_web_server_on(
     // be checked here too — a 7.4 site switched to FrankenPHP is the same lie
     // as one created that way.
     ensure_server_runs_php(server, &_site.php_version)?;
+    // The site keeps its env vars too, and OpenLiteSpeed cannot carry every value the
+    // others can (a value with both quote characters) — refused here, before the switch,
+    // rather than discovered by a backend that cannot write its config (ledger #775).
+    if server == WebServer::Openlitespeed {
+        super::openlitespeed::check_env(&store::get_site_env(conn, id)?)?;
+    }
     // Switching servers reallocates the recorded override port: a free port in
     // the new server's range, or None when switching to nginx (B20 §4).
     let others: Vec<Site> = list(conn)?.into_iter().filter(|s| s.id != id).collect();
@@ -1764,6 +1779,19 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
         let _ = std::fs::remove_file(log);
     }
     if let Ok(log) = apache::error_log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    // OpenLiteSpeed keeps a whole server root per site (config, run dir, LSCache storage):
+    // the config's directory's parent IS that root, removed whole; its logs live beside the
+    // other servers' and come from the module's one list.
+    if let Ok(conf) = super::openlitespeed::config_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    super::openlitespeed::remove_server_root(platform, &site.domain);
+    if let Ok(log) = super::openlitespeed::log_path(platform, &site.domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    for log in super::openlitespeed::log_paths(platform, &site.domain).unwrap_or_default() {
         let _ = std::fs::remove_file(log);
     }
     if let Ok(log) = tunnels::log_path(platform, &site.domain) {
@@ -2572,13 +2600,16 @@ impl ProvisionProgress {
 }
 
 /// Whether a site is served by the shared nginx. Override servers (FrankenPHP,
-/// Apache) run their own backend process and are excluded. Also the single
+/// Apache, OpenLiteSpeed) run their own backend process and are excluded — asked
+/// POSITIVELY: until 4 Oct 2026 this was "not FrankenPHP or Apache", which would have
+/// put an OpenLiteSpeed site into the shared nginx config and the tunnel allowlist the
+/// day the server was offered (ledger #777). Also the single
 /// source of truth for tunnel eligibility (`tunnels::ensure_tunnelable`):
 /// tunnels originate from the shared nginx, so "in the nginx config" and
 /// "safe to tunnel" must be the same predicate — a drift between them is the
 /// wrong-vhost exposure all over again.
 pub(crate) fn is_nginx_served(s: &Site) -> bool {
-    !matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache)
+    s.web_server == WebServer::Nginx
 }
 
 /// Does this site get a SERVING block in the SHARED nginx config?
@@ -3034,7 +3065,7 @@ mod tests {
     fn the_new_site_dialog_offers_the_servers_core_allows() {
         // Every offered server passes the gate that would refuse it — asked for BOTH os
         // values, so neither half depends on which machine runs the test.
-        for os in ["macos", "windows"] {
+        for os in ["macos", "windows", "linux"] {
             for s in offered_web_servers_on(os) {
                 assert!(
                     ensure_server_available_on(s, os).is_ok(),
@@ -3046,10 +3077,10 @@ mod tests {
         // The half that only Windows shows: D4 leaves both of these out of v1, so the picker
         // must not list them there — offered-then-refused is what this replaced.
         let windows = offered_web_servers_on("windows");
-        for s in [WebServer::Apache, WebServer::Frankenphp] {
+        for s in [WebServer::Apache, WebServer::Frankenphp, WebServer::Openlitespeed] {
             assert!(!windows.contains(&s), "{s:?} has no Windows pin and must not be offered (D4)");
         }
-        assert_eq!(offered_web_servers_on("macos").len(), 3, "all three ship on macOS");
+        assert_eq!(offered_web_servers_on("macos").len(), 4, "all four ship on macOS");
 
         let dialog = crate::core::copy_scan::strip_ts_comments(include_str!(
             "../../../src/components/sites/NewSiteDialog.tsx"
@@ -3086,8 +3117,18 @@ mod tests {
             assert!(e.contains(server.as_db()), "the refusal must name the server: {e}");
             assert!(e.contains("not available on this platform yet"), "{e}");
         }
-        // OpenLiteSpeed has no artifact anywhere — refused on both, as it always was.
-        assert!(ensure_server_available_on(WebServer::Openlitespeed, "macos").is_err());
+        // OpenLiteSpeed (ledger #774): rexenv's own build for macOS and Linux, and NO Windows
+        // build anywhere — so the Windows refusal is the permanent sentence, never "yet".
+        for os in ["macos", "linux"] {
+            assert!(ensure_server_available_on(WebServer::Openlitespeed, os).is_ok(), "OLS on {os}");
+        }
+        let e = ensure_server_available_on(WebServer::Openlitespeed, "windows")
+            .expect_err("OpenLiteSpeed has no Windows build")
+            .to_string();
+        assert_eq!(e, crate::platform::words::WINDOWS.openlitespeed_unavailable);
+        assert!(!e.contains("yet"), "{e}");
+        assert!(offered_web_servers_on("linux").contains(&WebServer::Openlitespeed));
+        assert!(!offered_web_servers_on("windows").contains(&WebServer::Openlitespeed));
     }
 
     /// **A create refused for its shape leaves nothing behind — no folder, no
@@ -5847,7 +5888,7 @@ mod tests {
             set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap().unwrap();
         assert!(matches!(back.web_server, WebServer::Nginx));
 
-        // Apache is a real backend now; OLS stays deferred; unknown id → None.
+        // Apache and OpenLiteSpeed are real backends; unknown id → None.
         // `_on("macos")` for the same reason the FrankenPHP legs above name it: Apache has
         // no Windows pin (D4), so on the Dell the switch is refused by the OS gate before
         // the column behaviour under test is reached (W12).
@@ -5856,9 +5897,21 @@ mod tests {
             .expect("exists");
         assert!(matches!(ap.web_server, WebServer::Apache));
         set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
-        // OLS must be refused for being DEFERRED, not for the os — so it is asked on the
-        // host where every other server in this test is available.
-        assert!(set_web_server_on(&conn, &site.id, WebServer::Openlitespeed, "macos").is_err());
+        // OpenLiteSpeed: its own port range, and a switch to it refuses an env value it cannot
+        // write (both quote characters — ledger #775) BEFORE the column changes.
+        let ols = set_web_server_on(&conn, &site.id, WebServer::Openlitespeed, "macos")
+            .unwrap()
+            .expect("exists");
+        assert!(matches!(ols.web_server, WebServer::Openlitespeed));
+        let port = ols.override_port.expect("a recorded port");
+        assert!((8400..8500).contains(&port), "{port}");
+        assert!(!is_nginx_served(&ols), "an OLS site must never get a shared-nginx block");
+        set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
+        store::replace_site_env(&conn, &site.id, &[("Q".into(), "it's \"both\"".into())]).unwrap();
+        let e = set_web_server_on(&conn, &site.id, WebServer::Openlitespeed, "macos")
+            .expect_err("a value with both quotes cannot be written for OLS");
+        assert!(e.to_string().contains("both"), "{e}");
+        assert!(matches!(get(&conn, &site.id).unwrap().unwrap().web_server, WebServer::Nginx));
         assert!(set_web_server_on(&conn, "nope", WebServer::Nginx, "macos").unwrap().is_none());
     }
 
@@ -5936,10 +5989,10 @@ mod tests {
         create_on(&conn, new, "macos").unwrap();
 
         // An unavailable server is refused at CREATE too (core guard, M7) —
-        // not just at switch time.
+        // not just at switch time: OpenLiteSpeed on Windows.
         let mut ols = sample("OLS", "ols.test");
         ols.web_server = WebServer::Openlitespeed;
-        assert!(create(&conn, ols).is_err());
+        assert!(create_on(&conn, ols, "windows").is_err());
 
         // Read the raw TEXT to confirm DB storage matches the wire format.
         let (t, ws): (String, String) = conn

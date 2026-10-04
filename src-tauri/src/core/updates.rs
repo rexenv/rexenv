@@ -1479,7 +1479,7 @@ mod tests {
     fn only_the_declared_families_are_nameable() {
         for name in [
             "caddy", "nginx", "mysql", "mariadb", "postgres", "redis", "mailpit",
-            "frankenphp", "httpd", "cloudflared", "wp-cli", "composer",
+            "frankenphp", "httpd", "openlitespeed", "cloudflared", "wp-cli", "composer",
             "xdebug-8.3", "php-debug", "adminer.php", "Adminer", "PHP", "",
         ] {
             assert!(

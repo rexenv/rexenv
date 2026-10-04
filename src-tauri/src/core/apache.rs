@@ -76,18 +76,24 @@ fn routing(mode: RewriteMode) -> &'static str {
         RewriteMode::Single | RewriteMode::SubdomainMultisite => {
             "FallbackResource /index.php\n"
         }
-        RewriteMode::SubdirectoryMultisite => {
-            "RewriteRule ^/index\\.php$ - [L]\n\
+        RewriteMode::SubdirectoryMultisite => SUBDIRECTORY_MULTISITE_RULES,
+    }
+}
+
+/// WordPress's canonical subdirectory-network rules in SERVER context (leading slashes;
+/// existence checked through `DOCUMENT_ROOT` because `REQUEST_FILENAME` is not mapped yet
+/// there). Shared with `core::openlitespeed`, whose vhost-level rewrite engine takes this
+/// exact text — measured 4 Oct 2026: `/site2/wp-admin` 301s to `/site2/wp-admin/`,
+/// `/site2/wp-content/…` and `/site2/wp-login.php` resolve to the root files, pretty URLs
+/// reach `index.php`.
+pub(crate) const SUBDIRECTORY_MULTISITE_RULES: &str = "RewriteRule ^/index\\.php$ - [L]\n\
              RewriteRule ^/([_0-9a-zA-Z-]+/)?wp-admin$ /$1wp-admin/ [R=301,L]\n\
              RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -f [OR]\n\
              RewriteCond %{DOCUMENT_ROOT}%{REQUEST_URI} -d\n\
              RewriteRule ^ - [L]\n\
              RewriteRule ^/([_0-9a-zA-Z-]+/)?(wp-(content|admin|includes).*) /$2 [L]\n\
              RewriteRule ^/([_0-9a-zA-Z-]+/)?(.*\\.php)$ /$2 [L]\n\
-             RewriteRule . /index.php [L]\n"
-        }
-    }
-}
+             RewriteRule . /index.php [L]\n";
 
 /// Render the per-site httpd.conf: loopback listener, the site's docroot with
 /// `.htaccess` enabled, `.php` → the site's php-fpm pool over FastCGI, and the

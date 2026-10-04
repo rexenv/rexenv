@@ -374,7 +374,7 @@ fn build_plan(
     } else {
         downloads::plan_for_pool_with(state.platform.as_ref(), minor, patches)
     };
-    if matches!(site.web_server, WebServer::Apache) {
+    if matches!(site.web_server, WebServer::Apache | WebServer::Openlitespeed) {
         plan.extend(downloads::plan_for_override(state.platform.as_ref(), site.web_server));
     }
     // A LINKED WordPress site is adopted, never installed into, so `phase_defs`

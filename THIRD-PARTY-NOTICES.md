@@ -15,7 +15,7 @@ build downloads from distributors too, never from us: PHP from the PHP project's
 Windows builds (`downloads.php.net/~windows`), nginx from nginx.org's Windows zip, MySQL
 from Oracle's `winx64` zips, PostgreSQL from theseus-rs's `x86_64-pc-windows-msvc`
 builds, and Caddy, Mailpit and cloudflared from their GitHub releases. So the three
-"rexenv's own build" sections below describe **macOS artifacts only** — none of them is
+"rexenv's own build" sections below describe **macOS artifacts only** (OpenLiteSpeed's, macOS and Linux) — none of them is
 downloaded on Windows. Versions, sources and digests: `docs/PORTS.md`, Windows table.
 The Windows app binary links a different Rust graph (the `windows-*` and `webview2-com*`
 families in place of `objc2`) and has its own table below, read by the SAME walk as the macOS
@@ -186,6 +186,29 @@ asserted in the build, not assumed.
 refuses to resolve an artifact served from rexenv's own infrastructure unless a
 licence archive is pinned beside it — build 1 of this release shipped without
 one and the app would not load it, which is how the rule proved itself.
+
+## OpenLiteSpeed 1.9.3 — rexenv's own build (downloaded at runtime, distributed BY US)
+
+Built and hosted since 4 Oct 2026 for macOS AND Linux: upstream publishes Linux tarballs
+only, the one community macOS build turns the cache module off, and the app depends on
+patches no upstream binary carries (runtime files under `LSWS_TMP_DIR`, no phone-home).
+OpenLiteSpeed has no Windows build, so nothing here is downloaded on Windows.
+
+| | |
+|---|---|
+| Artifacts | `openlitespeed-1.9.3-{macos,linux}-{aarch64,x86_64}.tar.gz` (`openlitespeed` + `mime.properties`) |
+| Built by | `rexenv/runtimes` (public), `scripts/build-openlitespeed.sh`, GitHub Actions |
+| Source | OpenLiteSpeed 1.9.3 + lsquic, ls-qpack, ls-hpack, BoringSSL, brotli, libbcrypt, udns, PCRE2, zlib, expat at pinned versions/commits — every tarball and the patch set (`openlitespeed-1.9.3-rexenv-patches.tar.gz`) mirrored as assets in the same release: the corresponding source the GPL requires |
+| Release | `openlitespeed-1.9.3-1` — immutable, never re-uploaded |
+| Pinned in | `core/binaries.rs` (`OPENLITESPEED_1_9_3_*_SHA256`, `OPENLITESPEED_VERSION`) |
+| Licence | **GPL-3.0** (`licenses/openlitespeed.LICENSE`, `openlitespeed.GPL.txt`) — rexenv itself stays Apache-2.0: the server is a separate program the app downloads and runs, never linked into it |
+
+Everything compiled into the binary travels with it in
+`licenses-openlitespeed-1.9.3-<os>-<arch>.tar.gz`: BoringSSL (OpenSSL/ISC), lsquic and
+its Chromium-derived parts (MIT, BSD-3), ls-qpack and ls-hpack (MIT), brotli (MIT),
+libbcrypt (CC0), udns (LGPL-2.1, statically linked; its source is on the release), PCRE2
+(BSD-3), zlib, expat (MIT). The same refusal as nginx's applies: no pinned licence archive,
+no resolve.
 
 ## PHP 8.1-8.5 — rexenv's own builds (downloaded at runtime, distributed BY US)
 

@@ -112,7 +112,7 @@ pub fn resources_of(
             let tree = override_pids.get(&s.domain).and_then(|pid| monitor.tree(*pid));
             let act = activity.get(&s.domain);
             SiteResources {
-                dedicated: matches!(s.web_server, WebServer::Frankenphp | WebServer::Apache),
+                dedicated: s.web_server != WebServer::Nginx,
                 cpu_percent: tree.map(|t| t.cpu_percent),
                 ram_mb: tree.map(|t| t.ram_mb),
                 requests_per_min: act.map(|a| a.requests),

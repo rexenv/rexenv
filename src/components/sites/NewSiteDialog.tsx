@@ -26,11 +26,12 @@ function generatePassword(): string {
   return Array.from(buf, (n) => chars[n % chars.length]).join("");
 }
 
-/** Web servers selectable in Phase 2 (Apache/OpenLiteSpeed are deferred). */
+/** Labels for the web servers; WHICH are offered is core's answer (`offeredWebServers`). */
 const SERVERS: { value: WebServer; label: string }[] = [
   { value: "nginx", label: "Nginx" },
   { value: "frankenphp", label: "FrankenPHP" },
   { value: "apache", label: "Apache (.htaccess)" },
+  { value: "openlitespeed", label: "OpenLiteSpeed (.htaccess + LSCache)" },
 ];
 
 /** WordPress locales offered in the dialog ("" → default en_US). */
@@ -333,12 +334,20 @@ export function NewSiteDialog({
       setWebServer(offeredServers[0].value);
     }
   }, [offered, offeredServers, webServer]);
+  // OpenLiteSpeed is not "not yet" anywhere it is missing — it has no Windows build at all —
+  // so its sentence is core's (`PlatformWords::openlitespeed_unavailable`), not this one.
+  const notYet = missingServers.filter((s) => s.value !== "openlitespeed");
   const serverNote =
-    missingServers.length === 0
-      ? undefined
-      : `${missingServers.map((s) => s.label.replace(/ \(.*\)$/, "")).join(" and ")} ${
-          missingServers.length === 1 ? "isn't" : "aren't"
-        } part of rexenv on ${words.osName} yet — rexenv only offers a server it has a pinned build for.`;
+    [
+      notYet.length === 0
+        ? undefined
+        : `${notYet.map((s) => s.label.replace(/ \(.*\)$/, "")).join(" and ")} ${
+            notYet.length === 1 ? "isn't" : "aren't"
+          } part of rexenv on ${words.osName} yet — rexenv only offers a server it has a pinned build for.`,
+      missingServers.some((s) => s.value === "openlitespeed") ? words.openlitespeedUnavailable : undefined,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
   const create = useMutation({
     mutationFn: () =>
       siteProvisionJob(

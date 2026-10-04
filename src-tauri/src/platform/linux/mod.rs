@@ -525,6 +525,10 @@ fn ss_rows(args: &[&str]) -> Option<Vec<proc_table::SocketRow>> {
 
 pub struct LinuxSupervisor;
 impl ProcessSupervisor for LinuxSupervisor {
+    fn service_account(&self) -> Option<String> {
+        // SAFETY: getuid takes no arguments and cannot fail.
+        Some(unsafe { libc::getuid() }.to_string())
+    }
     fn terminate_child(&self, child: &mut Child) {
         let _ = crate::platform::command("kill").arg(child.id().to_string()).status();
         for _ in 0..20 {

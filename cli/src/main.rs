@@ -242,7 +242,7 @@ COMMANDS:
   site open <domain>    Open https://<domain> in the browser
   site login <domain>   Open a logged-in wp-admin (magic link; --print to not open)
   site create <domain> [--name N] [--type wordpress|php|laravel] [--php 8.3]
-              [--server nginx|frankenphp|apache] [--db mysql|mariadb|postgres|none]
+              [--server nginx|frankenphp|apache|openlitespeed] [--db mysql|mariadb|postgres|none]
               [--blueprint <name>] [--multisite subdomain|subdirectory]
               [--path <folder>]
                 Create a site (defaults mirror the app's New Site dialog;
@@ -269,7 +269,7 @@ COMMANDS:
   php settings <minor> [set K=V]     Whitelisted ini settings (set restarts the pool)
   site php <domain> <minor>          Switch a site's PHP version
   site xdebug <domain> on|off        Toggle the site's Xdebug debug pool
-  site server <domain> nginx|frankenphp|apache   Switch the web server
+  site server <domain> <server>      Switch the web server: nginx|frankenphp|apache|openlitespeed
   site restart <domain> [--pool]     Restart the site's own backend (--pool also bounces its shared PHP pool)
   site start <domain> | --all        Serve this site (or every site, --all) again
   site stop <domain> | --all         Stop serving THIS site, or every site — rexenv's services keep running
@@ -2245,9 +2245,9 @@ fn cmd_completions(shell: Option<&str>) {
 // ── site settings: server / rename / domain / move / env / cert ─────────────
 
 fn cmd_site_server(words: &[String], json_output: bool) {
-    let site = find_site(words, "rex site server <domain> nginx|frankenphp|apache");
+    let site = find_site(words, "rex site server <domain> nginx|frankenphp|apache|openlitespeed");
     let Some(server) = words.get(1).filter(|w| !w.starts_with("--")) else {
-        errln!("rex: usage: rex site server <domain> nginx|frankenphp|apache");
+        errln!("rex: usage: rex site server <domain> nginx|frankenphp|apache|openlitespeed");
         exit(1);
     };
     let updated = request("site.server", json!({ "id": site["id"], "server": server }));

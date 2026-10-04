@@ -9,7 +9,7 @@
 //! admin API; on a high port it's a supervised child.
 
 use crate::core::db::DbEngine;
-use crate::core::{adminer, apache, binaries, frankenphp, macho, mail, php, ports, proxy, services, sites, ssl, stack_guard};
+use crate::core::{adminer, apache, binaries, frankenphp, macho, mail, openlitespeed, php, ports, proxy, services, sites, ssl, stack_guard};
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
 use crate::state::models::{Site, SiteServing, WebServer};
@@ -189,6 +189,8 @@ pub struct ServiceManager {
     frankenphp_bin: Option<PathBuf>,
     /// Apache httpd bundle dir, resolved lazily on first Apache override.
     httpd_dir: Option<PathBuf>,
+    /// OpenLiteSpeed tree dir, resolved lazily on first OpenLiteSpeed override.
+    ols_dir: Option<PathBuf>,
     nginx: Option<Proc>,
     caddy: CaddyHandle,
     /// Mailpit mail-catcher (§2.1), resolved + started lazily.
@@ -247,6 +249,7 @@ pub struct ServiceManager {
 enum OverrideKind {
     Frankenphp,
     Apache,
+    Openlitespeed,
 }
 
 impl OverrideKind {
@@ -254,7 +257,8 @@ impl OverrideKind {
         match server {
             WebServer::Frankenphp => Some(OverrideKind::Frankenphp),
             WebServer::Apache => Some(OverrideKind::Apache),
-            _ => None,
+            WebServer::Openlitespeed => Some(OverrideKind::Openlitespeed),
+            WebServer::Nginx => None,
         }
     }
     /// Which override backend, if any, this site WANTS running right now.
@@ -275,12 +279,14 @@ impl OverrideKind {
         match self {
             OverrideKind::Frankenphp => frankenphp::site_port(domain),
             OverrideKind::Apache => apache::site_port(domain),
+            OverrideKind::Openlitespeed => openlitespeed::site_port(domain),
         }
     }
     fn label(&self) -> &'static str {
         match self {
             OverrideKind::Frankenphp => "FrankenPHP",
             OverrideKind::Apache => "Apache",
+            OverrideKind::Openlitespeed => "OpenLiteSpeed",
         }
     }
 }
@@ -427,6 +433,7 @@ impl ServiceManager {
             overrides: HashMap::new(),
             frankenphp_bin: None,
             httpd_dir: None,
+            ols_dir: None,
             nginx: None,
             caddy: CaddyHandle::Stopped,
             mailpit: None,
@@ -1376,7 +1383,53 @@ impl ServiceManager {
                 )
                 .ok()
             }
+            OverrideKind::Openlitespeed => self.ols_config(platform, domain, docroot, port, fpm_port, rewrite, env),
         }
+    }
+
+    /// The OpenLiteSpeed config a site WOULD get now — pure render from deterministic paths
+    /// (the tree dir is named by the pin, so the diff never triggers a resolve).
+    #[allow(clippy::too_many_arguments)]
+    fn ols_config(
+        &self,
+        platform: &dyn Platform,
+        domain: &str,
+        docroot: &Path,
+        port: u16,
+        fpm_port: u16,
+        rewrite: services::RewriteMode,
+        env: &[(String, String)],
+    ) -> Option<String> {
+        let basedir = platform
+            .paths()
+            .bin_dir()
+            .ok()?
+            .join(format!("openlitespeed-{}", binaries::pins().openlitespeed));
+        let server_root = openlitespeed::server_root(platform, domain).ok()?;
+        let log_dir = platform.paths().log_dir().ok()?;
+        let account = platform.supervisor().service_account()?;
+        Some(openlitespeed::generate_config(&openlitespeed::ConfigInput {
+            basedir: &basedir,
+            server_root: &server_root,
+            docroot,
+            log_dir: &log_dir,
+            domain,
+            port,
+            fpm_port,
+            mode: rewrite,
+            env,
+            account: &account,
+        }))
+    }
+
+    /// Resolve the OpenLiteSpeed tree once (mirrors `ensure_httpd_dir`).
+    async fn ensure_ols_dir(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
+        if let Some(p) = &self.ols_dir {
+            return Ok(p.clone());
+        }
+        let p = binaries::resolve_dir(platform, "openlitespeed", binaries::pins().openlitespeed).await?;
+        self.ols_dir = Some(p.clone());
+        Ok(p)
     }
 
     fn override_config_path(
@@ -1388,6 +1441,7 @@ impl ServiceManager {
         match kind {
             OverrideKind::Frankenphp => frankenphp::config_path(platform, domain).ok(),
             OverrideKind::Apache => apache::config_path(platform, domain).ok(),
+            OverrideKind::Openlitespeed => openlitespeed::config_path(platform, domain).ok(),
         }
     }
 
@@ -1482,12 +1536,28 @@ impl ServiceManager {
                 )?;
                 apache::start(platform, &basedir, domain, &conf)?
             }
+            OverrideKind::Openlitespeed => {
+                let basedir = self.ensure_ols_dir(platform).await?;
+                let content = self
+                    .ols_config(platform, domain, docroot, port, fpm_port, rewrite, env)
+                    .ok_or_else(|| {
+                        Error::Other(format!(
+                            "can't write the OpenLiteSpeed config for \"{domain}\": this platform names \
+                             no account for it to run as"
+                        ))
+                    })?;
+                openlitespeed::write_config(platform, domain, &content)?;
+                // The site's variables reach PHP as request params from the config's rewrite
+                // rules; the server process itself needs none of them.
+                openlitespeed::start(platform, &basedir, domain, &[])?
+            }
         };
         self.overrides
             .insert(domain.to_string(), OverrideBackend { kind, port, child: child.into() });
         let log_key = match kind {
             OverrideKind::Frankenphp => format!("frankenphp-{domain}"),
             OverrideKind::Apache => format!("apache-{domain}"),
+            OverrideKind::Openlitespeed => format!("openlitespeed-{domain}"),
         };
         Ok(ReadyCheck {
             service: format!("{} ({domain})", kind.label()),
@@ -2814,8 +2884,8 @@ pub fn site_serving(sites: &[Site], infos: &[ServiceInfo]) -> Vec<SiteServing> {
                 WebServer::Frankenphp => {
                     sites::recorded_override_port(s).is_some_and(port_up)
                 }
-                // Apache serves through the shared pool too — both must be up.
-                WebServer::Apache => {
+                // Apache and OpenLiteSpeed serve through the shared pool too — both must be up.
+                WebServer::Apache | WebServer::Openlitespeed => {
                     sites::recorded_override_port(s).is_some_and(port_up)
                         && port_up(sites::pool_port_for_site(s))
                 }

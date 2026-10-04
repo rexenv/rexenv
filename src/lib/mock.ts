@@ -35,6 +35,7 @@ export const mockPlatformWords: PlatformWords = {
   bundledTools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
   pathSep: "/",
   searchingBrowsers: "Chrome and Safari",
+  openlitespeedUnavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
 };
 
 export const mockAppInfo: AppInfo = {

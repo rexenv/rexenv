@@ -116,6 +116,10 @@ pub struct PlatformWords {
     /// against the public TLD list before any DNS lookup, and have no setting for it (Firefox does, and
     /// `core::firefox` sets it). Safari is macOS's; Windows' own is Edge. The hint names what the user has.
     pub searching_browsers: &'static str,
+    /// Why OpenLiteSpeed cannot be chosen on this OS. On macOS and Linux it ships (rexenv's own
+    /// build) and the sentence is never shown; on Windows it is the permanent truth — no
+    /// OpenLiteSpeed build exists for Windows at all, so "not available yet" would be a promise.
+    pub openlitespeed_unavailable: &'static str,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -152,6 +156,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     update_reprompt: " macOS may ask again for permissions it had granted this copy: rexenv has no \
          Apple developer signature yet, so each build is a new identity to it.",
     searching_browsers: "Chrome and Safari",
+    openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -187,6 +192,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     update_replaces: "rexenv's program files (your data folder is not touched)",
     update_reprompt: "",
     searching_browsers: "Chrome and Edge",
+    openlitespeed_unavailable: "OpenLiteSpeed has no Windows build — it exists for macOS and Linux only. Choose Nginx for this site.",
 };
 
 /// Ubuntu first (docs/PLAN-linux-port.md L3): GNOME's file manager is "Files" (Nautilus), tools
@@ -224,6 +230,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     update_replaces: "rexenv's program files",
     update_reprompt: "",
     searching_browsers: "Chrome and Firefox",
+    openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
 };
 
 impl PlatformWords {
@@ -278,6 +285,18 @@ fn join_and(items: &[String]) -> String {
         [a] => a.clone(),
         [a, b] => format!("{a} and {b}"),
         [rest @ .., last] => format!("{}, and {last}", rest.join(", ")),
+    }
+}
+
+/// The words of a NAMED os (`std::env::consts::OS` spelling) — for a gate that takes the os
+/// as a parameter so both answers are testable from one host (`sites::ensure_server_available_on`):
+/// reading [`current`] there would put the Mac's sentence into the Windows refusal under test.
+/// An unknown name gets macOS's, the same default [`current`] falls back to.
+pub fn for_os(os: &str) -> &'static PlatformWords {
+    match os {
+        "windows" => &WINDOWS,
+        "linux" => &LINUX,
+        _ => &MACOS,
     }
 }
 

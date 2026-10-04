@@ -104,11 +104,13 @@ async function magicLoginUrl(site: Pick<Site, "id" | "domain">): Promise<string>
   }
 }
 
-/** Web servers with real backends (OpenLiteSpeed is still deferred). */
+/** Web servers with real backends — labels only; the switch is refused in core where a
+ *  server does not ship (OpenLiteSpeed on Windows). */
 const SERVERS: { value: WebServer; label: string }[] = [
   { value: "nginx", label: "Nginx" },
   { value: "frankenphp", label: "FrankenPHP" },
   { value: "apache", label: "Apache (.htaccess)" },
+  { value: "openlitespeed", label: "OpenLiteSpeed (.htaccess + LSCache)" },
 ];
 
 const SELECT_CLS =

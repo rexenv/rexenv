@@ -958,7 +958,8 @@ pub async fn set_site_web_server(
                 &php_patches,
             )
         };
-        if matches!(server, WebServer::Apache) {
+        // Apache and OpenLiteSpeed need their own binary AND the site's pool.
+        if matches!(server, WebServer::Apache | WebServer::Openlitespeed) {
             plan.extend(core::downloads::plan_for_override(state.platform.as_ref(), server));
         }
         core::downloads::prefetch(state.platform.as_ref(), "Switch web server", &plan).await?;
@@ -1356,7 +1357,13 @@ pub async fn set_site_env(
     // (same shape as apply_php_settings).
     let (site_exists, sites, all) = {
         let conn = lock(&state)?;
-        let exists = core::sites::get(&conn, &id)?.is_some();
+        let site = core::sites::get(&conn, &id)?;
+        let exists = site.is_some();
+        // OpenLiteSpeed carries every value the others do except one with both quote
+        // characters — refused for that server before anything is saved.
+        if site.is_some_and(|s| s.web_server == crate::state::models::WebServer::Openlitespeed) {
+            core::openlitespeed::check_env(&pairs)?;
+        }
         if exists {
             crate::state::store::replace_site_env(&conn, &id, &pairs)?;
         }
@@ -1584,6 +1591,17 @@ pub async fn change_site_domain(
         let _ = std::fs::remove_file(log);
     }
     if let Ok(log) = core::apache::error_log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    // OpenLiteSpeed: the old name's whole server root, and its logs.
+    if let Ok(conf) = core::openlitespeed::config_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(conf);
+    }
+    core::openlitespeed::remove_server_root(state.platform.as_ref(), &old_domain);
+    if let Ok(log) = core::openlitespeed::log_path(state.platform.as_ref(), &old_domain) {
+        let _ = std::fs::remove_file(log);
+    }
+    for log in core::openlitespeed::log_paths(state.platform.as_ref(), &old_domain).unwrap_or_default() {
         let _ = std::fs::remove_file(log);
     }
     if let Ok(log) = core::tunnels::log_path(state.platform.as_ref(), &old_domain) {

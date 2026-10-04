@@ -207,8 +207,8 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   represent: rexenv Local CA … Thumbprint (sha1)" to add, "Root Certificate Store — Do you want to
   DELETE the following certificate from the Root Store?" to remove (measured; unlike macOS, there is no
   API to title them). So the CA's subject, `rexenv Local CA`, is the only name a Windows user sees there.
-- **Per-site server overrides** (`OverrideKind` in the manager — one seam, two kinds
-  today, OLS drops in later if a macOS artifact ever exists):
+- **Per-site server overrides** (`OverrideKind` in the manager — one seam, three kinds;
+  OpenLiteSpeed dropped in as the one new arm the seam promised, 4 Oct 2026):
   - **FrankenPHP** (single static binary, embeds its own PHP): loopback backend on a
     per-site port in 8200–8299, `auto_https off` + `admin off`.
   - **Apache httpd** (`core/apache.rs`, bottle bundle): loopback backend on
@@ -222,6 +222,29 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
     bundled; the bottle's compiled-in default paths are `@@HOMEBREW_PREFIX@@`
     placeholders and are never trusted — every path (pidfile, runtime dir, logs,
     mime map) is explicit + quoted.
+  - **OpenLiteSpeed** (`core/openlitespeed.rs`, macOS + Linux; rexenv's OWN build from
+    `rexenv/runtimes`, six patches — `docs/PLAN-openlitespeed.md`): loopback backend on
+    8400–8499. Like Apache, NO PHP of its own — `.php` goes to the site's shared pool
+    (`extProcessor … type fcgi … autoStart 0`). The reason to pick it is LSCache (the
+    module ships ON, so the LiteSpeed Cache plugin works as on a LiteSpeed host) plus
+    `.htaccess`. The binary is shared from the cache; each site has its OWN server root
+    under app-data (`openlitespeed/<domain>/`, passed as `LSWS_HOME`), holding the ONE
+    generated `conf/httpd_config.conf` (vhost inline, so the reconcile diff sees every
+    input), `run/` (`LSWS_TMP_DIR` — pid, swap, status; never the machine-wide
+    `/tmp/lshttpd`), `shm/` and `lscache/`. `disableWebAdmin 1` and `noRemoteFetch 1`
+    (no admin console, no release check, no quic.cloud). Per-site env vars reach PHP as
+    request params through rewrite `E=` flags (single- or double-quoted, `\` and `%`
+    escaped); a value with BOTH quote characters cannot be written and is refused when
+    saved for, or switched to, an OLS site. **Routing steps aside for a site's own
+    `.htaccess`**: OpenLiteSpeed runs vhost rules BEFORE the directory's, so a vhost
+    front controller rewrote every missing path to `/index.php` and a plugin's
+    `.htaccess` redirect never saw its path — with a root `.htaccess` the site routes
+    itself (WordPress/Laravel ship one, as on any LiteSpeed host), without one the vhost's
+    per-mode rules route it; dotfiles 404 BEFORE either. **Ownership:** OpenLiteSpeed
+    overwrites `argv[0]`, so the app-data marker is passed twice after `-d` (macOS `ps`
+    drops the last argument once the overwrite splits argv[0]); `owned_master` finds it
+    on both OSes (`openlitespeed_site_check`). **Windows: refused** — no OpenLiteSpeed
+    build exists there; the refusal is `PlatformWords::openlitespeed_unavailable`.
   Each backend port is **recorded, not derived** (B20 §4): allocated collision-free
   (lowest free in the range) at create / web-server switch, stored in `sites.override_port`,
   and read verbatim by every consumer (edge route, spawn, adopt, status) — never
@@ -234,8 +257,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   routes an override site's Host to its backend; all other sites stay on the shared
   Nginx. `ServiceManager::reconcile_overrides` keeps backends in sync on start/reload
   (config-diff restart on docroot/rewrite/env/pool change; a KIND change stops the old
-  backend — different port + binary). OpenLiteSpeed is refused in CORE at create AND
-  switch (`ensure_server_available_on`) — no macOS binary exists (see TODO "Blocked").
+  backend — different port + binary). A server with no pin on this OS (Apache and FrankenPHP
+  on Windows; OpenLiteSpeed on Windows, permanently) is refused in CORE at create AND switch
+  (`ensure_server_available_on`, through `binaries::ships_on`).
 - **Multisite** (`sites.multisite`: none/subdomain/subdirectory → `RewriteMode`): the
   config generator has three rewrite templates. Subdomain adds `mysite.rex, *.mysite.rex`
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;

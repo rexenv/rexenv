@@ -213,6 +213,7 @@ pub struct PinSet {
     pub redis: &'static str,
     pub mariadb: &'static str,
     pub httpd: &'static str,
+    pub openlitespeed: &'static str,
     pub xdebug: &'static str,
     pub bundled_openssl: &'static str,
     pub bundled_pcre2: &'static str,
@@ -242,6 +243,7 @@ const STANDARD_PINS: PinSet = PinSet {
     redis: REDIS_VERSION,
     mariadb: MARIADB_VERSION,
     httpd: HTTPD_VERSION,
+    openlitespeed: OPENLITESPEED_VERSION,
     xdebug: XDEBUG_VERSION,
     bundled_openssl: BUNDLED_OPENSSL_VERSION,
     bundled_pcre2: BUNDLED_PCRE2_VERSION,
@@ -532,6 +534,28 @@ const BUNDLED_PCRE2_VERSION: &str = "10.47";
 /// modules are excluded (TLS/H2 are the edge's job), so their libs never enter
 /// the bundle. Runs per-site as a loopback OVERRIDE backend (`core/apache.rs`).
 const HTTPD_VERSION: &str = "2.4.68";
+/// Pinned OpenLiteSpeed — OUR OWN build (`rexenv/runtimes` release `openlitespeed-1.9.3-1`,
+/// `scripts/build-openlitespeed.sh`): upstream publishes Linux tarballs only, and rexenv's build
+/// carries six patches the app depends on (`LSWS_TMP_DIR` instead of a machine-wide
+/// `/tmp/lshttpd`, `noRemoteFetch`, the macOS crash fix …; `docs/PLAN-openlitespeed.md`).
+/// macOS + Linux only: OpenLiteSpeed has no Windows build at all, so there is no Windows arm and
+/// `sites::ensure_server_available_on` refuses it there through `ships_on`. Runs per-site as a
+/// loopback OVERRIDE backend (`core/openlitespeed.rs`).
+const OPENLITESPEED_VERSION: &str = "1.9.3";
+/// The release tag the OpenLiteSpeed pins live under — immutable, so a URL can 404 but never
+/// change bytes. A rebuild is the next build number, i.e. a new tag and new digests here.
+const OPENLITESPEED_TAG: &str = "openlitespeed-1.9.3-1";
+const OPENLITESPEED_1_9_3_MAC_ARM64_SHA256: &str = "7b5933662a2d68f865970d129be17ec82734d0b19ae9aa116c40b70a3f9d5492";
+const OPENLITESPEED_1_9_3_MAC_AMD64_SHA256: &str = "df1e2c296d25667a06d2d7695fcdb7df2c0a82e65473f289b7571bda1d468e8c";
+const OPENLITESPEED_1_9_3_LINUX_AARCH64_SHA256: &str = "4133b71cb00f674fecb7e868185719e93249fc3e0829dfec51114868c435c0e7";
+const OPENLITESPEED_1_9_3_LINUX_X86_64_SHA256: &str = "b773e6af765a04fee12813b9f16c816879ac3c2f81ff50adff1803face4ddb57";
+/// `licenses-openlitespeed-1.9.3-<os>-<arch>.tar.gz` of the same release — GPL-3.0 server plus
+/// BoringSSL, lsquic, ls-qpack, ls-hpack, brotli, libbcrypt, udns, PCRE2, zlib, expat texts. The
+/// corresponding source (every tarball + the patch set) rides the same release.
+const OPENLITESPEED_1_9_3_LICENSES_MAC_ARM64_SHA256: &str = "e764b52c37afdfe0eed6ae0fdfdaef7b2427132ddd8d79e1a0adfd7f9b844731";
+const OPENLITESPEED_1_9_3_LICENSES_MAC_AMD64_SHA256: &str = "dda101961710db7c8219c1c0785a21ec9bef69d918d7238d0aa0a37fe9132f67";
+const OPENLITESPEED_1_9_3_LICENSES_LINUX_AARCH64_SHA256: &str = "84d2e921e085cadc78868b5ca202401744c3aa5d30d73ac25b7f1afe35f449b2";
+const OPENLITESPEED_1_9_3_LICENSES_LINUX_X86_64_SHA256: &str = "2bf5922a37f14f48c4bffe7d313fd04656e09a7a0e3a995364d0a8c28b520b33";
 /// apr / apr-util versions bundled into the httpd bundle.
 const BUNDLED_APR_VERSION: &str = "1.7.6";
 const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
@@ -1959,6 +1983,17 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             PHP_8_5_8_LICENSES_MAC_AMD64_SHA256,
             format!("licenses-php-8.5.8-{}.tar.gz", php_arch(arch)),
         ),
+        // One release, four targets: the file name carries os AND arch, and the os is read
+        // from the artifact's own URL (the sweep resolves every OS from one host).
+        ("openlitespeed", "1.9.3") => {
+            let os = if url.contains("-linux-") { "linux" } else { "macos" };
+            let (arm, amd) = if os == "linux" {
+                (OPENLITESPEED_1_9_3_LICENSES_LINUX_AARCH64_SHA256, OPENLITESPEED_1_9_3_LICENSES_LINUX_X86_64_SHA256)
+            } else {
+                (OPENLITESPEED_1_9_3_LICENSES_MAC_ARM64_SHA256, OPENLITESPEED_1_9_3_LICENSES_MAC_AMD64_SHA256)
+            };
+            (arm, amd, format!("licenses-openlitespeed-{version}-{os}-{}.tar.gz", php_arch(arch)))
+        }
         ("nginx", "1.30.4") => (
             NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
             NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256,
@@ -1975,7 +2010,7 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             "{name} {version} is served from rexenv's own infrastructure ({url}) — rexenv is \
              its distributor, and every licence in this tree's self-built artifacts requires \
              the notice to travel with the bytes (PHP License 3.01 §2; nginx BSD-2-Clause; \
-             PCRE2 BSD-3-Clause) — but no licence archive is pinned for it. Pin \
+             PCRE2 BSD-3-Clause; OpenLiteSpeed GPL-3.0 §4–6) — but no licence archive is pinned for it. Pin \
              `licenses-{}.tar.gz` from the same release, or serve the artifact from whoever \
              built it.",
             php_arch(arch)
@@ -2273,6 +2308,26 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // MySQL is version-driven like PHP: any version pinned in `mysql_sha256`
         // resolves (the CDN URL is templated per series).
+        // Our own build, the same tarball shape on both OSes: `bin/openlitespeed`,
+        // `conf/mime.properties`, `share/autoindex/` with NO top directory, so the tree
+        // extract's one-component strip lands `openlitespeed` and `mime.properties` at the
+        // cache dir's root. That is deliberate rather than tolerated: the cache dir is shared
+        // by every OLS site, and each site's SERVER ROOT is its own dir (`LSWS_HOME`), which
+        // is where `share/autoindex/` has to exist — `core::openlitespeed` creates it there.
+        ("openlitespeed", "macos" | "linux", "1.9.3") => Some(BinarySpec {
+            url: format!(
+                "{RUNTIMES_RELEASE_BASE}/{OPENLITESPEED_TAG}/openlitespeed-{version}-{os}-{}.tar.gz",
+                php_arch(arch)
+            ),
+            checksum: Checksum::Sha256(match (os, arch) {
+                ("macos", Arch::Arm64) => OPENLITESPEED_1_9_3_MAC_ARM64_SHA256,
+                ("macos", Arch::X86_64) => OPENLITESPEED_1_9_3_MAC_AMD64_SHA256,
+                (_, Arch::Arm64) => OPENLITESPEED_1_9_3_LINUX_AARCH64_SHA256,
+                (_, Arch::X86_64) => OPENLITESPEED_1_9_3_LINUX_X86_64_SHA256,
+            }.to_string()),
+            archive: Archive::TarGzTree,
+            member: "openlitespeed",
+        }),
         ("mysql", "macos", v) if mysql_sha256(v, arch).is_some() => Some(BinarySpec {
             // Direct CDN URL (the dev.mysql.com/get redirector 403s non-curl clients).
             url: format!(
@@ -2918,7 +2973,7 @@ pub fn shape_of(name: &str) -> Shape {
 /// Windows resolve looking for `dir/php` inside a tree (docs/PLAN-windows-port.md W2).
 pub fn shape_of_on(name: &str, os: &str) -> Shape {
     match name {
-        "mysql" | "postgres" => Shape::Dir,
+        "mysql" | "postgres" | "openlitespeed" => Shape::Dir,
         "php" | "nginx" if os == "windows" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,

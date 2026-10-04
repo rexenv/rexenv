@@ -2067,18 +2067,15 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
-- [ ] **OpenLiteSpeed override server** — **ruled GO 4 Oct 2026**, P1 in review
-  (`docs/PLAN-openlitespeed.md`). Owner: Windows refused (OLS has no Windows build,
-  ever — CORE refusal through the pins + a `PlatformWords` sentence), `/tmp` paths and
-  phone-home PATCHED, Linux from the same recipe. **P1** = rexenv/runtimes PR #15:
-  one script, six patches, four targets; macOS arm64 + Linux aarch64 built and
-  passed every gate locally (static, PHP over FastCGI, cache miss→hit, `.htaccess`,
-  no remote fetch, nothing outside `LSWS_TMP_DIR`); the PR's CI run built all four
-  green (run 37207425654) after patch 0006 fixed a macOS-15-only request crash. Next: owner merges + publishes `openlitespeed-1.9.3-1`, then **P2**
-  (pins, `core/openlitespeed.rs`, `OverrideKind` arm, UI unlock, example, ledger,
-  SMOKE rows) per PLAN §6 — mind §3.1's traps (title rewrite defeats cmdline
-  ownership; cache needs a tick; `-t` exit 1 is fine). Still refused in CORE
-  (`ensure_server_available_on`) until a pin exists.
+- [ ] **OpenLiteSpeed override server** — **P1 + P2 shipped 4 Oct 2026** (`docs/PLAN-openlitespeed.md`).
+  P1: rexenv/runtimes `openlitespeed-1.9.3-1` (published by the owner). P2: pinned for macOS +
+  Linux, `core/openlitespeed.rs`, the third `OverrideKind`, both pickers + `rex` + MCP, the
+  Windows refusal as `PlatformWords::openlitespeed_unavailable`, ledger #774–#782. ✓ proven on
+  macOS by `openlitespeed_site_check` (PHP via the pool, env + HTTPS, `.htaccess`, dotfiles,
+  LSCache miss→hit, ownership through the rewritten title, runtime files under the site's root).
+  Still open: (a) the same example on the Linux VM; (b) the SMOKE rows (main body, § Windows,
+  § Linux) through the running app; (c) **P3** — the LiteSpeed Cache plugin end to end (purge on
+  post update) as a SMOKE row.
 
 ## Phase 4+ (next era)
 

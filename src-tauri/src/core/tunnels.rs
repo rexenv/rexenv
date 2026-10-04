@@ -1088,7 +1088,7 @@ mod tests {
             origin_port(&site(WebServer::Nginx)).unwrap(),
             crate::core::services::NGINX_HTTP_PORT
         );
-        for ws in [WebServer::Apache, WebServer::Frankenphp] {
+        for ws in [WebServer::Apache, WebServer::Frankenphp, WebServer::Openlitespeed] {
             // The RECORDED port wins — it is what the config generator serves
             // from, so origin and reality cannot drift.
             let mut s = site(ws);

@@ -206,6 +206,11 @@ const SERVICE_FLAGS: u32 = windows_sys::Win32::System::Threading::CREATE_BREAKAW
     | windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
 
 impl ProcessSupervisor for WindowsSupervisor {
+    /// No uid on Windows, and nothing asks: the one caller is OpenLiteSpeed, which has no
+    /// Windows build and is refused before it could be spawned (`ensure_server_available_on`).
+    fn service_account(&self) -> Option<String> {
+        None
+    }
     /// A short-lived helper (`mysqld --initialize-insecure`, a config test) the caller
     /// waits for: no console window, stdio inherited, and NOT broken away — a helper
     /// that dies with the app is correct, and a launcher that forbids breakaway must not

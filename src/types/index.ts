@@ -1160,6 +1160,8 @@ export interface PlatformWords {
   dbBrowserOrigin: string;
   /** The browsers here that search a typed bare `name.rex` — "Chrome and Safari" / "Chrome and Edge". */
   searchingBrowsers: string;
+  /** Why OpenLiteSpeed cannot be chosen here — shown only where it is not offered (Windows). */
+  openlitespeedUnavailable: string;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

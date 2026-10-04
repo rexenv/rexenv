@@ -76,7 +76,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `site move <domain> <dest-parent>` | `move_site_docroot` | ✓ | shipped 16 Jul — passthrough (preflights backend-side); verify in-app once |
 | `site relink <domain> <path>` | `relink_site_docroot` | ✓ | **shipped + live-verified 23 Aug 2026** — the re-point path for a linked/imported folder the USER moved (`site move` refuses those); records the path + reloads, touches no file. The CLI canonicalises the path before sending, so a relative one means what the user's cwd says, not the app's — verified from `/private/tmp` with `./first`. Live proof is what the site SERVED, which changed with the re-point while the old docroot stayed byte-identical |
 | `site php <domain> <minor>` | `set_site_php_version` | ✓ | shipped 16 Jul — 8.3→8.4→8.3 live, 200 both ways |
-| `site server <domain> nginx\|frankenphp\|apache` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
+| `site server <domain> nginx\|frankenphp\|apache\|openlitespeed` | `set_site_web_server` | ✓ | shipped 16 Jul — passthrough; verify against the running app (override stop is guard-blocked in the harness) |
 | `site xdebug <domain> on\|off` | `set_site_xdebug` | ✓ | shipped 16 Jul — on→200→off live; FrankenPHP refusal verbatim, exit 1 |
 | `site env <domain> [set K=V \| unset K]` | `list_site_env` / `set_site_env` | ✓ | shipped 16 Jul — set→list→unset live (client-side merge; backend replaces the set) |
 | `site cert <domain> [--regenerate]` | `site_cert_info` / `regenerate_site_cert` | ✓ | shipped 16 Jul — info live (SANs, days left) |

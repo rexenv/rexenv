@@ -252,6 +252,17 @@ pub trait ProcessSupervisor: Send + Sync {
     fn may_spawn_with_admin_token(&self) -> bool {
         false
     }
+    /// The account a service rexenv spawns runs as, spelled the way a Unix server's `user`
+    /// directive accepts it: the numeric uid of the user running the app.
+    ///
+    /// OpenLiteSpeed refuses to start without a `user` it can resolve ("Invalid User Name
+    /// (null)", measured 4 Oct 2026) even when it is not root and never switches user — so
+    /// `core::openlitespeed` must name the CURRENT user, and `core/` may not call `getuid`
+    /// (ledger #163). `None` on an OS with no such notion: Windows, where OpenLiteSpeed does
+    /// not exist and the caller is never reached (`sites::ensure_server_available_on`).
+    fn service_account(&self) -> Option<String> {
+        None
+    }
     /// Spawn `program` with `args`; returns the child handle (stdio inherited).
     fn spawn(&self, program: &std::path::Path, args: &[String]) -> Result<Child>;
     /// Spawn `program` with its stdout+stderr redirected (appended) to `log_path`

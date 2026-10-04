@@ -82,6 +82,7 @@ agent_db_check                 service all
 wp_mail_sink_check             service macos
 adopt_check                    demo    all
 apache_site_check              sandbox macos
+openlitespeed_site_check       sandbox macos,linux
 app_bundle_swap_check          sandbox macos
 app_relaunch_check             sandbox macos
 linux_route_shape_check        sandbox linux
@@ -288,11 +289,12 @@ case "$(uname -s)" in
   *) HOST_OS=other ;;
 esac
 
-# Can this example run HERE? `all` on macOS, Windows and Linux, otherwise only on its own OS.
+# Can this example run HERE? `all` on macOS, Windows and Linux; otherwise the OS (or the
+# comma-separated OSes, e.g. `macos,linux` for a server with no Windows build) it names.
 runs_here() {
-  case "$(os_of "$1")" in
-    all) return 0 ;;
-    "$HOST_OS") return 0 ;;
+  case ",$(os_of "$1")," in
+    ,all,) return 0 ;;
+    *",$HOST_OS,"*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -316,10 +318,17 @@ while read -r name tier os; do
   # The OS axis is classification too, so it is enforced the same way: a row
   # without a valid third column would silently run (or silently skip) on a host
   # nobody checked it against.
-  case "$os" in
-    all|macos|windows|linux) ;;
-    *) echo "BAD os column for $name: ${os:-(empty)} — use all | macos | windows | linux" >&2; missing=1 ;;
-  esac
+  if [ "$os" != "all" ]; then
+    bad=0
+    [ -z "$os" ] && bad=1
+    for one in ${os//,/ }; do
+      case "$one" in macos|windows|linux) ;; *) bad=1 ;; esac
+    done
+    if [ "$bad" -eq 1 ]; then
+      echo "BAD os column for $name: ${os:-(empty)} — use all, or macos | windows | linux (comma-separated)" >&2
+      missing=1
+    fi
+  fi
 done <<<"$TIERS"
 [ "$missing" -eq 0 ] || exit 1
 

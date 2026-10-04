@@ -8,6 +8,7 @@ pub mod adminer;
 pub mod app_info;
 pub mod app_update;
 pub mod apache;
+pub mod openlitespeed;
 pub mod binaries;
 pub mod blueprints;
 pub mod cli;

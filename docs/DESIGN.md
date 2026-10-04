@@ -604,9 +604,10 @@ The costs are recorded where they were paid: `docs/PLAN-windows-port.md` §5 W9,
 
 The comps predate the real architecture. Correct as shipped:
 
-- **Web-server picker offers Nginx / FrankenPHP / Apache** (comps show
-  Apache / OpenLiteSpeed as the pair): Apache since shipped; OLS is blocked
-  upstream — no macOS binary exists (`docs/TODO.md` Blocked).
+- **Web-server picker offers Nginx / FrankenPHP / Apache / OpenLiteSpeed** (comps show
+  Apache / OpenLiteSpeed as the pair): both shipped — OpenLiteSpeed on 4 Oct 2026, macOS +
+  Linux only. The list is core's (`offered_web_servers`); on Windows the dialog says why
+  OpenLiteSpeed is absent in core's sentence, not "yet".
 - **DB engines: MySQL / MariaDB / PostgreSQL per site + Redis standalone** (comps
   predate MariaDB/Redis shipping; PostgreSQL became a SITE engine 10 Sep 2026).
   **An option a site cannot have is not shown**: PostgreSQL is absent for

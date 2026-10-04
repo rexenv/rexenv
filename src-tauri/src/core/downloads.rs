@@ -194,6 +194,7 @@ pub fn label_for(name: &str, version: &str) -> String {
         "redis" => format!("Redis {}", minor(version)),
         "mariadb" => format!("MariaDB {}", minor(version)),
         "httpd" => "Apache (httpd)".into(),
+        "openlitespeed" => "OpenLiteSpeed".into(),
         n if n.starts_with("xdebug-") => {
             format!("Xdebug (PHP {})", n.trim_start_matches("xdebug-"))
         }
@@ -315,6 +316,9 @@ pub fn plan_for_start_with(
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Apache)) {
         set.push(("httpd", binaries::pins().httpd));
+    }
+    if sites.iter().any(|s| matches!(s.web_server, WebServer::Openlitespeed)) {
+        set.push(("openlitespeed", binaries::pins().openlitespeed));
     }
     // The OPTIONAL engines, planned exactly when some site's database lives in
     // one. Both are user-toggled services otherwise, and planning them
@@ -469,7 +473,10 @@ pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<Plan
             vec![PlannedBinary::new(platform, "frankenphp", binaries::pins().frankenphp)]
         }
         WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::pins().httpd)],
-        _ => Vec::new(),
+        WebServer::Openlitespeed => {
+            vec![PlannedBinary::new(platform, "openlitespeed", binaries::pins().openlitespeed)]
+        }
+        WebServer::Nginx => Vec::new(),
     }
 }
 

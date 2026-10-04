@@ -87,6 +87,8 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | CA trust | user's **login keychain** | `Cert:\CurrentUser\Root` — never LocalMachine (#613) — + Firefox root | system CA store + NSS dbs, incl. snap Chromium's (#726) |
 | Autostart | macOS login item | HKCU `Run` + `StartupApproved` (#623) | XDG `~/.config/autostart` |
 | PHP pool (`pool_kind`) | php-fpm, one per version | php-cgi group | php-fpm, one per version |
+| Per-site override servers (`ensure_server_available_on` asks the pins) | FrankenPHP, Apache (bottle bundle), OpenLiteSpeed (OURS) | **none** — no pin for any; OpenLiteSpeed is refused PERMANENTLY (no Windows build exists; `PlatformWords::openlitespeed_unavailable`) | FrankenPHP, OpenLiteSpeed (OURS — same recipe as macOS); Apache not pinned |
+| An override server's `user` (`ProcessSupervisor::service_account`) | numeric uid (`getuid`) | `None` — never asked | numeric uid (`getuid`) |
 | App data | `~/Library/Application Support/dev.rexenv.rexenv` | `%LOCALAPPDATA%\rexenv\rexenv\data` | `$XDG_DATA_HOME/rexenv` (`~/.local/share/rexenv`) |
 | `rex` CLI + MCP transport | unix socket | named pipes (#620, #632); the edge dial is AF_UNIX | unix socket (#727) |
 | `rex` on PATH | symlink, one admin prompt | a **copy** in `%LOCALAPPDATA%\rexenv\bin` on the user Path, no prompt (#634) | one admin prompt |
