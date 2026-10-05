@@ -1245,10 +1245,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       nothing installed; Yes restored it), the interactive uninstaller's box — which also caught
       the task surviving an interactive uninstall (fixed, #787). The tray's left click had closed
       28 Sep. Firefox's typed addresses ran the same day (Firefox 155, bare `w7check.rex` → the site,
-      #706). **Still open:** WebView2's bootstrapper (needs a machine without it) and the
-      updated-copy uninstall — that one needs a release newer than 0.8.11 published (so the in-app
-      updater makes an UPDATED copy) and a person at the Dell for the in-app step's UAC, which
-      prompts on the secure desktop (`PromptOnSecureDesktop=1`) where no automation can click.
+      #706). The updated-copy uninstall ran 5–6 Oct 2026 on the Dell with the owner at it for the
+      two UAC prompts — no newer release was needed: the published 0.8.10 installed, its in-app
+      updater swapped in the published 0.8.11 (reopened on `21f8a1b`), then Settings → Services →
+      Uninstall (NRPT rules 0, CA gone from `CurrentUser\Root`, the `\rexenv\` task gone, every
+      service stopped, the PATH copy removed) and the carried-across `uninstall.exe` from the
+      desktop session (running-app box → OK): `rexenv.exe`, `rex.exe`, itself, the HKCU entry and
+      the shortcut all gone, still gone 60 s later, nothing on `:53`, `rexenv.db` kept. A fresh
+      install re-onboarded (one UAC) onto the kept data — `w7check.rex` 200. The PATH copy of
+      `rex` does not come back by itself: it is the Settings card's Install, by design
+      (`core/cli.rs`). **Still open:** WebView2's bootstrapper (needs a machine without it).
     - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);
       now `rex status` reads `PHP-CGI 8.3` on Windows too (`pool_display_name`); the key stays
       `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`

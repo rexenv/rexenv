@@ -2595,18 +2595,20 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       re-launched onto the new binary and the CA does not change. ✓ run 6 (VM): agent restarted
       (new pid, its exe reads 0.8.5), CA thumbprint `1A6A20BE…` before and after, `lm.rex` →
       127.0.0.1 and HTTPS 200. ✓ 28 Sep (Dell): the agent restarted as 0.8.8 on udp 53.
-- [ ] **Uninstalling the UPDATED copy:** Settings → Services → Uninstall (the in-app step)
+- [x] **Uninstalling the UPDATED copy:** Settings → Services → Uninstall (the in-app step)
       FIRST, then Apps & Features → Uninstall — the carried-across uninstaller removes the
-      directory the swap put in place. **◐ 21 Sep 2026, run 6 (VM), done WITHOUT the in-app step:**
-      `uninstall.exe /S` removed `rex.exe`, itself, the HKCU entry and both shortcuts and kept the
-      data — but `rexenv.exe` stayed: the `\rexenv\dns-agent` task (which only the in-app step
-      removes) re-ran the agent from it within the minute, so the file was locked, and the agent
-      went on answering `:53` from an uninstalled app (TODO W12 row). **Open: the row as written —
-      in-app step first — needs the Root-store DELETE dialog clicked and a re-onboarding after.
-      Not driven on 28 Sep 2026: the in-app step and the re-onboarding raise Windows UAC on the
-      secure desktop, which the screenshot-and-click driver cannot see or answer (the Win11 VM's
-      finding), so it would leave the Dell's install half-removed until a person clicks — a
-      person at the Dell runs this row and the certificate-dialog "No" row together.**
+      directory the swap put in place. **✓ 5–6 Oct 2026 on the Dell (Win10 22H2), a person at it
+      for the two UAC prompts:** the published 0.8.10 installed, its in-app updater swapped in the
+      published 0.8.11 (an UPDATED copy needs no unreleased build — install the release before the
+      newest and update). The in-app step left NRPT rules 0, no rexenv CA in `CurrentUser\Root`
+      (its Root-store DELETE dialog answered Yes), no `\rexenv\` task, no service, no PATH copy;
+      the carried-across uninstaller (running-app box → OK) removed `rexenv.exe`, `rex.exe`,
+      itself, the HKCU entry and the shortcut — still gone 60 s later, nothing on `:53` — and kept
+      the data. Reinstall + onboarding (one more UAC) came back on the kept sites; the PATH copy
+      of `rex` returns only from the Settings card's Install. History: **◐ 21 Sep 2026, run 6
+      (VM), done WITHOUT the in-app step** — `rexenv.exe` stayed, because the `\rexenv\dns-agent`
+      task re-ran the agent from it within the minute (the TODO W12 row; the uninstaller now
+      deletes the task itself, #787).
 - [x] A stray `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap sits beside the app for
       good — the launch sweep looks only for `.rexenv-update-*`. ✓ **Answered "why not", 2 Oct 2026**
       (TODO): no rexenv code ever wrote that name, so a sweep has nothing of rexenv's to match.
