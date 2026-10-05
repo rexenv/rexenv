@@ -1233,8 +1233,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       Done", no warning), the certificate dialog's **No** (cancel toast, card stays "not trusted",
       nothing installed; Yes restored it), the interactive uninstaller's box — which also caught
       the task surviving an interactive uninstall (fixed, #787). The tray's left click had closed
-      28 Sep. **Still open:** WebView2's bootstrapper (needs a machine without it), Firefox's typed
-      addresses, the updated-copy uninstall.
+      28 Sep. Firefox's typed addresses ran the same day (Firefox 155, bare `w7check.rex` → the site,
+      #706). **Still open:** WebView2's bootstrapper (needs a machine without it) and the
+      updated-copy uninstall — that one needs a release newer than 0.8.11 published (so the in-app
+      updater makes an UPDATED copy) and a person at the Dell for the in-app step's UAC, which
+      prompts on the secure desktop (`PromptOnSecureDesktop=1`) where no automation can click.
     - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);
       now `rex status` reads `PHP-CGI 8.3` on Windows too (`pool_display_name`); the key stays
       `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`

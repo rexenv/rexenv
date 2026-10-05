@@ -2361,19 +2361,25 @@ into one row per step, with each open row saying what it is waiting for.
 
 **Still open on Windows, in one list:** Firefox's typed addresses (#706 — proven on macOS
 only) · the one command under Smart App Control ON (no machine has it on) · WebView2's
-bootstrapper on a machine without it · uninstalling an UPDATED copy with the in-app step first.
+bootstrapper on a machine without it · uninstalling an UPDATED copy with the in-app step first
+(needs a published release newer than the installed one, AND a person for the in-app step's UAC —
+the Dell prompts on the secure desktop, which no automation can answer; checked 5 Oct 2026).
 (Closed 5 Oct 2026 on the Dell: Chrome's download wording, the certificate dialog's **No** path,
-the interactive uninstaller's closing box; the tray's LEFT click had closed 28 Sep and this list
+the interactive uninstaller's closing box, Firefox's typed addresses; the tray's LEFT click had closed 28 Sep and this list
 had not been updated.) (Apps & Features without the in-app step leaving a live agent closed 5 Oct 2026, #787;
 the pre-#695 `.bak` was answered "why not" on 2 Oct.)
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
 
-### Typed addresses in Firefox (ledger #706 — proven on macOS only)
-- [ ] Settings → Firefox → **Open typed addresses in Firefox** → Enable; restart Firefox; type
+### Typed addresses in Firefox (ledger #706 — proven on macOS and Windows)
+- [x] Settings → Firefox → **Open typed addresses in Firefox** → Enable; restart Firefox; type
       `acme.rex` with no slash → the site opens. The `user.js` under
       `%APPDATA%\Mozilla\Firefox\Profiles\…` carries the line. The Settings hint and the
-      site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
+      site-page tooltip name **Chrome and Edge**, never Safari. ✓ **5 Oct 2026 (Dell, Firefox 155):**
+      the default profile's `user.js` carried the `.rex` line (written by Settings → Re-trust, the
+      CA-trust path, before any Firefox button was pressed); a bare `w7check.rex` in a new tab →
+      the site, over HTTPS; Settings → DNS & SSL reads "Chrome and Edge search a bare name.rex…".
+      **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
 - [x] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
