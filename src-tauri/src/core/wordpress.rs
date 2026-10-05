@@ -5930,7 +5930,7 @@ mod packages_pin_guards {
     #[test]
     fn the_tail_is_carried_to_stderr_not_dropped() {
         let out = Output {
-            status: std::process::Command::new("true").status().unwrap(),
+            status: std::process::ExitStatus::default(),
             stdout: format!("https://xyz.rex\n{EOO_MARKER}\nDeprecated: something\n").into_bytes(),
             stderr: b"".to_vec(),
         };
@@ -5950,7 +5950,7 @@ mod packages_pin_guards {
     #[test]
     fn a_quiet_run_gains_no_stderr() {
         let out = Output {
-            status: std::process::Command::new("true").status().unwrap(),
+            status: std::process::ExitStatus::default(),
             stdout: format!("6.8.3\n{EOO_MARKER}\n").into_bytes(),
             stderr: b"".to_vec(),
         };

@@ -73,17 +73,24 @@ pub(crate) fn live_child() -> std::process::Child {
     }
 }
 
-/// A child that has ALREADY EXITED, for the "this pid is gone" half of the same tests.
-/// Returns after it is reaped, so `try_wait` sees the exit immediately.
-pub(crate) fn dead_child() -> std::process::Child {
+/// A child that EXITS AT ONCE and is not yet reaped — for a test that holds a fresh `Child` and waits on it
+/// itself. `true` is no more a Windows program than `sleep` (two `proc` tests panicked on the Dell's first full
+/// `cargo test --lib` from the desktop session, 6 Oct 2026).
+pub(crate) fn quick_child() -> std::process::Child {
     #[cfg(unix)]
-    let mut child =
-        std::process::Command::new("true").spawn().expect("spawn a child that exits at once");
+    let child = std::process::Command::new("true").spawn().expect("spawn a child that exits at once");
     #[cfg(windows)]
-    let mut child = std::process::Command::new("cmd")
+    let child = std::process::Command::new("cmd")
         .args(["/c", "exit 0"])
         .spawn()
         .expect("spawn a child that exits at once");
+    child
+}
+
+/// A child that has ALREADY EXITED, for the "this pid is gone" half of the same tests.
+/// Returns after it is reaped, so `try_wait` sees the exit immediately.
+pub(crate) fn dead_child() -> std::process::Child {
+    let mut child = quick_child();
     let _ = child.wait();
     child
 }

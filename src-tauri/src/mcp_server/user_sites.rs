@@ -5455,7 +5455,8 @@ pub(crate) mod tests {
         assert!(!err.contains("composer.json"), "the source was not read before the grant: {err}");
 
         dial(&state, crate::core::agent_access::AccessLevel::Full);
-        let home = std::env::var("HOME").unwrap();
+        // A Windows desktop session has no HOME (only an SSH one does); USERPROFILE is its home.
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap();
         let err = composer_link(ctx, &json!({ "site_id": lv.id, "source": home }), &acted).await.unwrap_err().to_string();
         assert!(!err.contains("`run`"), "granted — the refusal is the blast radius's: {err}");
         assert!(ops.calls.lock().unwrap().iter().all(|c| !c.starts_with("composer link")));
@@ -5470,7 +5471,8 @@ pub(crate) mod tests {
         assert_eq!(v["source"], "acme-widgets", "the source is named, never located");
         let detail = v["detail"].as_str().unwrap();
         assert!(detail.contains("SYMLINK") && detail.contains("lands in the checkout"), "{detail}");
-        let canonical = std::fs::canonicalize(&pkg).unwrap();
+        // What the code hands on is the path a user would type — no `\\?\` prefix on Windows (#770).
+        let canonical = crate::core::sites::plain_path(std::fs::canonicalize(&pkg).unwrap());
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == &format!("composer link {} acme/widgets acme-widgets {}", lv.id, canonical.display())), "{calls:?}");
         let log = v["log"].as_array().unwrap();

@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn child_reports_pid_and_reaps() {
-        let child = std::process::Command::new("true").spawn().unwrap();
+        let child = crate::test_support::quick_child();
         let pid = child.id();
         let mut p: Proc = child.into();
         assert_eq!(p.id(), pid);
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn start_grace_covers_fresh_children_and_never_adopted() {
-        let child = std::process::Command::new("true").spawn().unwrap();
+        let child = crate::test_support::quick_child();
         let mut p: Proc = child.into();
         // Freshly spawned: inside the standard grace, outside a zero window.
         assert!(p.starting());

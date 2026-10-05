@@ -457,7 +457,9 @@ mod tests {
         assert!(c.contains("address                  127.0.0.1:9783"), "PHP goes to the site's pool");
         assert!(c.contains("autoStart                0"), "OLS never spawns PHP of its own");
         assert!(c.contains("user                       501"));
-        assert!(c.contains("mime                       /data bin/openlitespeed-1.9.3/mime.properties"));
+        // The platform's own join, not a spelled separator: Windows joins with `\` (W12, the Dell run).
+        let mime = mime_path(Path::new("/data bin/openlitespeed-1.9.3"));
+        assert!(c.contains(&format!("mime                       {}", mime.display())), "{c}");
         assert!(c.contains("vhRoot                   /Sites/ol site/public/"));
         assert!(c.contains("storagepath              /data/openlitespeed/ol.rex/lscache"));
         assert!(c.contains("maxCacheObjSize          10000000"), "the cache block must be whole");

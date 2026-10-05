@@ -973,6 +973,24 @@ answer** — the update refusal looked for `\n$ sudo chown` where Windows correc
 on a Mac. A test asserts what the PLATFORM says (`platform::words::current()`, the code's own
 separator), never one OS's spelling of it.
 
+**Running the lib tests on the Dell (6 Oct 2026: 1449 passed, 0 failed).** Three things decide
+whether the run means anything, and each one failed a run first:
+- **The test manifest.** A bare `cargo test --lib` dies at load with `0xC0000139` — the test
+  binary needs comctl32 v6, which `verify.sh` embeds (`WIN_TEST_FLAGS`). By hand:
+  `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-Clink-arg=/MANIFEST:EMBED -Clink-arg=/MANIFESTINPUT:<repo>\src-tauri\windows-test.manifest`.
+- **No debug info.** With it the build is ~9 GB and filled the Dell (`LNK1318`, a PDB limit, at
+  0 GB free, 5 Oct). `CARGO_PROFILE_DEV_DEBUG=0` + `CARGO_PROFILE_TEST_DEBUG=0` +
+  `CARGO_INCREMENTAL=0` make it 4.5 GB.
+- **The symlink privilege.** 19 tests build symlink fixtures (link farms, `composer link`,
+  `dist_archive`'s checkouts). From the desktop session — an ordinary limited token, no
+  Developer Mode — they fail with `os error 1314` ("A required privilege is not held by the
+  client"): **1423 passed / 26 failed** there, against **1443 / 6** from the elevated SSH token
+  with the same binary. The suite's verdict comes from an elevated shell (or Developer Mode, or
+  CI's admin runner); a 1314 is the host, not the code. The other 6 were real: tests that
+  spelled a Unix answer — `Command::new("true")` (no such program; `test_support::quick_child`
+  now), `HOME` (a desktop session has only `USERPROFILE`), a `/`-joined OLS path, and a
+  `canonicalize` that keeps `\\?\` where the code hands on the plain path (#770).
+
 **What the first Windows runs found, all four of the same family** — something that spelled
 macOS's answer and could never fail on a Mac: two TESTS (`$ sudo chown` where Windows says
 `takeown /R /F`; a `:`-joined PATH where Windows uses `;`), and two in `notices-check.py` (the
