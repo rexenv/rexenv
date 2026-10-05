@@ -246,7 +246,7 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
 #[tauri::command]
 pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
     // Phase 1 (locked, brief): is the edge ours-under-launchd?
-    let need_bootout = state.services.lock().await.edge_is_daemon();
+    let need_bootout = state.services.lock().await.edge_daemon_needs_stop(state.platform.as_ref());
     // Phase 2 (UNLOCKED): boot the daemon out FIRST, before ANY manager state is
     // touched. The privileged prompt can sit open for a long time; when stop_all
     // ran first (clearing the handle to Stopped while the edge was still serving),

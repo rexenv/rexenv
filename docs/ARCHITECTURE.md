@@ -432,7 +432,8 @@ Live-proven end to end by `site_stop_start_check`.
   `watchdog_bounds_edge_restarting_and_diagnoses_the_giveup`).
 - **Explicit stop costs one prompt, and lowers the switch FIRST.** With `KeepAlive` a graceful
   `caddy stop` is instantly relaunched, so Stop-all goes through the supervisor's own switch:
-  `stop_services` runs `proxy::stop_edge_daemon` (privileged `rm <flag>` + a bounded `kill TERM`
+  `stop_services` runs `proxy::stop_edge_daemon` whenever the handle says Daemon OR the daemon is
+  installed and enabled (`edge_daemon_needs_stop`, #790 — the handle lagged a slow boot once) (privileged `rm <flag>` + a bounded `kill TERM`
   loop — the job stays LOADED, so the next Start all is a `touch` + `kickstart` and Background
   Task Management hears nothing, #773; a plist from before the switch is still `disable` +
   `bootout`, since `kill` alone is respawned there — measured), OUTSIDE the services lock (M4)

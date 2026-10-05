@@ -515,8 +515,18 @@ pub fn require_stack_stopped() {
         .into_iter()
         .filter(|(p, _)| rexenv_lib::core::ports::is_listening(*p))
         .collect();
-    if busy.is_empty() {
+    // The EDGE too, through its private admin socket (it binds 443, which is not in the port
+    // list): an example that starts "its own" edge writes the REAL Caddyfile and talks to the
+    // REAL admin socket, so beside a live root edge it reloads that edge with the fixture's
+    // config. Found on the 15.8 VM, 5 Oct 2026: `health_watchdog_check` ran after a `rex stop`
+    // that had not stopped a slow-booted daemon, and the user's edge was left listening on the
+    // fixture's 8080/8443 with every site dark until a kickstart.
+    let edge_live = rexenv_lib::core::proxy::admin_alive(rexenv_lib::platform::current().as_ref());
+    if busy.is_empty() && !edge_live {
         return;
+    }
+    if edge_live {
+        eprintln!("\n✗ REFUSING TO RUN — rexenv's HTTPS edge is answering on its admin socket.");
     }
     eprintln!("\n✗ REFUSING TO RUN — rexenv's stack is RUNNING.");
     for (p, what) in &busy {

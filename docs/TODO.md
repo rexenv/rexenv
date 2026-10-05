@@ -233,6 +233,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   inside the app", not "agent" (the 0.8.10 → 0.8.11 update's #761 race left the agent down and
   nothing restored it — `rex status` "answering (in-process, udp 15353)"); the row above about the
   reopen covers that install, but the degraded mode surviving a relaunch is worth a look of its own.
+- [x] **macOS: Stop all can leave a slow-booted root edge running** (seen 5 Oct 2026, the 15.8 VM,
+  installed 0.8.11): after a boot the auto-start logged "nothing is answering port 443" (the daemon was
+  still coming up), so the manager's edge handle stayed Stopped; `rex stop` then said "✓ stop done" and
+  the launchd edge (pid from boot) kept running — which is how a live check later reloaded it. Stop all
+  must stop the supervised edge whenever the daemon is installed and its job is loaded, whatever the
+  handle says (the handle is a belief; `launchctl print` is the fact). Reproduce first: reboot with the
+  login toggle on, `rex stop` inside the first minute, then `launchctl print system/dev.rexenv.rexenv.edge`.
+  ✓ **Fixed the same day (ledger #790):** `stop_services` asks `ServiceManager::edge_daemon_needs_stop` —
+  the handle OR (daemon installed AND enabled) — so a running supervised edge is stopped whatever the
+  handle believes, and an already-stopped one raises no prompt. L0 plant-proven; the VM reproduction
+  above is the live leg still owed.
 - [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are

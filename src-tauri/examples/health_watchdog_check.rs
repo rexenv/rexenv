@@ -14,6 +14,20 @@ use std::time::Duration;
 
 mod common;
 
+/// The direct children of `pid` — the workers a master forks.
+fn children_of(pid: u32) -> Vec<u32> {
+    std::process::Command::new("pgrep")
+        .args(["-P", &pid.to_string()])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).lines().filter_map(|l| l.trim().parse().ok()).collect())
+        .unwrap_or_default()
+}
+
+/// Whether `pid` is still a live process (signal 0).
+fn alive(pid: u32) -> bool {
+    std::process::Command::new("kill").args(["-0", &pid.to_string()]).status().map(|s| s.success()).unwrap_or(false)
+}
+
 fn kill(pid: u32, name: &str) {
     let ok = std::process::Command::new("kill")
         .args(["-9", &pid.to_string()])
@@ -92,6 +106,16 @@ async fn main() {
     let pid_of = |mgr: &ServiceManager, name: &str| {
         mgr.status(&*plat, &[]).iter().find(|s| s.name == name).and_then(|s| s.pid).unwrap()
     };
+    // The masters' workers, recorded BEFORE the kill: a SIGKILLed master orphans them (ppid 1)
+    // still holding the listen socket, and the watchdog must reap them, not just respawn a new
+    // master beside them (ledger #79).
+    let leaked: Vec<(u32, &str)> = children_of(pid_of(&mgr, "Nginx"))
+        .into_iter()
+        .map(|p| (p, "nginx worker"))
+        .chain(children_of(pid_of(&mgr, "PHP-FPM 8.3")).into_iter().map(|p| (p, "php-fpm worker")))
+        .collect();
+    assert!(leaked.iter().any(|(_, k)| *k == "nginx worker"), "baseline: nginx has workers to leak");
+    assert!(leaked.iter().any(|(_, k)| *k == "php-fpm worker"), "baseline: the pool has workers to leak");
     kill(pid_of(&mgr, "Nginx"), "Nginx");
     kill(pid_of(&mgr, "PHP-FPM 8.3"), "PHP-FPM 8.3");
     kill(pid_of(&mgr, "Mailpit"), "Mailpit");
@@ -102,6 +126,11 @@ async fn main() {
     // rewritten, no marker) — the port probe may still read green; that is the
     // exact deception the watchdog's master-alive check exists for.
     assert!(!running(&mgr, "Mailpit"), "status must see dead mailpit");
+    // Anti-vacuity for the reap below: the workers really are ORPHANED and alive now, so their
+    // absence after the pass is the watchdog's doing, not the kernel's.
+    let orphaned = leaked.iter().filter(|(p, _)| alive(*p)).count();
+    println!("{orphaned} of {} recorded worker(s) still alive after their master's SIGKILL", leaked.len());
+    assert!(orphaned > 0, "no worker outlived its master — the reap assertion below would prove nothing");
     println!("mailpit kill visible in status; master kills hidden by orphan workers (by design of the test)");
 
     // One watchdog pass respawns all three.
@@ -126,6 +155,10 @@ async fn main() {
     assert!(mail::running(), "mailpit answering");
     assert!(running(&mgr, "PHP-FPM 8.3"), "pool respawned");
     println!("watchdog respawned Nginx + pool + Mailpit ✓");
+    // No orphan of the killed masters survives the pass (ledger #79).
+    let survivors: Vec<String> = leaked.iter().filter(|(p, _)| alive(*p)).map(|(p, k)| format!("{k} {p}")).collect();
+    assert!(survivors.is_empty(), "leaked workers of the killed masters are still alive: {survivors:?}");
+    println!("the killed masters' {} orphaned worker(s) were reaped ✓", leaked.len());
 
     // A healthy pass right after: no events, nothing touched.
     let (events, checks) = mgr.reconcile_health(&*plat, &ca, &all).await;

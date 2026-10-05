@@ -895,6 +895,16 @@ impl ServiceManager {
         matches!(self.caddy, CaddyHandle::Daemon)
     }
 
+    /// Whether Stop all must stop the edge's OS supervisor: the handle says so, OR the daemon is
+    /// installed and its supervisor will run it (macOS: the plist is there and its keep-alive
+    /// switch is up). The handle is a BELIEF and can lag the fact — after a slow boot the login
+    /// start read "nothing answering 443", the handle stayed Stopped, `rex stop` said done, and
+    /// the launchd edge from boot kept serving (the 15.8 VM, 5 Oct 2026). An edge that is
+    /// installed but already stopped (switch down / label disabled) needs nothing — no prompt.
+    pub fn edge_daemon_needs_stop(&self, platform: &dyn Platform) -> bool {
+        self.edge_is_daemon() || (platform.edge().is_installed() && platform.edge().is_enabled())
+    }
+
     /// Test hook: wire fake binary paths so edge state-machine tests can run
     /// `prepare_edge` without resolving (= downloading) real binaries.
     #[cfg(test)]
@@ -3534,6 +3544,32 @@ mod tests {
             edge: TestEdge { installed, enabled },
             privileges: Box::new(UnixPortRule),
         }
+    }
+
+    /// Ledger #790 — Stop all asks the FACT (daemon installed + enabled), not only the handle.
+    #[test]
+    fn stop_all_stops_an_installed_running_daemon_even_when_the_handle_says_stopped() {
+        // The handle lags the fact after a slow boot: Stopped while launchd runs the edge.
+        let mgr = ServiceManager::with_ports(Ports::default());
+        assert!(!mgr.edge_is_daemon(), "fixture: the handle says Stopped");
+        assert!(
+            mgr.edge_daemon_needs_stop(&edge_test_platform("needs-stop-live", true, true)),
+            "installed + enabled: Stop all must stop it, whatever the handle believes (#790)"
+        );
+        assert!(
+            !mgr.edge_daemon_needs_stop(&edge_test_platform("needs-stop-off", true, false)),
+            "installed but already stopped (switch down): nothing to stop, no prompt"
+        );
+        assert!(
+            !mgr.edge_daemon_needs_stop(&edge_test_platform("needs-stop-none", false, true)),
+            "no daemon installed (Windows, a fresh machine): nothing to stop"
+        );
+        let mut adopted = ServiceManager::with_ports(Ports::default());
+        adopted.set_edge_daemon();
+        assert!(adopted.edge_daemon_needs_stop(&edge_test_platform("needs-stop-handle", false, false)), "the handle alone still suffices");
+        let cmd = include_str!("../commands/services.rs");
+        let f = &cmd[cmd.find("pub async fn stop_services(").expect("stop_services")..];
+        assert!(f[..f.find("\n}\n").unwrap()].contains("edge_daemon_needs_stop("), "Stop all must ask the fact, not only the handle");
     }
 
     /// The live incident: a bootout raced the watchdog's re-adopt, leaving a
