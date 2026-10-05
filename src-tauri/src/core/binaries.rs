@@ -2848,7 +2848,7 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
     let id = downloads::item_id(name, version);
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
-    let staged: Result<()> = async {
+    let staged: Result<()> = staged_or_cleaned(&staging, async {
         std::fs::create_dir_all(&staging)?;
         // Parts download sequentially under the one hub item (the bar restarts
         // per bottle — honest enough for a two-part bundle).
@@ -2880,11 +2880,8 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
         refuse_self_distributed_bundle(&spec, name, version)?;
         write_prepare_receipt(&staging)?;
         publish(&staging, &dir, spec.member)
-    }
+    })
     .await;
-    if staged.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
     finish_item(&id, &staged);
     staged?;
     Ok(dir)
@@ -3393,7 +3390,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
     let staged_bin = staging.join(exe_name(name, os));
-    let staged: Result<()> = async {
+    let staged: Result<()> = staged_or_cleaned(&staging, async {
         std::fs::create_dir_all(&staging)?;
         match spec.archive {
             Archive::TarGz => {
@@ -3430,11 +3427,8 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, &exe_name(name, os))
-    }
+    })
     .await;
-    if staged.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
     finish_item(&id, &staged);
     staged?;
     Ok(bin_path)
@@ -3479,18 +3473,15 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
     let id = downloads::item_id(name, version);
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
-    let staged: Result<()> = async {
+    let staged: Result<()> = staged_or_cleaned(&staging, async {
         std::fs::create_dir_all(&staging)?;
         download(&spec.url, &staging.join(spec.member), Some(&spec.checksum), Some(&id)).await?;
         downloads::hub().item_preparing(&id);
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)
-    }
+    })
     .await;
-    if staged.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
     finish_item(&id, &staged);
     staged?;
     Ok(path)
@@ -3551,7 +3542,7 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
     let id = downloads::item_id(name, version);
     downloads::hub().item_started(name, version);
     let staging = staging_path(&bin_dir, name, version);
-    let staged: Result<()> = async {
+    let staged: Result<()> = staged_or_cleaned(&staging, async {
         std::fs::create_dir_all(&staging)?;
         // A tar tree strips its one top-level dir; a zip tree strips what its
         // manifest arm says (a PHP zip is flat, an nginx zip is not).
@@ -3576,11 +3567,8 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)
-    }
+    })
     .await;
-    if staged.is_err() {
-        let _ = std::fs::remove_dir_all(&staging);
-    }
     finish_item(&id, &staged);
     staged?;
     Ok(dir)
@@ -4267,6 +4255,21 @@ static STAGING_SEQ: AtomicU64 = AtomicU64::new(0);
 /// cache dir, so the publish rename is atomic. The leading dot + `-<pid>-<seq>` suffix
 /// keep it from ever being mistaken for a resolved binary and let two resolves stage
 /// independently.
+/// Run one staged fill-and-publish, and REMOVE the staging dir when it fails — the ONE place a
+/// cache entry is staged (ledger #86). Every caller's block ends in [`publish`], after its
+/// `prepare_binary`/extract/licence steps, each with `?`: so a failed relink or codesign (an
+/// unrelinkable dylib, a codesign error) returns BEFORE anything reaches the cached path, and
+/// this removes the half-prepared tree — a later `resolve` re-downloads instead of serving an
+/// unsigned/unrelinked binary that Apple Silicon SIGKILLs (task 2.5 / H4). The source guard
+/// `every_staged_cache_entry_is_cleaned_on_failure_and_published_last` holds the shape.
+async fn staged_or_cleaned(staging: &Path, fill: impl std::future::Future<Output = Result<()>>) -> Result<()> {
+    let out = fill.await;
+    if out.is_err() {
+        let _ = std::fs::remove_dir_all(staging);
+    }
+    out
+}
+
 fn staging_path(bin_dir: &Path, name: &str, version: &str) -> PathBuf {
     let seq = STAGING_SEQ.fetch_add(1, Ordering::Relaxed);
     bin_dir.join(format!(".staging-{name}-{version}-{}-{seq}", std::process::id()))
@@ -4618,6 +4621,72 @@ mod tests {
         let err = extract_zip_tree(&zip, &root.join("out"), 0).unwrap_err();
         assert!(err.to_string().contains("symlink"), "{err}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ledger #86 — **a failed relink/codesign never leaves a poisoned cache**: the staged block
+    /// returns at `prepare_binary`'s error, before `publish`, and `staged_or_cleaned` removes the
+    /// half-prepared staging dir — nothing at the cached path, nothing left behind. Driven with a
+    /// provider whose `prepare_binary` fails, on the exact shape every cache entry uses.
+    #[tokio::test]
+    async fn a_failed_prepare_publishes_nothing_and_leaves_no_staging() {
+        struct FailingPrepare;
+        impl crate::platform::traits::BinaryProvider for FailingPrepare {
+            fn arch(&self) -> Arch { Arch::Arm64 }
+            fn prepare_binary(&self, _path: &Path) -> Result<()> {
+                Err(crate::error::Error::Other("codesign failed: the fixture's own refusal".into()))
+            }
+            fn prepare_binary_tree(&self, _root: &Path) -> Result<()> { unimplemented!() }
+        }
+        let root = std::env::temp_dir().join(format!("rexenv-poison-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let dir = root.join("caddy-9.9.9");
+        let staging = staging_path(&root, "caddy", "9.9.9");
+        let staged_bin = staging.join("caddy");
+        let provider = FailingPrepare;
+        let out = staged_or_cleaned(&staging, async {
+            std::fs::create_dir_all(&staging)?;
+            std::fs::write(&staged_bin, b"not really a binary")?;
+            crate::platform::traits::BinaryProvider::prepare_binary(&provider, &staged_bin)?;
+            publish(&staging, &dir, "caddy")
+        })
+        .await;
+        assert!(out.as_ref().is_err_and(|e| e.to_string().contains("codesign failed")), "{out:?}");
+        assert!(!dir.exists(), "a failed prepare must publish NOTHING at the cached path");
+        assert!(!staging.exists(), "the half-prepared staging dir must be removed");
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0, "nothing at all is left in the bin dir");
+        // The success path publishes, so the assertions above cannot pass on a helper that never
+        // publishes anything.
+        let staging2 = staging_path(&root, "caddy", "9.9.9");
+        let ok = staged_or_cleaned(&staging2, async {
+            std::fs::create_dir_all(&staging2)?;
+            std::fs::write(staging2.join("caddy"), b"ok")?;
+            publish(&staging2, &dir, "caddy")
+        })
+        .await;
+        assert!(ok.is_ok() && dir.join("caddy").exists() && !staging2.exists(), "{ok:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ledger #86 — the SHAPE, for every cache entry: each `staging_path(` call is followed by
+    /// `staged_or_cleaned(&staging,` and that block's last statement is `publish(&staging, …)`.
+    /// A new staged resolve written by hand — with its own cleanup, or none — fails here.
+    #[test]
+    fn every_staged_cache_entry_is_cleaned_on_failure_and_published_last() {
+        let src = include_str!("binaries.rs");
+        let prod = &src[..src.find("\n#[cfg(test)]\nmod tests {\n").expect("the test module")];
+        let sites: Vec<usize> = prod.match_indices("let staging = staging_path(").map(|(i, _)| i).collect();
+        assert!(sites.len() >= 4, "found {} staged cache entries — the scan stopped working", sites.len());
+        for at in sites {
+            let rest = &prod[at..];
+            let wrap = rest.find("staged_or_cleaned(&staging, async {").expect("a staged entry without staged_or_cleaned");
+            assert!(wrap < 400, "staged_or_cleaned must wrap THIS entry's block, right after its staging_path");
+            let end = rest[wrap..].find("\n    })\n    .await;").expect("the staged block's end") + wrap;
+            let body = &rest[wrap..end];
+            let last = body.trim_end().lines().last().unwrap_or_default().trim();
+            assert!(last.starts_with("publish(&staging, &dir,"), "a staged block must END in publish, after every prepare step: last line `{last}`");
+            assert!(!body.contains("remove_dir_all(&staging)"), "cleanup is the helper's, not the block's");
+        }
     }
 
     /// A `Platform` that answers only the two questions [`cached_path`] asks:
@@ -5929,6 +5998,10 @@ mod tests {
     /// and the refusal alone would make every manifest-supplied update fail.
     #[test]
     fn a_manifest_version_of_ours_brings_its_licences_or_does_not_resolve() {
+        // The catalog is process-global: without the lock this test's fixtures raced the other
+        // catalog tests, and `a_catalog_can_add_a_version_but_never_override_a_pin` failed about
+        // one run in three ("a catalog version must resolve") — found 5 Oct 2026.
+        let _catalog = catalog_test_lock();
         let added = "8.3.99";
         let ours = format!("{RUNTIMES_RELEASE_BASE}/php-8x-9/php-{added}-cli-macos-aarch64.tar.gz");
         let lic = format!("{RUNTIMES_RELEASE_BASE}/php-8x-9/licenses-php-{added}-aarch64.tar.gz");
@@ -5961,6 +6034,32 @@ mod tests {
                 .expect("upstream owes nothing")
                 .is_none()
         );
+        // Leave no catalog behind for the rest of this test binary.
+        install_catalog(crate::core::updates::VersionCatalog::default());
+    }
+
+    /// Every TEST that installs a catalog holds `catalog_test_lock` first. The catalog is one
+    /// process-global; a test that skipped the lock raced the others, and
+    /// `a_catalog_can_add_a_version_but_never_override_a_pin` failed about one run in three
+    /// until 5 Oct 2026. Scans the test modules of every file that installs one.
+    #[test]
+    fn every_test_that_installs_a_catalog_holds_the_catalog_lock() {
+        let files = [("binaries.rs", include_str!("binaries.rs")), ("adminer.rs", include_str!("adminer.rs"))];
+        let mut checked = 0;
+        for (name, src) in files {
+            let tests = &src[src.find("\n#[cfg(test)]\nmod tests {\n").expect("a test module")..];
+            for (at, _) in tests.match_indices("install_catalog(") {
+                let before = &tests[..at];
+                let f = before.rfind("\n    fn ").or_else(|| before.rfind("\n    async fn ")).expect("an enclosing test fn");
+                let body = &tests[f..at];
+                if body.contains("fn every_test_that_installs_a_catalog") {
+                    continue;
+                }
+                checked += 1;
+                assert!(body.contains("catalog_test_lock()"), "{name}: a test installs a catalog without catalog_test_lock(): {}", body.lines().nth(1).unwrap_or("?").trim());
+            }
+        }
+        assert!(checked >= 5, "found {checked} installs — the scan stopped working");
     }
 
     #[test]

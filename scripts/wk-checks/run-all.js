@@ -13,6 +13,8 @@ const CHECKS = [
   "wptoast.js",
   "wpverdict.js",
   "wpupdate.js",
+  "wppartial.js",
+  "termkeep.js",
   "cronargs.js",
   "wpsearch.js",
   "wpgitchip.js",

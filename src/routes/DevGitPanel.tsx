@@ -5,6 +5,7 @@
  *  (Playwright WebKit ≈ the packaged WKWebView engine) without an app
  *  backend and WITHOUT touching the real app — the no-synthetic-clicks rule.
  */
+import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { useEffect, useState, useRef } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { GitAddPanel } from "@/components/wordpress/GitAddPanel";
@@ -619,6 +620,21 @@ function ImportBarHost() {
   );
 }
 
+/** `?panel=terminal`: the Terminal tab, mounted and unmounted the way switching tabs does. */
+function TerminalHost() {
+  const [shown, setShown] = useState(true);
+  return (
+    <div className="space-y-2">
+      <button className="rounded border border-rex-border px-2 py-1 text-xs" onClick={() => setShown((v) => !v)}>
+        {shown ? "Hide terminal tab" : "Show terminal tab"}
+      </button>
+      <div className="h-[320px] rounded-lg border border-rex-border bg-rex-surface-1 p-2">
+        {shown ? <SiteTerminal siteId="dev" /> : <div data-probe="terminal-away">another tab</div>}
+      </div>
+    </div>
+  );
+}
+
 export function DevGitPanel() {
   const [ready, setReady] = useState(false);
   const params = new URLSearchParams(window.location.search);
@@ -636,6 +652,7 @@ export function DevGitPanel() {
   const wpUpdate = params.get("wpupdate"); // "hold" | "late"
   const updateGate = useRef<(() => void) | null>(null);
   const updateRan = useRef(false);
+  const partialRan = useRef(false);
   const lateArmed = useRef(0); // armed responses left; > 0 = stale + delayed
   const listFrozen = useRef(false); // after the armed ones: never resolve
   useEffect(() => {
@@ -810,6 +827,14 @@ export function DevGitPanel() {
         // one; the default stays empty (the chips-above-input layout check).
         case "wp_plugins": {
           if (params.get("plugins") !== "list") return [];
+          // `?update=partial` (wk-checks/wppartial.js, ledger #250): once the failed run has
+          // happened, the disk says wordpress-seo DID update — the list must be re-read for the
+          // row to stop offering 22.4, because the run itself ended in onError.
+          if (params.get("update") === "partial" && partialRan.current) {
+            return WP_PLUGIN_ROWS.map((r) =>
+              r.name === "wordpress-seo" ? { ...r, version: "22.4", update: "none", updateVersion: "" } : r,
+            );
+          }
           if (!wpUpdate) return WP_PLUGIN_ROWS;
           const row = updateRan.current ? WP_UPDATE_ROW_AFTER : WP_UPDATE_ROW_BEFORE;
           // An ARMED response is the late in-flight check: it resolves slowly,
@@ -839,6 +864,11 @@ export function DevGitPanel() {
         case "wp_plugin_update":
           if (params.get("update") === "fail") {
             throw new Error("Error: Only updated 0 of 1 plugins.");
+          }
+          // A PARTIAL run: wp-cli updated one of the two and exited non-zero (#250).
+          if (params.get("update") === "partial") {
+            partialRan.current = true;
+            throw new Error("Error: Only updated 1 of 2 plugins.");
           }
           // `?wpupdate=…` HOLDS the run open, which is the only way a check can
           // observe a bar that only exists while wp-cli is running.
@@ -911,6 +941,21 @@ export function DevGitPanel() {
         case "repo_run_step":
         case "repo_cancel":
           return null;
+        // `?panel=terminal` (wk-checks/termkeep.js, ledger #424): a fake PTY. One id per open,
+        // every open/close counted, so the check can tell a KEPT session from a rebuilt one.
+        case "terminal_open": {
+          const w = window as unknown as { __termOpens?: number };
+          w.__termOpens = (w.__termOpens ?? 0) + 1;
+          return `pty-${w.__termOpens}`;
+        }
+        case "terminal_close": {
+          const w = window as unknown as { __termCloses?: number };
+          w.__termCloses = (w.__termCloses ?? 0) + 1;
+          return null;
+        }
+        case "terminal_write":
+        case "terminal_resize":
+          return null;
         default:
           // plugin:event|listen etc. — accept quietly.
           return 1;
@@ -942,7 +987,9 @@ export function DevGitPanel() {
         <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
           DEV harness — GitAddPanel (mocked IPC)
         </h1>
-        {params.get("panel") === "import-bar" ? (
+        {params.get("panel") === "terminal" ? (
+          <TerminalHost />
+        ) : params.get("panel") === "import-bar" ? (
           <ImportBarHost />
         ) : params.get("panel") === "provision" ? (
           <ProvisionHost />

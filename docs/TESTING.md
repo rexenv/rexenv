@@ -762,6 +762,7 @@ it can:
 - **Cost:** ~a minute + a vite dev server. **Runs:** after UI changes; part of the full
   gate (§6). **Bug class:** percentage-height collapse, WebKit metrics overflow,
   states that render wrong or not at all.
+  **Two more over the same harness, 5 Oct 2026:** `wppartial.js` (DevGitPanel `?update=partial`: a run that fails with `Only updated 1 of 2 plugins.` must still re-read the list, so the updated row stops offering — ledger #250's last half) and `termkeep.js` (`?panel=terminal`, a fake PTY counting opens and closes: the real `SiteTerminal` unmounted and remounted keeps its scrollback, opens ONE PTY and closes none — ledger #424, which had no layer at all).
 
 **A state you can only reach by PRESSING something needs a fixture that presses** (8 Sep
 2026, #542). The Adminer card had four scenarios and all four rendered a screen AT REST, so
