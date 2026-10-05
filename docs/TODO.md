@@ -1229,6 +1229,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       WebView2's `downloadBootstrapper` on a machine without it (the VM had 153). SMOKE-TEST's
       Windows section (reconciled 28 Sep 2026) lists these with the rest of what is open there —
       the tray's left click, Firefox's typed addresses (#706), the updated-copy uninstall.
+      ✓ **5 Oct 2026 on the Dell, all from the desktop session:** Chrome's wording (bubble "9.7 MB •
+      Done", no warning), the certificate dialog's **No** (cancel toast, card stays "not trusted",
+      nothing installed; Yes restored it), the interactive uninstaller's box — which also caught
+      the task surviving an interactive uninstall (fixed, #787). The tray's left click had closed
+      28 Sep. **Still open:** WebView2's bootstrapper (needs a machine without it), Firefox's typed
+      addresses, the updated-copy uninstall.
     - [x] ✓ 19 Sep 2026, display only — the Services row already carried its platform label (#651);
       now `rex status` reads `PHP-CGI 8.3` on Windows too (`pool_display_name`); the key stays
       `PHP-FPM 8.3` on every OS. `rex status` names the pool `PHP-FPM 8.3` on Windows, where the pool is `php-cgi`

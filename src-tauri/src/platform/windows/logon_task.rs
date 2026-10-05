@@ -157,7 +157,12 @@ mod tests {
         let post = section("NSIS_HOOK_POSTINSTALL");
         assert!(post.contains("${If} ${Silent}") && post.contains("schtasks /Run /TN \"${REXENV_DNS_TASK}\""), "the silent install brings the resolver back on the new binary: {post}");
         let preun = section("NSIS_HOOK_PREUNINSTALL");
-        assert!(preun.contains("schtasks /End /TN \"${REXENV_DNS_TASK}\"") && preun.contains("schtasks /Delete /TN \"${REXENV_DNS_TASK}\" /F"), "the uninstaller ends AND deletes the task: {preun}");
+        // The APP before the task: a running app's watchdog re-registers the task (the Dell's
+        // interactive uninstall left it Ready, 5 Oct 2026). Then delete, then wait the agent out.
+        let app = preun.find("!insertmacro CheckIfAppIsRunning").expect("the uninstaller must stop the app first");
+        let del = preun.find("schtasks /Delete /TN \"${REXENV_DNS_TASK}\" /F").expect("the uninstaller deletes the task");
+        let wait = preun.find("!insertmacro REXENV_STOP_AGENT_AND_WAIT").expect("and waits the agent out");
+        assert!(app < del && del < wait, "app, then task, then agent: {preun}");
         assert!(!preun.contains("${If} ${Silent}"), "the task goes with the app in every uninstall, silent or not: {preun}");
         let postun = section("NSIS_HOOK_POSTUNINSTALL");
         assert!(postun.contains("${IfNot} ${Silent}") && postun.contains("MessageBox") && postun.contains(".rex DNS rule") && postun.contains("certificate"), "the interactive uninstall still says what it did not remove: {postun}");

@@ -2360,11 +2360,11 @@ glued on after it, and three rows still described states later runs had closed; 
 into one row per step, with each open row saying what it is waiting for.
 
 **Still open on Windows, in one list:** Firefox's typed addresses (#706 — proven on macOS
-only) · Chrome's download wording (no Chrome on the VM) · the one command under Smart App
-Control ON (no machine has it on) · WebView2's bootstrapper on a machine
-without it · the certificate dialog's **No** path · the tray's LEFT click · uninstalling an
-UPDATED copy with the in-app step first · the interactive uninstaller's closing box on screen
-(#787). (Apps & Features without the in-app step leaving a live agent closed 5 Oct 2026, #787;
+only) · the one command under Smart App Control ON (no machine has it on) · WebView2's
+bootstrapper on a machine without it · uninstalling an UPDATED copy with the in-app step first.
+(Closed 5 Oct 2026 on the Dell: Chrome's download wording, the certificate dialog's **No** path,
+the interactive uninstaller's closing box; the tray's LEFT click had closed 28 Sep and this list
+had not been updated.) (Apps & Features without the in-app step leaving a live agent closed 5 Oct 2026, #787;
 the pre-#695 `.bak` was answered "why not" on 2 Oct.)
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
@@ -2400,8 +2400,17 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       gone after it, no `rexenv.exe` runs a minute later, nothing of rexenv holds `127.0.0.1:53`;
       the interactive uninstaller ends with a box naming what is still on the PC (the `.rex` rule,
       the certificate) and where to remove it. ✓ 5 Oct 2026 (Dell, `uninstall.exe /S`, desktop
-      token): exe, uninstaller, HKCU entry and task gone, 0 processes at +60 s; the box itself is
-      not yet seen on screen (interactive run owed).
+      token): exe, uninstaller, HKCU entry and task gone, 0 processes at +60 s. ✓ **Interactive, on
+      screen, 5 Oct 2026 (Dell, the app running):** Uninstall → "rexenv is still running … Click OK to
+      stop it and continue. Your sites and databases keep running. (Installing a new version starts
+      the resolver again on its own; uninstalling removes it.)" → OK → the closing box: "rexenv is
+      uninstalled. Two system settings it made are still on this PC and are removed only from
+      inside rexenv (Settings > Services > Uninstall): the .rex DNS rule and the rexenv certificate.
+      To remove them, reinstall rexenv and use that button." → Close; task gone, 0 processes, still
+      0 at +60 s. **The first interactive run FAILED this row**: the task survived, Ready — the hook
+      deleted it while the app lived and the app's watchdog put it back; the hook now stops the app
+      first (Tauri's own running-app check), then deletes the task. The running-app sentence used to
+      promise the resolver "starts again … once the new version is in place" during an UNINSTALL.
 - [x] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it reaches
       Running and `netstat -ano | findstr :15432` shows it LISTENING — also on a machine with
       UAC disabled (`EnableLUA=0`, where EVERY process carries the Administrators token),
@@ -2452,7 +2461,12 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       **A second build (run 2) repeated both screens verbatim** — a new hash is a new stranger.
       (The Dell's earlier "Open File - Security Warning" with Run on the first screen is that
       machine's `EnableSmartScreen = 0` policy, not what a user meets.)
-- [ ] The same download through **Chrome**: its shelf / download-bubble wording, verbatim.
+- [x] The same download through **Chrome**: its shelf / download-bubble wording, verbatim.
+      ✓ **5 Oct 2026 (Dell, Chrome launched through `cmd /c start chrome <url>` from the desktop
+      session — `Start-Process chrome.exe` had died at once):** the download bubble read
+      "rexenv_0.8.11_x64-setup.exe · 9.7 MB • Done" — no "isn't commonly downloaded" or "dangerous"
+      line, nothing to keep or discard; the file's sha256 `98774414…` (the release asset). Chrome's
+      wording is plain; SmartScreen's screen (above) is the one a user meets.
       **Open: no Chrome on the VM; the Dell HAS Chrome (28 Sep 2026) but it will not start
       from the desktop session's scheduled task — `Start-Process` returns a pid that is gone
       within 8 s, 0 `chrome` processes, no window — so its wording could not be captured
@@ -2587,8 +2601,9 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       secure desktop, which the screenshot-and-click driver cannot see or answer (the Win11 VM's
       finding), so it would leave the Dell's install half-removed until a person clicks — a
       person at the Dell runs this row and the certificate-dialog "No" row together.**
-- [ ] A stray `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap sits beside the app for
-      good — the launch sweep looks only for `.rexenv-update-*`. **Open: TODO W12 row.**
+- [x] A stray `rexenv-0.8.3.bak` (38 MB, 19 Sep) from a pre-#695 swap sits beside the app for
+      good — the launch sweep looks only for `.rexenv-update-*`. ✓ **Answered "why not", 2 Oct 2026**
+      (TODO): no rexenv code ever wrote that name, so a sweep has nothing of rexenv's to match.
 
 ### Where rexenv lives — replaces "The menu bar (no dock icon)"
 - [x] rexenv is a **taskbar tray** app; right click opens the MENU (ledger #624, the owner's Q2
@@ -2649,10 +2664,18 @@ them is Windows' own dialog:
       a certificate from a certification authority (CA) claiming to represent: rexenv Local CA …
       Thumbprint (sha1): 1A6A20BE … Do you want to install this certificate? [Yes] [No]"; after
       Yes, `Cert:\CurrentUser\Root` holds `CN=rexenv Local CA` with that thumbprint, NotAfter 2036.
-- [ ] The certificate dialog's **No** reads as a cancel, and setup offers the step again rather
+- [x] The certificate dialog's **No** reads as a cancel, and setup offers the step again rather
       than continuing as if it succeeded. **Open: the No path was not driven — it needs a fresh
       onboarding on a Windows machine with someone at the keyboard (UAC on the secure desktop;
-      see the uninstall row above).**
+      see the uninstall row above).** ✓ **5 Oct 2026 (Dell), driven from Settings rather than a
+      fresh onboarding** — the CA dialog is the same and needs no UAC: the CA removed from
+      `CurrentUser\Root` (Windows' own "Do you want to DELETE …" → Yes), Settings → DNS & SSL →
+      Re-trust → Windows' "Security Warning — You are about to install a certificate … rexenv Local
+      CA … Thumbprint (sha1): 9B043BF3 … Do you want to install this certificate? [Yes] [No]" → **No**
+      → the app's toast "Windows' certificate prompt was cancelled — rexenv's local certificate
+      authority needs it for HTTPS. Try again …", the card still "not trusted — use Re-trust below",
+      nothing in the store. Re-trust → Yes → trusted, `https://w7check.rex` 200 with verification on.
+      (Onboarding's routing reads the same `caTrusted`, so an untrusted CA sends a launch back to it.)
 - [x] **NO third prompt for ports 80/443** — the pinned `caddy.exe` binds `:443` and `:80` under
       the unelevated desktop token (measured on the Dell). ✓ 19 Sep 2026 (VM, unelevated user,
       Explorer-started copy): `rex start` → Caddy on `127.0.0.1:443` and `:80`, no UAC, no

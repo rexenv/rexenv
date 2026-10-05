@@ -64,16 +64,19 @@ AllowSkipFiles off
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  ; The task goes WITH the app: ended (which stops the agent it started) and deleted, before
-  ; Tauri's running-app check handles the app itself (a dialog when interactive, a kill when
-  ; silent) -- so nothing re-runs rexenv.exe while the uninstaller removes it. No UAC: the
-  ; task is the user's own. NRPT and the certificate are NOT touched here (they need the
-  ; elevated step inside the app); the note after the uninstall says so.
-  nsExec::ExecToLog 'schtasks /End /TN "${REXENV_DNS_TASK}"'
-  Pop $0
+  ; The APP first: a running rexenv's watchdog re-registers the agent task, so a task deleted
+  ; while the app lives comes straight back -- the interactive uninstall on the Dell left
+  ; `\rexenv\dns-agent` registered and Ready (5 Oct 2026) while the silent one, run with no app,
+  ; did not. Tauri's own running-app check, here rather than after this hook: a dialog when
+  ; interactive (Cancel aborts the uninstall, nothing touched), a kill when silent.
+  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  ; Then the task goes WITH the app: ended (which stops the agent it started) and deleted, and
+  ; any agent it had running is waited out -- so nothing re-runs rexenv.exe while the uninstaller
+  ; removes it. No UAC: the task is the user's own. NRPT and the certificate are NOT touched here
+  ; (they need the elevated step inside the app); the note after the uninstall says so.
   nsExec::ExecToLog 'schtasks /Delete /TN "${REXENV_DNS_TASK}" /F'
   Pop $0
-  Sleep 1500
+  !insertmacro REXENV_STOP_AGENT_AND_WAIT
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
