@@ -476,8 +476,11 @@ it then tells you the `.rex` rule and the certificate are still there — those 
 the in-app step, because removing them needs administrator approval the uninstaller does
 not ask for.)
 
-1. In the app: **Settings → "Remove system changes"** (one UAC prompt — removes the NRPT
-   rules, the scheduled task, the CA trust and the `rex` copy with its `Path` entry).
+1. In the app: **Settings → Services → Uninstall → Remove** (rexenv's own confirm, then one
+   UAC prompt — removes the NRPT rules, the scheduled task, the CA trust and the `rex` copy
+   with its `Path` entry). Windows then shows its own **Root Certificate Store** dialog asking
+   whether to delete rexenv's certificate — answer **Yes**. (Measured on the Dell, 5 Oct 2026,
+   on a copy the in-app updater had updated.)
 2. Then remove the app itself, and — only if you want a full wipe —
    `%LOCALAPPDATA%\rexenv` (your databases and every downloaded component) and,
    separately, `%USERPROFILE%\rexenv\Sites`. **Your site files live in that Sites folder
