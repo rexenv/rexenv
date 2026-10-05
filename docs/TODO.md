@@ -306,13 +306,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
-- [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
-  `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
-  and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
-  rexenv took over FROM Valet or Herd — and neither tool is ever detected on Windows (#641), so the
-  banner cannot render there. Dead copy, not wrong copy on a screen, and a cosmetic rewrite could not
-  be tested on either platform without fabricating a takeover row. Fix it WITH the Valet/Herd import
-  port, when that path exists on Windows at all
 - [ ] **SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026).** WP-CLI's
   `wp core download` extracts WordPress's `.tar.gz` with PHP's `PharData`, and rexenv's PHP 8.3.32 reads that
   tarball with every member name CUT AT 100 CHARACTERS: bsdtar lists 3,782 members, PharData 3,776; 40 names
@@ -2072,6 +2065,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Parked (deliberate — needs explicit go; don't pick up silently)
 
+- [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
+  `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
+  and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
+  rexenv took over FROM Valet or Herd — and neither tool is ever detected on Windows (#641), so the
+  banner cannot render there. Dead copy, not wrong copy on a screen, and a cosmetic rewrite could not
+  be tested on either platform without fabricating a takeover row. Fix it WITH the Valet/Herd import
+  port, when that path exists on Windows at all
+  (Moved here from "Now" 6 Oct 2026: nothing on Windows can make the banner render, so there is no
+  work until the import port exists — it sat at the top of the actionable list as if there were.)
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs
