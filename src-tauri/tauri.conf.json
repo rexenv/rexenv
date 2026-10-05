@@ -80,6 +80,7 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
+        "installerHooks": "nsis/hooks.nsh",
         "customLanguageFiles": {
           "English": "nsis/English.nsh"
         }

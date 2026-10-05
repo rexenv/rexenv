@@ -182,6 +182,8 @@ release** — which is the property that makes a stolen key survivable. Ledger
 2. `./scripts/verify.sh` — the bar, same as in CI. Green verdict = its own
    `verify: all green` line.
 3. `pnpm release:win` (on Windows, in Git Bash) → `src-tauri/target/release/bundle/nsis/rexenv_<X.Y.Z>_x64-setup.exe`.
+   The installer carries rexenv's NSIS hooks (`src-tauri/nsis/hooks.nsh`, wired by `tauri.conf.json`'s
+   `installerHooks` — #787) beside the custom English strings; both are ASCII with no BOM.
    Runs `scripts/release-windows.sh`, which PRE-CLEANS for the Windows reason: the
    app's DNS agent is the app's own binary, it outlives the app by design and its
    watchdog puts it back, so a link step that has to replace `rexenv.exe` dies with

@@ -2363,8 +2363,9 @@ into one row per step, with each open row saying what it is waiting for.
 only) · Chrome's download wording (no Chrome on the VM) · the one command under Smart App
 Control ON (no machine has it on) · WebView2's bootstrapper on a machine
 without it · the certificate dialog's **No** path · the tray's LEFT click · uninstalling an
-UPDATED copy with the in-app step first · Apps & Features without the in-app step leaves a
-live agent, and a pre-#695 `.bak` nobody sweeps (both TODO W12 rows).
+UPDATED copy with the in-app step first · the interactive uninstaller's closing box on screen
+(#787). (Apps & Features without the in-app step leaving a live agent closed 5 Oct 2026, #787;
+the pre-#695 `.bak` was answered "why not" on 2 Oct.)
 
 Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
 
@@ -2375,22 +2376,32 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       site-page tooltip name **Chrome and Edge**, never Safari. **Open: no Windows run recorded.**
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
-- [ ] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
+- [x] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
       folder (`C:\Users\<you>\Sites\shop`) → the site's stored path (Site Settings, `rex site
       info`) reads `C:\Users\…`, never `\\?\C:\Users\…`; the generated nginx `root` line is
       `C:/Users/…`; the site serves. **Tell:** `//?/C:/` in `config/nginx/*.conf`, or a 404 on a
-      linked site whose files are there.
+      linked site whose files are there. ✓ 5 Oct 2026 (Dell, this build): `rex site create
+      link770.rex --type php --path C:\Users\dell\rexenv-link-770` → path `C:\Users\DELL\…`, nginx
+      `root "C:/Users/DELL/rexenv-link-770";`, served over HTTPS; delete kept the folder.
 - [x] **`rex` with a reader that left** (ledger #767): `C:\Users\Public\rexenv-smoke\closed-reader.ps1
       [path\to\rex.exe]` starts `rex -h` with stdout redirected, closes its read end at once and
       prints rex's exit code and stderr — PowerShell's own `| Select-Object -First 1` reads the whole
       output and never closes the pipe early, so the harness IS the row. Expect `exit=0`, empty
       stderr. ✓ 2 Oct 2026 (Win11 ARM VM, this tree's x64 `rex.exe`); the control, a build with std's
       panic put back, read `exit=101` and "The pipe is being closed. (os error 232)".
-- [ ] **`setup.exe /S` with rexenv RUNNING** (30 Sep 2026, Win11 VM): today it returns 0 and leaves
-      the old `rexenv.exe` on disk — `rex --version` then reads two hashes (`rex … · app …`).
-      Quit the app first for a silent install until `docs/TODO.md`'s row lands; after the fix the
-      silent path must either close the app or exit non-zero naming it. **Tell:** Apps & Features
-      says the new version while the running app reports the old build.
+- [x] **`setup.exe /S` with rexenv RUNNING** (30 Sep 2026, Win11 VM — it returned 0 and left the old
+      `rexenv.exe` on disk). Since #787 the silent install ends the `\rexenv\dns-agent` task, closes
+      every `rexenv.exe` and waits, writes the files (a file it cannot write ABORTS it, non-zero), and
+      re-runs the task: after it, `rexenv.exe`'s hash is the new build's, the agent answers
+      `127.0.0.1:53` again, the app stays closed. ✓ 5 Oct 2026 (Dell, Win10 22H2, desktop token,
+      app + agent running): exit 0 in 7 s, exe replaced, agent back; again with the stack up — every service PID the same before and after, the relaunched app adopted them. **Tell:** Apps & Features says
+      the new version while the running app reports the old build.
+- [x] **Apps & Features' uninstall WITHOUT the in-app step** (#787): the `\rexenv\dns-agent` task is
+      gone after it, no `rexenv.exe` runs a minute later, nothing of rexenv holds `127.0.0.1:53`;
+      the interactive uninstaller ends with a box naming what is still on the PC (the `.rex` rule,
+      the certificate) and where to remove it. ✓ 5 Oct 2026 (Dell, `uninstall.exe /S`, desktop
+      token): exe, uninstaller, HKCU entry and task gone, 0 processes at +60 s; the box itself is
+      not yet seen on screen (interactive run owed).
 - [x] **PostgreSQL starts — including with UAC OFF.** Services → start PostgreSQL: it reaches
       Running and `netstat -ano | findstr :15432` shows it LISTENING — also on a machine with
       UAC disabled (`EnableLUA=0`, where EVERY process carries the Administrators token),

@@ -42,7 +42,13 @@ esac
 
 # The DNS agent is not a stray: it is supposed to be running. Stopping it here is
 # the build's business and the app puts it back on next launch.
-if taskkill //F //IM rexenv.exe //T >/dev/null 2>&1; then
+#
+# NOT `/T`: the app's services (Caddy, nginx, MySQL, the php-cgi groups, Mailpit) are its
+# CHILD processes and are meant to outlive it — none of them holds `rexenv.exe` — and
+# `taskkill /T` killed every one of them on the Dell (5 Oct 2026: a release build's
+# pre-clean took the whole stack down, and the first Start all after it left the edge
+# down). Only the image that holds the output binary is ours to stop here.
+if taskkill //F //IM rexenv.exe >/dev/null 2>&1; then
   echo "pre-clean: stopped a running rexenv (app and/or DNS agent)"
   sleep 1
 else

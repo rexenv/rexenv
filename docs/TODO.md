@@ -138,11 +138,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   already gone / still alive at the cap / unwatchable, with the seconds) and how the launch
   ended (`open`'s exit code or the spawn error) — to a `--log <dir>` when given (the live checks'
   fixture root), else the app's log dir; L0 format/rotation/parse + a TEXT guard over the three
-  relaunchers (plant-proven), `app_relaunch_check` asserts the record (PASS, dev Mac).
+  relaunchers (plant-proven), `app_relaunch_check` asserts the record (PASS, dev Mac);
+  `windows_app_relaunch_check` the same on the Dell (PASS 8/8, 5 Oct 2026).
   **Still open — the VM leg:** the next update on the 15.8 VM reopens, or `relaunch.log` names
   why not (`docs/SMOKE-TEST.md` § In-app self-update; on macOS the OLD side's binary runs the
   relauncher, so the file first appears on the update FROM a build carrying #768).
-- [ ] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
+- [x] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
   place** (found 30 Sep 2026 on the Win11 VM, 0.8.11's third draft over its second): the
   silent install wrote the registry (`DisplayVersion` 0.8.11), `rex.exe` and the task, but the
   running app's image could not be replaced (file in use) and NSIS carried on — `rex --version`
@@ -156,6 +157,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   closes the app (the in-app updater's swap does this with `RenamePair`) or exits non-zero
   naming the running process; `docs/SMOKE-TEST.md` § Windows carries the row; the tap's
   `install.ps1` (which leaves a running rexenv alone by design) is not the fix.
+  ✓ **5 Oct 2026, the Dell (Win10 22H2), ledger #787:** Tauri NSIS `installerHooks`
+  (`src-tauri/nsis/hooks.nsh`): `AllowSkipFiles off` (a locked file aborts with a non-zero exit,
+  never a silent skip — NSIS's default lets silent mode skip it), and on `/S` the pre-install hook
+  ends `\rexenv\dns-agent`, kills every `rexenv.exe` of the user and WAITS until none is left
+  (bounded), the post-install hook re-runs the task on the new binary; the app is not relaunched
+  (silent means silent). Built there (`pnpm release:win`, §A0-windows green) and run under the
+  desktop's Medium token with the app AND the agent running: exit 0 in 7 s, `rexenv.exe` replaced
+  (12CF… → 5FA2…, carrying this build's stamp `2026-10-05T04:00:09Z`), the agent back on the new
+  binary answering `127.0.0.1:53`; with the whole stack up, every service process survived it (same PIDs, adopted by the relaunched app). L0 guard ties the hooks to `DNS_AGENT_TASK` (plant-proven).
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
@@ -368,7 +378,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `platform::fatal_notice` once per process — a `MessageBoxW` on a Windows release build;
     child-process L0 test + rotation test, both plant-proven, ledger #596. Unproven until a
     Windows run: the message box itself
-  - [ ] Update catalogs across OSes — **ruled 13 Sep 2026: a separate signed document per OS**
+  - [x] Update catalogs across OSes — **ruled 13 Sep 2026: a separate signed document per OS**
     (`manifest-<os>.json`, `app-manifest-<os>.json`; unsuffixed = macOS, frozen; naming for
     all three OSes in plan §3b). Measured against every shipped release (0.3.0–0.7.0): an `os`
     field on an `x86_64` row is KEPT by every Intel Mac, so no Windows or Linux entry is ever
@@ -539,7 +549,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       model is the php-cgi group, WP-CLI gets PHP's SMTP keys (4) instead of the shim — the way the
       group's own ini already routes a page's mail (#601) — in `wordpress::finish_wp_argv`, the one
       argv builder (#407)
-    - [ ] A LINKED or imported docroot is stored as `canonicalize()` returns it (`sites.rs`, the
+    - [x] A LINKED or imported docroot is stored as `canonicalize()` returns it (`sites.rs`, the
       existing-folder validation), and on Windows `std::fs::canonicalize` answers the extended
       `\\?\C:\…` form (Rust's documented behaviour — read, not yet measured) — which
       `services::nginx_path` would render as `//?/C:/…`. Measure what nginx does with it and strip
@@ -548,14 +558,33 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       (ledger #770):** `sites::plain_path` drops `\\?\` (and `\\?\UNC\` → `\\`) from the path
       `validate_linked_docroot_on` returns — AFTER every canonical-vs-canonical comparison, which
       keeps the raw form (#642). L0 on literal paths + a TEXT guard that the return goes through it
-      (both plant-proven). **Still open — the Windows run:** link a folder on the Dell, read the
-      stored path and the nginx `root` line (SMOKE § Windows).
-    - [ ] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
+      (both plant-proven). ✓ **Windows run, 5 Oct 2026 (the Dell, this build installed):** `rex site
+      create link770.rex --type php --path C:\Users\dell\rexenv-link-770` → stored path `C:\Users\DELL\
+      rexenv-link-770` (no `\\?\`), nginx `root "C:/Users/DELL/rexenv-link-770";`, no `//?/` anywhere in
+      the config, `https://link770.rex` answered the fixture's `linked-770 ok 8.3.32`; delete kept the
+      folder; site and folder removed after.
+    - [x] Per-vhost `PHP_VALUE` does NOT reach a php-cgi group — measured 14 Sep 2026 on the Dell
       (`windows_nginx_check`: `memory_limit=222M` sent per vhost, the child kept the pool's value).
       It is php-fpm's per-request ini; php-cgi has none. Measured who sets one: ONLY the Adminer
       vhost (`sites.rs`, `adminer::import_php_value` — the import upload cap), no user site. So on
       Windows Adminer's import cap is the pool's until another carrier exists (a `.user.ini` in
       Adminer's docroot is the likely one) — small, and not a blocker for serving sites
+      ✓ **5 Oct 2026 (ledger #788):** the regeneration writes the cap as `.user.ini` in Adminer's
+      docroot on every OS (same lines as `PHP_VALUE`, no OS branch); on the Dell php-cgi 8.3 then
+      answered `upload_max_filesize=2147483648 post_max_size=2147483648` through the Adminer vhost.
+      **And it found a common bug:** the pool's own ini there said 5G/8G — rexenv's defaults since
+      #694 — while `import_cap(None)` still assumed PHP's 2M, so on EVERY OS Adminer alone sat at
+      the 2G floor; `None` now means `php::default_body_limit()` (8G), #237 corrected.
+    - [ ] **One Start all after a tree-kill left the edge down, and did not say why** (5 Oct 2026, the
+      Dell): `release-windows.sh`'s pre-clean ran `taskkill /F /IM rexenv.exe /T`, which killed the
+      app AND every service it had spawned (they are its children); the next app, launched at 10:39,
+      answered `rex start` at 10:40 with "services started, but nothing is answering port 443" —
+      MySQL, nginx, php-cgi and Mailpit started, Caddy was never spawned (no `caddy-stdout.log`
+      line), and the watchdog logged `[edge-down]` six seconds later. `rex restart` then brought the
+      edge up, and the same sequence (Caddy force-killed, its admin socket file left behind, `rex
+      start`) did NOT reproduce it. The `/T` is gone from the script (it was never meant to stop the
+      services); why `prepare_edge` planned no start that once is unexplained — the app log has no
+      edge line for that start. Reproduce before guessing: a tree-kill, then app launch, then Start all.
     - [ ] The site terminal (`commands/terminal.rs`) resolves PHP as a single binary, starts
       `$SHELL`/zsh and writes a shell-script `wp` wrapper — none of which exists on Windows. W7's
       terminals, not W4; WP-CLI and Composer themselves now resolve PHP through
@@ -1049,7 +1078,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       states the fact, the card adds nothing. L0 + TEXT (plant-proven ×2); L2 `uireview`
       `appupdate-installed-undecided` renders the pending card without the sentence (passes, with
       `appupdaterestart`). Common code — the same card on all three OSes.
-    - [ ] **Uninstalling from Apps & Features without the in-app step leaves a live agent.** Measured
+    - [x] **Uninstalling from Apps & Features without the in-app step leaves a live agent.** Measured
       21 Sep 2026 on the VM (SMOKE-TEST run 6): `uninstall.exe` removed everything it owns except
       `rexenv.exe`, because the `\rexenv\dns-agent` task — per-user, and left registered — re-ran the
       agent from it within the minute and held the file. Result: an uninstalled app whose resolver
@@ -1057,7 +1086,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       Apps & Features is where people uninstall. The task is the user's own, so the uninstaller can
       end and delete it without UAC (a Tauri NSIS `installerHooks` pre-uninstall: `schtasks /End` +
       `/Delete /TN \rexenv\dns-agent /F`, then stop the agent) — NRPT and the CA still need the
-      in-app step, and the uninstaller should keep saying so.
+      in-app step, and the uninstaller should keep saying so. ✓ **5 Oct 2026 (Dell, ledger #787):**
+      exactly that pre-uninstall hook, in every uninstall (silent or not), before Tauri's own
+      running-app check; the interactive uninstaller then says the `.rex` rule and the certificate
+      are still on the PC and where to remove them. `uninstall.exe /S` under the desktop token with
+      the app and agent running: exit 0, `rexenv.exe` + `uninstall.exe` + the HKCU entry + the task
+      all gone, 0 rexenv processes, still 0 sixty seconds later (the task that re-ran it is gone),
+      `127.0.0.1:53` free (only ICS's `svchost` on `0.0.0.0:53`, as before); reinstall `/S` +
+      launching the app put the task back.
     - [x] `%LOCALAPPDATA%\rexenv\rexenv-0.8.3.bak` (38 MB, 19 Sep) sits beside the app for good: a
       pre-#695 swap left it, and the launch sweep looks only for `.rexenv-update-*`. Sweep the old
       name once, or say why not. ✓ **Why not, 2 Oct 2026:** no code in this tree's history ever
@@ -1084,6 +1120,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       `setup.exe` (sha `98774414…`, the API digest agreeing); `winget validate --manifest` on the Win11
       VM (winget 1.29.380): "Manifest validation succeeded".
     - [ ] Watch PR 437674 through their automated validation, and answer whatever it asks for.
+      **Checked 5 Oct 2026:** OPEN, labels `Azure-Pipeline-Passed`, `Validation-Completed`,
+      `New-Package` on the 0.8.11 commit, last activity 1 Oct — waiting on a moderator; nothing asked.
       **30 Sep 2026: the PR was moved from 0.8.6 to 0.8.11** — the fork branch's `0.8.6/` folder
       replaced by `0.8.11/`, the title and body rewritten for the public repo (the 0.8.6 files had
       passed their pipeline: `Azure-Pipeline-Passed`, `Validation-Completed`, waiting on a

@@ -455,18 +455,26 @@ there is no certificate for it, so the edge ends the handshake — macOS's curl 
 
 ### Updating
 
-**rexenv cannot update itself on Windows yet** (W11). On macOS it replaces itself from
-Settings → About; here the pieces that would do it — reading the app's own install facts,
-staging a replacement, and swapping a running `.exe` — are unported, and the code says so
-by name: `WindowsAppBundle::facts` returns `Unported("windows app bundle facts
-(self-update, plan D5/W11)")`. Checking still works; applying does not. Until the updater
-lands, updating means running a newer build.
+**rexenv updates itself on Windows** (since 0.8.0 — ledger #690; this section said the
+opposite until 5 Oct 2026, a build behind). Settings → About offers a newer release once its
+signed Windows descriptor (`app-manifest-windows.json`) is published; Install downloads
+`rexenv_<version>_x64.zip`, verifies it against the signed digest, swaps the install folder's
+files while the app runs (a running `.exe` cannot be overwritten but can be renamed, so the
+swap is a rename pair — #695), rewrites the uninstall entry's version, then asks before it
+closes and reopens; the DNS agent comes back on the new binary. An install folder another
+account owns (installed through an elevated shell) is refused with the copy-paste `takeown`
+fix (#693). **Updating by hand** still works: run the newer `setup.exe` over the installed one
+— interactively it asks before closing a running rexenv.
 
 ### Uninstalling — do the in-app step FIRST
 
 rexenv installs things outside its own folder that deleting the app cannot remove: the
 `.rex` NRPT rule, the `\rexenv\dns-agent` scheduled task, the local CA in your Root
-store, and the `rex` copy on your `Path`.
+store, and the `rex` copy on your `Path`. (Since 5 Oct 2026 the uninstaller from Apps &
+Features ends and deletes the scheduled task itself, so a resolver never outlives the app;
+it then tells you the `.rex` rule and the certificate are still there — those two need
+the in-app step, because removing them needs administrator approval the uninstaller does
+not ask for.)
 
 1. In the app: **Settings → "Remove system changes"** (one UAC prompt — removes the NRPT
    rules, the scheduled task, the CA trust and the `rex` copy with its `Path` entry).

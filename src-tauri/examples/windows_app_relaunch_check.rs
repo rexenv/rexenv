@@ -243,8 +243,8 @@ async fn main() -> ExitCode {
 
     println!(
         "\nNOT covered here: the real app quitting through the quit gate and reopening on a\n\
-         swapped directory — that needs an installed rexenv, which no Windows machine has\n\
-         yet; SMOKE-TEST's Windows section once an installer has been installed."
+         swapped directory — an installed rexenv and a published newer build; that is\n\
+         SMOKE-TEST's Windows \"In-app self-update\" section (run on the VM and the Dell)."
     );
     checks.verdict()
 }

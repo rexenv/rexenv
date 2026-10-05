@@ -130,6 +130,39 @@ pub(crate) fn utf16_file_bytes(xml: &str) -> Vec<u8> {
 mod tests {
     use super::*;
 
+    /// Ledger #787 — **the silent installer stops the agent's task and waits the binary free
+    /// before the swap, refuses to skip a locked file, and restarts the task after; the
+    /// uninstaller ends and deletes the task before it removes rexenv.exe** — the NSIS hooks
+    /// Tauri includes (`tauri.conf.json` → `nsis/hooks.nsh`). `setup.exe /S` over a running
+    /// rexenv returned 0 with the old binary in place (30 Sep 2026), and `uninstall.exe` left
+    /// an agent answering :53 from a file it could not delete (21 Sep 2026). The task name is
+    /// THIS constant's, held together here so a rename fails the build's tests.
+    #[test]
+    fn the_installer_hooks_stop_the_agent_for_a_silent_swap_and_take_its_task_on_uninstall() {
+        let hooks = include_str!("../../../nsis/hooks.nsh");
+        let conf = include_str!("../../../tauri.conf.json");
+        assert!(conf.contains("\"installerHooks\": \"nsis/hooks.nsh\""), "tauri.conf.json must hand the hooks to the bundler");
+        assert!(hooks.is_ascii() && !hooks.starts_with('\u{feff}'), "ASCII and no BOM — the English.nsh rule (makensis rejects a second BOM)");
+        assert!(hooks.lines().any(|l| l.trim() == "AllowSkipFiles off"), "a locked file must ABORT a silent install, never be skipped: {hooks}");
+        assert!(hooks.contains(&format!("!define REXENV_DNS_TASK \"{DNS_AGENT_TASK}\"")), "the hooks must name the agent task exactly as the app registers it ({DNS_AGENT_TASK})");
+        let section = |name: &str| {
+            let at = hooks.find(&format!("!macro {name}")).unwrap_or_else(|| panic!("the hooks must define {name}"));
+            let rest = &hooks[at..];
+            &rest[..rest.find("!macroend").expect("macroend")]
+        };
+        let pre = section("NSIS_HOOK_PREINSTALL");
+        assert!(pre.contains("${If} ${Silent}") && pre.contains("!insertmacro REXENV_STOP_AGENT_AND_WAIT"), "the silent install stops the agent and waits — only the silent one: {pre}");
+        let stop = section("REXENV_STOP_AGENT_AND_WAIT");
+        assert!(stop.contains("schtasks /End /TN \"${REXENV_DNS_TASK}\"") && stop.contains("FindProcessCurrentUser") && stop.contains("KillProcessCurrentUser") && stop.contains("Sleep 500") && stop.contains("${LoopUntil} $1 >= 20"), "end the task, then kill and wait, bounded: {stop}");
+        let post = section("NSIS_HOOK_POSTINSTALL");
+        assert!(post.contains("${If} ${Silent}") && post.contains("schtasks /Run /TN \"${REXENV_DNS_TASK}\""), "the silent install brings the resolver back on the new binary: {post}");
+        let preun = section("NSIS_HOOK_PREUNINSTALL");
+        assert!(preun.contains("schtasks /End /TN \"${REXENV_DNS_TASK}\"") && preun.contains("schtasks /Delete /TN \"${REXENV_DNS_TASK}\" /F"), "the uninstaller ends AND deletes the task: {preun}");
+        assert!(!preun.contains("${If} ${Silent}"), "the task goes with the app in every uninstall, silent or not: {preun}");
+        let postun = section("NSIS_HOOK_POSTUNINSTALL");
+        assert!(postun.contains("${IfNot} ${Silent}") && postun.contains("MessageBox") && postun.contains(".rex DNS rule") && postun.contains("certificate"), "the interactive uninstall still says what it did not remove: {postun}");
+    }
+
     fn element<'a>(xml: &'a str, tag: &str) -> Vec<&'a str> {
         xml.split(&format!("<{tag}>"))
             .skip(1)

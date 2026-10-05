@@ -2816,6 +2816,9 @@ pub fn rebuild_configs_for(
     // never hold a user who configured more down to it.
     let adminer_cap =
         adminer::import_cap(body_limits.get(&php::minor_of(binaries::pins().php)).copied());
+    // The same cap as a `.user.ini` in the docroot: a php-cgi group (Windows) ignores the vhost's
+    // PHP_VALUE, and every PHP reads the file (#788).
+    adminer::write_user_ini(&adminer::docroot(platform)?, adminer_cap)?;
     nginx_sites.push(services::NginxSite {
         domain: adminer::ADMINER_HOST.to_string(),
         // The tooling vhost answers on ONE name, by design (#24: it has no site

@@ -932,8 +932,9 @@ staged and swapped (T3, sandbox tier), or that a real Mac lets it happen (T0/T11
   passes is needed. Refuses a stale app binary, for the reason `app_relaunch_check` records.
   **6 checks, all green on the Dell, 19 Sep 2026.** Does NOT cover the real app quitting
   through the quit gate and reopening on a swapped directory — SMOKE-TEST's Windows section.
-  **Carries the same record assertions as `app_relaunch_check` since 2 Oct 2026** (#768) — not
-  yet run: the Dell was unreachable that day, and the ledger row stays ◐ until it is.
+  **Carries the same record assertions as `app_relaunch_check` since 2 Oct 2026** (#768) — RUN on
+  the Dell 5 Oct 2026, PASS 8/8 (built there with `cargo build --release --example …` beside the
+  freshly built `rexenv.exe`, from a detached scheduled task so the tunnel's SSH session could drop).
 ## Proving a Windows claim
 
 `verify.sh`'s `windows-check` cross-compiles both crates for x64 Windows. That is a COMPILE

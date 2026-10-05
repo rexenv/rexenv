@@ -190,6 +190,14 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   cross builds are for examples.
 - **The resolver answers on :53** (NRPT has no port). A UI line saying 15353 on Windows is
   macOS's number leaking.
+- **The DNS agent IS `rexenv.exe`, and NSIS skips a locked file in silent mode by default**
+  (`AllowSkipFiles on`): `setup.exe /S` returned 0 with the old binary in place, and the
+  uninstaller could not delete an exe the agent's task kept re-running. The installer hooks
+  (`src-tauri/nsis/hooks.nsh`, #787) end the task, kill and wait before a silent swap, refuse
+  to skip, and take the task on uninstall.
+- **A php-cgi group has no per-request ini.** `fastcgi_param PHP_VALUE` is php-fpm's; php-cgi
+  ignores it (measured on the Dell). A per-vhost limit that must reach PHP goes in a `.user.ini`
+  in the docroot — every CGI/FastCGI PHP reads it, so it is written on every OS (#788).
 - **`std::fs::canonicalize` answers the verbatim form** (`\\?\C:\Users\x`). Compare canonical
   against canonical (#642 — plain against verbatim answered false on the Dell), and STORE the
   plain form: a linked docroot goes through `sites::plain_path` once, at the storage point

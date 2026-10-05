@@ -42,11 +42,15 @@ pub const ADMINER_HOST: &str = "adminer.rexenv.rex";
 /// loopback-only (§5.2), so it gets the generous floor for free.
 pub const MAX_IMPORT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-/// The vhost's actual cap: the floor, or the default pool's own configured
-/// limit when that's larger (`None` = the pool stores neither upload key, so
-/// PHP's small defaults apply and only the floor matters).
+/// The vhost's actual cap: the floor, or the default pool's own limit when that's larger.
+/// `None` = the pool stores neither upload key — which means rexenv's OWN defaults
+/// (`php::SETTINGS`: 5G uploads under an 8G post body, `php::default_body_limit`), not PHP's
+/// compiled 2M. Until 5 Oct 2026 `None` read as "PHP's small defaults, only the floor matters":
+/// true when it was written, false since rexenv shipped its own defaults (#694) — so on every
+/// OS Adminer alone was held to the 2G floor while every pool, and every other vhost, allowed
+/// 8G; found on the Dell, where the pool's ini said 5G/8G and Adminer's PHP said 2G (#788).
 pub fn import_cap(pool_limit: Option<u64>) -> u64 {
-    pool_limit.unwrap_or(0).max(MAX_IMPORT_BYTES)
+    pool_limit.unwrap_or_else(crate::core::php::default_body_limit).max(MAX_IMPORT_BYTES)
 }
 
 /// Per-request `PHP_VALUE` ini lines for the Adminer vhost, for a cap of
@@ -60,6 +64,40 @@ pub fn import_cap(pool_limit: Option<u64>) -> u64 {
 /// values.
 pub fn import_php_value(bytes: u64) -> String {
     format!("upload_max_filesize={bytes}\npost_max_size={bytes}")
+}
+
+/// The per-directory ini file PHP reads from a script's directory up to the document root.
+pub const USER_INI: &str = ".user.ini";
+
+/// The SAME cap as [`import_php_value`], as a `.user.ini` in Adminer's docroot — the carrier
+/// that reaches a pool `PHP_VALUE` cannot (ledger #788).
+///
+/// `PHP_VALUE` is php-fpm's per-request ini. A php-cgi group (Windows' pool, `PoolModel::CgiGroup`)
+/// has no such thing: measured 14 Sep 2026 on the Dell, `memory_limit=222M` sent per vhost and the
+/// child kept the pool's value — so on Windows Adminer's import cap was silently the default
+/// pool's, and a big dump was cut by PHP while nginx had let it through. Every CGI/FastCGI PHP reads
+/// `.user.ini` (`user_ini.filename`, default on), and both keys are `PHP_INI_PERDIR`, so the file
+/// carries them on EVERY OS — written for all, the same bytes, no OS branch: on php-fpm it repeats
+/// what `PHP_VALUE` already says. Written by the config regeneration that computes the cap
+/// (`sites::rebuild`), so the two cannot disagree.
+pub fn user_ini_contents(bytes: u64) -> String {
+    format!(
+        "; Managed by rexenv — Adminer's import cap (the vhost's client_max_body_size). Rewritten on\n\
+         ; every config regeneration; edits here are lost.\n{}\n",
+        import_php_value(bytes)
+    )
+}
+
+/// Write [`user_ini_contents`] into `dir` unless it already holds exactly that.
+pub fn write_user_ini(dir: &std::path::Path, bytes: u64) -> Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let path = dir.join(USER_INI);
+    let want = user_ini_contents(bytes);
+    if std::fs::read_to_string(&path).is_ok_and(|have| have == want) {
+        return Ok(());
+    }
+    std::fs::write(&path, want)?;
+    Ok(())
 }
 
 /// FastCGI read/send timeout for the Adminer vhost, in seconds.
@@ -856,6 +894,36 @@ pub async fn forward(
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #788 — **Adminer's import cap reaches a php-cgi group through `.user.ini`**: the same
+    /// two lines as the vhost's `PHP_VALUE`, from the same number, written idempotently, and written
+    /// by the regeneration that computes the cap.
+    #[test]
+    fn the_import_cap_is_also_a_user_ini_in_the_docroot_written_with_the_vhost() {
+        let dir = std::env::temp_dir().join(format!("rexenv-adminer-ini-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        write_user_ini(&dir, 3_000).expect("write");
+        let ini = std::fs::read_to_string(dir.join(USER_INI)).expect(".user.ini");
+        assert!(ini.ends_with("upload_max_filesize=3000\npost_max_size=3000\n"), "{ini}");
+        assert!(ini.lines().all(|l| l.starts_with(';') || l.contains('=')), "only comments and ini lines: {ini}");
+        for line in import_php_value(3_000).lines() {
+            assert!(ini.lines().any(|l| l == line), "the file carries every PHP_VALUE line: {line}");
+        }
+        let before = std::fs::metadata(dir.join(USER_INI)).and_then(|m| m.modified()).ok();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        write_user_ini(&dir, 3_000).expect("rewrite");
+        assert_eq!(before, std::fs::metadata(dir.join(USER_INI)).and_then(|m| m.modified()).ok(), "unchanged content is not rewritten");
+        write_user_ini(&dir, 9_000).expect("new cap");
+        assert!(std::fs::read_to_string(dir.join(USER_INI)).unwrap().contains("post_max_size=9000"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let sites = include_str!("sites.rs");
+        let prod = sites.split("\n#[cfg(test)]").next().unwrap_or_default();
+        let cap = prod.find("let adminer_cap =").expect("the cap");
+        let rest = &prod[cap..];
+        let ini_at = rest.find("adminer::write_user_ini(&adminer::docroot(platform)?, adminer_cap)?").expect("the regeneration must write the .user.ini with the vhost's cap");
+        let vhost_at = rest.find("php_value: Some(adminer::import_php_value(adminer_cap))").expect("the vhost's PHP_VALUE");
+        assert!(ini_at < vhost_at + 400, "written beside the vhost that carries the same cap");
+    }
+
     use super::*;
 
     #[test]
@@ -1097,8 +1165,11 @@ mod tests {
 
     #[test]
     fn the_import_cap_can_only_raise_what_the_pool_already_allows() {
-        // The floor unblocks a default pool…
-        assert_eq!(import_cap(None), MAX_IMPORT_BYTES);
+        // A pool that stores nothing runs rexenv's OWN defaults (#694), not PHP's 2M — so
+        // Adminer gets what every other vhost on it gets, never the floor alone (#788).
+        assert_eq!(import_cap(None), crate::core::php::default_body_limit());
+        assert!(import_cap(None) > MAX_IMPORT_BYTES, "the defaults are above the floor today");
+        // The floor still unblocks a pool someone configured small…
         assert_eq!(import_cap(Some(64 << 20)), MAX_IMPORT_BYTES);
         // …but a user running the pool at 6G keeps 6G here. Holding Adminer —
         // and only Adminer — below the user's own configured limit would be the
