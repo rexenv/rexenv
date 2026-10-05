@@ -585,10 +585,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
       start`) did NOT reproduce it. The `/T` is gone from the script (it was never meant to stop the
       services); why `prepare_edge` planned no start that once is unexplained — the app log has no
       edge line for that start. Reproduce before guessing: a tree-kill, then app launch, then Start all.
-    - [ ] The site terminal (`commands/terminal.rs`) resolves PHP as a single binary, starts
+    - [x] The site terminal (`commands/terminal.rs`) resolves PHP as a single binary, starts
       `$SHELL`/zsh and writes a shell-script `wp` wrapper — none of which exists on Windows. W7's
       terminals, not W4; WP-CLI and Composer themselves now resolve PHP through
-      `binaries::resolve_program`
+      `binaries::resolve_program` ✓ **Was fixed 19 Sep 2026 (ledger #688), ticked on paper 5 Oct:**
+      `ShellRunner::interactive_shell` per OS (PowerShell on Windows), `;`-joined PATH, a `wp.cmd`
+      wrapper — and run on the Dell that night: the tab opened PowerShell in the site's folder and
+      `php -v` answered the SITE's 8.2, not the 8.3 default.
     - [ ] A plugin's bare curl HTTPS call fails on Windows — PHP's curl has no CA bundle there
       (`unable to get local issuer certificate`, measured 14 Sep 2026; `file_get_contents` works via
       the Windows store, and WordPress/WP-CLI/Composer ship their own bundles). Owner ruled: not now.
