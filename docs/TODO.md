@@ -1686,6 +1686,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   *Done when:* each of the three has the input, one trial run green, and its Rosetta artifact
   compared with the Intel-built one (arch, minos, size, what it loads) — then the default flips
   to `rosetta` before the runners go. Reproduce failures on the dev Mac first (Rosetta is there).
+  ✓ **6–7 Oct 2026, the trial half done — `rexenv/runtimes` PR #17** (branch `x86-rosetta-rest`), all
+  three green with `x86_host=rosetta`, publish off, each compared under Rosetta with its published
+  Intel-built twin: **nginx** (run 37474222024) x86_64, minos 12.0, `libSystem` only, regex location
+  answered identically; **OpenLiteSpeed** (37474228252) byte-identical size, same libs and file list;
+  **PHP 8.3.33** (37495216716) vs published 8.3.32: same six system libs, the same 65 modules, swoole
+  6.2.2, identical script output, the PostgreSQL gate passed. Two real fixes found on the way, both
+  reproduced on the dev Mac first: nginx's bundled PCRE2 never got `-arch` (`--with-cc-opt` reaches
+  only nginx's objects — arm64 under Rosetta, a lost link), now `--with-pcre-opt`; and swoole had
+  drifted under spc's `v6.*` to v6.2.3, which does not compile (`sw_usleep` undeclared) on ANY
+  arch — 8.2+ now pin 6.2.2, what every published 8.x carries. **Cost noted:** Rosetta PHP 8.x takes
+  2 h 14 min of the job's 180 (native 41 min). **Still open:** merge #17, then flip the four
+  workflows' default to `rosetta` on their next real build (and let that build be the one published).
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
