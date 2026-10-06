@@ -191,7 +191,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   lag path was not exercised (its run installed the release's `.deb` directly, as designed while
   apt is not yet current) — left open for that one leg.
 
-- [ ] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
+- [x] **Linux: after an in-app update Ubuntu shows "WebKitWebProcess closed unexpectedly"** (29 Sep
   2026, 22.04 VM, 0.8.9 → 0.8.10): the update itself was clean — the new app came back — but at
   09:12:26, the moment the OLD app exited through the update's exit gate, its WebKitWebProcess
   (pid 2656, reparented to `systemd --user`) died on SIGSEGV and apport put up "Problem in
@@ -218,6 +218,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **30 Sep 2026, §M for 0.8.11 (the first update on the #757 build, 22.04 arm64 VM):** 0.8.10 →
   0.8.11 through the app, ONE polkit, the app came back by itself, `/var/crash` empty, no dialog —
   0 of 1 with the mitigation; the row stays open until the next update makes it 0 of 2 or more.
+  ✓ **6 Oct 2026, three more on the same VM — 0 of 4 with the mitigation (1 of 2 before it):**
+  this tree's release binary stamped 0.8.10 (`7c2e6966`, built in the `linux-check` image) swapped
+  into the installed deb, launched from GNOME, Settings → About → Install the published 0.8.11 →
+  ONE polkit (the update's own sentence) → "0.8.11 is installed" → OK → 0.8.11 answering within
+  2 s, three times. After each: `/var/crash` empty, no `segfault`/`WebKitWebProcess` line in the
+  journal since the OK, no apport window on the screen 30 s later. The VM ends on the published
+  deb (`dpkg -V` clean). If it ever recurs, the `.crash` capture above is still the next step.
 - [x] **macOS: "Background Items Added" notifications pile up — eleven on the 15.8 VM** (seen 2 Oct
   2026 while running T3 on the installed 0.8.11; screenshot in the session): Notification Centre
   held 11+ identical "Background Items Added — 'rexenv' is an item that can run in the background.

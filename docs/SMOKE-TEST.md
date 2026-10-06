@@ -3132,7 +3132,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       `/usr/bin/rexenv` came back by itself**, window up, `rex 0.8.10 (a470c1a)`, "swept 2
       leftover(s)", "updated from 0.8.9", the agent answering. One blemish: Ubuntu's "Problem in
       WebKitWebProcess — closed unexpectedly" dialog — the OLD instance's web process (reparented
-      to `systemd --user`) died on SIGSEGV as the old app exited; `docs/TODO.md`.
+      to `systemd --user`) died on SIGSEGV as the old app exited; `docs/TODO.md`. **Since #757's
+      exit (webviews destroyed first): 0 of 4** — 30 Sep, and three in a row 6 Oct 2026 (a 0.8.10
+      stamp of this tree → the published 0.8.11): no dialog, `/var/crash` empty, no segfault in
+      the journal.
 - [ ] **The relauncher's record** (ledger #768): after an in-app update (`.deb` or AppImage),
       `~/.local/share/rexenv/logs/relaunch.log` has three new lines — `started: waiting for pid …`,
       `parent <pid> exited after N.Ns`, `started /usr/bin/rexenv (pid …)` (or the AppImage path).
