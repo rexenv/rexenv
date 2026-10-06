@@ -1677,6 +1677,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     session started. With the start line in place, a recurrence is answerable from
     `rexenv.log` alone — which is what makes waiting for one reasonable instead of guessing.
 
+- [ ] **The rest of `rexenv/runtimes`' macOS x86_64 builds are on the same August 2027 clock**
+  (found 6 Oct 2026 while closing PHP 7.4's): `php.yml` (the 8.x catalog), `nginx.yml` and
+  `openlitespeed.yml` all build their macOS x86_64 half on `macos-15-intel`, which GitHub retires
+  in August 2027 — after that no Intel-Mac binary of anything rexenv pins can be rebuilt. The shape
+  that works is PR #16's for 7.4 (`x86_host=rosetta`: `arch -x86_64` on `macos-15`, build tools
+  installed natively first, because spc's/the scripts' brew calls are refused under Rosetta).
+  *Done when:* each of the three has the input, one trial run green, and its Rosetta artifact
+  compared with the Intel-built one (arch, minos, size, what it loads) — then the default flips
+  to `rosetta` before the runners go. Reproduce failures on the dev Mac first (Rosetta is there).
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
@@ -1763,7 +1772,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     to let a pinned minor go unrecorded (and refuses a table that is uniformly `Ares`,
     which is the assumption this disproves), and `wp_dns_check` fails on any DISAGREEMENT
     between the record and the build in front of it — news in both directions.
-- [ ] **PHP 7.4 — the five residuals of a shipped feature** (`docs/archive/PLAN-php-74-support.md`;
+- [x] **PHP 7.4 — the five residuals of a shipped feature** (`docs/archive/PLAN-php-74-support.md`;
   the stage log is in `docs/archive/SHIPPED-2026-08.md`). Kept as open rows because they
   were living inside a ticked block, which is where open work goes to be forgotten.
   **Four of the five are now closed** (30 Aug 2026); what is left is the ONE with a date
@@ -1812,10 +1821,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     (`docs/TESTING.md` §3.1): the two files serve different readers, so they are held
     equal by test rather than deduplicated. `docs/PORTS.md` names where the fact lives
     instead of repeating the hash — a third copy would be a third thing to drift.
-  - [ ] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
+  - [x] **The x86_64 half is on a clock: GitHub's x86_64 runners end August 2027.** PLAN
     §4.5/§11 says to land the cross-compile path before then, and notes that a cross-built
     artifact can never run a native smoke test. Nothing in this file mentioned 2027 until
-    the 21 Aug reconcile.
+    the 21 Aug reconcile. ✓ **6 Oct 2026 — not a cross-compile: Rosetta** (`rexenv/runtimes`
+    PR #16, branch `x86-under-rosetta`): the workflow's new `x86_host=rosetta` runs the macOS
+    x86_64 half on the arm64 `macos-15` runner as an x86_64 process tree (`arch -x86_64`), so
+    `build-php74.sh` needs no cross branch and its gates still EXECUTE the artifact (emulated).
+    Run 37455554616 (publish off): all four lanes green; against the published Intel-built
+    `php-7.4.33-7`, both under Rosetta: Mach-O x86_64, minos 12.0, 80 MB, the same 57 modules
+    (identical list), `7.4.33 NTS` cli + fpm, identical output from an intl/imagick/PCRE/DateTime
+    script. Three trials failed first on ONE cause, found on the dev Mac rather than by a fourth
+    hour of CI: spc's `doctor --auto-fix` installs missing tools with `brew`, Homebrew refuses
+    under Rosetta in the ARM prefix, and the script's `|| true` swallowed it — so the tools are
+    installed natively first. Default stays `intel` until a published build uses `rosetta`.
   - [x] **Xdebug is silently unavailable on 7.4, and unlike 8.0 nothing blocks it**
     ✓ 23 Aug 2026 — ledger #378, plant-proven four ways.
     The row asked which it is for 7.4. It was already decided and MEASURED — `docs/PORTS.md`
