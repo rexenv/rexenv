@@ -85,7 +85,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`record-intro.mjs [portrait]`, ~65 s) and "The rexenv tour" (`record-tour.mjs`, 2:52, every
   feature); recorded in Chromium against the scripted backend, owner-reviewed, MP4s made.
 
-- [ ] **Linux: the 0.8.10 → 0.8.11 in-app update ends in onboarding's Welcome with "resolver
+- [x] **Linux: the 0.8.10 → 0.8.11 in-app update ends in onboarding's Welcome with "resolver
   MISSING" over a route that still works** (30 Sep 2026, 22.04 VM, §M): the relaunched 0.8.11 does
   not classify 0.8.10's route unit (`ExecStop=/sbin/ip link del rexenv0`) as its own, although
   resolved still routes `~rex` through `rexenv0` and a fresh name resolves; one "Set up domains &
@@ -107,8 +107,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   ✓ **The classification RAN on the VM later the same day** (`linux_route_shape_check`, built in
   the `linux-check` image): 0.8.10's unit by hand → this build `Ours` + the notice while the route
   routed — and the installed 0.8.11 still said "installed", because 0.8.11 compared only the
-  SCRIPT; the 30 Sep install had 0.8.10's script AND unit. **Still open:** the repair verb's
-  re-apply on the VM with this build's deb (one polkit, the notice gone).
+  SCRIPT; the 30 Sep install had 0.8.10's script AND unit. ✓ **The repair verb ran on the VM, 6 Oct
+  2026** (this build's app + `rex`, release-built in the `linux-check` image and swapped into the
+  installed deb; the published 0.8.11 deb reinstalled after): 0.8.10's unit by hand → `rex status`
+  "resolver installed" + the notice, the app opened on Sites (not Welcome), Settings → DNS & SSL
+  showed the sentence with **Re-apply** → ONE polkit (rexenv's own sentence) → unit back to
+  `resolvectl revert`, notice gone, `probe.rex` resolving throughout; the same from the CLI
+  (`rex tld --repair rex` → "re-applied … it kept working throughout"), and once more → "already
+  resolves here — nothing to repair", no prompt.
 - [x] **`rex status | head -1` panics "failed printing to stdout: Broken pipe (os error 32)"** (30
   Sep 2026, 22.04 VM): the CLI's `println!` on a closed pipe aborts with a Rust panic on stderr.
   *Done when:* a closed stdout ends the command quietly (SIGPIPE default, or the writes checked)

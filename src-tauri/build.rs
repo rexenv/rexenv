@@ -4,8 +4,13 @@ fn main() {
     // `cargo test` dies before compiling a line. `tauri dev`/`tauri build`
     // stage it via beforeDevCommand/beforeBuildCommand anyway; this covers
     // every other entry point. The cli crate has its own target dir, so the
-    // nested cargo can't deadlock this build; after the first run it's a
-    // cache hit.
+    // nested cargo can't deadlock this build — PROVIDED it does not inherit an
+    // override: a `CARGO_TARGET_DIR` (or `CARGO_BUILD_TARGET_DIR`) in this build's
+    // env points the nested cargo at the SAME directory, whose lock this build
+    // holds, and it waits for it forever. Found 6 Oct 2026: a release build in the
+    // Ubuntu container with `CARGO_TARGET_DIR=/target/rel` sat six hours at 0% CPU
+    // in "Blocking waiting for file lock". So both are removed from the nested
+    // command's env (ledger #791). After the first run it's a cache hit.
     // The same hole on a Windows host, found the first time the tests were run on one
     // (17 Sep 2026): the staging was macOS-only, so `cargo test` on the Dell reached
     // tauri_build with no `binaries/rex-x86_64-pc-windows-msvc.exe` and refused before
@@ -46,6 +51,8 @@ fn main() {
         } else {
             let ok = std::process::Command::new("sh")
                 .arg("../scripts/build-cli.sh")
+                .env_remove("CARGO_TARGET_DIR")
+                .env_remove("CARGO_BUILD_TARGET_DIR")
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);

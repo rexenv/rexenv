@@ -3083,7 +3083,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
-- [ ] **A route an older rexenv wrote is installed, with a notice — never MISSING, never the Welcome
+- [x] **A route an older rexenv wrote is installed, with a notice — never MISSING, never the Welcome
       screen** (ledger #769): write 0.8.10's unit by hand — `sudo sed -i 's|^ExecStop=.*|ExecStop=/sbin/ip
       link del rexenv0|' /etc/systemd/system/rexenv-dns-route.service && sudo systemctl daemon-reload`
       (the route keeps routing: `resolvectl query -i rexenv0 probe.rex` → 127.0.0.1) → `rex status`
@@ -3100,8 +3100,11 @@ rexenv0 <name>` and read `Current Scopes:`.
       while `probe.rex` still resolved on `rexenv0`; restored → clean. Two things learned: the
       installed 0.8.11 read "resolver installed" with only the UNIT swapped (it compared the script;
       the 30 Sep install had 0.8.10's script and unit — swap `/usr/local/lib/rexenv/dns-route.sh` for
-      an older copy too to see 0.8.11's MISSING), and the repair verb's leg needs THIS build's deb on
-      the VM — still owed.
+      an older copy too to see 0.8.11's MISSING). **✓ 6 Oct 2026 (same VM), the whole row:** this
+      build's app + `rex` (release-built in the `linux-check` image, swapped into the installed deb)
+      — installed + the notice, the app on Sites, Settings' Re-apply → ONE polkit → notice gone and
+      the unit current; `rex tld --repair rex` the same; a second repair → "nothing to repair", no
+      prompt.
 - [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user") — from 0.8.11 on, the UPDATE's sentence, "rexenv
