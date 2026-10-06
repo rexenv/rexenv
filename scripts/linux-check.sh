@@ -75,9 +75,19 @@ fi
 # rebuild on a 2 GB-free disk, and reported the tree RED — for a state of the machine, not
 # of the code. A rebuild that fails is the same kind of thing, so it exits 3 (SKIPPED in
 # verify.sh) with the reason, never 1.
+#
+# The Rust version is rust-toolchain.toml's, passed in as a build arg, and an image built
+# with a different rustc is rebuilt: after the pin moves, a container still on the old
+# version would answer for a toolchain nothing else here uses.
+RUST_VERSION="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+if [ -z "$RUST_VERSION" ]; then
+  echo "linux-check: no channel in rust-toolchain.toml" >&2
+  exit 1
+fi
 have_image() { docker image inspect "$IMAGE" >/dev/null 2>&1; }
-if [ "${REXENV_LINUX_CHECK_REBUILD:-0}" = "1" ] || { ! have_image && sleep 3 && ! have_image; }; then
-  if ! docker build -t "$IMAGE" scripts/linux-check > /dev/null 2>&1; then
+stale_image() { ! docker run --rm "$IMAGE" rustc --version 2>/dev/null | grep -qF "rustc $RUST_VERSION "; }
+if [ "${REXENV_LINUX_CHECK_REBUILD:-0}" = "1" ] || { ! have_image && sleep 3 && ! have_image; } || stale_image; then
+  if ! docker build --build-arg "RUST_VERSION=$RUST_VERSION" -t "$IMAGE" scripts/linux-check > /dev/null 2>&1; then
     echo "linux-check: could not build $IMAGE from scripts/linux-check/Dockerfile (disk? network?) — not a code verdict" >&2
     exit 3
   fi

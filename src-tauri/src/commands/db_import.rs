@@ -688,7 +688,7 @@ async fn run<R: tauri::Runtime>(
     };
     log_line(app, entry, &format!("fed {fed} bytes"));
     let verified = dbrestore::verify_complete(&tgt_client, target_engine.port(), &name, &manifest)
-        .map_err(&fail_after_restore)?;
+        .map_err(fail_after_restore)?;
 
     // ── urls: a Local copy moves to the name rexenv serves ─────────────────
     //
@@ -705,7 +705,7 @@ async fn run<R: tauri::Runtime>(
         Some(l) => {
             let (php_bin, wp_phar) = crate::commands::wordpress::wp_tools(state, &site.php_version)
                 .await
-                .map_err(&fail_after_restore)?;
+                .map_err(fail_after_restore)?;
             let replaced = core::wordpress::rehome_urls_on_copy(
                 platform,
                 &php_bin,
@@ -720,7 +720,7 @@ async fn run<R: tauri::Runtime>(
                 // job runs; a network's blogs and DOMAIN_CURRENT_SITE move too.
                 !matches!(site.multisite, crate::state::models::MultisiteMode::None),
             )
-            .map_err(&fail_after_restore)?;
+            .map_err(fail_after_restore)?;
             log_line(
                 app,
                 entry,
@@ -749,8 +749,8 @@ async fn run<R: tauri::Runtime>(
     emit(app, entry);
     let intended_user = (!dbmirror::is_reserved(&conn_info.user)).then(|| conn_info.user.clone());
     let record = {
-        let conn = lock(state).map_err(&fail_after_restore)?;
-        dbrestore::finish(&conn, &site.id, &name, &verified).map_err(&fail_after_restore)?;
+        let conn = lock(state).map_err(fail_after_restore)?;
+        dbrestore::finish(&conn, &site.id, &name, &verified).map_err(fail_after_restore)?;
         // The write shape has no state field: an import can only land
         // 'imported' — 'connected' is minted solely by the Stage 3 rewrite
         // job's verification. The upsert returns the stored row.
@@ -925,14 +925,14 @@ mod local_source_wiring {
         let seg = &src[start..end];
         let unguarded: Vec<String> = seg
             .match_indices('?')
-            .filter(|(i, _)| !seg[..*i].trim_end().ends_with("map_err(&fail_after_restore)"))
+            .filter(|(i, _)| !seg[..*i].trim_end().ends_with("map_err(fail_after_restore)"))
             .map(|(i, _)| seg[i.saturating_sub(70)..i].replace('\n', " "))
             .collect();
         assert!(
             unguarded.is_empty(),
             "a step after the restore can fail without dropping the partial copy: {unguarded:#?}"
         );
-        assert!(seg.matches("map_err(&fail_after_restore)").count() >= 5, "the guarded steps vanished: {seg}");
+        assert!(seg.matches("map_err(fail_after_restore)").count() >= 5, "the guarded steps vanished: {seg}");
     }
 
     /// Every phase weight still sums to the whole bar, and a skipped phase is

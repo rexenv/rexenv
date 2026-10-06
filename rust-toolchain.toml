@@ -1,0 +1,15 @@
+# The ONE Rust version rexenv is built, linted and released with — dev Macs, CI on all
+# three OSes, the release jobs and scripts/linux-check's container (its Dockerfile reads
+# this file through linux-check.sh) all resolve the toolchain from here.
+#
+# Why pinned: CI used to install `stable` while dev machines ran whatever they had. On
+# 2 Oct 2026 the runners moved to Rust 1.99, whose clippy fires
+# `needless_borrows_for_generic_args` on code untouched since 13 Sep — and every Windows
+# verify run went red for four days while the local bar (1.93.1) stayed green: a verdict
+# no machine here could reproduce. A version bump is now a one-line change in THIS file,
+# made on purpose, run through verify.sh, in its own commit. scripts/toolchain-pin-check.sh
+# (in verify.sh) fails when a workflow or the Linux image routes around it (ledger #792).
+[toolchain]
+channel = "1.93.1"
+components = ["clippy"]
+profile = "minimal"

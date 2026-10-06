@@ -146,8 +146,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Rust (both Apple targets)
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version comes from rust-toolchain.toml (never `stable`).
+          rustup toolchain install
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
@@ -243,8 +243,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version comes from rust-toolchain.toml (never `stable`).
+          rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -345,8 +345,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version comes from rust-toolchain.toml (never `stable`).
+          rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |

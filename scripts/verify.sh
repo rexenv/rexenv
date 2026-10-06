@@ -149,6 +149,10 @@ npx eslint "src/**/*.{ts,tsx}"
 # read as CDN lag, not as a forgotten publish (13 Sep 2026, ledger #594). Offline.
 ./scripts/check-app-manifest-test.sh
 ./scripts/status.py --check
+# Every Rust install takes rust-toolchain.toml's version: CI's unpinned `stable` moved to
+# 1.99 on 2 Oct 2026 and kept Windows verify red for four days on a lint no dev machine
+# could reproduce (ledger #792).
+./scripts/toolchain-pin-check.sh
 
 # The L2 probes parse. They only RUN at release time (verify-full.sh / a manual
 # sweep), so an edit that breaks one is invisible until then: a stray backtick

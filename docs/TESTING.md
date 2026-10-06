@@ -1550,6 +1550,15 @@ bloating the fast path:
   each `Packages` against the hash `InRelease` signs, the newest version = the tap's latest.
   Network only (the live site), so it runs by hand at release; the repository's own CI proves the
   build (`self-test.sh`: the runner's apt over the signed result before any deploy).
+- **`scripts/toolchain-pin-check.sh`, inside `verify.sh` (6 Oct 2026, ledger #792):** every
+  Rust install takes `rust-toolchain.toml`'s exact version — the pin is `X.Y.Z`, no workflow
+  names a toolchain to rustup or uses a setup-rust action, and `scripts/linux-check/Dockerfile`'s
+  default `RUST_VERSION` equals the pin (`linux-check.sh` passes the pin in and rebuilds an image
+  whose `rustc` differs). Why: the workflows installed `stable`, the runners moved to 1.99 on
+  2 Oct 2026, its clippy fired `needless_borrows_for_generic_args` on untouched code, and
+  Windows CI was red for four days while every dev machine (1.93.1) was green — a verdict no
+  machine here could reproduce. **Does not prove:** that the pinned version is a good one; a
+  bump is a deliberate one-line change in `rust-toolchain.toml`, run through the bar.
 - **`scripts/notices-check.py`, inside `verify.sh` (13 Sep 2026):** THIRD-PARTY-NOTICES.md's
   Rust table against the graphs that ship — arm64 ∪ x86_64, the app crate and the `rex`
   CLI, normal + build edges — in BOTH directions, each row's licence against the crate's

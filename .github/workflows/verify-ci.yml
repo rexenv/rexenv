@@ -89,8 +89,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Install Rust
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version comes from rust-toolchain.toml (never `stable`).
+          rustup toolchain install
           if [ "$(uname -s)" = Darwin ]; then rustup target add aarch64-apple-darwin x86_64-apple-darwin; fi
       - uses: Swatinem/rust-cache@v2
         with:

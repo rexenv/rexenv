@@ -164,7 +164,8 @@ the promise and `docs/PLATFORMS.md` §3 names the mechanism; the OS-only rules f
   generated-doc gates, `ledger-tally.sh`, `doc-counts.sh` — the latter also fails
   on any `docs/*.md` path the tree cites that does not exist — `notices-check.py`
   (THIRD-PARTY-NOTICES' Rust, npm and vendored-composer tables against what ships, both directions),
-  `check-app-manifest-test.sh` (the release check tells CDN lag from a missed publish, offline) and `status.py --check`,
+  `check-app-manifest-test.sh` (the release check tells CDN lag from a missed publish, offline), `toolchain-pin-check.sh`
+  (every Rust install — CI, release, the Linux image — takes `rust-toolchain.toml`'s version) and `status.py --check`,
   which fails when `docs/STATUS.md` no longer matches TODO.md / the ledger / the plans) +
   the two cross-OS COMPILE gates: `windows-check.sh`, the Windows x64 compile of both crates
   — `verify: windows-check SKIPPED` on a machine without cargo-xwin, llvm/lld or

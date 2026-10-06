@@ -8,8 +8,9 @@
 # libwebkit2gtk-4.1, which Tauri 2 requires), so the check compiles against the OLDEST
 # library set a user can have, never a newer one.
 #
-# The toolchain is pinned to the version the Mac runs (`rustc --version` on the dev
-# machine, 24 Sep 2026) so a lint difference is a Linux difference, not a rustc one.
+# The toolchain is rust-toolchain.toml's (linux-check.sh passes it as RUST_VERSION; the default
+# below is only for a bare `docker build`), so a lint difference is a Linux difference,
+# not a rustc one.
 FROM ubuntu:22.04
 ARG RUST_VERSION=1.93.1
 ENV DEBIAN_FRONTEND=noninteractive

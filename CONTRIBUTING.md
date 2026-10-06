@@ -13,7 +13,8 @@ codebase end-to-end. `docs/MAP.md` answers "where does X live".
 
 ## Build and run
 
-Prerequisites, every OS: Rust stable · Node LTS + pnpm. Per OS:
+Prerequisites, every OS: rustup (the Rust version is pinned in `rust-toolchain.toml`; rustup
+installs it on the first `cargo` run in the tree) · Node LTS + pnpm. Per OS:
 - **macOS** — Xcode Command Line Tools.
 - **Windows** — MSVC Build Tools 2022 + a Windows 10/11 SDK; WebView2 (preinstalled on 11).
 - **Linux (Ubuntu 22.04+)** — `build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev

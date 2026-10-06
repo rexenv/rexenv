@@ -19,6 +19,11 @@ it, and the Homebrew tap updates itself. Two workflows implement this.
 > one DRAFT — on `rexenv/rexenv` since 0.8.11 (30 Sep 2026); on the tap before — with all eight assets. The "build locally, upload to
 > the tap by hand" flow that cut 0.1.0–0.8.7 is retired; its section below is kept as the
 > record of why the artefacts live on the tap.
+>
+> **Every lane builds with the Rust in `rust-toolchain.toml`** (6 Oct 2026, ledger #792): the
+> workflows run a bare `rustup toolchain install`, never `stable` — an unpinned `stable` moved
+> the runners to 1.99 on 2 Oct and Windows verify went red on a lint no dev machine saw.
+> Bumping Rust is a one-line change in that file, made before a release, never during one.
 
 
 ```
