@@ -1677,40 +1677,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     session started. With the start line in place, a recurrence is answerable from
     `rexenv.log` alone — which is what makes waiting for one reasonable instead of guessing.
 
-- [ ] **The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean.** #317 moves its
-  deprecation off stdout; it does not make it go away, and a user running `wp` in
-  rexenv's terminal (deliberately unpinned, #228) still sees it on every command. Worth
-  re-checking when wp-cli ships a release that fixes `react/promise` — the pin bump is
-  the real fix, this is the containment. **Re-checked 15 Aug 2026:** 2.12.0 is still
-  the latest release (upstream issue wp-cli/wp-cli#6271 tracks this exact deprecation);
-  `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
-  transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
-  nothing to bump yet.
-  **Re-checked 24 Aug 2026:** still nothing. `wp-cli/wp-cli` latest release is v2.12.0,
-  published 2025-05-07 — over fifteen months old, so this is not a release that is about
-  to land. Keep the containment; re-check when a release appears, not on a schedule.
-  **Re-checked 30 Aug 2026 — and this time MEASURED rather than read off a constraint.**
-  Latest release is still v2.12.0 (2025-05-07), so there is still nothing to bump. What is
-  new is that the fix is confirmed to EXIST, run against the real bundled PHP 8.5.8:
-  - The pinned phar still raises it, and the containment still contains it. Bare:
-    `Deprecated: Case statements followed by a semicolon (;) … react/promise/src/functions.php
-    on line 369` lands on **stdout**, in front of `WP-CLI 2.12.0`. With rexenv's
-    `-d display_errors=stderr` (#317): stdout is `WP-CLI 2.12.0` alone, the deprecation on
-    stderr. That is the ledger #317 claim re-observed on 8.5.8, not re-asserted.
-  - **wp-cli master is CLEAN.** The nightly phar (`3.0.0-alpha-6a3afd3`) under the same PHP
-    prints its version with no deprecation at all; its vendored `react/promise` has zero
-    `case …;` occurrences where the pinned phar's has one. Upstream issue wp-cli/wp-cli#6271
-    is **closed (13 Mar 2026)**. So "the next release should clear it" is now a measurement
-    of master, not an inference from `composer ^2.9.5` — the earlier re-checks read the
-    constraint and believed it, which is the shape this project has been burned by
-    (a guarantee read off a dependency's flag names).
-  - **Not pinning the nightly**, and that is the point of the pin: it is a moving,
-    checksum-less target, and 3.0.0-alpha is a major-version alpha. The bump waits for a
-    release. **What must NOT happen when it lands** is deleting the `-d display_errors=stderr`
-    flag because the deprecation went away — see the ledger #317 note.
-  *(Not doing: forcing `display_errors=stderr` into the rexenv terminal too. That terminal
-  is deliberately the user's own environment (#228) and the flag would have to arrive as an
-  injected env var, which is a bigger promise broken than a deprecation line shown.)*
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
@@ -2128,6 +2094,43 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 
 ## Blocked on external work
 
+- [ ] **The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean.** #317 moves its
+  deprecation off stdout; it does not make it go away, and a user running `wp` in
+  rexenv's terminal (deliberately unpinned, #228) still sees it on every command. Worth
+  re-checking when wp-cli ships a release that fixes `react/promise` — the pin bump is
+  the real fix, this is the containment. **Re-checked 15 Aug 2026:** 2.12.0 is still
+  the latest release (upstream issue wp-cli/wp-cli#6271 tracks this exact deprecation);
+  `react/promise` 3.3.0 carries the fix and wp-cli's source already depends on it
+  transitively via composer ^2.9.5, so the NEXT wp-cli release should clear it —
+  nothing to bump yet.
+  **Re-checked 24 Aug 2026:** still nothing. `wp-cli/wp-cli` latest release is v2.12.0,
+  published 2025-05-07 — over fifteen months old, so this is not a release that is about
+  to land. Keep the containment; re-check when a release appears, not on a schedule.
+  **Re-checked 30 Aug 2026 — and this time MEASURED rather than read off a constraint.**
+  Latest release is still v2.12.0 (2025-05-07), so there is still nothing to bump. What is
+  new is that the fix is confirmed to EXIST, run against the real bundled PHP 8.5.8:
+  - The pinned phar still raises it, and the containment still contains it. Bare:
+    `Deprecated: Case statements followed by a semicolon (;) … react/promise/src/functions.php
+    on line 369` lands on **stdout**, in front of `WP-CLI 2.12.0`. With rexenv's
+    `-d display_errors=stderr` (#317): stdout is `WP-CLI 2.12.0` alone, the deprecation on
+    stderr. That is the ledger #317 claim re-observed on 8.5.8, not re-asserted.
+  - **wp-cli master is CLEAN.** The nightly phar (`3.0.0-alpha-6a3afd3`) under the same PHP
+    prints its version with no deprecation at all; its vendored `react/promise` has zero
+    `case …;` occurrences where the pinned phar's has one. Upstream issue wp-cli/wp-cli#6271
+    is **closed (13 Mar 2026)**. So "the next release should clear it" is now a measurement
+    of master, not an inference from `composer ^2.9.5` — the earlier re-checks read the
+    constraint and believed it, which is the shape this project has been burned by
+    (a guarantee read off a dependency's flag names).
+  - **Not pinning the nightly**, and that is the point of the pin: it is a moving,
+    checksum-less target, and 3.0.0-alpha is a major-version alpha. The bump waits for a
+    release. **What must NOT happen when it lands** is deleting the `-d display_errors=stderr`
+    flag because the deprecation went away — see the ledger #317 note.
+  *(Not doing: forcing `display_errors=stderr` into the rexenv terminal too. That terminal
+  is deliberately the user's own environment (#228) and the flag would have to arrive as an
+  injected env var, which is a bigger promise broken than a deprecation line shown.)*
+  **Re-checked 6 Oct 2026:** latest release still v2.12.0 (2025-05-07; `gh api …/releases`), so
+  still nothing to bump — and moved here from "Now": the work waits on an upstream release, not
+  on anything rexenv can do. Re-check when a wp-cli release appears.
 - [ ] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
   since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
   account payments have failed or your spending limit needs to be increased" (GitHub billing,
