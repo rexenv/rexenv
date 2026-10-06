@@ -1227,7 +1227,10 @@ honest footer —
   `RunEvent::Exit` — reached only once that gate agreed — spawns a detached helper
   (`--relaunch-after <pid> <token> <bundle>`, the self-exec shape the DNS agent and tunnel
   guard already use). The helper waits on kqueue `NOTE_EXIT` for THAT pid, identity-checked
-  by its start token, then `open`s the bundle PATH. `AppHandle::restart` is never called: it
+  by its start token, then `open`s the bundle PATH. The OLD app spawns it, but from
+  `current_exe()` — a path the swap has already re-pointed — so on macOS the NEW binary runs it
+  (measured 6 Oct 2026); `--relaunch-after`'s argv is what the two versions must agree on, and
+  `relaunch.log` comes from the new side. `AppHandle::restart` is never called: it
   skips the gate on the main thread, can be cancelled off it (leaving every later quit a
   silent relaunch), and spawns the child before exiting — which races the single-instance
   socket. Waiting removes that race instead of arguing about it. An apply does NOT refuse a

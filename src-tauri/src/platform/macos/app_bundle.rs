@@ -390,9 +390,12 @@ impl AppBundle for MacosAppBundle {
         // shape the DNS agent and the tunnel guard use, so there is no second
         // artifact to ship, sign and keep in step.
         //
-        // It is spawned from the OLD inode (this process is the one being
-        // replaced), which is why `--relaunch-after` is a cross-version
-        // contract: the version being replaced starts the version replacing it.
+        // `current_exe()` is a PATH, not this process's inode: after the swap it
+        // names the NEW bundle's binary, so the version replacing us runs the
+        // relauncher (measured 6 Oct 2026 on the 15.8 VM — the helper's
+        // executable was the new inode, and the old build's relaunch.log never
+        // appeared). Which is why `--relaunch-after` is a cross-version contract:
+        // the version being replaced writes the argv the new version parses.
         let exe = std::env::current_exe()?;
         let me = std::process::id();
         let start = super::process_start_token(me).ok_or_else(|| {

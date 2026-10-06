@@ -128,7 +128,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   | true` 101 → 0, silent); Ubuntu 22.04 arm64 in the `linux-check` image (31 tests green, `rex -h
   | true` → 0); Win11 ARM VM (`closed-reader.ps1`: a planted std-panic build exits 101 "The pipe is
   being closed. (os error 232)", the fixed build 0 with empty stderr).
-- [ ] **macOS: the in-app update's automatic reopen did not happen once (1 of 2, 0.8.10 → 0.8.11
+- [x] **macOS: the in-app update's automatic reopen did not happen once (1 of 2, 0.8.10 → 0.8.11
   on the 15.8 VM, 30 Sep 2026)** — OK on "rexenv 0.8.11 is installed" → the app quit ("reopening
   … once this process exits" logged 15:05:41) → nothing for two minutes: no launch line, no crash
   report, no `--relaunch` process caught; a hand `open` then launched 0.8.11 at once. The second
@@ -147,8 +147,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   relaunchers (plant-proven), `app_relaunch_check` asserts the record (PASS, dev Mac);
   `windows_app_relaunch_check` the same on the Dell (PASS 8/8, 5 Oct 2026).
   **Still open — the VM leg:** the next update on the 15.8 VM reopens, or `relaunch.log` names
-  why not (`docs/SMOKE-TEST.md` § In-app self-update; on macOS the OLD side's binary runs the
-  relauncher, so the file first appears on the update FROM a build carrying #768).
+  why not (`docs/SMOKE-TEST.md` § In-app self-update).
+  ✓ **6 Oct 2026, the 15.8 VM — reopened twice in a row:** this build stamped 0.8.10 (`b7c6b591`)
+  → the published 0.8.11 through Settings → About, OK → 0.8.11 answering after **6 s**; the same
+  again → **3 s**. And the row's own premise was wrong: on macOS the NEW side's binary runs the
+  relauncher — the second run caught it (`--relaunch-after 5411 … /Applications/rexenv.app`) and
+  its executable was inode 710141, the swapped-in 0.8.11, not the 0.8.10 build's 709533;
+  `current_exe()` is a path, which the swap had already re-pointed. So no `relaunch.log` appeared
+  (0.8.11 predates #768), and the 30 Sep failure ran 0.8.11's relauncher too. The record first
+  appears on an update TO a build carrying #768 — 0.8.12's.
 - [x] **Windows: `setup.exe /S` over a RUNNING rexenv returns 0 and leaves the old `rexenv.exe` in
   place** (found 30 Sep 2026 on the Win11 VM, 0.8.11's third draft over its second): the
   silent install wrote the registry (`DisplayVersion` 0.8.11), `rex.exe` and the task, but the

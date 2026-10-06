@@ -49,7 +49,8 @@ fn main() {
         }
     }
     // The relauncher: waits for the process that swapped the bundle to be gone,
-    // then reopens rexenv. Spawned by the OLD build, so this flag is a
+    // then reopens rexenv. Spawned by the OLD build and, on macOS and a Linux deb,
+    // run by the NEW one (the bundle path already names it), so this flag is a
     // cross-version contract — and checked here, before Tauri, because it must
     // open no window and touch no app state. macOS and Windows; Linux with its
     // port.

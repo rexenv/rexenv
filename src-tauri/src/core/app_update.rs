@@ -988,9 +988,11 @@ pub fn restart_declined() -> bool {
 
 /// The flag that turns this binary into the detached relauncher.
 ///
-/// A cross-version contract: the OLD app spawns it after the swap, so the copy
-/// that runs it is the one being replaced. Renaming it would mean the version
-/// being replaced cannot start the version replacing it.
+/// A cross-version contract: the OLD app SPAWNS it after the swap, and on macOS and a Linux deb the copy
+/// that RUNS it is the NEW one — the spawn names the bundle path, which the swap has already pointed at the
+/// new binary (macOS measured 6 Oct 2026 on the 15.8 VM: the relauncher's executable was the new inode).
+/// So the old version writes this argv and the new version parses it; renaming it in either would leave
+/// the update unreopened.
 pub const RELAUNCH_FLAG: &str = "--relaunch-after";
 
 /// `rexenv --print-version` prints this build's version and exits — how a staged Linux copy

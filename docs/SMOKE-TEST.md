@@ -1987,9 +1987,11 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   the app data folder has three new lines — `started: waiting for pid <old pid> …`, `parent <pid>
   exited after N.Ns`, `opened /Applications/rexenv.app (open exit 0)`. If the app did NOT come back
   (30 Sep 2026, 1 of 2 on the 15.8 VM), this file is the first thing to read: `open exited …`,
-  `could not run /usr/bin/open …`, or `was still alive when the wait gave up`. On macOS the OLD
-  side's binary runs the relauncher, so the file first appears on the update FROM a build carrying
-  #768. **Open:** the VM leg of `docs/TODO.md`'s row.
+  `could not run /usr/bin/open …`, or `was still alive when the wait gave up`. On macOS the NEW
+  side's binary runs the relauncher (the old app spawns the bundle PATH, which the swap already
+  re-pointed — measured 6 Oct 2026, the helper's executable was the new inode), so the file first
+  appears on the update TO a build carrying #768: 0.8.12. **Open until then;** the reopen itself
+  ran twice in a row on the 15.8 VM 6 Oct 2026 (6 s, 3 s).
 
 - [x] **The menu bar offers it, and only opens it.** With a newer release published, the
   tray menu's FIRST item reads `Update to <version>…`; clicking it shows the window on
