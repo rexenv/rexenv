@@ -3181,12 +3181,14 @@ pub fn cut_name_casualties<'a>(docroot: &Path, expected: impl IntoIterator<Item 
 /// The [`CutNameReport`] for a docroot running `version`, given its expected file list.
 pub fn cut_name_report<'a>(docroot: &Path, version: &str, expected: impl IntoIterator<Item = &'a str>) -> CutNameReport {
     let missing = cut_name_casualties(docroot, expected);
+    // "usually": the files are named from the list, the cause is inferred — a file deleted by
+    // hand reads exactly the same (the 8 Oct VM smoke deleted one and was told 0.4.0–0.7.1 did it).
     let message = (!missing.is_empty()).then(|| {
         format!(
-            "{n} WordPress {version} core file{s} with long names {are} missing — rexenv 0.4.0–0.7.1 \
-             cut long file names when it downloaded WordPress, and code that loads {them} fails. \
-             Repair core files re-downloads this version's core; the database, wp-content and \
-             wp-config.php are not touched.",
+            "{n} WordPress {version} core file{s} with long names {are} missing — usually because \
+             rexenv 0.4.0–0.7.1 cut long file names when it downloaded WordPress — and code that \
+             loads {them} fails. Repair core files re-downloads this version's core; the database, \
+             wp-content and wp-config.php are not touched.",
             n = missing.len(),
             s = if missing.len() == 1 { "" } else { "s" },
             are = if missing.len() == 1 { "is" } else { "are" },
@@ -3224,7 +3226,7 @@ mod cut_name_tests {
 
         let r = cut_name_report(&dir, "7.1", expected);
         let msg = r.message.expect("a casualty is reported");
-        assert!(msg.starts_with("1 WordPress 7.1 core file with long names is missing"), "{msg}");
+        assert!(msg.starts_with("1 WordPress 7.1 core file with long names is missing — usually because"), "{msg}");
 
         let f = dir.join(long);
         std::fs::write(f, "x").unwrap();

@@ -355,7 +355,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `rex doctor` prints a `WP core` finding — the docroot checked against wordpress.org's file list for its version
     (legit names sit at exactly 100 bytes, so no offline check can tell). Ledger #793: L0 + three plants, L1
     `wp_core_zip_check` PASS 19/19 incl. the real PharData extract of `latest.tar.gz` → all 25 long core files
-    named. Reaches users with the next release; the webview row is SMOKE "A site missing long core files…".
+    named. SMOKE "A site missing long core files…" ✓ on the macOS 15.8 VM (banner, Repair, doctor ✗→✓,
+    offline silent/⚠). Reaches users with the next release.
   - [ ] **Default-theme files the tarball cut are not repaired.** The no-content zip `core_reinstall` uses never
     touches `wp-content/`, so a 0.4.0–0.7.1 site keeps missing up to 14 long-named twentytwenty* fonts/patterns
     (7.1) — `hridoy.rex` still misses `Platypi-Italic-VariableFont_wght.woff2` and others after its 14 Sep repair.

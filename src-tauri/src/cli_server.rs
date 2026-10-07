@@ -1918,8 +1918,21 @@ where
                     .map(|s| (s.domain.clone(), s.served_root()))
                     .collect();
                 let (mut broken, mut unchecked) = (Vec::new(), Vec::new());
+                // A version wordpress.org did not answer for is not asked again in this run: on a
+                // network that drops packets, every site on that version would wait out the client's
+                // 10-second timeout in turn (the 8 Oct VM smoke, with the host refused, failed fast).
+                let mut failed: std::collections::HashMap<String, String> = Default::default();
                 for (domain, root) in roots {
-                    match commands::wordpress::cut_name_report_for(&root).await {
+                    let version = crate::core::wordpress::installed_version(&root);
+                    if let Some(e) = version.as_ref().and_then(|v| failed.get(v)) {
+                        unchecked.push(json!({ "domain": domain, "error": e }));
+                        continue;
+                    }
+                    let report = commands::wordpress::cut_name_report_for(&root).await;
+                    if let (Err(e), Some(v)) = (&report, version) {
+                        failed.insert(v, e.to_string());
+                    }
+                    match report {
                         Ok(Some(r)) if !r.missing.is_empty() => broken.push(json!({
                             "domain": domain,
                             "missing": r.missing.len(),
