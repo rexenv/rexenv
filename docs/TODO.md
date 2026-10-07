@@ -1731,8 +1731,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   8.3.32 — `ares` empty, mask `0x55a9028d`, raw curl to `amin.rex` HTTP 200 from 127.0.0.1 (-5:
   "Could not resolve host"); three artifacts re-hashed against `.sha256`. **Still c-ares: 8.0.30**,
   static-php.dev's build — `rex doctor`'s note now names it alone, and the mu-plugin stays for it.
+  **The update manifest followed the same day:** runtimes #21 moved `RELEASE_TAG_FOR` to -8, and
+  `publish-manifest.yml` (run 37634634492, approved by the owner) published serial 9 — all 30 8.x
+  entries on `php-8x-8`, 8.3.32 cli arm64 `16fb4520…` = rexenv's pin — so an OLDER rexenv taking an
+  in-app PHP update gets the c-ares-free builds too. On the way: a dry run's `manifest` artifact
+  was the TRACKED (already published) file, not the document the run computed (37631757183 showed
+  -5 URLs while its log hashed -8's) — fixed in runtimes PR #22 (`MANIFEST_DRY_OUT`), open.
   **Open:** `wp_dns_check` runs the default 8.3, which no longer exercises the plugin's c-ares path
-  (ledger #251); runtimes #21 merge + the manifest publish.
+  (ledger #251); runtimes #22 merge + one dry run to see its artifact.
   — **and as of 31 Aug 2026 the exposure is MEASURED rather than described, which is new**.
   Under the bundled 8.3/8.5: `gethostbyname("abc.rex")` → `127.0.0.1` and PHP streams fetch
   the page, while `curl_init("https://abc.rex/")` fails outright — *"Could not resolve host:
