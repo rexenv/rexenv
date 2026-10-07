@@ -1696,8 +1696,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   only nginx's objects — arm64 under Rosetta, a lost link), now `--with-pcre-opt`; and swoole had
   drifted under spc's `v6.*` to v6.2.3, which does not compile (`sw_usleep` undeclared) on ANY
   arch — 8.2+ now pin 6.2.2, what every published 8.x carries. **Cost noted:** Rosetta PHP 8.x takes
-  2 h 14 min of the job's 180 (native 41 min). **Still open:** merge #17, then flip the four
-  workflows' default to `rosetta` on their next real build (and let that build be the one published).
+  2 h 14 min of the job's 180 (native 41 min). #17 merged 7 Oct 2026. **The default flip is
+  `rexenv/runtimes` PR #18** (`x86_host` defaults to `rosetta` in all four workflows, README says
+  so, `intel` kept as a fallback until Aug 2027); checked by run 37563378554 — nginx dispatched with
+  no `x86_host` built its x86_64 half on `macos-15` under Rosetta, green. **Open only until #18 is
+  merged.** The first real build after it is the first PUBLISHED Rosetta artifact.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
