@@ -15,6 +15,7 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 |------|-----------------|
 | `SHIPPED-2026-07.md` | The June–July 2026 completed-work evidence log (moved out of `docs/TODO.md` when it became open-items-only). |
 | `SHIPPED-2026-09.md` | 21 Aug → 30 Sep 2026: 132 finished blocks moved by `scripts/todo-reconcile.py` on 5 Sep (menu-bar tray, per-site lifecycle, MCP M3 + parity P1, `rex` design-first set, Valet tails), the 11/12 Sep passes, the 23 Sep pass before 0.8.7 (the 18 Sep clean-VM fixes, the Windows rows, the multisite imports), the 29 Sep pass before 0.8.10 (16) and the 30 Sep pass before 0.8.11 (23: the week's VM-proven fixes), plus the original text of rows each reconcile rewrote or retired. |
+| `SHIPPED-2026-10.md` | 1 Oct 2026 →: the 8 Oct pass before 0.8.12 (17: the 0.8.11 follow-ups found on the VMs, the curl threaded resolver, the Rosetta runtimes builds, the WordPress core-files bug closed for users' sites, OpenLiteSpeed, the release host). |
 | `SHIPPED-2026-08.md` | The August 2026 completed-work evidence log — 57 finished blocks moved out of `docs/TODO.md` by the 21 Aug 2026 reconcile, plus the rows that reconcile found had shipped without ever being ticked. |
 | `PROJECT_SPEC.md` | Founding spec: decisions, feature tiers, phase plan, per-OS divergence notes for the future ports, the naming appendix. |
 | `DESIGN_BRIEF.md` | The prompt blocks that generated the comps in `/design` (repo root — kept there for its relative `support.js` paths). Its Design-DNA section now lives, refreshed, in `docs/DESIGN.md`. |
