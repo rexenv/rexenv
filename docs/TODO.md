@@ -1677,7 +1677,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     session started. With the start line in place, a recurrence is answerable from
     `rexenv.log` alone — which is what makes waiting for one reasonable instead of guessing.
 
-- [ ] **The rest of `rexenv/runtimes`' macOS x86_64 builds are on the same August 2027 clock**
+- [x] **The rest of `rexenv/runtimes`' macOS x86_64 builds are on the same August 2027 clock**
   (found 6 Oct 2026 while closing PHP 7.4's): `php.yml` (the 8.x catalog), `nginx.yml` and
   `openlitespeed.yml` all build their macOS x86_64 half on `macos-15-intel`, which GitHub retires
   in August 2027 — after that no Intel-Mac binary of anything rexenv pins can be rebuilt. The shape
@@ -1699,8 +1699,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   2 h 14 min of the job's 180 (native 41 min). #17 merged 7 Oct 2026. **The default flip is
   `rexenv/runtimes` PR #18** (`x86_host` defaults to `rosetta` in all four workflows, README says
   so, `intel` kept as a fallback until Aug 2027); checked by run 37563378554 — nginx dispatched with
-  no `x86_host` built its x86_64 half on `macos-15` under Rosetta, green. **Open only until #18 is
-  merged.** The first real build after it is the first PUBLISHED Rosetta artifact.
+  no `x86_host` built its x86_64 half on `macos-15` under Rosetta, green. ✓ **#18 merged 7 Oct 2026
+  (`6dc5098`)** — every macOS x86_64 artifact now builds under Rosetta by default; nothing depends on
+  `macos-15-intel` any more. The first real build after it is the first PUBLISHED Rosetta artifact.
 - [ ] **Private-window flags for Arc, ChatGPT Atlas, Orion.** Left `None` in the
   `BROWSERS` table because no one has run the flag on a real install, and a fork
   that swallows the flag it inherited opens an ordinary window under a control
