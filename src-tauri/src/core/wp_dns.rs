@@ -79,9 +79,16 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
     match minor {
         // OURS (rexenv/runtimes), curl 8.21.0, no c-ares linked at all.
         "7.4" => Some(CurlResolver::Threaded),
-        // static-php.dev bulk builds, `--enable-cares`. 8.0 carries an older
-        // c-ares (1.34.2) than the rest (1.34.6); same behaviour either way.
-        "8.0" | "8.1" | "8.2" | "8.3" | "8.4" | "8.5" => Some(CurlResolver::Ares),
+        // OURS since `php-8x-8` (7 Oct 2026). `php-8x-3…7` linked c-ares 1.34.6 — spc
+        // turns it on whenever libcares is in the build, and swoole depends on it —
+        // so these four rows read `Ares` until then. -8 pre-builds libcurl without it
+        // and runtimes' gate 9 fails a build whose curl links c-ares again. MEASURED
+        // on the dev Mac: published 8.3.32 (-5) "Could not resolve host: amin.rex",
+        // the same call on the rebuilt curl HTTP 200 from 127.0.0.1.
+        "8.1" | "8.2" | "8.3" | "8.4" | "8.5" => Some(CurlResolver::Threaded),
+        // static-php.dev's bulk build, `--enable-cares` (c-ares 1.34.2) — the one
+        // pinned PHP rexenv does not build (`binaries::php_self_hosted_tag` says why).
+        "8.0" => Some(CurlResolver::Ares),
         _ => None,
     }
 }
@@ -100,8 +107,9 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
 ///
 /// This exists so the failure can be NAMED where a user meets it (`rex doctor`)
 /// instead of arriving as an unexplained DNS error inside somebody's plugin. It
-/// is not a fix — the fix is a self-built 8.x, priced and ruled out in
-/// `docs/TODO.md` — and it must never be dressed up as one.
+/// is not a fix and must never be dressed up as one. The fix shipped for 8.1–8.5
+/// in `php-8x-8` (7 Oct 2026: libcurl without c-ares); since then this names 8.0
+/// alone — static-php.dev's build, which rexenv does not make.
 pub fn ares_minors_in_use(sites: &[Site]) -> Vec<String> {
     let mut minors: Vec<String> = sites
         .iter()
@@ -135,7 +143,7 @@ const MU_PLUGIN: &str = r#"<?php
  *   Site Health, REST self-calls) over its local hostname. Safe to delete.
  */
 
-// rexenv's bundled PHP links libcurl against c-ares, which reads
+// Some PHP builds (rexenv's bundled 8.0) link libcurl against c-ares, which reads
 // /etc/resolv.conf ONLY — it never sees macOS split-DNS (/etc/resolver/<tld>),
 // where rexenv publishes its local TLDs. gethostbyname() resolves the site
 // fine; every curl request to the same host died with "cURL error 6". WP-Cron
@@ -341,16 +349,18 @@ mod tests {
             s
         };
         assert_eq!(ares_minors_in_use(&[site("7.4")]), Vec::<String>::new());
-        assert_eq!(ares_minors_in_use(&[site("8.3")]), vec!["8.3".to_string()]);
+        // 8.1–8.5 are threaded since php-8x-8; 8.0 (static-php.dev's) is the exposure.
+        assert_eq!(ares_minors_in_use(&[site("8.3")]), Vec::<String>::new());
+        assert_eq!(ares_minors_in_use(&[site("8.0")]), vec!["8.0".to_string()]);
         // Deduped and sorted, so the doctor line reads as a set of builds
         // rather than a list of sites.
         assert_eq!(
-            ares_minors_in_use(&[site("8.3"), site("8.1"), site("8.3"), site("7.4")]),
-            vec!["8.1".to_string(), "8.3".to_string()]
+            ares_minors_in_use(&[site("8.0"), site("8.3"), site("8.0"), site("7.4")]),
+            vec!["8.0".to_string()]
         );
         // A patch-level version still answers, because a site records a minor
         // but nothing stops a fuller string reaching here.
-        assert_eq!(ares_minors_in_use(&[site("8.4.23")]), vec!["8.4".to_string()]);
+        assert_eq!(ares_minors_in_use(&[site("8.0.30")]), vec!["8.0".to_string()]);
         // An unpinned minor is NOT exposure: `resolver_for` returns None, which
         // means "not measured", and inventing a verdict for it is how a table
         // starts lying about builds it has never seen.
@@ -395,9 +405,13 @@ mod tests {
             threaded > 0,
             "no threaded build recorded, but 7.4 was measured as one on 23 Aug 2026"
         );
-        // The one rexenv builds itself is the one without the bug. Named
-        // explicitly because it is the fact the TODO row got wrong.
+        // The ones rexenv builds itself are the ones without the bug — 7.4 always,
+        // 8.1–8.5 since php-8x-8. 8.0, static-php.dev's, is the remaining c-ares build.
         assert_eq!(resolver_for("7.4"), Some(CurlResolver::Threaded));
+        for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
+            assert_eq!(resolver_for(minor), Some(CurlResolver::Threaded), "{minor}");
+        }
+        assert_eq!(resolver_for("8.0"), Some(CurlResolver::Ares));
 
         // A minor rexenv does not pin has no recorded answer, rather than a
         // default that would read as a measurement.

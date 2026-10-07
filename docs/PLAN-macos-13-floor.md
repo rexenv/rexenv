@@ -72,7 +72,7 @@ re-derives §1 from the pins whenever they change.
 |---|---|---|---|---|---|
 | Caddy | 2.11.4 | 12.0 / 12.0 | **same** | — | none (2.10.2 also 12.0; 2.9.1 is 11.0) |
 | nginx (ours, `rexenv/runtimes`) | 1.30.4 | 12.0 / 12.0 | **same** | — | none — we set this target ourselves |
-| PHP 8.1.34 / 8.2.32 / 8.3.32 / 8.4.23 / 8.5.8 (ours) | `php-8x-3…7` | 12.0 / 12.0 | **same** | — | none |
+| PHP 8.1.34 / 8.2.32 / 8.3.32 / 8.4.23 / 8.5.8 (ours) | `php-8x-8` (was `-3…7`; same build script, gate 5 asserts minos 12.0) | 12.0 / 12.0 | **same** | — | none |
 | PHP 7.4.33 (ours) | `php-7.4.33-6` | 12.0 / 12.0 | **same** | — | none |
 | Mailpit | 1.30.3 | 12.0 / 12.0 | **same** | — | none (1.28.0 also 12.0) |
 | FrankenPHP | 1.12.4 | 12.0 / 12.0 | **same** | — | none |

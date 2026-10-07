@@ -1713,8 +1713,26 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   browsers runs the flag.
   **Re-checked 2 Oct 2026:** still v2.12.0 (`gh api repos/wp-cli/wp-cli/releases/latest`,
   published 2025-05-07) — nothing to bump; the containment stays.
-- [ ] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
+- [x] **Eliminate the bug class: bundled PHP with curl's THREADED resolver** (the real
   fix for #251
+  ✓ **FIXED for 8.1–8.5, 7 Oct 2026 — `php-8x-8`.** The 15 Aug ruling ("not now") rested on a cost
+  that had since been paid: rexenv builds 8.1–8.5 itself since 10 Sep (`php-8x-3…7`, for `pdo_pgsql`).
+  And those builds had the bug TOO — re-measured on all five: `ares=1.34.6`, "Could not resolve
+  host". Cause: spc's curl builder does `optionalLib('libcares', '-DENABLE_ARES=ON')` and **swoole**
+  lib-depends on `libcares`, so c-ares came in without being asked for; 7.4 has no swoole. Fix in
+  `rexenv/runtimes` (#19, #20): `build-php.sh` pre-builds libcurl with only its other optional libs
+  (`spc build:libs "curl,openssl,zlib,brotli,nghttp2,zstd"`), which the full build then skips as
+  installed; **gate 9** fails a build whose curl links c-ares or loses SSL/LIBZ/ASYNCHDNS/HTTP2/
+  BROTLI/ZSTD/HSTS — read as curl.h BITS, because PHP 8.1 has no `CURL_VERSION_ZSTD`/`HSTS`
+  constants (the first publish run, 37583046066, failed 8.1.34 on exactly that, with a mask
+  identical to 8.3.32's). Published by run 37605359071 (all 10 builds + publish green); rexenv pins
+  `php-8x-8` with all 30 digests taken from its `.sha256` files by script; `resolver_for` 8.1–8.5 →
+  `Threaded`; runtimes PR #21 moves the update manifest to -8. **Proof:** published -8 8.1.34 and
+  8.3.32 — `ares` empty, mask `0x55a9028d`, raw curl to `amin.rex` HTTP 200 from 127.0.0.1 (-5:
+  "Could not resolve host"); three artifacts re-hashed against `.sha256`. **Still c-ares: 8.0.30**,
+  static-php.dev's build — `rex doctor`'s note now names it alone, and the mu-plugin stays for it.
+  **Open:** `wp_dns_check` runs the default 8.3, which no longer exercises the plugin's c-ares path
+  (ledger #251); runtimes #21 merge + the manifest publish.
   — **and as of 31 Aug 2026 the exposure is MEASURED rather than described, which is new**.
   Under the bundled 8.3/8.5: `gethostbyname("abc.rex")` → `127.0.0.1` and PHP streams fetch
   the page, while `curl_init("https://abc.rex/")` fails outright — *"Could not resolve host:

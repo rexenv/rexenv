@@ -685,33 +685,34 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 //   8.0.30 was pinned 2026-07-11, downloaded, hashed, extracted and RUN.
 //
 // One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned
-// together. The 8.1-8.5 rows below were taken from `php-8x-1`'s own SHA256SUMS,
-// whose artifacts CI had already run: parity against the bulk module list for
-// that minor, and a live PostgreSQL connection through PDO.
+// together. The 8.1-8.5 rows below are `php-8x-8`'s (7 Oct 2026), taken from the
+// release's own `.sha256` files by script — one re-hashed from the downloaded bytes
+// — whose artifacts CI had already run: parity against the bulk module list for that
+// minor, a live PostgreSQL connection through PDO, and a libcurl with no c-ares.
 const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "13c77c837cd50c027e1c614c192b25205123311a30d2335e9a3c8f82d23acb9a";
 const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "b025f2c343916dd97d4cad543f0cc4c07ac882af10bc72773ad27ab8f6c9f59a";
 const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "e91bc2624c4469ceb0d7f7d93d643e1aebadd451556b0b1cc8d5142531b14138";
 const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "ec02cd54162c190c0029ddccbc382e21442b4941aedef9455b8d6fd32bc472d5";
-const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "9cddc02aeeae9ef7c3a79fa58142547c893bac1702fc3d6f8e7a26cdd57777d4";
-const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "0778f3f65ef994cf97e19f41a87adb6af38c72b8932d7dd791030f87586b734d";
-const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "afbfd758b43103ca9ac6956ee4cba57cff5e248ff7bca81dcbe11d8172a2577a";
-const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "8c315735ca1d99bad83cf551889454085d1046f46f10cd75820b245bb7f7f545";
-const PHP_8_2_32_CLI_MAC_ARM64_SHA256: &str = "5cae3c0fcc9c7733bd0c244bbee0e6484de6b28cb84d225fbbd7c224999affc1";
-const PHP_8_2_32_CLI_MAC_AMD64_SHA256: &str = "cc465b13417cb3f06b284a0c2660acbdcc7da469cc63adf668cff343cdf7ed44";
-const PHP_8_2_32_FPM_MAC_ARM64_SHA256: &str = "a76b49225850caa3716f59e95a1c04d23baca17f626838d4f312c0d3067d3efd";
-const PHP_8_2_32_FPM_MAC_AMD64_SHA256: &str = "1f5243d034cad68210f15617b05b31543a53a71e85f45d371a8a05b69deaad10";
-const PHP_8_3_32_CLI_MAC_ARM64_SHA256: &str = "3ee43b6834b2289a98665a80379cb969a02a7f960f36834e25c3a8cf2d236ef9";
-const PHP_8_3_32_CLI_MAC_AMD64_SHA256: &str = "26e1c61ab8901b62527e05a04649f4c1c2ca06a12d4f7101e8faf402845ecb35";
-const PHP_8_3_32_FPM_MAC_ARM64_SHA256: &str = "f0f20a3644804aab89a24709504bc0bbc7e594cfdeae818f8eb21ccba2aa53c9";
-const PHP_8_3_32_FPM_MAC_AMD64_SHA256: &str = "d5e0e999dfc5786cca0c0e33331761a92b188c36eba232839b9c893893e249d2";
-const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "0846e569be64d357f29b071134f4e017cc148497c78fd0acd98e492f797e4574";
-const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "5d1bef66c2705f8d7b04ad30ddcc5597ebc1c34a77fa2b8f69597710b07a7755";
-const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "7ee88472a02579f9502284de26d919d518b8cbc17df93d7346bc53503dce2dbb";
-const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "af7ffbb4f411f5fdb7b556923b618900f8017724a6707abf9055e3fdcb5ed522";
-const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "b8cdfee96d192fd0e23be8af8d856189e5da63a0ee4f5a5ad04d88cb2b813dd9";
-const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "c2684de199ae1dd7baa51958f4014fc12f322773a141d858ab57a3db573439c0";
-const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "b3f6adad9dae74d73b1477c83fb91cb1b1ed61cad47d20fe2af2abaaef46b82a";
-const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "df62c644c8328f8e3fa7b0275a0b1c175a6d112ae13c36e75c16c1a0e1d0b2b1";
+const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "7fb3b29242adbf6c74392290622a66f884112b91409f1a0522ffc7b01a82d929";
+const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "d5a92fb33a117340bf7d6e97b04930e7dbb56cf9f6d880938e45393005fff607";
+const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "2c08383dfb1c251cd9c71c4ffadae8de5ad5d88f309b65de9ca4c82c618275d0";
+const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "5d0dffe53a5e4016d2a133bc332a1d15a1dc9c50e536adb50f79f6d258df78bf";
+const PHP_8_2_32_CLI_MAC_ARM64_SHA256: &str = "02ea49ab2c9c84c3737f56b9e42db8ec0b47270d63403dd119acc95de3b91d79";
+const PHP_8_2_32_CLI_MAC_AMD64_SHA256: &str = "9efa75a5026d56f3a1ee9c6f92bf3cfd800c82de86d293783c74ad70b467b023";
+const PHP_8_2_32_FPM_MAC_ARM64_SHA256: &str = "ea1bf86bc68c158a4ae9c3a0d30e9d948286685fd961e8449192913d3cfc7756";
+const PHP_8_2_32_FPM_MAC_AMD64_SHA256: &str = "252075699821d82cbb0a5b6872f156c08df279f50e2b7e0f685ec1cf7537cd45";
+const PHP_8_3_32_CLI_MAC_ARM64_SHA256: &str = "16fb452002ccfad2d573dcf9854165b2f4bae26e0275633da207b40b169caf8a";
+const PHP_8_3_32_CLI_MAC_AMD64_SHA256: &str = "33b464bb48f98548226efe646ef0bbe8e17f6958c8763afa2449a4f2f6f3712b";
+const PHP_8_3_32_FPM_MAC_ARM64_SHA256: &str = "6e552ecc3f6c450b519127883c5328566b1643aa8ea487f80bcc86bd84da6e62";
+const PHP_8_3_32_FPM_MAC_AMD64_SHA256: &str = "5b3d4a472af4ba08c5ae439d65cb6e17d06acce23c2b3e7a2e4cdfe53b6e1cd9";
+const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "f1af64a7efa39e6f67dc2908789311a7600a7124d724cc0396f1626c2649ded9";
+const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "68dc6b9c66fbd011ab4cc6d4ce222ed6b758921c66535a92f16cb3d7c9f40d6c";
+const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "9b9c3866617561263952ee27e2c2cdd753bf4c59abf909ad64dc8d4cec9fede2";
+const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "e0ba0f9ef202c3bc02bb6353a071cadac2622f77e95760b35dcea84d5f1f70dd";
+const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "3a7ea95df6624a6a5100263f555958aa451ab2ace84b725af599dbcd544bbbe7";
+const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "f7aca67fefec6a0c3c3f768d488efe8641848886703a1fd5d085514fab46b5cc";
+const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "3ef91a1374dd895b6df2ea11852be8026f2b6a512df0bc7fea507b31083ca881";
+const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "2026df1ae4a0e579239aaded109c573e1148a68f290617b5ada886f0ff97effd";
 
 // nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-2`,
 // immutable), and the reason is the macOS FLOOR, not the version.
@@ -1548,11 +1549,19 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // every Laravel `artisan` command died on `mb_split`. The releases here
         // are the first whose parity with upstream is checked by FUNCTION and by
         // CONFIGURE FLAG, not by module name.
-        "8.1.34" => Some("php-8x-3"),
-        "8.2.32" => Some("php-8x-4"),
-        "8.3.32" => Some("php-8x-5"),
-        "8.4.23" => Some("php-8x-6"),
-        "8.5.8" => Some("php-8x-7"),
+        //
+        // -8 (7 Oct 2026) rebuilt the SAME five patches for one reason: their libcurl
+        // was linked to c-ares (spc enables it whenever libcares is in the build, and
+        // swoole depends on it), and c-ares never reads macOS's /etc/resolver/<tld> —
+        // so a site's own `curl_init("https://other.rex/")` died with "Could not
+        // resolve host" (`core::wp_dns::resolver_for`). -8's libcurl takes the
+        // threaded resolver (the system's getaddrinfo), and runtimes' gate 9 fails
+        // any build whose curl links c-ares again. -3…-7 stay published and immutable.
+        "8.1.34" => Some("php-8x-8"),
+        "8.2.32" => Some("php-8x-8"),
+        "8.3.32" => Some("php-8x-8"),
+        "8.4.23" => Some("php-8x-8"),
+        "8.5.8" => Some("php-8x-8"),
 
         _ => None,
     }
@@ -1808,16 +1817,16 @@ const NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256: &str = "517f6656ae4bae3f1aa29e64ce
 const NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256: &str = "cbf546b81a7b02bd9e71e50f0ef1a1da549e527c7e528e346514b511bc1f9d2b";
 const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3b62e5c30820a3dba8e0390c78e4494491478";
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
-const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "1b5793dbc13fc3dbb2da66014b3308683db2ecf063cf5ae861a942b2c190e06a";
-const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "d2145bd6e70f110edc82fa02c202cd9c5ac2944c10baa0cf86ac96efab988db6";
-const PHP_8_2_32_LICENSES_MAC_ARM64_SHA256: &str = "3dc8c2545172bcf07accf4cd0a3df8ca36b47a94363da1e1b76c59b8537aa8f8";
-const PHP_8_2_32_LICENSES_MAC_AMD64_SHA256: &str = "cd96a3db1d17334f4b5527701d0a5daf186797d235089e3ad6b1e561ea2c48a8";
-const PHP_8_3_32_LICENSES_MAC_ARM64_SHA256: &str = "c581ead815d3f4431975757f71e39292fcf11743fcfa159e722ed6c48ecda411";
-const PHP_8_3_32_LICENSES_MAC_AMD64_SHA256: &str = "5daeadb3b0a0e84122b3bca54a38184727dd2875af8dec65006776390ca88542";
-const PHP_8_4_23_LICENSES_MAC_ARM64_SHA256: &str = "e209273668ad40482b33e7d63b6ffed52a4caff0084d7c1a0d49af0afe61f287";
-const PHP_8_4_23_LICENSES_MAC_AMD64_SHA256: &str = "c402d2f07b71db269271bccd0ad393d5add8071ca54a70f05764ac4a0b6cb1a0";
-const PHP_8_5_8_LICENSES_MAC_ARM64_SHA256: &str = "d9865d73d2dc46f9597d7e05bb5e4612f5127b8dd21596f8c359c5a1d1eddbd7";
-const PHP_8_5_8_LICENSES_MAC_AMD64_SHA256: &str = "b94fa2d4f09470782bfad454db57582db8c2e6fa274f772e3d3332248efd2303";
+const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "c15f33bbed2665be0932c18f18bc1d8d471ccfe802faac3ae9b8c9826089f9e4";
+const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "c562c500e81e24426479b05cf9c6e575ad39b065888e2db1e34bc47c4b2302a4";
+const PHP_8_2_32_LICENSES_MAC_ARM64_SHA256: &str = "dc40b9b54ca3d28577a6f32072726fbbc3f5b30c7cf4da34c4812b142ef5b19b";
+const PHP_8_2_32_LICENSES_MAC_AMD64_SHA256: &str = "c114168d75d882b3ace7f4eca6c5d73d785cef1c9907d8002ea618e3f7c49ae2";
+const PHP_8_3_32_LICENSES_MAC_ARM64_SHA256: &str = "aaf6b1ca771ff0628695ac7a4473372e1f4576f646664d38c4e5c3f246257cdf";
+const PHP_8_3_32_LICENSES_MAC_AMD64_SHA256: &str = "03c180b59929bbaaae94f6717015d6e75dc0bcb257c9f8239856382d80da201e";
+const PHP_8_4_23_LICENSES_MAC_ARM64_SHA256: &str = "83bbe88a5f8aec7952fbdd19bfe85ca7735c2fb6337e74d27be4496f3f0c74c1";
+const PHP_8_4_23_LICENSES_MAC_AMD64_SHA256: &str = "bcff75e69e8e1b1d35fe48aee4063fdd11809e23297982426536835ddf8a1235";
+const PHP_8_5_8_LICENSES_MAC_ARM64_SHA256: &str = "6830c598cf2a326c5aa5d6e06eeda630058e13a40d2a81714db01b1ad0ca805a";
+const PHP_8_5_8_LICENSES_MAC_AMD64_SHA256: &str = "918653046a2b4907bf130f16b990861e055e537bf8359d84dfeb5262d74ef738";
 
 /// Directory inside a published cache dir holding the artifact's licence texts.
 /// Matches the tarball's own top-level dir, so extraction is `strip = 0`.

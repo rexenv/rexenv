@@ -2543,10 +2543,19 @@ IPC surface — which is how a reader ends up designing against a system with on
   `wp_dns_check` FAILS on any disagreement between the record and the build in front of
   it — in either direction, because a minor that turned threaded means the mu-plugin is
   dead weight for it.
+  **Since 7 Oct 2026 the real fix ships for 8.1–8.5** (`php-8x-8`): rexenv's own 8.x
+  builds had linked c-ares too — not by asking for it, but because spc's curl builder
+  turns it on whenever `libcares` is in the build, and **swoole** depends on it. The
+  rebuild pre-builds libcurl without it (the system's `getaddrinfo`, so `/etc/resolver`
+  is seen) and `rexenv/runtimes`' gate 9 fails any build whose curl links c-ares again.
+  Measured on the published artifacts: raw `curl_init("https://amin.rex/")` was "Could not
+  resolve host" on -5 and HTTP 200 on -8. **8.0.30 — static-php.dev's build — still has
+  it**, so `resolver_for` and the mu-plugin stay; on every other pinned build the
+  plugin's first guard returns at once.
   **What the mu-plugin does NOT cover, measured 31 Aug 2026 and now SAID rather than
   implied** (ledger #435): it patches the WordPress HTTP API, so a plugin calling
   `curl_init()` directly — and any non-WordPress PHP app rexenv hosts — still gets
-  *"Could not resolve host"* on an 8.x build, while `gethostbyname` and PHP streams work
+  *"Could not resolve host"* on a c-ares build (only 8.0 since `php-8x-8`), while `gethostbyname` and PHP streams work
   on the same request. `rex doctor` prints that as a NOTE (which builds, how many sites,
   what is covered, and the two workarounds: the WP HTTP API, or `CURLOPT_RESOLVE`) —
   never as a ✗ and never counted in the exit code, because every normal install has it and

@@ -222,7 +222,7 @@ connects to nothing and stalls until the server times it out.
 | Artifacts | `php-{8.1.34,8.2.32,8.3.32,8.4.23,8.5.8}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
 | Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
 | Source | php.net release tarballs, fetched and pinned by static-php-cli |
-| Release | One per version — `php-8x-3` (8.1.34), `php-8x-4` (8.2.32), `php-8x-5` (8.3.32), `php-8x-6` (8.4.23), `php-8x-7` (8.5.8) — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-1` and `php-8x-2` are superseded and still published: those builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
+| Release | `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
 | Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
