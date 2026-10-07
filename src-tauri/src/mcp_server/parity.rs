@@ -155,6 +155,9 @@ mod tests {
         ("wp_org_search_themes", Tool("wp_org_search")),
         ("wp_org_plugin_icons", Never("icon URLs for the app's list rows; wp_org_search returns the plugins themselves")),
         ("wp_default_creds", Never("credentials (parity §4.2)")),
+        // The banner's question, answered more widely: `checksums` names EVERY missing core file,
+        // the long-named casualties included, and wp_maintain's `core_reinstall` is the repair.
+        ("wp_core_cut_names", Tool("wp_info")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),

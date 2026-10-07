@@ -3637,6 +3637,49 @@ fn resolver_verdict(field: Option<&Value>) -> (bool, bool, String) {
     )
 }
 
+/// The `WP core` line's verdict — `(ok, warn, message)` for `line`. WordPress sites created
+/// by rexenv 0.4.0–0.7.1 can be missing long-named core files (the app's `coreFiles`); the
+/// sentence per site comes from the app, beside the rule. Same three states as
+/// [`resolver_verdict`]: an absent field is an older app, never a clean check, and a site
+/// whose file list could not be fetched is a warning, not a pass.
+fn core_files_verdict(field: Option<&Value>) -> (bool, bool, String) {
+    let Some(value) = field.filter(|v| !v.is_null()) else {
+        return (false, true, "not reported by this rexenv (an older app)".into());
+    };
+    let pad = "\n            ";
+    let rows = |k: &str| value[k].as_array().cloned().unwrap_or_default();
+    let (broken, unchecked) = (rows("broken"), rows("unchecked"));
+    let mut msg = String::new();
+    for b in &broken {
+        if !msg.is_empty() {
+            msg.push_str(pad);
+        }
+        msg.push_str(&format!(
+            "{}: {}{pad}fix: rexenv → {} → Repair core files",
+            b["domain"].as_str().unwrap_or("?"),
+            b["message"].as_str().unwrap_or("core files are missing"),
+            b["domain"].as_str().unwrap_or("the site"),
+        ));
+    }
+    for u in &unchecked {
+        if !msg.is_empty() {
+            msg.push_str(pad);
+        }
+        msg.push_str(&format!(
+            "{}: not checked — {}",
+            u["domain"].as_str().unwrap_or("?"),
+            u["error"].as_str().unwrap_or("unknown error"),
+        ));
+    }
+    if !broken.is_empty() {
+        (false, false, msg)
+    } else if !unchecked.is_empty() {
+        (false, true, msg)
+    } else {
+        (true, false, "no WordPress site is missing core files".into())
+    }
+}
+
 fn cmd_doctor(json_output: bool) {
     let data = request("doctor", Value::Null);
     if json_output {
@@ -3741,7 +3784,10 @@ fn cmd_doctor(json_output: bool) {
         line(true, false, "TLDs in use", "every TLD your sites answer on resolves here".into());
     }
 
-    // A NOTE, not a finding. The bundled 8.x builds link c-ares, whose curl
+    let (ok, warn, msg) = core_files_verdict(data.get("coreFiles"));
+    line(ok, warn, "WP core", msg);
+
+    // A NOTE, not a finding. A bundled build that links c-ares (8.0 today), whose curl
     // cannot resolve a `.rex` host — WordPress is covered (the mu-plugin patches
     // the HTTP API), a plugin's raw `curl_init()` and any non-WordPress PHP app
     // are not. Nothing here is broken or fixable by the user, so it must not
@@ -4729,6 +4775,30 @@ mod tests {
             let (ok, warn, msg) = resolver_verdict(absent);
             assert!(!ok && warn, "an absent field must not read as a clean check");
             assert!(msg.contains("older app"), "say WHY it is unknown: {msg}");
+        }
+    }
+
+    /// Missing core files are a FINDING naming the site and where to repair it; a site
+    /// that could not be checked is a warning; an older app is unknown, never ✓.
+    #[test]
+    fn missing_core_files_are_a_finding_and_an_unchecked_site_is_not_a_pass() {
+        let (ok, warn, msg) = core_files_verdict(Some(&json!({"broken": [], "unchecked": []})));
+        assert!(ok && !warn, "{msg}");
+
+        let (ok, warn, msg) = core_files_verdict(Some(&json!({
+            "broken": [{"domain": "new.rex", "missing": 25, "message": "25 WordPress 7.1 core files with long names are missing"}],
+            "unchecked": [{"domain": "x.rex", "error": "offline"}],
+        })));
+        assert!(!ok && !warn, "missing core files break code that loads them: {msg}");
+        assert!(msg.contains("new.rex: 25 WordPress 7.1") && msg.contains("Repair core files"), "{msg}");
+        assert!(msg.contains("x.rex: not checked — offline"), "{msg}");
+
+        let (ok, warn, _) = core_files_verdict(Some(&json!({"broken": [], "unchecked": [{"domain": "x.rex", "error": "offline"}]})));
+        assert!(!ok && warn, "an unchecked site is unknown, not clean");
+
+        for absent in [None, Some(&Value::Null)] {
+            let (ok, warn, msg) = core_files_verdict(absent);
+            assert!(!ok && warn && msg.contains("older app"), "{msg}");
         }
     }
 

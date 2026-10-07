@@ -9,6 +9,11 @@
 //! the default build and a localized one arrive with `WithRequestAuthenticationInterface.php`
 //! whole, no dot-ended names, and `wp core verify-checksums` passing; `core_reinstall` puts a
 //! deleted core file back while a user plugin and a theme edit survive, and checksums pass again.
+//! And the Site screen's detector (`wordpress::cut_name_report` over `wporg::core_file_list`, the
+//! real wordpress.org list): silent on a whole download, names exactly the deleted long file on
+//! the damaged one, silent again after the reinstall — and on the REAL bug's shape: the
+//! `.tar.gz` extracted by rexenv's own PHP through PharData (what WP-CLI did for 0.4.0–0.7.1),
+//! where it must name every long core file, since PharData cut each one.
 //!
 //! Fixture-owned: everything under a temp directory this check creates and removes. No database,
 //! no services, no site rows — `verify-checksums` does not load WordPress.
@@ -17,7 +22,7 @@
 mod common;
 
 use common::Check;
-use rexenv_lib::core::{binaries, wordpress};
+use rexenv_lib::core::{binaries, wordpress, wporg};
 use std::path::Path;
 
 const LONG: &str = "wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php";
@@ -46,8 +51,11 @@ async fn main() -> std::process::ExitCode {
     check.is("the de_DE build is localized", version_php.contains("$wp_local_package = 'de_DE'"), "no wp_local_package");
     checksums(&mut check, "de_DE build", &php, &wp, &de, Some("de_DE"));
 
+    cut_names(&mut check, "a whole download", &site, &[]).await;
+
     // A reinstall over a damaged core, with content that must survive.
     std::fs::remove_file(site.join(LONG)).ok();
+    cut_names(&mut check, "the damaged core", &site, &[LONG]).await;
     std::fs::create_dir_all(site.join("wp-content/plugins/mine")).unwrap();
     std::fs::write(site.join("wp-content/plugins/mine/mine.php"), "<?php // mine").unwrap();
     let style = site.join("wp-content/themes/twentytwentyfive/style.css");
@@ -59,6 +67,9 @@ async fn main() -> std::process::ExitCode {
     check.is("a user plugin survived the reinstall", site.join("wp-content/plugins/mine/mine.php").is_file(), "gone");
     check.is("a theme edit survived the reinstall", std::fs::read_to_string(&style).unwrap_or_default() == edited, "overwritten");
     checksums(&mut check, "after the reinstall", &php, &wp, &site, None);
+    cut_names(&mut check, "after the reinstall", &site, &[]).await;
+
+    tarball_shape(&mut check, &php, &root).await;
 
     let _ = std::fs::remove_dir_all(&root);
     check.verdict()
@@ -75,6 +86,66 @@ fn download(check: &mut Check, php: &Path, wp: &Path, locale: &str, dir: &Path) 
         out.as_ref().is_ok_and(|o| o.status.success()),
         &out.map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_else(|e| e.to_string()),
     );
+}
+
+/// The 0.4.0–0.7.1 extract, reproduced: the latest `.tar.gz` through PharData with rexenv's PHP.
+async fn tarball_shape(check: &mut Check, php: &Path, root: &Path) {
+    let tgz = root.join("wordpress.tar.gz");
+    let got = binaries::http_get("https://wordpress.org/latest.tar.gz").await;
+    let Ok(bytes) = got else {
+        check.is("the tarball downloads", false, &format!("{:?}", got.err()));
+        return;
+    };
+    std::fs::write(&tgz, bytes).unwrap();
+    let out = root.join("tarball");
+    let run = std::process::Command::new(php)
+        .args(["-d", "memory_limit=-1", "-r", "(new PharData($argv[1]))->extractTo($argv[2], null, true);"])
+        .arg(&tgz)
+        .arg(&out)
+        .output();
+    check.is("PharData extracts the tarball", run.as_ref().is_ok_and(|o| o.status.success()), &format!("{run:?}"));
+    let site = out.join("wordpress");
+    let Some(version) = wordpress::installed_version(&site) else {
+        check.is("the tarball's version.php names a release", false, "no version");
+        return;
+    };
+    let list = match wporg::core_file_list(&version).await {
+        Ok(l) => l,
+        Err(e) => return check.is(&format!("wordpress.org lists {version}'s files"), false, &e.to_string()),
+    };
+    let long: Vec<String> = {
+        let mut v: Vec<String> = list
+            .iter()
+            .filter(|p| !p.starts_with("wp-content/") && "wordpress/".len() + p.len() > 100)
+            .cloned()
+            .collect();
+        v.sort();
+        v
+    };
+    let r = wordpress::cut_name_report(&site, &version, list.iter().map(String::as_str));
+    check.is(
+        &format!("the PharData extract: the detector names all {} long core files", long.len()),
+        !long.is_empty() && r.missing == long,
+        &format!("missing {} of {}: {:?}", r.missing.len(), long.len(), r.missing),
+    );
+}
+
+async fn cut_names(check: &mut Check, what: &str, dir: &Path, want: &[&str]) {
+    let Some(version) = wordpress::installed_version(dir) else {
+        check.is(&format!("{what}: version.php names a release"), false, "no version");
+        return;
+    };
+    match wporg::core_file_list(&version).await {
+        Ok(list) => {
+            let r = wordpress::cut_name_report(dir, &version, list.iter().map(String::as_str));
+            check.is(
+                &format!("{what}: the detector reports {want:?}"),
+                r.missing == want && r.message.is_some() != want.is_empty(),
+                &format!("{r:?}"),
+            );
+        }
+        Err(e) => check.is(&format!("{what}: wordpress.org lists {version}'s files"), false, &e.to_string()),
+    }
 }
 
 fn complete(check: &mut Check, what: &str, dir: &Path) {

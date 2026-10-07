@@ -1061,6 +1061,14 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
 
+- [ ] **A site missing long core files says so, and Repair fixes it** (ledger #793). In a scratch
+  WordPress site, delete `wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php`,
+  then open the site: Overview shows the amber "1 WordPress … core file with long names is missing"
+  note with **Repair core files**; Repair → confirm → toast "Core files repaired", the note is gone
+  and the file is back. `rex doctor` shows `✗ WP core <site>: …` before the repair and
+  `✓ WP core` after. Offline, the note does not appear and doctor reads `⚠ … not checked`.
+  **Open: no run recorded** (L1 in `wp_core_zip_check` covers the detector, not the webview).
+
 ## Stopping ONE site (v44) — the shared services must NOT go with it
 - [x] **With the stack STOPPED (Stop all), hover a site row:** its "Open in browser" quick
       action is disabled and its tooltip reads "Nothing is serving https://<name>.rex — Start

@@ -326,7 +326,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
-- [ ] **SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026).** WP-CLI's
+- [x] **SHIPPED macOS BUG — new WordPress sites are missing core files (measured 14 Sep 2026).** ✓ 8 Oct 2026 — new sites fixed in 0.7.2 (#604); existing sites detected + one-click repair (#793), below. WP-CLI's
   `wp core download` extracts WordPress's `.tar.gz` with PHP's `PharData`, and rexenv's PHP 8.3.32 reads that
   tarball with every member name CUT AT 100 CHARACTERS: bsdtar lists 3,782 members, PharData 3,776; 40 names
   come out truncated (`…/Contracts/WithRequestAuthenticationInterface.php` → `…Interface.`, `…Italic.woff2` →
@@ -339,7 +339,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   further go.** Fix written: `wordpress::core_zip_url` + `core_download_args` (the only place `core download` is
   assembled — a source guard), used by site provisioning, `install_wordpress` and `core_reinstall` (the version's
   no-content zip, since WP-CLI refuses `--skip-content` and `--locale` with a URL); ledger #604
-  - [ ] Read-only `wp core verify-checksums` across the owner's rexenv sites — **measured 14 Sep 2026** (17 sites):
+  - [x] Read-only `wp core verify-checksums` across the owner's rexenv sites — **measured 14 Sep 2026** (17 sites):
     `hridoy.rex`, `msd.rex`, `mstest.rex`, `new.rex` (7.1) and `ealite.test` (7.0.4) each MISS 25 core files and
     carry 21 cut-name leftovers — this bug; `bl.rex`, `tr.rex`, `tr2.rex`, `xyz.rex` pass checksums but still carry
     the 21 cut-name leftovers (a later update restored the real files); `lm.test` (6.7.1, 175 missing) and
@@ -350,7 +350,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     created by 0.4.0–0.7.1: 0.7.2 (a hotfix cut from v0.7.1, being prepared) carries the fix, and its release note
     says how to repair an existing site Users of 0.4.0–0.7.1
     with sites created by rexenv are affected the same way — a release note or an in-app repair is a separate
-    ruling
+    ruling. ✓ **8 Oct 2026, owner ruling "auto-detect + 1-click":** a WordPress site's Overview shows
+    "N WordPress <v> core files with long names are missing" with **Repair core files** (`core_reinstall`), and
+    `rex doctor` prints a `WP core` finding — the docroot checked against wordpress.org's file list for its version
+    (legit names sit at exactly 100 bytes, so no offline check can tell). Ledger #793: L0 + three plants, L1
+    `wp_core_zip_check` PASS 19/19 incl. the real PharData extract of `latest.tar.gz` → all 25 long core files
+    named. Reaches users with the next release; the webview row is SMOKE "A site missing long core files…".
+  - [ ] **Default-theme files the tarball cut are not repaired.** The no-content zip `core_reinstall` uses never
+    touches `wp-content/`, so a 0.4.0–0.7.1 site keeps missing up to 14 long-named twentytwenty* fonts/patterns
+    (7.1) — `hridoy.rex` still misses `Platypi-Italic-VariableFont_wght.woff2` and others after its 14 Sep repair.
+    Cosmetic (a font falls back) and only while that theme is active; #793 deliberately does not report them.
+    Fix needs a ruling: `wp theme install <slug> --force` overwrites a user's edits to a default theme
 - [ ] **Windows launch** — 12 Sep 2026, owner: macOS is stable, ship a Windows version.
   Not "fill the stubs": Unix-only code outside `platform/`, no php-fpm, no `/etc/resolver`,
   no unix sockets on Windows. Reasoning, measurements and "Done when" per task:

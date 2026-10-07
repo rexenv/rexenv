@@ -381,9 +381,64 @@ pub(crate) fn decode_entities(s: &str) -> String {
     out
 }
 
+/// Every file a WordPress release ships, from wordpress.org's checksums API — the list
+/// [`crate::core::wordpress::cut_name_casualties`] checks a docroot against. A release's
+/// file list never changes, so each version is asked at most once per app run (a site
+/// screen opened twice and `rex doctor` over ten sites on the same version cost one GET).
+/// File NAMES are the same in every locale, so en_US answers for all of them.
+pub async fn core_file_list(version: &str) -> Result<std::sync::Arc<Vec<String>>> {
+    type Cache = std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>;
+    static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(hit) = cache.lock().ok().and_then(|c| c.get(version).cloned()) {
+        return Ok(hit);
+    }
+    let fail = |e: reqwest::Error| {
+        Error::Other(if e.is_timeout() {
+            "WordPress.org didn't answer within 10s — check your connection.".into()
+        } else {
+            format!("WordPress.org checksums lookup failed: {e}")
+        })
+    };
+    let body: serde_json::Value = client()
+        .get("https://api.wordpress.org/core/checksums/1.0/")
+        .query(&[("version", version), ("locale", "en_US")])
+        .send()
+        .await
+        .map_err(fail)?
+        .json()
+        .await
+        .map_err(fail)?;
+    let list = std::sync::Arc::new(parse_core_file_list(&body, version)?);
+    if let Ok(mut c) = cache.lock() {
+        c.insert(version.to_string(), list.clone());
+    }
+    Ok(list)
+}
+
+/// `{"checksums": {path: md5}}` — or `{"checksums": false}` for a version wordpress.org does
+/// not know, which is an error: an empty list would read as "nothing is missing".
+fn parse_core_file_list(body: &serde_json::Value, version: &str) -> Result<Vec<String>> {
+    match body.get("checksums").and_then(|c| c.as_object()) {
+        Some(map) if !map.is_empty() => Ok(map.keys().cloned().collect()),
+        _ => Err(Error::Other(format!("WordPress.org has no file list for WordPress {version}"))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unknown_version_is_an_error_never_an_empty_list() {
+        let ok = serde_json::json!({"checksums": {"wp-load.php": "abc", "wp-includes/version.php": "def"}});
+        let mut got = parse_core_file_list(&ok, "7.1").unwrap();
+        got.sort();
+        assert_eq!(got, ["wp-includes/version.php", "wp-load.php"]);
+        for bad in [serde_json::json!({"checksums": false}), serde_json::json!({"checksums": {}}), serde_json::json!({})] {
+            assert!(parse_core_file_list(&bad, "9.9").is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn strips_tags_and_decodes_entities() {

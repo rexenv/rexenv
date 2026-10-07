@@ -1904,8 +1904,36 @@ where
                 .map(|(tld, foreign)| json!({ "tld": tld, "foreign": foreign }))
                 .collect::<Vec<_>>()
             };
+            // WordPress sites missing long-named core files (rexenv 0.4.0–0.7.1 cut them, ledger
+            // #604). One wordpress.org GET per VERSION, cached; a site whose list could not be
+            // fetched is `unchecked`, never silently clean.
+            let core_files = {
+                let roots: Vec<(String, std::path::PathBuf)> = state
+                    .db
+                    .lock()
+                    .ok()
+                    .and_then(|c| crate::core::sites::list(&c).ok())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|s| (s.domain.clone(), s.served_root()))
+                    .collect();
+                let (mut broken, mut unchecked) = (Vec::new(), Vec::new());
+                for (domain, root) in roots {
+                    match commands::wordpress::cut_name_report_for(&root).await {
+                        Ok(Some(r)) if !r.missing.is_empty() => broken.push(json!({
+                            "domain": domain,
+                            "missing": r.missing.len(),
+                            "message": r.message,
+                        })),
+                        Ok(_) => {}
+                        Err(e) => unchecked.push(json!({ "domain": domain, "error": e.to_string() })),
+                    }
+                }
+                json!({ "broken": broken, "unchecked": unchecked })
+            };
             Ok(json!({
                 "app": to_value(&commands::system::app_info())?,
+                "coreFiles": core_files,
                 "unresolvableTlds": unresolvable,
                 "dns": to_value(&dns)?,
                 "services": to_value(&services)?,
@@ -1922,7 +1950,7 @@ where
                 // Borrowed resolver files another tool reclaimed — invisible to
                 // every other probe, because our resolver keeps answering.
                 "resolverDrift": to_value(&resolver_drift)?,
-                // A LIMITATION, not a fault: the bundled 8.x builds link c-ares,
+                // A LIMITATION, not a fault: a bundled build that links c-ares (8.0 today),
                 // whose curl cannot resolve a `.rex` host at all. WordPress is
                 // covered by the mu-plugin; a plugin's raw `curl_init()` and any
                 // non-WordPress PHP app are not, and today that arrives as an

@@ -2345,6 +2345,18 @@ IPC surface — which is how a reader ends up designing against a system with on
   "should not exist" extras (verified live) — verdicts derive from PARSED findings,
   never exit codes alone; extras triage as benign only when the basename is known OS
   noise (`.DS_Store`, `._*`, …), and unknown warnings stay loud.
+- **Core downloads are always a `.zip`, and the tarball's casualties are found** (ledger #604,
+  #793). WP-CLI's default `.tar.gz` is extracted by PHP's PharData, which cuts every member
+  name past 100 bytes (`wordpress/` counted) — rexenv 0.4.0–0.7.1 created sites missing the
+  long-named `php-ai-client` classes, silently on macOS. Since 0.7.2 every `core download` is a
+  zip (`core_zip_url`, one place). For the sites already made, a WordPress site's Overview
+  shows a warning with **Repair core files** (`CoreFilesBanner` → `wp_core_cut_names` →
+  `core_reinstall`, the version's no-content zip) and `rex doctor` prints a `WP core` finding.
+  The check compares the docroot with wordpress.org's file list for its version
+  (`wporg::core_file_list`, one GET per version per run): an offline "looks cut" heuristic is
+  impossible because real names sit at exactly 100 bytes. Offline the banner stays silent and
+  doctor says `not checked`, never clean. `wp-content/` casualties (default-theme fonts) are
+  not reported: the no-content repair would not restore them.
 - **WordPress detection survives a stopped stack** (`core::wordpress::wp_info` +
   `wp_presence`, 5 Sep 2026): `core is-installed` is the ONE probe of the three that
   needs the database — `core version` reads `wp-includes/version.php`, `config get`

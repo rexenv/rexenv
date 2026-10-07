@@ -99,6 +99,7 @@ import { LinkFolderPanel } from "./LinkFolderPanel";
 import { ZipAddPanel } from "./ZipAddPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUpdateProgress, WpUser } from "@/types";
 import { WpInstallCard, installLabels } from "./WpInstallCard";
+import { coreCutNamesKey } from "./CoreFilesBanner";
 import { MultiCard } from "@/components/sites/NewSiteDialog";
 
 const WP_ROLES = ["subscriber", "contributor", "author", "editor", "administrator"];
@@ -1228,7 +1229,10 @@ function ToolsPanel({
   const coreUpdating = coreUpdate.rowUpdate(CORE_ITEM);
   const coreReinstall = useMutation({
     mutationFn: () => wpCoreReinstall(siteId),
-    onSuccess: (out) => setCoreOut(out),
+    onSuccess: (out) => {
+      setCoreOut(out);
+      void qc.invalidateQueries({ queryKey: coreCutNamesKey(siteId) });
+    },
     onError: (e) => toastBackendError(e),
   });
   const verify = useMutation({

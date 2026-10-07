@@ -881,6 +881,31 @@ pub async fn wp_core_reinstall(state: State<'_, AppState>, id: String) -> Result
     wp_blocking(move || core::wordpress::core_reinstall(&php, &wp, &docroot)).await
 }
 
+/// Long-named core files the site is missing (`wordpress::cut_name_casualties`) — the Site
+/// screen's "Repair core files" banner. `None` when the docroot names no release version
+/// (not WordPress, a pre-release, or not provisioned yet): there is no list to check against.
+#[tauri::command]
+pub async fn wp_core_cut_names(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<core::wordpress::CutNameReport>> {
+    let docroot = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::get(&conn, &id)?.ok_or_else(|| Error::Other(format!("no site {id}")))?.served_root()
+    };
+    cut_name_report_for(&docroot).await
+}
+
+/// The one path from a docroot to its [`core::wordpress::CutNameReport`] — the Site screen
+/// and `rex doctor` both come through here.
+pub(crate) async fn cut_name_report_for(docroot: &std::path::Path) -> Result<Option<core::wordpress::CutNameReport>> {
+    let Some(version) = core::wordpress::installed_version(docroot) else {
+        return Ok(None);
+    };
+    let list = core::wporg::core_file_list(&version).await?;
+    Ok(Some(core::wordpress::cut_name_report(docroot, &version, list.iter().map(String::as_str))))
+}
+
 /// Export the site's database to the user's Downloads folder
 /// (`<domain>-db.sql`, numbered on collision). Uses the bundled `mysqldump`
 /// directly — WP-CLI's `wp db export` shells out to a PATH `mysqldump` a

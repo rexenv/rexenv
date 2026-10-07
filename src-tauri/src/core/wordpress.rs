@@ -3136,6 +3136,104 @@ pub fn installed_version(docroot: &Path) -> Option<String> {
     valid_release_version(v).then(|| v.to_string())
 }
 
+/// The ustar header's name field — all PharData kept of a longer member name (ledger #604).
+const TAR_NAME_FIELD: usize = 100;
+/// The directory every member of WordPress's release archives sits under; it counts
+/// toward [`TAR_NAME_FIELD`].
+const ARCHIVE_ROOT: &str = "wordpress/";
+
+/// What [`cut_name_casualties`] found on one site — the Site screen's banner and `rex doctor`
+/// render it as sent.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CutNameReport {
+    pub version: String,
+    /// Docroot-relative core files that are missing (`/`-separated).
+    pub missing: Vec<String>,
+    /// The sentence the user reads, `None` when nothing is missing.
+    pub message: Option<String>,
+}
+
+/// Core files a site created by rexenv 0.4.0–0.7.1 can be missing: `wp core download`
+/// fetched the tarball then, and PharData cut every member name longer than
+/// [`TAR_NAME_FIELD`] (see [`core_zip_url`]). `expected` is the version's file list from
+/// wordpress.org's checksums; the casualties are exactly its long names that are absent.
+///
+/// The cut leftover (`…Interface.`) is deliberately NOT required as proof: Windows strips a
+/// trailing dot and refuses others, so a casualty there has no leftover, and a long-named
+/// core file that is missing for any other reason is repaired the same way. Measured
+/// 8 Oct 2026 against 7.1: 39 long names, 25 in `wp-includes/php-ai-client` — the 25 the
+/// five broken sites missed on 14 Sep. The other 14 are default-theme files under
+/// `wp-content/`, skipped here: the repair is the NO-CONTENT build ([`core_reinstall`]),
+/// which never restores them, so naming them would promise a fix the button does not make.
+pub fn cut_name_casualties<'a>(docroot: &Path, expected: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut missing: Vec<String> = expected
+        .into_iter()
+        .filter(|p| !p.starts_with("wp-content/"))
+        .filter(|p| ARCHIVE_ROOT.len() + p.len() > TAR_NAME_FIELD)
+        .filter(|p| !docroot.join(p).exists())
+        .map(str::to_string)
+        .collect();
+    missing.sort();
+    missing
+}
+
+/// The [`CutNameReport`] for a docroot running `version`, given its expected file list.
+pub fn cut_name_report<'a>(docroot: &Path, version: &str, expected: impl IntoIterator<Item = &'a str>) -> CutNameReport {
+    let missing = cut_name_casualties(docroot, expected);
+    let message = (!missing.is_empty()).then(|| {
+        format!(
+            "{n} WordPress {version} core file{s} with long names {are} missing — rexenv 0.4.0–0.7.1 \
+             cut long file names when it downloaded WordPress, and code that loads {them} fails. \
+             Repair core files re-downloads this version's core; the database, wp-content and \
+             wp-config.php are not touched.",
+            n = missing.len(),
+            s = if missing.len() == 1 { "" } else { "s" },
+            are = if missing.len() == 1 { "is" } else { "are" },
+            them = if missing.len() == 1 { "it" } else { "them" },
+        )
+    });
+    CutNameReport { version: version.to_string(), missing, message }
+}
+
+#[cfg(test)]
+mod cut_name_tests {
+    use super::*;
+
+    /// The shape of the 14 Sep sites: a long-named class missing beside its cut leftover.
+    /// Must NOT count, though missing too: a legit name of EXACTLY 100 bytes (PharData kept
+    /// it whole — the boundary), a short name (not this bug), and a long default-theme font
+    /// (the no-content repair never restores it).
+    #[test]
+    fn only_missing_long_core_names_are_casualties() {
+        let dir = std::env::temp_dir().join(format!("rexenv-cutname-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let long = "wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php";
+        let exact = "wp-includes/php-ai-client/src/Providers/Http/Abstracts/AbstractClientDiscoveryStrategy.php";
+        let font = "wp-content/themes/twentytwentyfive/assets/fonts/literata/Literata72pt-ExtraLightItalic.woff2";
+        assert_eq!(ARCHIVE_ROOT.len() + exact.len(), TAR_NAME_FIELD, "the fixture's legit name must sit AT the field size");
+        assert!(ARCHIVE_ROOT.len() + long.len() > TAR_NAME_FIELD);
+        let cut = &format!("{ARCHIVE_ROOT}{long}")[ARCHIVE_ROOT.len()..TAR_NAME_FIELD];
+        for p in [cut, "wp-includes/version.php"] {
+            let f = dir.join(p);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, "x").unwrap();
+        }
+        let expected = [long, exact, "wp-includes/version.php", "wp-includes/load.php", font];
+        assert_eq!(cut_name_casualties(&dir, expected), vec![long.to_string()]);
+
+        let r = cut_name_report(&dir, "7.1", expected);
+        let msg = r.message.expect("a casualty is reported");
+        assert!(msg.starts_with("1 WordPress 7.1 core file with long names is missing"), "{msg}");
+
+        let f = dir.join(long);
+        std::fs::write(f, "x").unwrap();
+        let r = cut_name_report(&dir, "7.1", expected);
+        assert!(r.missing.is_empty() && r.message.is_none(), "a repaired site reports nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 #[cfg(test)]
 mod core_zip_tests {
     use super::*;

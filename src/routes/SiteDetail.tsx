@@ -43,6 +43,7 @@ import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
+import { CoreFilesBanner } from "@/components/wordpress/CoreFilesBanner";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
 import { ResolverConsentFor } from "@/routes/Import";
@@ -592,6 +593,7 @@ function Overview({
             {eolNote(site.phpVersion, sitesEol, { wordpress: site.type === "wordpress" })}
           </div>
         )}
+        {isWordpress && <CoreFilesBanner siteId={site.id} />}
         <div className="grid grid-cols-3 gap-[14px]">
           <EnvMini label="PHP version">
             <span className="font-mono text-[1.125rem] font-semibold text-rex-text">
