@@ -320,7 +320,7 @@ chosen for exactly this reason.
 `rusqlite` is built with the `bundled` feature, so SQLite itself is compiled
 into the app. SQLite is in the public domain (https://sqlite.org/copyright.html).
 
-## Rust crates (statically linked; 412 external crates, universal macOS graph)
+## Rust crates (statically linked; 413 external crates, universal macOS graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -496,6 +496,7 @@ into the app. SQLite is in the public domain (https://sqlite.org/copyright.html)
 | lru | 0.18.2 | MIT |
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
+| md-5 | 0.10.6 | MIT OR Apache-2.0 |
 | memchr | 2.8.2 | Unlicense OR MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
@@ -743,7 +744,7 @@ used unmodified; their source is available from crates.io at the exact versions
 listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 `webpki-roots` (CDLA-Permissive-2.0) packages Mozilla's CA trust data.
 
-## Windows Rust crates (statically linked; 416 external crates, x86_64 Windows graph)
+## Windows Rust crates (statically linked; 417 external crates, x86_64 Windows graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -907,6 +908,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | lru | 0.18.2 | MIT |
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
+| md-5 | 0.10.6 | MIT OR Apache-2.0 |
 | memchr | 2.8.2 | Unlicense OR MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | mime | 0.3.17 | MIT OR Apache-2.0 |
@@ -1164,7 +1166,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | zmij | 1.0.21 | MIT |
 | zmij | 1.0.23 | MIT |
 
-## Linux Rust crates (statically linked; 439 external crates, x86_64 + aarch64 Linux graph)
+## Linux Rust crates (statically linked; 440 external crates, x86_64 + aarch64 Linux graph)
 
 | Crate | Version | Licence |
 |---|---|---|
@@ -1364,6 +1366,7 @@ listed, which satisfies MPL-2.0 §3.2 for unmodified library use.
 | lru-slab | 0.1.2 | MIT OR Apache-2.0 OR Zlib |
 | lzma-sys | 0.1.20 | MIT/Apache-2.0 |
 | markup5ever | 0.38.0 | MIT OR Apache-2.0 |
+| md-5 | 0.10.6 | MIT OR Apache-2.0 |
 | memchr | 2.8.2 | Unlicense OR MIT |
 | memchr | 2.8.3 | Unlicense OR MIT |
 | memoffset | 0.9.1 | MIT |

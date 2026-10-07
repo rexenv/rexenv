@@ -254,14 +254,16 @@ static REGISTRY: &[UserTool] = &[
                       `cache_flush`, `rewrite_flush`, `transient_delete_all`, `cron_run_due`, \
                       `cron_run_hook` {hook}, `checksum_cleanup` {paths — the files wp_info's \
                       `checksums` reported as not WordPress's own}, `core_update` (to the latest), \
-                      `core_reinstall` (the same version, files only) need `manage`; \
+                      `core_reinstall` (the same version, files only), `core_repair` (only the \
+                      long-named core and default-theme files a 0.4.0–0.7.1 download cut — the \
+                      site screen's Repair core files; never overwrites a theme file) need `manage`; \
                       `core_switch` {version} needs `destroy` — a downgrade can leave the database \
                       ahead of the code, and the reply says whether a database update is needed.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "site_id": { "type": "string" },
-                "action": { "type": "string", "enum": ["cache_flush", "rewrite_flush", "transient_delete_all", "cron_run_due", "cron_run_hook", "checksum_cleanup", "core_update", "core_reinstall", "core_switch"] },
+                "action": { "type": "string", "enum": ["cache_flush", "rewrite_flush", "transient_delete_all", "cron_run_due", "cron_run_hook", "checksum_cleanup", "core_update", "core_reinstall", "core_repair", "core_switch"] },
                 "hook": { "type": "string" }, "paths": { "type": "array", "items": { "type": "string" } }, "version": { "type": "string" }
             },
             "required": ["site_id", "action"],
@@ -1027,6 +1029,7 @@ pub trait WpOps: Send + Sync {
     fn checksum_cleanup<'a>(&'a self, id: String, paths: Vec<String>) -> OpFuture<'a, Result<crate::core::wordpress::ChecksumCleanup>>;
     fn core_update<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
     fn core_reinstall<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
+    fn core_repair<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
     fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>>;
     // ── wp_data ──
     fn db_export<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>>;
@@ -2017,7 +2020,7 @@ pub(crate) fn wp_user_scope(action: &str) -> Option<Scope> {
 
 pub(crate) fn wp_maintain_scope(action: &str) -> Option<Scope> {
     Some(match action {
-        "cache_flush" | "rewrite_flush" | "transient_delete_all" | "cron_run_due" | "cron_run_hook" | "checksum_cleanup" | "core_update" | "core_reinstall" => Scope::Manage,
+        "cache_flush" | "rewrite_flush" | "transient_delete_all" | "cron_run_due" | "cron_run_hook" | "checksum_cleanup" | "core_update" | "core_reinstall" | "core_repair" => Scope::Manage,
         "core_switch" => Scope::Destroy,
         _ => return None,
     })
@@ -2136,7 +2139,7 @@ fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
         let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_maintain needs a `site_id`.".into()))?;
         let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("wp_maintain needs an `action`.".into()))?;
         let scope = wp_maintain_scope(action).ok_or_else(|| {
-            Error::Other(format!("`{action}` is not a wp_maintain action. Use cache_flush, rewrite_flush, transient_delete_all, cron_run_due, cron_run_hook, checksum_cleanup, core_update, core_reinstall or core_switch."))
+            Error::Other(format!("`{action}` is not a wp_maintain action. Use cache_flush, rewrite_flush, transient_delete_all, cron_run_due, cron_run_hook, checksum_cleanup, core_update, core_reinstall, core_repair or core_switch."))
         })?;
         let wanted = match action {
             "cron_run_hook" => format!("run the cron hook `{}`", str_field(args, "hook", action)?),
@@ -2170,6 +2173,7 @@ fn wp_maintain<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
             }
             "core_update" => json!({ "output": scrub(wp.core_update(sid).await?) }),
             "core_reinstall" => json!({ "output": scrub(wp.core_reinstall(sid).await?) }),
+            "core_repair" => json!({ "output": scrub(wp.core_repair(sid).await?) }),
             _ => {
                 let r = wp.core_switch_version(sid, str_field(args, "version", action)?.to_string()).await?;
                 json!({ "version": r.version, "dbUpdateRequired": r.db_update_required })
@@ -3963,6 +3967,10 @@ pub(crate) mod tests {
         fn core_reinstall<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
             self.calls.lock().unwrap().push(format!("wp core_reinstall {id}"));
             Box::pin(async { Ok("Success: WordPress reinstalled.".into()) })
+        }
+        fn core_repair<'a>(&'a self, id: String) -> OpFuture<'a, Result<String>> {
+            self.calls.lock().unwrap().push(format!("wp core_repair {id}"));
+            Box::pin(async { Ok("reinstalled WordPress 7.1 core, put back 1 theme file".into()) })
         }
         fn core_switch_version<'a>(&'a self, id: String, version: String) -> OpFuture<'a, Result<crate::core::wordpress::WpCoreSwitch>> {
             self.calls.lock().unwrap().push(format!("wp core_switch {id} {version}"));

@@ -2045,7 +2045,8 @@ IPC surface — which is how a reader ends up designing against a system with on
   create with a password rexenv generates and shows ONCE, roles, a one-time login link
   and super-admin manage; a password reset and a delete destroy — the #446 posts fork is
   restated BEFORE any ask), `wp_option` (six vetted writes, all manage) and `wp_maintain`
-  (flushes, cron, checksum cleanup, core update/reinstall manage; `core_switch` destroys;
+  (flushes, cron, checksum cleanup, core update/reinstall/repair manage — `core_repair` is
+  the Site screen's Repair core files, #793; `core_switch` destroys;
   every wp-cli reply through the one scrubber), `wp_data` (exports named by FILE and
   located in words; a dry-run search-replace manages, a live one destroys; import and
   reset destroy), `wp_network`, and `site_wp_run` — the raw runner on the USER's site
@@ -2351,12 +2352,18 @@ IPC surface — which is how a reader ends up designing against a system with on
   long-named `php-ai-client` classes, silently on macOS. Since 0.7.2 every `core download` is a
   zip (`core_zip_url`, one place). For the sites already made, a WordPress site's Overview
   shows a warning with **Repair core files** (`CoreFilesBanner` → `wp_core_cut_names` →
-  `core_reinstall`, the version's no-content zip) and `rex doctor` prints a `WP core` finding.
+  `wp_core_repair_cut_names`: `core_reinstall`, the version's no-content zip, when a core file
+  is missing) and `rex doctor` prints a `WP core` finding.
   The check compares the docroot with wordpress.org's file list for its version
   (`wporg::core_file_list`, one GET per version per run): an offline "looks cut" heuristic is
   impossible because real names sit at exactly 100 bytes. Offline the banner stays silent and
-  doctor says `not checked`, never clean. `wp-content/` casualties (default-theme fonts) are
-  not reported: the no-content repair would not restore them.
+  doctor says `not checked`, never clean. The no-content zip carries no `wp-content/`, so the
+  cut default-theme fonts and patterns (14 on 7.1) come back one file at a time instead
+  (`wp_core_repair_cut_names`): `wporg::release_file` fetches each from the release's tag on
+  `core.svn.wordpress.org` and `wordpress::restore_release_file` writes it only if it is
+  absent, only if its MD5 is the checksums list's, never through a symlinked folder. A theme
+  whose folder the user deleted is not counted. That host answers 403 to a request with no
+  User-Agent, which the `wporg` client now always sends.
 - **WordPress detection survives a stopped stack** (`core::wordpress::wp_info` +
   `wp_presence`, 5 Sep 2026): `core is-installed` is the ONE probe of the three that
   needs the database — `core version` reads `wp-includes/version.php`, `config get`

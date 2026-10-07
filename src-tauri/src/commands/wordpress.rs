@@ -903,7 +903,52 @@ pub(crate) async fn cut_name_report_for(docroot: &std::path::Path) -> Result<Opt
         return Ok(None);
     };
     let list = core::wporg::core_file_list(&version).await?;
-    Ok(Some(core::wordpress::cut_name_report(docroot, &version, list.iter().map(String::as_str))))
+    Ok(Some(core::wordpress::cut_name_report(docroot, &version, list.keys().map(String::as_str))))
+}
+
+/// The banner's Repair: core back through `core_reinstall` (only when a core file is
+/// missing), then each missing theme/plugin file fetched alone and written by
+/// `restore_release_file` — MD5-checked, never over an existing file. Returns what it did;
+/// a file it could not restore is named, and the banner, asked again, still counts it.
+#[tauri::command]
+pub async fn wp_core_repair_cut_names(state: State<'_, AppState>, id: String) -> Result<String> {
+    let (docroot, php, wp) = site_tools(&state, &id).await?;
+    let version = core::wordpress::installed_version(&docroot)
+        .ok_or_else(|| Error::Other("this site's WordPress version is unknown — nothing to repair from".into()))?;
+    let list = core::wporg::core_file_list(&version).await?;
+    let report = core::wordpress::cut_name_report(&docroot, &version, list.keys().map(String::as_str));
+    let (content, core_files): (Vec<String>, Vec<String>) =
+        report.missing.into_iter().partition(|p| core::wordpress::is_content_path(p));
+    let mut done = Vec::new();
+    if !core_files.is_empty() {
+        let root = docroot.clone();
+        wp_blocking(move || core::wordpress::core_reinstall(&php, &wp, &root)).await?;
+        done.push(format!("reinstalled WordPress {version} core"));
+    }
+    let (mut restored, mut failed) = (0, Vec::new());
+    for rel in &content {
+        let got = match core::wporg::release_file(&version, rel).await {
+            Ok(bytes) => core::wordpress::restore_release_file(&docroot, rel, &bytes, &list[rel]),
+            Err(e) => Err(e),
+        };
+        match got {
+            Ok(()) => restored += 1,
+            Err(e) => failed.push(e.to_string()),
+        }
+    }
+    if restored > 0 {
+        done.push(format!("put back {restored} theme file{}", if restored == 1 { "" } else { "s" }));
+    }
+    if !failed.is_empty() {
+        return Err(Error::Other(format!(
+            "{}{}could not restore {}:\n{}",
+            done.join(", "),
+            if done.is_empty() { "" } else { "; " },
+            failed.len(),
+            failed.join("\n")
+        )));
+    }
+    Ok(if done.is_empty() { "nothing was missing".into() } else { done.join(", ") })
 }
 
 /// Export the site's database to the user's Downloads folder

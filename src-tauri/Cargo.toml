@@ -44,6 +44,10 @@ ring = "0.17"
 time = { version = "0.3", default-features = false, features = ["std", "formatting", "parsing", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "cookies", "json"] }
 sha2 = "0.10"
+# wordpress.org names each release file by its MD5 (core/checksums API); a default-theme file
+# put back after the 0.4.0–0.7.1 tarball cut is checked against it (ledger #793). RustCrypto,
+# the same `digest` family as sha2.
+md-5 = "0.10"
 tar = "0.4"
 flate2 = "1"
 # The Windows artifacts (Caddy, PHP, nginx, MySQL, Mailpit) ship as zips —

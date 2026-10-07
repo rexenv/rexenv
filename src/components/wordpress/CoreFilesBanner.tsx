@@ -2,9 +2,10 @@
 //
 // rexenv 0.4.0–0.7.1 downloaded WordPress as a tarball that PHP's PharData read
 // with every long file name cut at 100 characters, so those sites were created
-// missing core classes — silently, on macOS. Tools → Maintenance could repair
-// one, but only for somebody who already suspected it; this tells them. The
-// sentence comes from Rust (`CutNameReport.message`), beside the rule.
+// missing core classes and default-theme fonts — silently, on macOS. Tools →
+// Maintenance could reinstall core, but only for somebody who already suspected
+// it, and never the theme files; this tells them and repairs both. The sentence
+// comes from Rust (`CutNameReport.message`), beside the rule.
 //
 // Silent unless something is missing: an offline machine or a version
 // wordpress.org does not list renders nothing here (`rex doctor` reports those
@@ -13,7 +14,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { confirm } from "@/components/ui/dialog";
 import { toast, toastBackendError } from "@/lib/toast";
-import { wpCoreCutNames, wpCoreReinstall } from "@/lib/ipc";
+import { wpCoreCutNames, wpCoreRepairCutNames } from "@/lib/ipc";
 
 export const coreCutNamesKey = (siteId: string) => ["wp-core-cut-names", siteId];
 
@@ -27,13 +28,15 @@ export function CoreFilesBanner({ siteId }: { siteId: string }) {
     retry: false,
   });
   const repair = useMutation({
-    mutationFn: () => wpCoreReinstall(siteId),
-    onSuccess: () => {
-      toast.success("Core files repaired");
+    mutationFn: () => wpCoreRepairCutNames(siteId),
+    onSuccess: () => toast.success("Core files repaired"),
+    onError: (e) => toastBackendError(e),
+    // Asked again either way: a partial repair (one theme file refused) leaves the
+    // banner counting only what is still missing.
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: coreCutNamesKey(siteId) });
       void qc.invalidateQueries({ queryKey: ["wp-info", siteId] });
     },
-    onError: (e) => toastBackendError(e),
   });
   if (!data?.message) return null;
   return (
@@ -46,7 +49,7 @@ export function CoreFilesBanner({ siteId }: { siteId: string }) {
           if (
             await confirm({
               title: "Repair core files?",
-              message: `Re-download WordPress ${data.version} core files over this site. The database, wp-content and wp-config.php are not touched.`,
+              message: `Re-download WordPress ${data.version} core and put back the missing theme files. The database, wp-config.php and your files in wp-content are not touched.`,
               confirmLabel: "Repair",
             })
           ) {

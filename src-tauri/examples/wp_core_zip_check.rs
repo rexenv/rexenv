@@ -13,7 +13,9 @@
 //! real wordpress.org list): silent on a whole download, names exactly the deleted long file on
 //! the damaged one, silent again after the reinstall — and on the REAL bug's shape: the
 //! `.tar.gz` extracted by rexenv's own PHP through PharData (what WP-CLI did for 0.4.0–0.7.1),
-//! where it must name every long core file, since PharData cut each one.
+//! where it must name every long file, core and default theme, since PharData cut each one; and
+//! a default-theme font deleted from a whole site comes back through `wporg::release_file` +
+//! `wordpress::restore_release_file`, byte-for-byte the release's (its MD5 is the list's).
 //!
 //! Fixture-owned: everything under a temp directory this check creates and removes. No database,
 //! no services, no site rows — `verify-checksums` does not load WordPress.
@@ -69,6 +71,20 @@ async fn main() -> std::process::ExitCode {
     checksums(&mut check, "after the reinstall", &php, &wp, &site, None);
     cut_names(&mut check, "after the reinstall", &site, &[]).await;
 
+    // A default-theme font the no-content reinstall never brings back.
+    let font = "wp-content/themes/twentytwentyfive/assets/fonts/literata/Literata72pt-ExtraLightItalic.woff2";
+    let before = std::fs::read(site.join(font)).unwrap_or_default();
+    std::fs::remove_file(site.join(font)).ok();
+    cut_names(&mut check, "a deleted theme font", &site, &[font]).await;
+    let version = wordpress::installed_version(&site).unwrap_or_default();
+    let restored = match (wporg::core_file_list(&version).await, wporg::release_file(&version, font).await) {
+        (Ok(list), Ok(bytes)) => wordpress::restore_release_file(&site, font, &bytes, &list[font]),
+        (Err(e), _) | (_, Err(e)) => Err(e),
+    };
+    check.is("restore_release_file puts the font back", restored.is_ok(), &format!("{restored:?}"));
+    check.is("the restored font is the release's bytes", !before.is_empty() && std::fs::read(site.join(font)).unwrap_or_default() == before, "differs");
+    cut_names(&mut check, "after the font restore", &site, &[]).await;
+
     tarball_shape(&mut check, &php, &root).await;
 
     let _ = std::fs::remove_dir_all(&root);
@@ -115,17 +131,17 @@ async fn tarball_shape(check: &mut Check, php: &Path, root: &Path) {
     };
     let long: Vec<String> = {
         let mut v: Vec<String> = list
-            .iter()
-            .filter(|p| !p.starts_with("wp-content/") && "wordpress/".len() + p.len() > 100)
+            .keys()
+            .filter(|p| "wordpress/".len() + p.len() > 100)
             .cloned()
             .collect();
         v.sort();
         v
     };
-    let r = wordpress::cut_name_report(&site, &version, list.iter().map(String::as_str));
+    let r = wordpress::cut_name_report(&site, &version, list.keys().map(String::as_str));
     check.is(
-        &format!("the PharData extract: the detector names all {} long core files", long.len()),
-        !long.is_empty() && r.missing == long,
+        &format!("the PharData extract: the detector names all {} long files, core and theme", long.len()),
+        !long.is_empty() && { let mut m = r.missing.clone(); m.sort(); m == long },
         &format!("missing {} of {}: {:?}", r.missing.len(), long.len(), r.missing),
     );
 }
@@ -137,7 +153,7 @@ async fn cut_names(check: &mut Check, what: &str, dir: &Path, want: &[&str]) {
     };
     match wporg::core_file_list(&version).await {
         Ok(list) => {
-            let r = wordpress::cut_name_report(dir, &version, list.iter().map(String::as_str));
+            let r = wordpress::cut_name_report(dir, &version, list.keys().map(String::as_str));
             check.is(
                 &format!("{what}: the detector reports {want:?}"),
                 r.missing == want && r.message.is_some() != want.is_empty(),

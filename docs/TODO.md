@@ -357,7 +357,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `wp_core_zip_check` PASS 19/19 incl. the real PharData extract of `latest.tar.gz` → all 25 long core files
     named. SMOKE "A site missing long core files…" ✓ on the macOS 15.8 VM (banner, Repair, doctor ✗→✓,
     offline silent/⚠). Reaches users with the next release.
-  - [ ] **Default-theme files the tarball cut are not repaired.** The no-content zip `core_reinstall` uses never
+  - [x] **Default-theme files the tarball cut are not repaired.** ✓ 8 Oct 2026 — owner ruled "missing file gulo-i
+    nao": the banner now counts them (only while the theme's folder exists) and Repair fetches each from the release
+    tag, MD5-checked, written only where nothing is (#793; L1 + VM smoke). Original row: The no-content zip `core_reinstall` uses never
     touches `wp-content/`, so a 0.4.0–0.7.1 site keeps missing up to 14 long-named twentytwenty* fonts/patterns
     (7.1) — `hridoy.rex` still misses `Platypi-Italic-VariableFont_wght.woff2` and others after its 14 Sep repair.
     Cosmetic (a font falls back) and only while that theme is active; #793 deliberately does not report them.

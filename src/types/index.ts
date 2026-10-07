@@ -969,7 +969,7 @@ export interface WpChecksumReport {
   output: string;
 }
 
-/** Long-named core files a site is missing (mirrors the Rust CutNameReport) — rexenv
+/** Long-named core and default-theme files a site is missing (mirrors the Rust CutNameReport) — rexenv
  *  0.4.0–0.7.1 cut them when it downloaded WordPress. `message` is the sentence to
  *  render, written in Rust beside the rule; null when nothing is missing. */
 export interface WpCutNameReport {

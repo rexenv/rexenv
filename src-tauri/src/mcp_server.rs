@@ -1328,6 +1328,9 @@ impl<Rt: tauri::Runtime> user_sites::WpOps for AppSiteCreator<Rt> {
     fn core_reinstall<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
         Box::pin(async move { crate::commands::wordpress::wp_core_reinstall(self.state()?, id).await })
     }
+    fn core_repair<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<String>> {
+        Box::pin(async move { crate::commands::wordpress::wp_core_repair_cut_names(self.state()?, id).await })
+    }
     fn core_switch_version<'a>(&'a self, id: String, version: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::core::wordpress::WpCoreSwitch>> {
         Box::pin(async move { crate::commands::wordpress::wp_core_switch_version(self.state()?, id, version).await })
     }

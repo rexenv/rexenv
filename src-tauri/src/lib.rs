@@ -1388,6 +1388,7 @@ pub fn run() {
             commands::wordpress::wp_core_update,
             commands::wordpress::wp_core_reinstall,
             commands::wordpress::wp_core_cut_names,
+            commands::wordpress::wp_core_repair_cut_names,
             commands::wordpress::wp_core_verify_checksums,
             commands::wordpress::wp_db_export,
             commands::wordpress::wp_db_import,

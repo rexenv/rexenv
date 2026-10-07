@@ -1602,6 +1602,13 @@ export async function wpCoreCutNames(id: string): Promise<WpCutNameReport | null
   return invoke<WpCutNameReport | null>("wp_core_cut_names", { id });
 }
 
+/** The core-files banner's Repair: core reinstalled only if a core file is missing, then each
+ *  missing default-theme file fetched, MD5-checked and written — never over an existing file. */
+export async function wpCoreRepairCutNames(id: string): Promise<string> {
+  if (!isTauri()) return "reinstalled WordPress core (mock)";
+  return invoke<string>("wp_core_repair_cut_names", { id });
+}
+
 /** Re-download core files of the current version. Returns WP-CLI output. */
 export async function wpCoreReinstall(id: string): Promise<string> {
   if (!isTauri()) return "Success: WordPress downloaded. (mock)";

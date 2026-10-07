@@ -30,6 +30,9 @@ fn client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
+            // core.svn.wordpress.org answers 403 to a request with NO User-Agent (measured
+            // 8 Oct 2026: the same URL 200 with any UA) — `release_file` failed on it first.
+            .user_agent(concat!("rexenv/", env!("CARGO_PKG_VERSION")))
             .build()
             .expect("wporg client")
     })
@@ -381,34 +384,28 @@ pub(crate) fn decode_entities(s: &str) -> String {
     out
 }
 
-/// Every file a WordPress release ships, from wordpress.org's checksums API — the list
-/// [`crate::core::wordpress::cut_name_casualties`] checks a docroot against. A release's
-/// file list never changes, so each version is asked at most once per app run (a site
-/// screen opened twice and `rex doctor` over ten sites on the same version cost one GET).
-/// File NAMES are the same in every locale, so en_US answers for all of them.
-pub async fn core_file_list(version: &str) -> Result<std::sync::Arc<Vec<String>>> {
-    type Cache = std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<Vec<String>>>>;
+/// Every file a WordPress release ships, with its MD5, from wordpress.org's checksums API —
+/// the list [`crate::core::wordpress::cut_name_casualties`] checks a docroot against and
+/// [`crate::core::wordpress::restore_release_file`] verifies a download with. A release's list
+/// never changes, so each version is asked at most once per app run (a site screen opened
+/// twice and `rex doctor` over ten sites on the same version cost one GET). File NAMES are the
+/// same in every locale, so en_US answers for all of them.
+pub async fn core_file_list(version: &str) -> Result<std::sync::Arc<FileList>> {
+    type Cache = std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<FileList>>>;
     static CACHE: std::sync::OnceLock<Cache> = std::sync::OnceLock::new();
     let cache = CACHE.get_or_init(Default::default);
     if let Some(hit) = cache.lock().ok().and_then(|c| c.get(version).cloned()) {
         return Ok(hit);
     }
-    let fail = |e: reqwest::Error| {
-        Error::Other(if e.is_timeout() {
-            "WordPress.org didn't answer within 10s — check your connection.".into()
-        } else {
-            format!("WordPress.org checksums lookup failed: {e}")
-        })
-    };
     let body: serde_json::Value = client()
         .get("https://api.wordpress.org/core/checksums/1.0/")
         .query(&[("version", version), ("locale", "en_US")])
         .send()
         .await
-        .map_err(fail)?
+        .map_err(|e| fetch_failed("checksums lookup", e))?
         .json()
         .await
-        .map_err(fail)?;
+        .map_err(|e| fetch_failed("checksums lookup", e))?;
     let list = std::sync::Arc::new(parse_core_file_list(&body, version)?);
     if let Ok(mut c) = cache.lock() {
         c.insert(version.to_string(), list.clone());
@@ -416,13 +413,47 @@ pub async fn core_file_list(version: &str) -> Result<std::sync::Arc<Vec<String>>
     Ok(list)
 }
 
+/// Release path → MD5 hex.
+pub type FileList = std::collections::BTreeMap<String, String>;
+
+fn fetch_failed(what: &str, e: reqwest::Error) -> Error {
+    Error::Other(if e.is_timeout() {
+        "WordPress.org didn't answer within 10s — check your connection.".into()
+    } else {
+        format!("WordPress.org {what} failed: {e}")
+    })
+}
+
 /// `{"checksums": {path: md5}}` — or `{"checksums": false}` for a version wordpress.org does
 /// not know, which is an error: an empty list would read as "nothing is missing".
-fn parse_core_file_list(body: &serde_json::Value, version: &str) -> Result<Vec<String>> {
+fn parse_core_file_list(body: &serde_json::Value, version: &str) -> Result<FileList> {
     match body.get("checksums").and_then(|c| c.as_object()) {
-        Some(map) if !map.is_empty() => Ok(map.keys().cloned().collect()),
+        Some(map) if !map.is_empty() => Ok(map
+            .iter()
+            .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_string())))
+            .collect()),
         _ => Err(Error::Other(format!("WordPress.org has no file list for WordPress {version}"))),
     }
+}
+
+/// One file of a WordPress release, as built — from the release's tag in core's SVN mirror,
+/// which serves each file at its release path (measured 8 Oct 2026: a 7.1.2 theme font
+/// answered 200 with exactly the MD5 the checksums list names). One small GET per file beats
+/// a 30 MB release zip for the handful a cut tarball lost. The caller verifies the MD5.
+pub async fn release_file(version: &str, rel: &str) -> Result<Vec<u8>> {
+    let safe = |c: char| c.is_ascii_alphanumeric() || "._-/".contains(c);
+    if !crate::core::wordpress::valid_release_version(version) || !rel.chars().all(safe) || rel.contains("..") {
+        return Err(Error::Other(format!("not fetching {rel:?} for WordPress {version:?}")));
+    }
+    let resp = client()
+        .get(format!("https://core.svn.wordpress.org/tags/{version}/{rel}"))
+        .send()
+        .await
+        .map_err(|e| fetch_failed("download", e))?;
+    if !resp.status().is_success() {
+        return Err(Error::Other(format!("WordPress.org answered {} for {rel}", resp.status())));
+    }
+    Ok(resp.bytes().await.map_err(|e| fetch_failed("download", e))?.to_vec())
 }
 
 #[cfg(test)]
@@ -432,9 +463,9 @@ mod tests {
     #[test]
     fn an_unknown_version_is_an_error_never_an_empty_list() {
         let ok = serde_json::json!({"checksums": {"wp-load.php": "abc", "wp-includes/version.php": "def"}});
-        let mut got = parse_core_file_list(&ok, "7.1").unwrap();
-        got.sort();
-        assert_eq!(got, ["wp-includes/version.php", "wp-load.php"]);
+        let got = parse_core_file_list(&ok, "7.1").unwrap();
+        assert_eq!(got.keys().collect::<Vec<_>>(), ["wp-includes/version.php", "wp-load.php"]);
+        assert_eq!(got["wp-load.php"], "abc");
         for bad in [serde_json::json!({"checksums": false}), serde_json::json!({"checksums": {}}), serde_json::json!({})] {
             assert!(parse_core_file_list(&bad, "9.9").is_err(), "{bad}");
         }

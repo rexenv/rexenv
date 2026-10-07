@@ -3122,7 +3122,7 @@ pub fn core_download_args(url: &str) -> Vec<String> {
 }
 
 /// A release version: two or three dot-separated numbers (`7.1`, `7.0.4`).
-fn valid_release_version(v: &str) -> bool {
+pub(crate) fn valid_release_version(v: &str) -> bool {
     let parts: Vec<&str> = v.split('.').collect();
     (2..=3).contains(&parts.len())
         && parts.iter().all(|p| !p.is_empty() && p.len() <= 4 && p.chars().all(|c| c.is_ascii_digit()))
@@ -3148,90 +3148,188 @@ const ARCHIVE_ROOT: &str = "wordpress/";
 #[serde(rename_all = "camelCase")]
 pub struct CutNameReport {
     pub version: String,
-    /// Docroot-relative core files that are missing (`/`-separated).
+    /// Docroot-relative release files that are missing (`/`-separated): core files, then
+    /// files of a bundled theme or plugin the site still has.
     pub missing: Vec<String>,
     /// The sentence the user reads, `None` when nothing is missing.
     pub message: Option<String>,
 }
 
-/// Core files a site created by rexenv 0.4.0–0.7.1 can be missing: `wp core download`
+/// A release path under `wp-content/` — a bundled theme's or plugin's file, which the
+/// no-content core build never carries ([`restore_release_file`] puts these back).
+pub fn is_content_path(rel: &str) -> bool {
+    rel.starts_with("wp-content/")
+}
+
+/// Release files a site created by rexenv 0.4.0–0.7.1 can be missing: `wp core download`
 /// fetched the tarball then, and PharData cut every member name longer than
 /// [`TAR_NAME_FIELD`] (see [`core_zip_url`]). `expected` is the version's file list from
-/// wordpress.org's checksums; the casualties are exactly its long names that are absent.
+/// wordpress.org's checksums; the casualties are its long names that are absent.
 ///
 /// The cut leftover (`…Interface.`) is deliberately NOT required as proof: Windows strips a
 /// trailing dot and refuses others, so a casualty there has no leftover, and a long-named
-/// core file that is missing for any other reason is repaired the same way. Measured
-/// 8 Oct 2026 against 7.1: 39 long names, 25 in `wp-includes/php-ai-client` — the 25 the
-/// five broken sites missed on 14 Sep. The other 14 are default-theme files under
-/// `wp-content/`, skipped here: the repair is the NO-CONTENT build ([`core_reinstall`]),
-/// which never restores them, so naming them would promise a fix the button does not make.
+/// file missing for any other reason is repaired the same way. Measured 8 Oct 2026 against
+/// 7.1: 39 long names — 25 core files in `wp-includes/php-ai-client` (the 25 the five broken
+/// sites missed on 14 Sep) and 14 default-theme fonts and patterns. A `wp-content/` file
+/// counts only while its theme or plugin FOLDER is still there: a user who deleted an unused
+/// `twentytwentythree` did not lose its fonts to this bug, and must not be told so.
 pub fn cut_name_casualties<'a>(docroot: &Path, expected: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     let mut missing: Vec<String> = expected
         .into_iter()
-        .filter(|p| !p.starts_with("wp-content/"))
         .filter(|p| ARCHIVE_ROOT.len() + p.len() > TAR_NAME_FIELD)
+        .filter(|p| !is_content_path(p) || content_owner_present(docroot, p))
         .filter(|p| !docroot.join(p).exists())
         .map(str::to_string)
         .collect();
-    missing.sort();
+    // Core first (its absence breaks PHP; a theme's breaks a font), each half sorted.
+    missing.sort_by(|a, b| (is_content_path(a), a).cmp(&(is_content_path(b), b)));
     missing
+}
+
+/// Does the theme or plugin folder a `wp-content/<kind>/<slug>/…` path belongs to exist?
+fn content_owner_present(docroot: &Path, rel: &str) -> bool {
+    let parts: Vec<&str> = rel.split('/').collect();
+    parts.len() > 3
+        && matches!(parts[1], "themes" | "plugins")
+        && docroot.join(parts[0]).join(parts[1]).join(parts[2]).is_dir()
 }
 
 /// The [`CutNameReport`] for a docroot running `version`, given its expected file list.
 pub fn cut_name_report<'a>(docroot: &Path, version: &str, expected: impl IntoIterator<Item = &'a str>) -> CutNameReport {
     let missing = cut_name_casualties(docroot, expected);
+    let content = missing.iter().filter(|p| is_content_path(p)).count();
+    let core = missing.len() - content;
+    let plural = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
     // "usually": the files are named from the list, the cause is inferred — a file deleted by
     // hand reads exactly the same (the 8 Oct VM smoke deleted one and was told 0.4.0–0.7.1 did it).
     let message = (!missing.is_empty()).then(|| {
+        let what = match (core, content) {
+            (c, 0) => format!("{} with long names {} missing, and code that loads {} fails",
+                plural(c, "core file", "core files"), if c == 1 { "is" } else { "are" }, if c == 1 { "it" } else { "them" }),
+            (0, t) => format!("{} with long names {} missing, so a font or pattern of that theme falls back",
+                plural(t, "default-theme file", "default-theme files"), if t == 1 { "is" } else { "are" }),
+            (c, t) => format!("{} and {} with long names are missing, and code that loads the core files fails",
+                plural(c, "core file", "core files"), plural(t, "default-theme file", "default-theme files")),
+        };
         format!(
-            "{n} WordPress {version} core file{s} with long names {are} missing — usually because \
-             rexenv 0.4.0–0.7.1 cut long file names when it downloaded WordPress — and code that \
-             loads {them} fails. Repair core files re-downloads this version's core; the database, \
-             wp-content and wp-config.php are not touched.",
-            n = missing.len(),
-            s = if missing.len() == 1 { "" } else { "s" },
-            are = if missing.len() == 1 { "is" } else { "are" },
-            them = if missing.len() == 1 { "it" } else { "them" },
+            "WordPress {version}: {what} — usually because rexenv 0.4.0–0.7.1 cut long file names when \
+             it downloaded WordPress. Repair core files re-downloads this version's core and puts back \
+             only the missing theme files; the database, wp-config.php and your files in wp-content \
+             are not touched."
         )
     });
     CutNameReport { version: version.to_string(), missing, message }
+}
+
+/// Put one missing release file back: `rel` from wordpress.org's list, `bytes` from the
+/// release, `md5` the digest that list names for it. Only for a `wp-content/` path (core goes
+/// back through [`core_reinstall`]), only when nothing is there — the file is created with
+/// `create_new`, so an existing one (a user's edit, a race) is never overwritten — and never
+/// through a symlink: a linked theme folder is somebody's repository, and a release font
+/// dropped into it would turn up in their `git status`.
+pub fn restore_release_file(docroot: &Path, rel: &str, bytes: &[u8], md5: &str) -> Result<()> {
+    use md5::Digest;
+    use std::path::Component;
+    let bad = |why: &str| Err(Error::Other(format!("not restoring {rel}: {why}")));
+    if !is_content_path(rel) || !Path::new(rel).components().all(|c| matches!(c, Component::Normal(_))) {
+        return bad("not a plain path under wp-content/");
+    }
+    let got = format!("{:x}", md5::Md5::digest(bytes));
+    if !got.eq_ignore_ascii_case(md5) {
+        return bad(&format!("downloaded file's md5 {got} is not wordpress.org's {md5}"));
+    }
+    let target = docroot.join(rel);
+    let mut dir = docroot.to_path_buf();
+    for part in Path::new(rel).parent().into_iter().flat_map(|p| p.components()) {
+        dir.push(part);
+        // `symlink_metadata` does not follow: a symlinked folder is "not a real folder" here.
+        match std::fs::symlink_metadata(&dir) {
+            Ok(m) if !m.is_dir() => return bad(&format!("{} is not a real folder (a file or a symlink)", dir.display())),
+            Ok(_) => {}
+            Err(_) => std::fs::create_dir(&dir)?,
+        }
+    }
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&target)?;
+    f.write_all(bytes)?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod cut_name_tests {
     use super::*;
 
-    /// The shape of the 14 Sep sites: a long-named class missing beside its cut leftover.
-    /// Must NOT count, though missing too: a legit name of EXACTLY 100 bytes (PharData kept
-    /// it whole — the boundary), a short name (not this bug), and a long default-theme font
-    /// (the no-content repair never restores it).
+    fn touch(dir: &Path, rel: &str) {
+        let f = dir.join(rel);
+        std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+        std::fs::write(f, "x").unwrap();
+    }
+
+    /// The shape of the 14 Sep sites: a long-named class missing beside its cut leftover, and
+    /// a long font of a theme the site still has. Must NOT count, though missing too: a legit
+    /// name of EXACTLY 100 bytes (PharData kept it whole — the boundary), a short name (not
+    /// this bug), and a long font of a theme whose whole folder the user deleted.
     #[test]
-    fn only_missing_long_core_names_are_casualties() {
+    fn only_missing_long_names_are_casualties() {
         let dir = std::env::temp_dir().join(format!("rexenv-cutname-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let long = "wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php";
         let exact = "wp-includes/php-ai-client/src/Providers/Http/Abstracts/AbstractClientDiscoveryStrategy.php";
         let font = "wp-content/themes/twentytwentyfive/assets/fonts/literata/Literata72pt-ExtraLightItalic.woff2";
+        let gone = "wp-content/themes/twentytwentythree/assets/fonts/source-serif-pro/SourceSerif4Variable-Italic.ttf.woff2";
         assert_eq!(ARCHIVE_ROOT.len() + exact.len(), TAR_NAME_FIELD, "the fixture's legit name must sit AT the field size");
-        assert!(ARCHIVE_ROOT.len() + long.len() > TAR_NAME_FIELD);
+        assert!(ARCHIVE_ROOT.len() + long.len() > TAR_NAME_FIELD && ARCHIVE_ROOT.len() + gone.len() > TAR_NAME_FIELD);
         let cut = &format!("{ARCHIVE_ROOT}{long}")[ARCHIVE_ROOT.len()..TAR_NAME_FIELD];
-        for p in [cut, "wp-includes/version.php"] {
-            let f = dir.join(p);
-            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
-            std::fs::write(f, "x").unwrap();
+        for p in [cut, "wp-includes/version.php", "wp-content/themes/twentytwentyfive/style.css"] {
+            touch(&dir, p);
         }
-        let expected = [long, exact, "wp-includes/version.php", "wp-includes/load.php", font];
-        assert_eq!(cut_name_casualties(&dir, expected), vec![long.to_string()]);
+        let expected = [font, long, exact, "wp-includes/version.php", "wp-includes/load.php", gone];
+        assert_eq!(cut_name_casualties(&dir, expected), vec![long.to_string(), font.to_string()], "core first");
 
         let r = cut_name_report(&dir, "7.1", expected);
         let msg = r.message.expect("a casualty is reported");
-        assert!(msg.starts_with("1 WordPress 7.1 core file with long names is missing — usually because"), "{msg}");
+        assert!(msg.starts_with("WordPress 7.1: 1 core file and 1 default-theme file with long names are missing"), "{msg}");
+        assert!(msg.contains("usually because"), "{msg}");
 
-        let f = dir.join(long);
-        std::fs::write(f, "x").unwrap();
+        touch(&dir, long);
+        let msg = cut_name_report(&dir, "7.1", expected).message.unwrap();
+        assert!(msg.starts_with("WordPress 7.1: 1 default-theme file with long names is missing"), "{msg}");
+        touch(&dir, font);
         let r = cut_name_report(&dir, "7.1", expected);
         assert!(r.missing.is_empty() && r.message.is_none(), "a repaired site reports nothing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A restore writes only a MISSING wp-content file whose bytes match the list's md5, and
+    /// never through a symlinked folder.
+    #[test]
+    fn a_restore_never_overwrites_never_leaves_wp_content_and_checks_the_md5() {
+        let dir = std::env::temp_dir().join(format!("rexenv-cutrestore-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("wp-content/themes/t")).unwrap();
+        let rel = "wp-content/themes/t/assets/fonts/a.woff2";
+        let md5_of_x = "9dd4e461268c8034f5c8564e155c67a6";
+
+        assert!(restore_release_file(&dir, rel, b"y", md5_of_x).is_err(), "wrong bytes for the md5");
+        assert!(!dir.join(rel).exists());
+        restore_release_file(&dir, rel, b"x", md5_of_x).unwrap();
+        assert_eq!(std::fs::read(dir.join(rel)).unwrap(), b"x");
+
+        std::fs::write(dir.join(rel), "edited").unwrap();
+        assert!(restore_release_file(&dir, rel, b"x", md5_of_x).is_err(), "an existing file is never overwritten");
+        assert_eq!(std::fs::read_to_string(dir.join(rel)).unwrap(), "edited");
+
+        for bad in ["wp-includes/x.php", "wp-content/../wp-config.php", "/etc/x", "wp-content/themes/../../x"] {
+            assert!(restore_release_file(&dir, bad, b"x", md5_of_x).is_err(), "{bad}");
+        }
+        #[cfg(unix)]
+        {
+            let elsewhere = dir.join("repo");
+            std::fs::create_dir_all(&elsewhere).unwrap();
+            std::os::unix::fs::symlink(&elsewhere, dir.join("wp-content/themes/linked")).unwrap();
+            let r = restore_release_file(&dir, "wp-content/themes/linked/f.woff2", b"x", md5_of_x);
+            assert!(r.is_err() && !elsewhere.join("f.woff2").exists(), "a linked theme folder is not written into");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

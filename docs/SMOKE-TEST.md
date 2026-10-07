@@ -1062,7 +1062,8 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
 
 - [x] **A site missing long core files says so, and Repair fixes it** (ledger #793). In a scratch
-  WordPress site, delete `wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php`,
+  WordPress site, delete `wp-includes/php-ai-client/src/Providers/Http/Contracts/WithRequestAuthenticationInterface.php`
+  and a long twentytwentyfive font (below),
   then open the site: Overview shows the amber "1 WordPress … core file with long names is missing"
   note with **Repair core files**; Repair → confirm → toast "Core files repaired", the note is gone
   and the file is back. `rex doctor` shows `✗ WP core <site>: …` before the repair and
@@ -1074,6 +1075,9 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   `api.wordpress.org` blocked in `/etc/hosts` (BOTH `0.0.0.0` and `::` — the v4 line alone still let the
   app through over IPv6): no note, doctor `⚠ … not checked`. The run changed the sentence to "usually
   because rexenv 0.4.0–0.7.1…": a hand-deleted file was told the old release had cut it.
+  ✓ 8 Oct 2026, the theme leg (same VM, build 90e0fd98+ with the theme restore): ALSO delete
+  `wp-content/themes/twentytwentyfive/assets/fonts/literata/Literata72pt-ExtraLightItalic.woff2` — the note
+  reads "1 core file and 1 default-theme file…", Repair puts both back byte-identical, doctor ✓.
 
 ## Stopping ONE site (v44) — the shared services must NOT go with it
 - [x] **With the stack STOPPED (Stop all), hover a site row:** its "Open in browser" quick
