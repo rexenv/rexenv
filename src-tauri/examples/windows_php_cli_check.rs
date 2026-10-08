@@ -9,7 +9,10 @@
 //! tree AND leaves a `php.ini` beside it; `php.exe -m` run with NO flags (as WP-CLI, Composer and a
 //! terminal run it) lists every extension the platform's model names; the file is rewritten when
 //! it differs; WP-CLI runs through that PHP (`wp --info`) and `wp core download` reaches
-//! wordpress.org over HTTPS with WP-CLI's own CA bundle — no CA configured in PHP.
+//! wordpress.org over HTTPS with WP-CLI's own CA bundle — no CA configured in PHP. Then, for
+//! EVERY pinned PHP version, a bare `php -m` and the group's preflight load exactly the
+//! extensions that version ships — the 8.4 IMAP report (8 Oct 2026) is what one 8.3-only run
+//! missed.
 //!
 //! Fixture-owned: a sandboxed platform under `%TEMP%\rexenv-php-cli-check` (the WordPress download
 //! lands there; removed at the end), the real binary cache (the documented sandbox exception —
@@ -32,7 +35,7 @@ async fn main() -> std::process::ExitCode {
 #[cfg(target_os = "windows")]
 mod windows {
     use super::common::{self, Check};
-    use rexenv_lib::core::{binaries, php_cgi, wordpress};
+    use rexenv_lib::core::{binaries, php, php_cgi, wordpress};
     use rexenv_lib::platform::traits::PoolModel;
     use std::process::{Command, ExitCode};
 
@@ -51,16 +54,17 @@ mod windows {
         let Ok(php) = php else { return check.verdict() };
         let dir = php.parent().unwrap().to_path_buf();
         let ini = dir.join("php.ini");
-        let want = php_cgi::render_cli_ini(&group, &dir);
+        let want = php_cgi::render_cli_ini(&group, binaries::pins().php, &dir);
         check.is("the tree carries rexenv's php.ini", std::fs::read_to_string(&ini).ok().as_deref() == Some(want.as_str()), &ini.display().to_string());
 
         // Exactly how WP-CLI, Composer and a terminal run it: no -n, no -c, no -d.
         let out = Command::new(&php).arg("-m").output().expect("run php -m");
         let listed: Vec<String> = String::from_utf8_lossy(&out.stdout).lines().map(|l| l.trim().to_ascii_lowercase()).collect();
-        let missing: Vec<&str> = group.extensions.iter().copied().filter(|e| !listed.contains(&e.to_string()))
+        let expected = group.modules(binaries::pins().php);
+        let missing: Vec<&str> = expected.iter().copied().filter(|e| !listed.contains(&e.to_string()))
             .chain(group.zend_extensions.iter().copied().filter(|_| !listed.contains(&"zend opcache".to_string())))
             .collect();
-        check.is(&format!("a bare `php -m` lists all {} extensions", group.extensions.len() + group.zend_extensions.len()), out.status.success() && missing.is_empty(), &format!("missing {missing:?}; stderr {}", String::from_utf8_lossy(&out.stderr)));
+        check.is(&format!("a bare `php -m` lists all {} extensions", expected.len() + group.zend_extensions.len()), out.status.success() && missing.is_empty(), &format!("missing {missing:?}; stderr {}", String::from_utf8_lossy(&out.stderr)));
         let loaded = Command::new(&php).args(["-r", "echo php_ini_loaded_file();"]).output().expect("run php -r");
         check.is("the ini PHP loaded is the one beside php.exe", String::from_utf8_lossy(&loaded.stdout).trim().eq_ignore_ascii_case(&ini.display().to_string()), &String::from_utf8_lossy(&loaded.stdout));
 
@@ -80,6 +84,29 @@ mod windows {
         let dl = wordpress::wp_cli(&php, &wp, &["core", "download", &path], None);
         let dl_err = dl.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).into_owned()).unwrap_or_default();
         check.is("wp core download reaches wordpress.org over HTTPS", dl.as_ref().is_ok_and(|o| o.status.success()) && docroot.join("wp-load.php").exists(), &dl_err);
+
+        // Every pinned version: the CLI's php.ini and the group's preflight, startup-warning free.
+        for &version in binaries::pins().php_versions {
+            let Ok(php) = binaries::resolve_program(&*plat, "php", version).await else {
+                check.is(&format!("PHP {version} resolves"), false, "resolve failed");
+                continue;
+            };
+            let dir = php.parent().unwrap().to_path_buf();
+            let out = Command::new(&php).arg("-m").output().expect("run php -m");
+            let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+            let listed: Vec<String> = stdout.lines().map(|l| l.trim().to_ascii_lowercase()).collect();
+            let expected = group.modules(version);
+            let missing: Vec<&str> = expected.iter().copied().filter(|e| !listed.contains(&e.to_string())).collect();
+            check.is(
+                &format!("PHP {version}: a bare `php -m` loads its {} extensions with no startup warning", expected.len()),
+                out.status.success() && missing.is_empty() && !stdout.contains("PHP Startup") && !stderr.contains("PHP Startup"),
+                &format!("missing {missing:?}; stderr {stderr}"),
+            );
+            let minor = php::minor_of(version);
+            let ini = php_cgi::write_ini(&*plat, &group, version, &dir, &format!("{minor}.check"), None, &[]);
+            let pre = ini.and_then(|ini| php_cgi::preflight(&*plat, &group, version, &dir, &ini));
+            check.is(&format!("PHP {version}: the group's preflight passes"), pre.is_ok(), &format!("{pre:?}"));
+        }
 
         let _ = std::fs::remove_dir_all(&root);
         check.verdict()

@@ -274,6 +274,13 @@ before anything is built on it.
 - **Extensions: the 26 the official zip ships that rexenv's macOS build also has** — bz2 curl dba
   exif fileinfo ftp gd gmp imap intl mbstring mysqli opcache openssl pdo_mysql pdo_pgsql
   pdo_sqlite pgsql shmop soap sockets sodium sqlite3 sysvshm xsl zip (plus what PHP compiles in).
+  **Amended 8 Oct 2026:** that list was read off the 8.3 zip and written into every minor's ini.
+  The other zips differ — 8.4+ has no IMAP (moved to PECL), zip is built in before 8.2, gd's
+  file is `php_gd2.dll` on 7.4 — and the preflight refuses any startup warning, so 7.4, 8.0,
+  8.1, 8.4 and 8.5 groups could not start (a user's 8.4 report; the rest measured on the Win11
+  VM by `windows_php_cli_check` over every pinned minor — every earlier proof had run on 8.3).
+  The model now names `per_version` rules (`ExtChange`); the ini, the CLI's `php.ini` and the
+  preflight's expectation all follow the version (`CgiGroup::ext_lines` / `modules`).
   pcntl, posix, sysvmsg and sysvsem do not exist on Windows. The PECL ones the macOS build carries
   — apcu, imagick, redis, event, swoole, protobuf, opentelemetry — are NOT in v1: each would be a
   third-party DLL pin, a trust decision and a sweep target; Settings says so honestly, D4's shape.

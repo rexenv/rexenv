@@ -30,7 +30,7 @@ pub const MAX_REQUESTS: u32 = 500;
 /// everything not written here is PHP's built-in default, as the php-fpm pool's
 /// static build runs with no php.ini at all (owner ruling 14 Sep 2026).
 ///
-/// - `extension_dir` and one line per extension the platform's model names;
+/// - `extension_dir` and one line per extension the platform's model names for `version`;
 /// - the mail catch-all as PHP's SMTP keys: `mail()` connects to Mailpit directly,
 ///   because the group has no shell to run the `sendmail` shim through;
 /// - the user's whitelisted, pre-validated settings as plain `key = value` lines
@@ -41,6 +41,7 @@ pub const MAX_REQUESTS: u32 = 500;
 /// PHP has unix sockets.
 pub fn render_ini(
     group: &CgiGroup,
+    version: &str,
     php_dir: &Path,
     log_file: &Path,
     catch: Option<&super::mail::Catch>,
@@ -49,7 +50,7 @@ pub fn render_ini(
     let mut ini = String::from(
         "; rexenv php-cgi group — generated on every start; edits here are overwritten\n",
     );
-    ini.push_str(&extension_lines(group, php_dir));
+    ini.push_str(&extension_lines(group, version, php_dir));
     ini.push_str("log_errors = On\n");
     ini.push_str(&format!("error_log = \"{}\"\n", log_file.display()));
     if catch.is_some() {
@@ -64,11 +65,11 @@ pub fn render_ini(
     ini
 }
 
-/// `extension_dir` and one line per extension — shared by the group's ini and the CLI's, so
-/// the pool and every PHP CLI spawn can never load different sets.
-fn extension_lines(group: &CgiGroup, php_dir: &Path) -> String {
+/// `extension_dir` and one line per extension `version` ships — shared by the group's ini and
+/// the CLI's, so the pool and every PHP CLI spawn can never load different sets.
+fn extension_lines(group: &CgiGroup, version: &str, php_dir: &Path) -> String {
     let mut lines = format!("extension_dir = \"{}\"\n", php_dir.join("ext").display());
-    for ext in group.extensions {
+    for ext in group.ext_lines(version) {
         lines.push_str(&format!("extension = {ext}\n"));
     }
     for ext in group.zend_extensions {
@@ -87,18 +88,19 @@ fn extension_lines(group: &CgiGroup, php_dir: &Path) -> String {
 /// group is unaffected: it runs `-n -c <its own ini>`. No settings and no mail keys: the CLI
 /// runs with PHP's defaults, as the static build does; mail catch for the CLI stays with the
 /// call sites that pass it.
-pub fn render_cli_ini(group: &CgiGroup, php_dir: &Path) -> String {
+pub fn render_cli_ini(group: &CgiGroup, version: &str, php_dir: &Path) -> String {
     let mut ini = String::from(
         "; rexenv — the PHP CLI's extensions for this tree; rewritten when it differs\n",
     );
-    ini.push_str(&extension_lines(group, php_dir));
+    ini.push_str(&extension_lines(group, version, php_dir));
     ini
 }
 
-/// Make sure a resolved `name` tree carries the CLI's `php.ini`, when this platform serves
-/// PHP as a php-cgi group and `name` is that model's PHP. Idempotent; a file that differs
-/// (a tree published before this existed, a moved cache) is rewritten.
-pub fn ensure_cli_ini(platform: &dyn Platform, name: &str, dir: &Path) -> Result<()> {
+/// Make sure a resolved `name` tree (PHP `version`) carries the CLI's `php.ini`, when this
+/// platform serves PHP as a php-cgi group and `name` is that model's PHP. Idempotent; a file
+/// that differs (a tree published before this existed, a moved cache, an 8.4 tree written
+/// with 8.3's extensions) is rewritten.
+pub fn ensure_cli_ini(platform: &dyn Platform, name: &str, version: &str, dir: &Path) -> Result<()> {
     let model = platform.supervisor().php_pool_model();
     let PoolModel::CgiGroup(group) = model else {
         return Ok(());
@@ -107,7 +109,7 @@ pub fn ensure_cli_ini(platform: &dyn Platform, name: &str, dir: &Path) -> Result
         return Ok(());
     }
     let path = dir.join("php.ini");
-    let want = render_cli_ini(&group, dir);
+    let want = render_cli_ini(&group, version, dir);
     if std::fs::read_to_string(&path).ok().as_deref() != Some(want.as_str()) {
         std::fs::write(&path, want)?;
     }
@@ -158,6 +160,7 @@ fn module_name(ext: &str) -> &str {
 /// the model asked for that the module list does not show.
 pub fn preflight_verdict(
     group: &CgiGroup,
+    version: &str,
     exited_ok: bool,
     output: &str,
 ) -> std::result::Result<(), String> {
@@ -174,10 +177,10 @@ pub fn preflight_verdict(
     }
     let listed: Vec<String> = output.lines().map(|l| l.trim().to_ascii_lowercase()).collect();
     let missing: Vec<&str> = group
-        .extensions
-        .iter()
-        .chain(group.zend_extensions)
-        .map(|e| module_name(e))
+        .modules(version)
+        .into_iter()
+        .chain(group.zend_extensions.iter().copied())
+        .map(module_name)
         .filter(|m| !listed.contains(&m.to_ascii_lowercase()))
         .collect();
     if !missing.is_empty() {
@@ -207,15 +210,18 @@ pub fn output_log(log_dir: &Path, minor: &str) -> PathBuf {
         crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
             extensions: &[],
             zend_extensions: &[],
+            per_version: &[],
         })
         .output_log_name(minor),
     )
 }
 
-/// Write the group's ini for `name` (`8.3`, or a candidate's name) and return its path.
+/// Write the group's ini for `name` (`8.3`, or a candidate's name), loading what PHP
+/// `version` ships, and return its path.
 pub fn write_ini(
     platform: &dyn Platform,
     group: &CgiGroup,
+    version: &str,
     php_dir: &Path,
     name: &str,
     catch: Option<&super::mail::Catch>,
@@ -227,12 +233,12 @@ pub fn write_ini(
     std::fs::create_dir_all(&log_dir)?;
     let ini = config_dir.join(ini_file_name(name));
     let log = log_dir.join(PoolModel::CgiGroup(*group).log_name(name));
-    std::fs::write(&ini, render_ini(group, php_dir, &log, catch, settings))?;
+    std::fs::write(&ini, render_ini(group, version, php_dir, &log, catch, settings))?;
     Ok(ini)
 }
 
-/// Run the preflight against `ini`; `Err` quotes what PHP said.
-pub fn preflight(platform: &dyn Platform, group: &CgiGroup, php_dir: &Path, ini: &Path) -> Result<()> {
+/// Run the preflight against `ini` (written for PHP `version`); `Err` quotes what PHP said.
+pub fn preflight(platform: &dyn Platform, group: &CgiGroup, version: &str, php_dir: &Path, ini: &Path) -> Result<()> {
     let log_dir = platform.paths().log_dir()?;
     std::fs::create_dir_all(&log_dir)?;
     let probe = log_dir.join("php-cgi-preflight.log");
@@ -246,7 +252,7 @@ pub fn preflight(platform: &dyn Platform, group: &CgiGroup, php_dir: &Path, ini:
     let mut child = platform.supervisor().spawn_logged(&php_cgi_bin(php_dir), &args, &probe)?;
     let status = child.wait()?;
     let output = std::fs::read_to_string(&probe).unwrap_or_default();
-    preflight_verdict(group, status.success(), &output)
+    preflight_verdict(group, version, status.success(), &output)
         .map_err(|why| Error::Other(format!("PHP refused its configuration ({}): {why}", ini.display())))
 }
 
@@ -261,8 +267,8 @@ pub fn start_group(
     catch: Option<&super::mail::Catch>,
     settings: &[(String, String)],
 ) -> Result<Child> {
-    let ini = write_ini(platform, group, php_dir, minor, catch, settings)?;
-    preflight(platform, group, php_dir, &ini)?;
+    let ini = write_ini(platform, group, minor, php_dir, minor, catch, settings)?;
+    preflight(platform, group, minor, php_dir, &ini)?;
     let log = output_log(&platform.paths().log_dir()?, minor);
     platform.supervisor().spawn_logged_env(
         &php_cgi_bin(php_dir),
@@ -336,6 +342,7 @@ mod tests {
     const GROUP: CgiGroup = CgiGroup {
         extensions: &["curl", "mysqli", "mbstring"],
         zend_extensions: &["opcache"],
+        per_version: &[],
     };
 
     fn catch() -> super::super::mail::Catch {
@@ -394,7 +401,7 @@ mod tests {
     #[test]
     fn the_ini_carries_extensions_settings_smtp_and_nothing_unix() {
         let settings = vec![("memory_limit".to_string(), "512M".to_string())];
-        let ini = render_ini(&GROUP, Path::new("/php-8.3.32"), Path::new("/logs/php-cgi-8.3.log"), Some(&catch()), &settings);
+        let ini = render_ini(&GROUP, "8.3.32", Path::new("/php-8.3.32"), Path::new("/logs/php-cgi-8.3.log"), Some(&catch()), &settings);
         assert!(ini.contains("extension_dir = \""), "{ini}");
         for line in ["extension = curl", "extension = mysqli", "extension = mbstring", "zend_extension = opcache"] {
             assert!(ini.lines().any(|l| l == line), "missing {line:?}:\n{ini}");
@@ -411,19 +418,19 @@ mod tests {
     #[test]
     fn the_cli_ini_loads_the_groups_extensions_and_nothing_else() {
         let dir = Path::new("/bin/php-8.3.32");
-        let cli = render_cli_ini(&GROUP, dir);
-        let group = render_ini(&GROUP, dir, Path::new("/l.log"), Some(&catch()), &[("memory_limit".into(), "1G".into())]);
+        let cli = render_cli_ini(&GROUP, "8.3.32", dir);
+        let group = render_ini(&GROUP, "8.3.32", dir, Path::new("/l.log"), Some(&catch()), &[("memory_limit".into(), "1G".into())]);
         for line in ["extension = curl", "extension = mysqli", "extension = mbstring", "zend_extension = opcache"] {
             assert!(cli.lines().any(|l| l == line), "missing {line:?}:\n{cli}");
         }
         assert!(cli.contains(&format!("extension_dir = \"{}\"", dir.join("ext").display())), "{cli}");
         assert!(!cli.contains("SMTP") && !cli.contains("error_log") && !cli.contains("memory_limit"), "{cli}");
-        assert!(group.contains(&extension_lines(&GROUP, dir)), "the group's ini must carry the same extension lines");
+        assert!(group.contains(&extension_lines(&GROUP, "8.3.32", dir)), "the group's ini must carry the same extension lines");
     }
 
     #[test]
     fn with_the_catch_off_there_are_no_smtp_keys_and_no_mail_env() {
-        let ini = render_ini(&GROUP, Path::new("/php"), Path::new("/l.log"), None, &[]);
+        let ini = render_ini(&GROUP, "8.3", Path::new("/php"), Path::new("/l.log"), None, &[]);
         assert!(!ini.contains("SMTP") && !ini.contains("smtp_port"), "{ini}");
         let env = group_env(None);
         assert!(env.iter().all(|(k, _)| !k.starts_with("MAIL_")), "{env:?}");
@@ -453,16 +460,61 @@ mod tests {
     #[test]
     fn the_preflight_reads_the_output_not_just_the_exit_code() {
         let clean = "[PHP Modules]\ncurl\nmbstring\nmysqli\nZend OPcache\n\n[Zend Modules]\nZend OPcache\n";
-        assert_eq!(preflight_verdict(&GROUP, true, clean), Ok(()));
+        assert_eq!(preflight_verdict(&GROUP, "8.3", true, clean), Ok(()));
 
         let warned = "<b>Warning</b>:  PHP Startup: Unable to load dynamic library 'mysqli' (tried: C:\\php\\ext\\mysqli (The specified module could not be found)) in <b>Unknown</b> on line <b>0</b><br />\n[PHP Modules]\ncurl\n";
-        let err = preflight_verdict(&GROUP, true, warned).unwrap_err();
+        let err = preflight_verdict(&GROUP, "8.3", true, warned).unwrap_err();
         assert!(err.contains("Unable to load dynamic library 'mysqli'"), "{err}");
 
         let short = "[PHP Modules]\ncurl\nmbstring\n";
-        let err = preflight_verdict(&GROUP, true, short).unwrap_err();
+        let err = preflight_verdict(&GROUP, "8.3", true, short).unwrap_err();
         assert!(err.contains("mysqli") && err.contains("Zend OPcache"), "{err}");
 
-        assert!(preflight_verdict(&GROUP, false, clean).is_err());
+        assert!(preflight_verdict(&GROUP, "8.3", false, clean).is_err());
+    }
+
+    /// Each minor's zip differs from 8.3's (measured over every pinned minor on the Win11 VM,
+    /// 8 Oct 2026): 8.4 dropped IMAP, zip was built in before 8.2, gd's file was `gd2` before
+    /// 8.0. One list for all wrote lines those minors cannot load, and the preflight refused
+    /// every one of their groups. The ini, the CLI's and the preflight's expectation all follow
+    /// the VERSION.
+    #[test]
+    fn each_minor_writes_and_expects_what_its_own_build_ships() {
+        use crate::platform::traits::ExtChange;
+        const RULES: CgiGroup = CgiGroup {
+            extensions: &["curl", "gd", "imap", "zip"],
+            zend_extensions: &["opcache"],
+            per_version: &[
+                ("imap", ExtChange::DroppedFrom("8.4")),
+                ("zip", ExtChange::BuiltInBefore("8.2")),
+                ("gd", ExtChange::NamedBefore("8.0", "gd2")),
+            ],
+        };
+        let dir = Path::new("/php");
+        let lines = |v: &str| -> Vec<String> {
+            render_cli_ini(&RULES, v, dir).lines().filter_map(|l| l.strip_prefix("extension = ").map(String::from)).collect()
+        };
+        assert_eq!(lines("7.4.33"), ["curl", "gd2", "imap"]);
+        assert_eq!(lines("8.0.30"), ["curl", "gd", "imap"]);
+        assert_eq!(lines("8.1"), ["curl", "gd", "imap"]);
+        assert_eq!(lines("8.3.32"), ["curl", "gd", "imap", "zip"]);
+        assert_eq!(lines("8.4.23"), ["curl", "gd", "zip"]);
+        assert_eq!(lines("8.5.8"), ["curl", "gd", "zip"]);
+        let group_ini = render_ini(&RULES, "8.4.23", dir, Path::new("/l.log"), None, &[]);
+        assert!(!group_ini.contains("imap"), "the group's ini follows the version too:\n{group_ini}");
+
+        // The preflight expects modules by their OWN names, built-in ones included.
+        assert_eq!(RULES.modules("7.4.33"), ["curl", "gd", "imap", "zip"]);
+        assert_eq!(RULES.modules("8.4.23"), ["curl", "gd", "zip"]);
+        let out_84 = "[PHP Modules]\ncurl\ngd\nzip\nZend OPcache\n";
+        assert_eq!(preflight_verdict(&RULES, "8.4.23", true, out_84), Ok(()));
+        let err = preflight_verdict(&RULES, "8.3.32", true, out_84).unwrap_err();
+        assert!(err.contains("imap"), "8.3 still ships it, so its absence is a fault: {err}");
+        let out_74 = "[PHP Modules]\ncurl\ngd\nimap\nZend OPcache\n";
+        let err = preflight_verdict(&RULES, "7.4.33", true, out_74).unwrap_err();
+        assert!(err.contains("zip"), "a built-in that did not show is still a fault: {err}");
+
+        // A version that does not parse takes no rule: the preflight names the gap.
+        assert_eq!(RULES.ext_lines("weird"), ["curl", "gd", "imap", "zip"]);
     }
 }

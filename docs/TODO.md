@@ -69,6 +69,47 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Windows: PHP 7.4, 8.0, 8.1, 8.4 and 8.5 groups cannot start — one extension list, read off 8.3's
+  zip, was written into every minor's ini** (user report, 8 Oct 2026, Windows 11 build 26300, rexenv 0.8.12,
+  a cloned Laravel site needing `^8.4.1`): `rex start` refused `PHP Startup: Unable to load dynamic library
+  'imap'` — PHP 8.4 moved IMAP to PECL. `php_cgi::preflight_verdict` refuses any startup warning, so a
+  line a minor cannot load refuses its whole group. `windows_php_cli_check`, extended to every pinned
+  minor and run on the Win11 VM, then found the rest: zip is built in before 8.2 (no `php_zip.dll`),
+  gd's file is `php_gd2.dll` on 7.4. Only 8.2 and 8.3 ran — every Windows proof had used 8.3
+  (`binaries::pins().php`). Fix: `CgiGroup::per_version` (`ExtChange`), `ext_lines` / `modules`.
+  ✓ **8 Oct 2026**: L0 `each_minor_writes_and_expects_what_its_own_build_ships` (plant-proven four
+  ways); L1 `windows_php_cli_check` on the Win11 VM — `php -m` + the group's preflight green on all
+  seven pinned minors, 14/14 (ledger #603 amended). Owed: SMOKE-TEST §Windows "A site serves on
+  EVERY PHP minor" (a group serving a request on each).
+
+- [ ] **Windows: a machine without the Visual C++ runtime cannot run MySQL (or PHP), and the loader's
+  dialog hangs provisioning** (same report): `mysqld --initialize-insecure failed (exit Some(-1073741515))`
+  = `0xC0000135`, `VCRUNTIME140.dll` not found; on Retry Windows raised its modal "code execution cannot
+  proceed" dialog and `database::initialize`'s `child.wait()` (no timeout) waited on it. php.net's vs16/vs17
+  builds need the same runtime, so `php_cgi::preflight` would wait the same way. Every test machine
+  (Dell, Win11 VM) already had the redistributable. Owed: (1) `SetErrorMode(SEM_FAILCRITICALERRORS)`
+  inherited by every child so a missing DLL exits instead of opening a dialog; (2) `0xC0000135` named as
+  "the Microsoft Visual C++ runtime is missing" with the official download link (`platform/words.rs`);
+  (3) the installer or first run checks for the runtime (`docs/INSTALL.md` §Windows); (4) a proof on a
+  clean Windows with no redistributable.
+
+- [ ] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
+  report): the phase order for a cloned Laravel site is `db → configure → deps`, and
+  `php_requirement_refusal` runs inside `deps` (`commands/site_provision.rs`). `composer.json` is on disk
+  once the clone lands, so the refusal can run before `db` and save the database start + `.env` write.
+
+- [ ] **Provisioning and `rex start`/restart are not coordinated; an interrupted `artisan migrate` leaves a
+  half-applied migration** (same report, cause unproven): a `rex start` issued while provisioning ran, MySQL's
+  pid changed, migrate died `SQLSTATE[70100] 1317 Query execution was interrupted`, and Retry then failed
+  `1050 Table … already exists` (the project's migration is not idempotent — not rexenv's schema). Owed:
+  reproduce first (does a stack start/restart during provisioning restart MySQL?); then refuse or defer a
+  stack restart while a provision job runs. Also: a migrate failure that came from a composer script
+  surfaces as `composer install failed: …` — say which command failed.
+
+- [ ] **`rex doctor` on Windows says "rex not on PATH" when it means "not installed via Settings"** (same
+  report): `core::cli::status_of_copy` judges the COPY in rexenv's own folder, not PATH; a user who put the
+  bundled folder on PATH by hand still gets the finding. The sentence should name what is checked.
+
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),

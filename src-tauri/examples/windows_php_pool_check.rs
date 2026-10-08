@@ -107,11 +107,11 @@ mod windows {
         check.is("a child answered, not the parent", json["pid"].as_u64().is_some_and(|p| p as u32 != parent && members.contains(&(p as u32))), &body);
         let loaded: Vec<String> = json["ext"].as_array().into_iter().flatten().chain(json["zend"].as_array().into_iter().flatten())
             .filter_map(|v| v.as_str().map(str::to_ascii_lowercase)).collect();
-        let missing: Vec<&str> = group.extensions.iter().copied()
+        let missing: Vec<&str> = group.modules(MINOR).into_iter()
             .filter(|e| !loaded.contains(&e.to_string()))
             .chain(group.zend_extensions.iter().copied().filter(|_| !loaded.contains(&"zend opcache".to_string())))
             .collect();
-        check.is(&format!("all {} extensions the model names are loaded", group.extensions.len() + group.zend_extensions.len()), missing.is_empty(), &format!("missing {missing:?}"));
+        check.is(&format!("all {} extensions the model names are loaded", group.modules(MINOR).len() + group.zend_extensions.len()), missing.is_empty(), &format!("missing {missing:?}"));
         check.is("the SMTP keys point at Mailpit", json["smtp"] == "127.0.0.1" && json["smtp_port"].as_str().and_then(|s| s.parse::<u16>().ok()) == Some(mail::MAILPIT_SMTP_PORT), &body);
         check.is("the Laravel mail env reached the request", json["mail_host"] == "127.0.0.1", &body);
         check.is("the user's setting is live", json["memory_limit"] == "384M", &body);
@@ -121,7 +121,7 @@ mod windows {
         let php_dir = binaries::cached_path(&*plat, "php", binaries::pins().php).expect("php cached");
         let bad = root.join("bad.ini");
         std::fs::write(&bad, format!("extension_dir = \"{}\"\nextension = does_not_exist\n", php_dir.join("ext").display())).unwrap();
-        let refused = php_cgi::preflight(&*plat, &group, &php_dir, &bad).map_err(|e| e.to_string());
+        let refused = php_cgi::preflight(&*plat, &group, MINOR, &php_dir, &bad).map_err(|e| e.to_string());
         check.is("the preflight refuses an extension that cannot load, quoting PHP", refused.as_ref().is_err_and(|e| e.contains("Unable to load")), &format!("{refused:?}"));
 
         pools.stop_all(&*plat);

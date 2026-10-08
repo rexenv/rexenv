@@ -358,7 +358,9 @@ impl ProcessSupervisor for WindowsSupervisor {
     /// No php-fpm exists for Windows: a php-cgi group (plan D1). The extensions are the 26
     /// the official NTS x64 zip ships that the macOS build also carries (owner ruling 14 Sep
     /// 2026); pcntl/posix/sysvmsg/sysvsem do not exist here, and the PECL ones (apcu,
-    /// imagick, redis, event, swoole, protobuf, opentelemetry) are not in v1.
+    /// imagick, redis, event, swoole, protobuf, opentelemetry) are not in v1. That list is 8.3's
+    /// zip; `per_version` is where the other minors' zips differ — each measured by
+    /// `windows_php_cli_check` over every pinned minor (Win11 VM, 8 Oct 2026).
     fn php_pool_model(&self) -> PoolModel {
         PoolModel::CgiGroup(CgiGroup {
             extensions: &[
@@ -367,6 +369,11 @@ impl ProcessSupervisor for WindowsSupervisor {
                 "shmop", "soap", "sockets", "sodium", "sqlite3", "sysvshm", "xsl", "zip",
             ],
             zend_extensions: &["opcache"],
+            per_version: &[
+                ("imap", ExtChange::DroppedFrom("8.4")),
+                ("zip", ExtChange::BuiltInBefore("8.2")),
+                ("gd", ExtChange::NamedBefore("8.0", "gd2")),
+            ],
         })
     }
     fn pid_alive(&self, pid: u32) -> bool {

@@ -517,6 +517,65 @@ pub struct CgiGroup {
     pub extensions: &'static [&'static str],
     /// `zend_extension = <name>` lines.
     pub zend_extensions: &'static [&'static str],
+    /// How a PHP minor's build departs from [`Self::extensions`], per extension. The list was
+    /// read off ONE zip (8.3) and written into every minor's ini; the preflight refuses any
+    /// startup warning, so every minor whose zip differs could not start a group at all. Found
+    /// by a user on 8.4 (8 Oct 2026); the same check run over every pinned minor then found
+    /// 7.4, 8.0 and 8.1 refused too — only 8.2 and 8.3, the minors every proof had used, ran.
+    pub per_version: &'static [(&'static str, ExtChange)],
+}
+
+/// One way a minor's official build differs from the group's extension list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtChange {
+    /// Not shipped from this minor on (IMAP went to PECL in 8.4): no line, not expected.
+    DroppedFrom(&'static str),
+    /// Compiled into PHP before this minor (zip until 8.2): no line, but still expected loaded.
+    BuiltInBefore(&'static str),
+    /// Its file had another name before this minor (`gd2` until 8.0): that name on the line,
+    /// the extension's own name still expected loaded.
+    NamedBefore(&'static str, &'static str),
+}
+
+impl CgiGroup {
+    /// The names `version` (a minor or a patch) writes as `extension = …` lines.
+    pub fn ext_lines(&self, version: &str) -> Vec<&'static str> {
+        self.extensions
+            .iter()
+            .filter_map(|&ext| match self.change_for(ext, version) {
+                Some(ExtChange::DroppedFrom(_) | ExtChange::BuiltInBefore(_)) => None,
+                Some(ExtChange::NamedBefore(_, file)) => Some(file),
+                None => Some(ext),
+            })
+            .collect()
+    }
+
+    /// The modules `version` must show loaded (`php -m`, lowercase as listed): every extension
+    /// it ships, built in or not, by its own name.
+    pub fn modules(&self, version: &str) -> Vec<&'static str> {
+        self.extensions
+            .iter()
+            .copied()
+            .filter(|&ext| !matches!(self.change_for(ext, version), Some(ExtChange::DroppedFrom(_))))
+            .collect()
+    }
+
+    /// The change that applies to `ext` at `version`, if any. A version that does not parse
+    /// takes none, so the preflight names what is missing rather than this guessing.
+    fn change_for(&self, ext: &str, version: &str) -> Option<ExtChange> {
+        let v = minor_tuple(version)?;
+        let at_or_after = |m: &str| minor_tuple(m).is_some_and(|m| v >= m);
+        self.per_version.iter().filter(|(e, _)| *e == ext).map(|(_, c)| *c).find(|c| match c {
+            ExtChange::DroppedFrom(m) => at_or_after(m),
+            ExtChange::BuiltInBefore(m) | ExtChange::NamedBefore(m, _) => !at_or_after(m),
+        })
+    }
+}
+
+/// `"8.4.23"` / `"8.4"` → `(8, 4)`.
+fn minor_tuple(version: &str) -> Option<(u32, u32)> {
+    let mut parts = version.split('.');
+    Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
 impl PoolModel {

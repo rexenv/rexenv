@@ -270,7 +270,7 @@ mod pool_binary_tests {
     #[test]
     fn each_pool_model_names_the_binary_it_starts_from() {
         assert_eq!(PoolModel::Fpm.catalog_name(), "php-fpm");
-        assert_eq!(PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] }).catalog_name(), "php");
+        assert_eq!(PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[], per_version: &[] }).catalog_name(), "php");
     }
 
     /// Ledger #651 — **what the pool row is CALLED follows the model, while its key does not.**
@@ -279,7 +279,7 @@ mod pool_binary_tests {
     /// `is_default`, the busy tracker and the restart counters all parse it.
     #[test]
     fn the_pool_display_name_follows_the_model() {
-        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[], per_version: &[] });
         assert_eq!(PoolModel::Fpm.display_name("8.3"), "PHP-FPM 8.3");
         assert_eq!(cgi.display_name("8.3"), "PHP-CGI 8.3");
         // The key is NOT the label: a php-cgi host must not be told it runs php-fpm.
@@ -978,12 +978,13 @@ pub async fn test_settings_candidate(
             let candidate = super::php_cgi::write_ini(
                 platform,
                 &group,
+                patch,
                 &dir,
                 &format!("{minor}.candidate"),
                 None,
                 pairs,
             )?;
-            let test = super::php_cgi::preflight(platform, &group, &dir, &candidate);
+            let test = super::php_cgi::preflight(platform, &group, patch, &dir, &candidate);
             let _ = std::fs::remove_file(&candidate);
             test
         }
@@ -2624,7 +2625,7 @@ mod tests {
         fn dns_agent(&self) -> &dyn DnsAgentManager { unimplemented!() }
         fn app_bundle(&self) -> &dyn AppBundle { unimplemented!() }
     }
-    const GROUP_MODEL: PoolModel = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+    const GROUP_MODEL: PoolModel = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[], per_version: &[] });
 
     /// The health gate (ledger #607), against the states measured on both OSes (14 Sep 2026,
     /// `pool_get_values_probe`): a pool serves when it answers `GET_VALUES`, OR holds connections

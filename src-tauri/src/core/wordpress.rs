@@ -4564,6 +4564,7 @@ mod tests {
         let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
             extensions: &[],
             zend_extensions: &[],
+            per_version: &[],
         });
         let spaced = std::path::Path::new("C:/Users/John Smith/AppData/Local/rexenv/bin/mailpit.exe");
         let win = finish_wp_argv(vec!["-d".into(), "memory_limit=512M".into()], phar, Some(spaced), group);

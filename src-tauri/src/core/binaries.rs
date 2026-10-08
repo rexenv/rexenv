@@ -3506,7 +3506,7 @@ pub async fn resolve_file(platform: &dyn Platform, name: &str, version: &str) ->
 /// settings gate), rather than at each caller.
 pub async fn resolve_dir(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
     let dir = resolve_dir_tree(platform, name, version).await?;
-    super::php_cgi::ensure_cli_ini(platform, name, &dir)?;
+    super::php_cgi::ensure_cli_ini(platform, name, version, &dir)?;
     Ok(dir)
 }
 

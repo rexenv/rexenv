@@ -198,6 +198,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **A php-cgi group has no per-request ini.** `fastcgi_param PHP_VALUE` is php-fpm's; php-cgi
   ignores it (measured on the Dell). A per-vhost limit that must reach PHP goes in a `.user.ini`
   in the docroot — every CGI/FastCGI PHP reads it, so it is written on every OS (#788).
+- **Every PHP minor's official zip ships a DIFFERENT extension set.** 8.4+ has no IMAP, zip is
+  built in before 8.2, gd is `php_gd2.dll` on 7.4. One list read off 8.3's zip was written into
+  every minor's ini, and the preflight refused 7.4, 8.0, 8.1, 8.4 and 8.5 groups outright — found
+  by a user, since every proof had run on the default 8.3 (#603, 8 Oct 2026). A PHP claim on
+  Windows is proven on every pinned minor (`windows_php_cli_check` iterates them), and a new
+  minor's differences go in `CgiGroup::per_version`.
 - **`std::fs::canonicalize` answers the verbatim form** (`\\?\C:\Users\x`). Compare canonical
   against canonical (#642 — plain against verbatim answered false on the Dell), and STORE the
   plain form: a linked docroot goes through `sites::plain_path` once, at the storage point

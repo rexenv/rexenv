@@ -566,7 +566,7 @@ mod tests {
     #[test]
     fn the_pool_log_targets_follow_the_model_that_writes_them() {
         use crate::platform::traits::{CgiGroup, PoolModel};
-        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[] });
+        let cgi = PoolModel::CgiGroup(CgiGroup { extensions: &[], zend_extensions: &[], per_version: &[] });
 
         let fpm_keys: Vec<String> =
             targets_for_site(&site(WebServer::Nginx), Path::new("/logs"), &[], PoolModel::Fpm)

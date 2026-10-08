@@ -2402,6 +2402,13 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [ ] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
+      8.0, 8.1, 8.4 and 8.5 — `rex php install <minor>`, a Blank-PHP site on it, `rex start` → the
+      `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that
+      minor. **Tell:** `PHP refused its configuration … Unable to load dynamic library 'imap'` (8.4+),
+      `'zip'` (7.4–8.1) or `'gd'` (7.4) — one extension list written into every minor's ini, the
+      user's 0.8.12 report. L1 (`windows_php_cli_check`, every minor's `php -m` + preflight) ✓ 8 Oct
+      2026 on the Win11 VM; a group serving a request on those minors is this row.
 - [x] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
       folder (`C:\Users\<you>\Sites\shop`) → the site's stored path (Site Settings, `rex site
       info`) reads `C:\Users\…`, never `\\?\C:\Users\…`; the generated nginx `root` line is
