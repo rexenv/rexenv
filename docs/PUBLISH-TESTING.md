@@ -146,9 +146,32 @@ VM's bytes), Apps & Features 0.8.12, the agent back under its task; launched thr
 → seven services up but PostgreSQL (unused there), `w7check.rex` 200, PHP 8.3's and 8.2's curl to
 it 200, no new crash dump.
 **Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows.
-**Next (owner):** Publish → the tap's Update cask; in `rexenv/runtimes` "Publish app update
-manifest" once per descriptor + `scripts/check-app-manifest.sh` each; `rexenv/apt` → "Publish apt
-repository" + `scripts/check-apt-repo.sh`; then §M — the 0.8.11 → 0.8.12 in-app update on the VMs.
+**PUBLISHED 8 Oct 2026, 05:00:24Z.** Within seconds: `release-published.yml` → the tap's Update cask
+(`0.8.12` / `c0d297e5…`), its Install scripts and website notify green; `brew fetch --cask
+rexenv/tap/rexenv` → 0.8.12, sha `c0d297e5…` (`brew audit` could not run: the dev Mac's CLT predate
+macOS 26 — a host fact). The macOS descriptor's dry run (serial 18 → 19, sha `4c03c8f1…` = the
+archive downloaded for §A0), then the six publishes (owner-approved) and `check-app-manifest.sh` ×6
+green — macOS serial 19, Windows 14, the four Linux 5; `rexenv/apt` published and
+`check-apt-repo.sh` green (InRelease signed, amd64 and arm64 at 0.8.12).
+**§M — the 0.8.11 → 0.8.12 in-app update:**
+- **macOS 15.8 VM** (0.8.11 put back from its kept copy): Settings → About → Check now → "rexenv
+  0.8.12 · 28.6 MB has been published" + the toast → Install → "swapped to 0.8.12 (AtomicSwap)" →
+  the dialog → OK → **reopened as 0.8.12 in 2 s**, no crash report, the agent running under the
+  launcher, `smoke1.rex` 200. `relaunch.log` (new in this release, written by 0.8.12's relauncher):
+  "waiting for pid 726 … parent 726 exited after 0.0s … opened /Applications/rexenv.app (open exit 0)".
+  A host fact first: the VM's HTTPS died after the TLS ClientHello ("Couldn't reach the update
+  server" — correctly reported) until `ifconfig en0 mtu 1400`; the Mac's network path had changed.
+- **Ubuntu 22.04 arm64 VM** (0.8.11 put back with `apt-get install --allow-downgrades rexenv=0.8.11`
+  — the apt repository carries three releases; the same MTU fix needed): the Settings badge `0.8.12`,
+  About "rexenv 0.8.12 · 14.8 MB has been published" → Install → ONE polkit naming the update → `dpkg
+  -s` 0.8.12 → the dialog → OK → **reopened as 0.8.12 in 2 s, at Sites** (not onboarding's Welcome —
+  0.8.11's finding, fixed by `2acf1322`), 7/7 running, the agent `agent`, `/var/crash` empty, no
+  WebKitWebProcess dialog; `relaunch.log`: "parent 4292 was already gone … started /usr/bin/rexenv".
+- **Windows: NOT RUN.** The Win11 VM had no signed-in console after its restart (no `/IT` task can
+  reach a desktop; autologon needs the owner's password), and on the Dell **Windows Defender refused
+  the published 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** — an ML verdict on the unsigned
+  installer; the 0.8.12 `setup.exe` and `.zip` scan clean (`docs/TODO.md`, the Defender row). The
+  Windows half of this release rests on `/S` over a running 0.8.11 (VM and Dell, above).
 
 ## A) ✅ 0.8.11 — DRAFTED on `rexenv/rexenv` by CI (30 Sep 2026, the third draft: the release host moved that afternoon) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green on every draft
 

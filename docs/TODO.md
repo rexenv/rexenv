@@ -69,6 +69,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
+  2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
+  refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),
+  `!ml` = Defender's machine-learning heuristic — the usual false positive on an unsigned NSIS installer
+  (D5: unsigned by ruling). The 0.8.12 `setup.exe` and `.zip` scanned clean the same hour
+  (`MpCmdRun -Scan -ScanType 3`), but an ML verdict can land on any build, and a user who meets it reads
+  "rexenv is a trojan". Owed: (1) the owner submits both installers to Microsoft as a false positive
+  (https://www.microsoft.com/wdsi/filesubmission — outward-facing, his); (2) a release step that scans every
+  Windows asset with Defender on the Dell before Publish (`docs/RELEASING.md`); (3) the Windows §M for
+  0.8.12 could not run on the Dell for the same reason (the Win11 VM had no signed-in console after a reboot).
+
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
