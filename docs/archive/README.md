@@ -24,6 +24,7 @@ bottle-bundle path — only OpenLiteSpeed remains blocked.
 | `CODEBASE-REVIEW.md` | The July 2026 pre-publish review (B1–B37) — all dispositioned; its two live tails (B29b, B33) are tracked in `docs/TODO.md`. |
 | `UI-REVIEW.md` | The July 2026 whole-app visual review — findings fixed; its two unowned items moved to `docs/TODO.md`. |
 | `TLD-FEATURE-REPORT.md` | Configurable-TLD implementation report + the `.rex` backbone correction; the rationale lives in `docs/ARCHITECTURE.md`. |
+| `PLAN-apt-repo.md` | The apt repository (`rexenv/apt`, `sudo apt-get install rexenv`): the rulings, the signing key's custody, the release leg — shipped 29 Sep, first release run 0.8.11, closed 9 Oct 2026 once the tap's install test had passed both the from-apt and the lag path. |
 | `PLAN-tunnel-lifecycle.md` | The tunnels-die-with-the-app decision record (ruled + shipped 28 Jul 2026). |
 | `PLAN-content-dir-assets.md` | The recorded-content-dir threading plan (shipped; the rule lives in `docs/ARCHITECTURE.md` §8). |
 | `PLAN-site-provisioning-progress.md` | The streamed-provisioning design (shipped). |

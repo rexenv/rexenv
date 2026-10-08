@@ -2918,7 +2918,7 @@ Environment: Ubuntu ____ (22.04+; x86_64 or aarch64) · package ____ (.deb / App
 
 ### Install — the one command (`docs/archive/PLAN-install-scripts.md`)
 
-- [x] **apt, by hand** (`docs/PLAN-apt-repo.md`, ledger #745): the four lines of `docs/INSTALL.md`
+- [x] **apt, by hand** (`docs/archive/PLAN-apt-repo.md`, ledger #745): the four lines of `docs/INSTALL.md`
       → `apt-get update` fetches `InRelease` + `Packages` from `rexenv.github.io/apt` → `apt-get
       install rexenv` installs the newest. ✓ 29 Sep 2026, 22.04 arm64 VM: 0.8.10 from the
       repository (`Get: … rexenv arm64 0.8.10 [15.3 MB]`), `--print-version` 0.8.10.

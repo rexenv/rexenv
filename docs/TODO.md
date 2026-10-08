@@ -188,7 +188,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   signatures between 1.459.576.0 (the Win11 VM: 0.8.11 scans clean) and 1.459.601.0 (the Dell). The
   0.8.12 Windows §M therefore ran on the VM only.
 
-- [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
+- [x] **The apt repository's first release run** (`docs/archive/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
   through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
   `scripts/check-apt-repo.sh`) and the tap's `install-scripts.yml` passing its lag path on that
@@ -199,8 +199,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   repository's key, amd64 and arm64 at 0.8.11, the latest release. The tap's `install-scripts.yml`
   lag path was not exercised (its run installed the release's `.deb` directly, as designed while
   apt is not yet current) — left open for that one leg.
+  ✓ **CLOSED 9 Oct 2026** — the open leg ran on its own: the tap's `install-scripts.yml` took the
+  FROM-THE-REPOSITORY path on 5 Oct (weekly run 37304112051, ubuntu-22.04: "installing rexenv 0.8.11 from
+  the repository") and the LAG path on 0.8.12's publish (run 37730225752, ubuntu-24.04-arm: "the repository
+  does not offer 0.8.12 yet; installing the release's .deb directly", apt candidate 0.8.12 by the check);
+  `check-apt-repo.sh` 9 Oct: signature good, amd64 + arm64 at 0.8.12. Plan archived.
 
-- [ ] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
+- [x] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
   least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
   needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
   all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
@@ -1325,6 +1330,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     A cross build names the file it lacks and who stages it instead of failing mutely at `tauri_build`.
     Plant-proven (ledger #685): `cargo xwin check` with no placeholder prints
     `no rex sidecar for x86_64-pc-windows-msvc …` and skips `build-cli.sh`
+  ✓ **CLOSED 9 Oct 2026** (open only on paper since 1 Oct): the org's billing was fixed — the last
+  failed run is 30 Sep 20:49 UTC, 133 successful "Release sync" runs since. The CI gate runs on every PR
+  again (#20 failed, was fixed, went green, merged).
 
 - [ ] **Linux launch** — 24 Sep 2026, owner: "ami chai ekhon rexenv er linux version o build
   korte … at least Ubuntu". Reasoning, measurements, the decisions D-L1–D-L10 (defaults
@@ -1851,7 +1859,7 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   **Re-checked 6 Oct 2026:** latest release still v2.12.0 (2025-05-07; `gh api …/releases`), so
   still nothing to bump — and moved here from "Now": the work waits on an upstream release, not
   on anything rexenv can do. Re-check when a wp-cli release appears.
-- [ ] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
+- [x] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
   since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
   account payments have failed or your spending limit needs to be increased" (GitHub billing,
   the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR was ever opened; the site
@@ -1880,6 +1888,9 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
 ## Phase 4+ (next era)
+  ✓ **CLOSED 9 Oct 2026**: the bot does its job again — the scheduled run 37735780467 (8 Oct 06:06 UTC)
+  opened `release/v0.8.12` itself (PR #20, "rexenv 0.8.12 — website sync"), CI green, merged. (0.8.10 and
+  0.8.11 were synced by hand, #15/#16, before billing came back.)
 
 - [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
   **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app

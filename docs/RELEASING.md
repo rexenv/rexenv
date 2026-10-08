@@ -477,7 +477,7 @@ Changelog link points at the website and never moved.
    a draft's assets are not public): one approval (`apt-signing`), then
    `./scripts/check-apt-repo.sh` — the signature by the repository's key, each `Packages` against
    `InRelease`, the newest version = the latest release here. Until it runs, `apt upgrade` offers nothing
-   new; `install.sh` meanwhile installs the release's `.deb` directly (`docs/PLAN-apt-repo.md`).
+   new; `install.sh` meanwhile installs the release's `.deb` directly (`docs/archive/PLAN-apt-repo.md`).
 6. `rexenv/runtimes` → "Publish app update manifest", dry-run then publish, **six times**
    (macOS, Windows, Linux deb/AppImage × x86_64/aarch64) — step 8 below; then
    `./scripts/check-app-manifest.sh` for each.

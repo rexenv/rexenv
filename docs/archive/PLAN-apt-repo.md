@@ -1,13 +1,16 @@
 # PLAN — an APT repository: `sudo apt-get install rexenv`
 
-**Status: IN FLIGHT — 29 Sep 2026.** Owner: "linux er app ta apt-get diye jeno install kora jai
+**Status: SHIPPED — closed 9 Oct 2026** (archived; the paths below are as they were). Opened 29 Sep 2026. Owner: "linux er app ta apt-get diye jeno install kora jai
 temon korte hobe". Rulings the same day (§2). Before 0.8.11: the repo is built first and 0.8.11 is
 the first release the pipeline puts in it. **R1–R4 done the same day:** `rexenv/apt` live at
 `https://rexenv.github.io/apt` (run 36590970354 — the first, 36588416009, failed its self-test:
 the runner's `/home/runner` is 0750 and apt verifies as `_apt`, NO_PUBKEY; fixed in `07ea224`),
 0.8.8–0.8.10 for amd64 + arm64, `scripts/check-apt-repo.sh` all green; the VM installed, upgraded
 and refused a wrong key (SMOKE Linux); the tap's `install.sh` adds the repository (`f5d9dfe`).
-**Owed:** R5's first release run (0.8.11). The private key's backup is in the owner's hands (30 Sep
+~~**Owed:** R5's first release run (0.8.11).~~ **Done:** 0.8.11 (run 36689575061, 30 Sep) and
+0.8.12 published through the pipeline; `check-apt-repo.sh` all green at 0.8.12 (9 Oct); the tap's
+`install-scripts.yml` passed BOTH paths — from the repository (5 Oct weekly, 0.8.11 on 22.04) and
+the lag path (8 Oct, 0.8.12's publish, `.deb` directly while apt caught up). The private key's backup is in the owner's hands (30 Sep
 2026) and the agent's only copy is deleted — the `apt-signing` secret and that backup are the two.
 
 Until now the `.deb` was a file: `install.sh` downloaded it and ran `apt-get install ./rexenv.deb`,

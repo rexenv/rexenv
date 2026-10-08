@@ -524,7 +524,7 @@ sudo apt-get update && sudo apt-get install rexenv
 
 apt checks the repository's signature and every package's hash against it; a repository signed
 by any other key is refused (`NO_PUBKEY`). It carries the three newest releases for amd64 and
-arm64. `docs/PLAN-apt-repo.md` is the design.
+arm64. `docs/archive/PLAN-apt-repo.md` is the design.
 
 ### Requirements
 

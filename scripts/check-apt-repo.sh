@@ -5,7 +5,7 @@
 #
 # # The failure this exists for
 #
-# The apt repository (github.com/rexenv/apt, docs/PLAN-apt-repo.md) is published by its own
+# The apt repository (github.com/rexenv/apt, docs/archive/PLAN-apt-repo.md) is published by its own
 # workflow AFTER a release, behind an approval — the same shape as the app-update descriptors,
 # and the same way to forget it: the tap release is public, the cask bumps, and every
 # `apt upgrade` keeps answering "rexenv is already the newest version". So this answers what
@@ -22,7 +22,7 @@ set -euo pipefail
 APT_URL="https://rexenv.github.io/apt"
 RELEASES_LATEST="https://github.com/rexenv/rexenv/releases/latest"
 # The repository's key (github.com/rexenv/apt KEY_FINGERPRINT). install.sh in the tap carries the
-# same key; a rotation changes all three together (docs/PLAN-apt-repo.md §5).
+# same key; a rotation changes all three together (docs/archive/PLAN-apt-repo.md §5).
 EXPECTED_FPR="139CC1A4A1971376FC6B586BD2F2070D6DFA60C9"
 
 say() { printf 'check-apt-repo: %s\n' "$*"; }
