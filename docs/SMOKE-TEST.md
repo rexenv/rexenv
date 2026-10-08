@@ -352,24 +352,35 @@ remotes — Laravel, Blank PHP with no `composer.json`, a failing clone, Bedrock
 Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2). The
 23 Sep clean-15.8 pass did not run this section.
 
-- [ ] **A repository that needs another PHP is refused at the CLONE, before any database**
+- [x] **A repository that needs another PHP is refused at the CLONE, before any database**
       (#796, 8 Oct 2026): clone a Laravel repo whose `composer.json` says `"php": "^8.4.1"` onto a
       site on 8.3 → the card fails at `cloning the repository` ("needs PHP ^8.4.1") with "switch
       the site's PHP version to 8.4 or 8.5 … and Retry"; `starting database` never ran (no MySQL
       start, no `.env` written). Switch to 8.4 → Retry → the clone phase reads "already cloned
       here" and the rest provisions. **Tell:** MySQL started or a database created before the
       refusal.
-- [ ] **A repository that needs a PHP extension the site's PHP lacks is refused at the CLONE**
+      ✓ **9 Oct 2026, Win11 VM** (a local test repo served over HTTP, `"php": "^8.4.1"`, site on 8.3):
+      the card read "failed at: cloning the repository · this repository's composer.json requires PHP
+      ^8.4.1, and this site runs PHP 8.3 — …"; the log ends at the clone phase.
+- [x] **A repository that needs a PHP extension the site's PHP lacks is refused at the CLONE**
       (#802): clone a repo whose `composer.json` requires `"ext-swoole": "*"` (and `"ext-imap"`) →
       the card fails at `cloning the repository` ("needs a PHP extension") naming **swoole** only —
       imap loads on every minor on every OS — before `starting database`. **Tell:** Composer's own
       refusal after the database, or "switch the site's PHP version" for a missing extension.
-- [ ] **Stop all is refused while a site is being provisioned** (#795): start a Laravel-from-git
+      ✓ **9 Oct 2026, Win11 VM** (`ext-imap` + `ext-swoole`, PHP 8.3): "this repository needs the PHP
+      extension swoole, and PHP 8.3 as rexenv ships it does not load it — …" at the clone phase; imap
+      not named.
+- [x] **Stop all is refused while a site is being provisioned** (#795): start a Laravel-from-git
       create, and while `installing dependencies` or `app key + migrations` runs, press Stop all
       (and `rex restart` in a terminal) → "Nothing was stopped: <site> is still being set up …
       Wait for it to finish, or Cancel it on its card, then Stop all."; MySQL's pid unchanged; the
       job finishes. After it, Stop all works. **Tell:** `1317 Query execution was interrupted` in
       the job log.
+      ✓ **9 Oct 2026, Win11 VM**: a cloned repo whose composer script sleeps 90 s; during it `rex
+      restart` AND `rex stop` both printed "Nothing was stopped: slow2.rex is still being set up, …",
+      MySQL's pid unchanged (13056); the job finished; afterwards stop + start went through. (The
+      first attempt proved nothing: with no `composer.lock` Composer runs `post-update-cmd`, not
+      `post-install-cmd`, so the sleep never ran and the job was over before the restart.)
 - [x] **New site → Laravel → Files: From Git** → paste a real Laravel repo URL → **Fetch**.
       Within a few seconds a branch picker appears with the default marked, and the name field
       prefills from the repo. **Create stays disabled until Fetch succeeds** — try clicking it
@@ -2421,10 +2432,13 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
-- [ ] **`rex doctor` with rex on PATH by hand** (#797, 8 Oct 2026): without Settings → Install, add
+- [x] **`rex doctor` with rex on PATH by hand** (#797, 8 Oct 2026): without Settings → Install, add
       the app's install folder (where `rex.exe` sits beside `rexenv.exe`) to the user Path, open a NEW
       terminal → `rex doctor`'s CLI line is ✓ "… → this app (on PATH by hand …)", not "rex not on
       PATH". L0 `the_cli_line_judges_the_rex_this_shell_would_run` ✓ on the Dell (Win10) 8 Oct 2026.
+      ✓ **9 Oct 2026, Win11 VM**: the install folder appended to HKCU `Path`, a fresh session's
+      `where rex` → the app's `rex.exe`, `rex doctor` → "✓ CLI … → this app (on PATH by hand; Settings
+      → Command-line tool installs it too)"; the Path restored from its backup.
 - [x] **No Visual C++ runtime → a named failure, never a hang** (8 Oct 2026, user report): on a
       Windows with NO Visual C++ Redistributable (a fresh install, or uninstall "Microsoft Visual
       C++ 2015-2022 Redistributable (x64)" on a VM snapshot), create a WordPress site → it fails
@@ -2448,7 +2462,7 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       `php -v` exit `-1073741515`. After the reinstall the banner left on its own and Start all
       brought 7/7 up. **Found there:** the shipped 0.8.12 `rex.exe` itself exits `0xC0000135`
       on such a PC (#799, fixed: static CRT).
-- [ ] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
+- [x] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
       8.0, 8.1, 8.4 and 8.5 — `rex php install <minor>`, a Blank-PHP site on it, `rex start` → the
       `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that
       minor. **Tell:** `PHP refused its configuration … Unable to load dynamic library 'imap'` (8.4+),
@@ -2456,6 +2470,10 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       user's 0.8.12 report. **And on 8.4/8.5 `phpinfo()` lists `imap`** (the PECL DLL, #801), as on
       macOS/Linux. L1 (`windows_php_cli_check`, every minor's `php -m` + preflight) ✓ 8 Oct
       2026 on the Win11 VM; a group serving a request on those minors is this row.
+      ✓ **9 Oct 2026, Win11 ARM VM** (this tree's setup.exe): `rex php install` + a linked Blank-PHP
+      site per minor → `curl -sk https://smkNN.rex/` → `7.4.33 / 8.0.30 / 8.1.34 / 8.4.23 / 8.5.8
+      imap=yes HTTP=200`, all seven `PHP-CGI` groups running. **Found there:** every other new site
+      settled "setup incomplete" with `caddy reload failed (exit 1)` while serving — #804.
 - [x] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
       folder (`C:\Users\<you>\Sites\shop`) → the site's stored path (Site Settings, `rex site
       info`) reads `C:\Users\…`, never `\\?\C:\Users\…`; the generated nginx `root` line is

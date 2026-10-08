@@ -597,8 +597,47 @@ pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path, force
     if force {
         args.push("--force".to_string());
     }
-    wait_ok(platform.supervisor().spawn(caddy_bin, &args)?, "caddy reload")
+    // Once more on failure — and Caddy's own last line in the error either way. Measured on the
+    // Win11 VM (8 Oct 2026): a reload that CHANGES the config can have its own admin connection cut
+    // by the admin server it is replacing (`wsarecv: An existing connection was forcibly closed by
+    // the remote host`, or `EOF`) while the new config IS applied, so every other new site failed
+    // at "starting to serve" with a bare `caddy reload failed (exit 1)` and served anyway. A second
+    // reload of the same file is a no-op that answers truthfully; a real config error fails both.
+    let log = platform.paths().log_dir()?.join(ADMIN_CLI_LOG);
+    retry_reload(
+        || {
+            let _ = std::fs::remove_file(&log);
+            wait_ok(platform.supervisor().spawn_logged(caddy_bin, &args, &log)?, "caddy reload")
+        },
+        || std::fs::read_to_string(&log).unwrap_or_default(),
+        std::time::Duration::from_millis(500),
+    )
 }
+
+/// [`reload`]'s policy, apart from the process: one more attempt after a failure that is not a
+/// timeout (a wedged edge would only cost the caller another 10 s), and the error carries the
+/// last thing the reload said.
+fn retry_reload(
+    mut attempt: impl FnMut() -> Result<()>,
+    said: impl Fn() -> String,
+    pause: std::time::Duration,
+) -> Result<()> {
+    attempt()
+        .or_else(|first| {
+            if first.to_string().contains("timed out") {
+                return Err(first);
+            }
+            std::thread::sleep(pause);
+            attempt()
+        })
+        .map_err(|e| match said().lines().rev().map(str::trim).find(|l| !l.is_empty()) {
+            Some(last) => crate::error::Error::Other(format!("{e}: {last}")),
+            None => e,
+        })
+}
+
+/// Where a `caddy reload` writes what it said, for the error that quotes it.
+const ADMIN_CLI_LOG: &str = "caddy-reload.log";
 
 /// Stop Caddy via its admin API (no privilege) over our unix socket.
 pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
@@ -1028,6 +1067,30 @@ mod tests {
             "must not hang past the deadline: {:?}",
             start.elapsed()
         );
+    }
+
+    /// The Win11 VM's measurement (8 Oct 2026): the first reload of a CHANGED config fails with a
+    /// cut connection while the config is applied; the second answers truthfully. A timeout is not
+    /// retried; a real error fails both and quotes what Caddy said.
+    #[test]
+    fn a_reload_cut_off_by_the_admin_restart_is_retried_once() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        let err = |m: &str| -> Result<()> { Err(crate::error::Error::Other(m.into())) };
+        let calls = Cell::new(0);
+        let cut_then_fine = || { calls.set(calls.get() + 1); if calls.get() == 1 { err("caddy reload failed (exit 1)") } else { Ok(()) } };
+        assert!(retry_reload(cut_then_fine, String::new, Duration::ZERO).is_ok());
+        assert_eq!(calls.get(), 2);
+
+        let calls = Cell::new(0);
+        let wedged = || { calls.set(calls.get() + 1); err("caddy reload timed out after 10s") };
+        assert!(retry_reload(wedged, String::new, Duration::ZERO).is_err());
+        assert_eq!(calls.get(), 1, "a timeout must not be paid twice");
+
+        let bad = || err("caddy reload failed (exit 1)");
+        let said = || "noise\nError: adapting config using caddyfile: unrecognized directive: bogus\n".to_string();
+        let e = retry_reload(bad, said, Duration::ZERO).unwrap_err().to_string();
+        assert!(e.ends_with("exit 1): Error: adapting config using caddyfile: unrecognized directive: bogus"), "{e}");
     }
 
     #[test]
