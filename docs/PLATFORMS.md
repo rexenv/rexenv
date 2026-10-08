@@ -209,6 +209,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   (`BinaryProvider::runtime_problem`, #798: the redistributable's registry entry, else its DLLs in
   System32; `None` on macOS and Linux): the Services banner, `rex doctor`, Start all's refusal and
   the installer's offer.
+- **A path on a command line may be written with `/`.** `pg_ctl` rewrites every path to forward
+  slashes, so a backslashed app-data marker disowned rexenv's own PostgreSQL and `rex doctor` told the
+  user to kill it (#800). Compare paths by folding BOTH case and separator
+  (`port_table::command_carries_marker`).
 - **Every PHP minor's official zip ships a DIFFERENT extension set.** 8.4+ has no IMAP, zip is
   built in before 8.2, gd is `php_gd2.dll` on 7.4. One list read off 8.3's zip was written into
   every minor's ini, and the preflight refused 7.4, 8.0, 8.1, 8.4 and 8.5 groups outright — found

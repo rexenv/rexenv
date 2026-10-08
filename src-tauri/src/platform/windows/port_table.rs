@@ -165,14 +165,20 @@ pub(crate) fn excluded_range_containing(netsh: &str, port: u16) -> Option<Exclud
     })
 }
 
-/// Whether `command` carries rexenv's app-data `marker`, ignoring case.
+/// Whether `command` carries rexenv's app-data `marker`, ignoring case AND which separator
+/// the path was written with.
 ///
 /// Windows paths are case-insensitive, and a command line keeps whatever case its
 /// creator typed, so an exact `contains` would disown our own leftover the day a path
 /// reaches it spelled differently — the "our own process named as a stranger" error
-/// `ensure_free` exists to avoid. An empty marker matches nothing, never everything.
+/// `ensure_free` exists to avoid. The same for `/` and `\`, which Windows treats alike:
+/// `pg_ctl` starts PostgreSQL with every path rewritten to forward slashes
+/// (`"C:/Users/…/rexenv/data/bin/postgres-18.6.0/bin/postgres.exe" -D "C:/Users/…"`), so
+/// `rex doctor` named rexenv's OWN database a foreign holder of :15432 and told the user to
+/// `Stop-Process` it (Win11 VM, 8 Oct 2026). An empty marker matches nothing, never everything.
 pub(crate) fn command_carries_marker(command: &str, marker: &str) -> bool {
-    !marker.is_empty() && command.to_lowercase().contains(&marker.to_lowercase())
+    let fold = |s: &str| s.to_lowercase().replace('\\', "/");
+    !marker.is_empty() && fold(command).contains(&fold(marker))
 }
 
 /// `(pid, parent)` pairs for `traits::select_master`, with a parent link kept only
@@ -473,6 +479,16 @@ Startport   Endport
         assert!(command_carries_marker(cmd, marker));
         assert!(!command_carries_marker(r"C:\Program Files\MySQL\bin\mysqld.exe", marker));
         assert!(!command_carries_marker(cmd, ""), "an empty marker must own nothing");
+    }
+
+    /// PostgreSQL started by `pg_ctl` — the command line measured on the Win11 VM, 8 Oct 2026:
+    /// every path forward-slashed. It is ours; a stranger's PostgreSQL is not.
+    #[test]
+    fn the_marker_matches_a_forward_slashed_command_line() {
+        let marker = r"C:\Users\Linkon Miyan\AppData\Local\rexenv\rexenv\data";
+        let pg = r#""C:/Users/Linkon Miyan/AppData/Local/rexenv/rexenv/data/bin/postgres-18.6.0/bin/postgres.exe"  -D "C:/Users/Linkon Miyan/AppData/Local/rexenv/rexenv/data/postgres/data" -p 15432 -c listen_addresses=127.0.0.1 -c unix_socket_directories= "#;
+        assert!(command_carries_marker(pg, marker));
+        assert!(!command_carries_marker(r#""C:/Program Files/PostgreSQL/17/bin/postgres.exe" -D "C:/Program Files/PostgreSQL/17/data""#, marker));
     }
 
     #[test]

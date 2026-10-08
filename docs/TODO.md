@@ -116,12 +116,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `build-cli.sh` now links the C runtime in, and `release-windows-check.sh` refuses either binary
   importing it.
 
-- [ ] **`rex doctor` on Windows calls rexenv's OWN PostgreSQL a foreign holder of :15432** (seen 8 Oct
+- [x] **`rex doctor` on Windows calls rexenv's OWN PostgreSQL a foreign holder of :15432** (seen 8 Oct
   2026, Win11 VM, right after Start all brought 7/7 up): `✗ Ports  port 15432 (needed by PostgreSQL) held
   by postgres.exe (pid …, …\rexenv\data\bin\postgres-18.6.0\bin\postgres.exe) $ Stop-Process -Id …` —
   the binary is rexenv's own, under its own data dir, and Services says it is running. Likely the
   pg_ctl-detached server (#698, `Proc::Detached`) is not counted as ours by the doctor's port scan. A
   finding that tells the user to kill their own database is worse than none.
+  ✓ **8 Oct 2026** (ledger #800): not `Proc::Detached` — the MARKER. `pg_ctl` forward-slashes every path on
+  the command line, and `port_table::command_carries_marker` compared a backslashed marker. It now folds
+  `\` to `/` as well as case. Live on the VM: same pid 4800, `✗ Ports` before, `✓ Ports` after.
 
 - [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
   report): the phase order for a cloned Laravel site is `db → configure → deps`, and
