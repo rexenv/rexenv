@@ -106,6 +106,17 @@ mod windows {
             let ini = php_cgi::write_ini(&*plat, &group, version, &dir, &format!("{minor}.check"), None, &[]);
             let pre = ini.and_then(|ini| php_cgi::preflight(&*plat, &group, version, &dir, &ini));
             check.is(&format!("PHP {version}: the group's preflight passes"), pre.is_ok(), &format!("{pre:?}"));
+            // #802: the clone phase's extension check, asked of this real php.exe — imap loads on
+            // every minor (8.4+ through the PECL addon, #801), swoole on none.
+            let project = root.join(format!("ext-{minor}"));
+            std::fs::create_dir_all(&project).unwrap();
+            std::fs::write(project.join("composer.json"), r#"{"require":{"ext-imap":"*","ext-swoole":"*"}}"#).unwrap();
+            let why = rexenv_lib::core::repo::ext_requirement_refused_in(&project, &minor, &php);
+            check.is(
+                &format!("PHP {version}: a project needing imap + swoole is refused for swoole alone"),
+                why.as_deref().is_some_and(|w| w.contains("extension swoole,") && !w.contains("imap")),
+                &format!("{why:?}"),
+            );
         }
 
         let _ = std::fs::remove_dir_all(&root);

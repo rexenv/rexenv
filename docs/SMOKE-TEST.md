@@ -359,6 +359,11 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       start, no `.env` written). Switch to 8.4 → Retry → the clone phase reads "already cloned
       here" and the rest provisions. **Tell:** MySQL started or a database created before the
       refusal.
+- [ ] **A repository that needs a PHP extension the site's PHP lacks is refused at the CLONE**
+      (#802): clone a repo whose `composer.json` requires `"ext-swoole": "*"` (and `"ext-imap"`) →
+      the card fails at `cloning the repository` ("needs a PHP extension") naming **swoole** only —
+      imap loads on every minor on every OS — before `starting database`. **Tell:** Composer's own
+      refusal after the database, or "switch the site's PHP version" for a missing extension.
 - [ ] **Stop all is refused while a site is being provisioned** (#795): start a Laravel-from-git
       create, and while `installing dependencies` or `app key + migrations` runs, press Stop all
       (and `rex restart` in a terminal) → "Nothing was stopped: <site> is still being set up …
@@ -2448,7 +2453,8 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that
       minor. **Tell:** `PHP refused its configuration … Unable to load dynamic library 'imap'` (8.4+),
       `'zip'` (7.4–8.1) or `'gd'` (7.4) — one extension list written into every minor's ini, the
-      user's 0.8.12 report. L1 (`windows_php_cli_check`, every minor's `php -m` + preflight) ✓ 8 Oct
+      user's 0.8.12 report. **And on 8.4/8.5 `phpinfo()` lists `imap`** (the PECL DLL, #801), as on
+      macOS/Linux. L1 (`windows_php_cli_check`, every minor's `php -m` + preflight) ✓ 8 Oct
       2026 on the Win11 VM; a group serving a request on those minors is this row.
 - [x] **A linked folder is stored plain, not verbatim** (ledger #770): New Site → link an existing
       folder (`C:\Users\<you>\Sites\shop`) → the site's stored path (Site Settings, `rex site

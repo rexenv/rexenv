@@ -2090,6 +2090,95 @@ fn leading_int(s: &str) -> Option<u32> {
 // would need per-host raw URLs and would miss private repositories), and the
 // refusal names the fix: which of rexenv's PHP minors satisfies the constraint.
 
+/// Every PHP extension a project requires, with who requires it: the root `composer.json`'s
+/// `require` and `require-dev` (provisioning's `composer install` installs dev too), and, when
+/// there is a `composer.lock`, every locked package's — Composer's platform check refuses on
+/// any of them. Names as Composer spells them after `ext-`, lowercase; sorted, one entry per
+/// extension (the first requirer kept).
+pub fn composer_ext_requirements(composer_json: &str, composer_lock: Option<&str>) -> Vec<(String, String)> {
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut take = |reqs: Option<&serde_json::Value>, who: &str| {
+        for key in reqs.and_then(|r| r.as_object()).into_iter().flat_map(|o| o.keys()) {
+            if let Some(ext) = key.to_ascii_lowercase().strip_prefix("ext-") {
+                if !found.iter().any(|(e, _)| e == ext) {
+                    found.push((ext.to_string(), who.to_string()));
+                }
+            }
+        }
+    };
+    if let Ok(root) = serde_json::from_str::<serde_json::Value>(composer_json) {
+        take(root.get("require"), "composer.json");
+        take(root.get("require-dev"), "composer.json");
+    }
+    if let Some(lock) = composer_lock.and_then(|l| serde_json::from_str::<serde_json::Value>(l).ok()) {
+        for list in ["packages", "packages-dev"] {
+            for pkg in lock.get(list).and_then(|p| p.as_array()).into_iter().flatten() {
+                let who = pkg.get("name").and_then(|n| n.as_str()).unwrap_or("a locked package");
+                take(pkg.get("require"), who);
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+/// The `ext-*` refusal for `project` against the PHP at `php_bin` (asked with `php -m`). `None`
+/// when nothing is required, everything required loads, or PHP could not be asked — then
+/// `composer install` decides, and `map_composer_error` names what it refused.
+pub fn ext_requirement_refused_in(project: &Path, minor: &str, php_bin: &Path) -> Option<String> {
+    let required = project_ext_requirements(project);
+    if required.is_empty() {
+        return None;
+    }
+    let out = crate::platform::command(php_bin).arg("-m").output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let loaded = php_modules_from(&String::from_utf8_lossy(&out.stdout));
+    ext_requirement_refusal(&required, &loaded, minor)
+}
+
+/// [`composer_ext_requirements`] read from `project`'s `composer.json` and `composer.lock`.
+pub fn project_ext_requirements(project: &Path) -> Vec<(String, String)> {
+    let Ok(json) = std::fs::read_to_string(project.join("composer.json")) else {
+        return Vec::new();
+    };
+    let lock = std::fs::read_to_string(project.join("composer.lock")).ok();
+    composer_ext_requirements(&json, lock.as_deref())
+}
+
+/// `php -m`'s module list in Composer's spelling: lowercase, spaces as dashes
+/// (`Zend OPcache` → `zend-opcache`), section headers dropped.
+pub fn php_modules_from(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('['))
+        .map(|l| l.to_ascii_lowercase().replace(' ', "-"))
+        .collect()
+}
+
+/// The refusal when a project requires extensions this site's PHP does not load; `None`
+/// when it loads them all. Asked of the REAL PHP (`php -m`), so it holds on every OS without
+/// a list to keep in step.
+pub fn ext_requirement_refusal(required: &[(String, String)], loaded: &[String], minor: &str) -> Option<String> {
+    let missing: Vec<String> = required
+        .iter()
+        .filter(|(ext, _)| !loaded.iter().any(|m| m == ext))
+        .map(|(ext, who)| if who == "composer.json" { ext.clone() } else { format!("{ext} (required by {who})") })
+        .collect();
+    if missing.is_empty() {
+        return None;
+    }
+    let (noun, pronoun) = if missing.len() == 1 { ("extension", "it") } else { ("extensions", "them") };
+    Some(format!(
+        "this repository needs the PHP {noun} {}, and PHP {minor} as rexenv ships it does not load {pronoun} \
+         — composer install would refuse it. Nothing was installed; the project cannot run on this \
+         site's PHP as it is.",
+        missing.join(", ")
+    ))
+}
+
 /// `require.php` from a `composer.json`, if the manifest states one.
 pub fn composer_php_requirement(composer_json: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(composer_json).ok()?;
@@ -2426,7 +2515,20 @@ pub fn map_composer_error(tail: &[String]) -> Error {
             line.trim()
         ));
     }
-    if joined.contains("your php version") || joined.to_lowercase().contains("requires php") {
+    // Lines about the PHP VERSION only: Composer's extension refusal reads "requires PHP
+    // extension ext-imap * but it is missing", and matching "requires php" on that sent a user
+    // to switch PHP versions for a missing extension (found by #802's test, 8 Oct 2026).
+    let version_lines: Vec<&str> = tail
+        .iter()
+        .map(String::as_str)
+        .filter(|l| {
+            let lower = l.to_lowercase();
+            (lower.contains("your php version") || lower.contains("requires php"))
+                && !lower.contains("requires php extension")
+        })
+        .collect();
+    if !version_lines.is_empty() {
+        let joined = version_lines.join("\n");
         // Composer says which PHP it wanted and which it got — "Root composer.json requires
         // php >=8.4.1 but your php version (8.3.32) does not satisfy that requirement" — so
         // the sentence says both; the manifest's own `require.php` was already checked
@@ -2445,9 +2547,20 @@ pub fn map_composer_error(tail: &[String]) -> Error {
         ));
     }
     if joined.contains("ext-") {
+        // Name them: "a PHP extension" sent a user hunting through Composer's output for which.
+        let mut names: Vec<&str> = joined
+            .split("ext-")
+            .skip(1)
+            .filter_map(|rest| rest.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')).next())
+            .map(|n| n.trim_end_matches('-'))
+            .filter(|n| !n.is_empty())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
         return Error::Other(format!(
-            "Composer refused: the repo needs a PHP extension rexenv's \
-             bundled PHP doesn't ship. Details:\n{}",
+            "Composer refused: the repo needs the PHP extension(s) {} that rexenv's \
+             bundled PHP doesn't load. Details:\n{}",
+            names.join(", "),
             last_lines(tail, 3)
         ));
     }
@@ -2557,6 +2670,56 @@ fn last_lines(tail: &[String], n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// #802: what a project requires, from both manifests, with who requires it.
+    #[test]
+    fn ext_requirements_come_from_the_root_and_every_locked_package() {
+        let json = r#"{"require":{"php":"^8.4","ext-IMAP":"*","laravel/framework":"^11"},"require-dev":{"ext-xdebug":"*"}}"#;
+        let lock = r#"{"packages":[{"name":"webklex/php-imap","require":{"ext-imap":"*","ext-iconv":"*"}}],"packages-dev":[{"name":"a/b","require":{"php":">=8"}}]}"#;
+        assert_eq!(
+            super::composer_ext_requirements(json, Some(lock)),
+            vec![
+                ("iconv".to_string(), "webklex/php-imap".to_string()),
+                ("imap".to_string(), "composer.json".to_string()),
+                ("xdebug".to_string(), "composer.json".to_string()),
+            ]
+        );
+        assert!(super::composer_ext_requirements(r#"{"require":{"php":"^8"}}"#, None).is_empty());
+        assert!(super::composer_ext_requirements("not json", Some("nor this")).is_empty());
+    }
+
+    /// `php -m` as PHP prints it, in Composer's spelling; the refusal names only what is missing.
+    #[test]
+    fn a_missing_extension_is_refused_by_name_and_a_loaded_one_is_not() {
+        let out = "[PHP Modules]\r\nCore\r\nimap\r\npdo_mysql\r\nZend OPcache\r\n\r\n[Zend Modules]\r\nZend OPcache\r\n";
+        let loaded = super::php_modules_from(out);
+        assert!(loaded.contains(&"zend-opcache".to_string()) && loaded.contains(&"pdo_mysql".to_string()), "{loaded:?}");
+        assert!(!loaded.iter().any(|m| m.starts_with('[')), "{loaded:?}");
+        let req = |e: &str, who: &str| (e.to_string(), who.to_string());
+        assert_eq!(super::ext_requirement_refusal(&[req("imap", "composer.json"), req("zend-opcache", "composer.json")], &loaded, "8.4"), None);
+        let why = super::ext_requirement_refusal(&[req("imap", "composer.json"), req("imagick", "spatie/image")], &loaded, "8.4").expect("imagick missing");
+        assert!(why.contains("the PHP extension imagick (required by spatie/image), and PHP 8.4"), "{why}");
+        assert!(!why.contains("imap"), "a loaded extension is not named: {why}");
+    }
+
+    /// The spawn half on a real process: a stand-in `php` that prints a module list.
+    #[cfg(unix)]
+    #[test]
+    fn the_refusal_asks_the_sites_real_php() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rexenv-ext-req-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let php = dir.join("php");
+        std::fs::write(&php, "#!/bin/sh\nprintf '[PHP Modules]\\nimap\\nmbstring\\n'\n").unwrap();
+        std::fs::set_permissions(&php, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.join("composer.json"), r#"{"require":{"ext-imap":"*","ext-mbstring":"*"}}"#).unwrap();
+        assert_eq!(super::ext_requirement_refused_in(&dir, "8.4", &php), None);
+        std::fs::write(dir.join("composer.json"), r#"{"require":{"ext-imap":"*","ext-swoole":"*"}}"#).unwrap();
+        let why = super::ext_requirement_refused_in(&dir, "8.4", &php).expect("swoole missing");
+        assert!(why.contains("extension swoole,"), "{why}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// A repository script that failed after the install is named as that script, not as Composer
     /// (user report, 8 Oct 2026: `artisan migrate` in post-install-cmd, read as "composer install failed").
     #[test]
@@ -3521,8 +3684,8 @@ mod tests {
     fn composer_and_node_errors_map_to_actionable_messages() {
         let php = map_composer_error(&["  - Root composer.json requires php >=8.4 but your php version (8.3.31) does not satisfy that requirement.".into()]);
         assert!(php.to_string().contains("Switch the site's PHP version"), "{php}");
-        let ext = map_composer_error(&["requires ext-imagick * -> it is missing".into()]);
-        assert!(ext.to_string().contains("extension"), "{ext}");
+        let ext = map_composer_error(&["    - Root composer.json requires PHP extension ext-imagick * but it is missing from your system.".into(), "    - webklex/php-imap requires ext-imap * -> it is missing from your system.".into()]);
+        assert!(ext.to_string().contains("extension(s) imagick, imap that"), "the extensions are NAMED (#802): {ext}");
         let gyp = map_node_error(&["gyp ERR! stack Error".into()]);
         assert!(gyp.to_string().ends_with(crate::platform::words::current().native_build), "{gyp}");
         let engine = map_node_error(&["npm warn EBADENGINE Unsupported engine".into()]);

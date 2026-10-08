@@ -281,6 +281,9 @@ before anything is built on it.
   VM by `windows_php_cli_check` over every pinned minor — every earlier proof had run on 8.3).
   The model now names `per_version` rules (`ExtChange`); the ini, the CLI's `php.ini` and the
   preflight's expectation all follow the version (`CgiGroup::ext_lines` / `modules`).
+  **And the same day (#801):** IMAP is back on 8.4/8.5 — the published tree carries the official
+  PECL `php_imap.dll` (`binaries::addons`), so Windows matches macOS/Linux, which compile `imap` into
+  every 8.x. The `DroppedFrom("8.4")` rule went with it.
   pcntl, posix, sysvmsg and sysvsem do not exist on Windows. The PECL ones the macOS build carries
   — apcu, imagick, redis, event, swoole, protobuf, opentelemetry — are NOT in v1: each would be a
   third-party DLL pin, a trust decision and a sweep target; Settings says so honestly, D4's shape.

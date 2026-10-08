@@ -69,6 +69,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Windows lacks IMAP on PHP 8.4/8.5 while macOS/Linux have it; a project's `ext-*` needs are found only by
+  Composer, after the database** (the same user's second message, 8 Oct 2026: ship the PECL DLL, never enable
+  a missing one, detect `ext-imap`, verify before load, name what is missing).
+  ✓ **8 Oct 2026**: (1) #801 — the official PECL `php_imap.dll` in every Windows 8.4/8.5 tree, stale caches
+  replaced (and the stale-tree gap it exposed fixed: `retire_stale_tree`); (2) #802 — `ext-*` (root + lock)
+  checked at the clone phase against the site's real `php -m`, refusal names the extension and its requirer;
+  Composer's extension refusal named, and no longer read as a PHP-version one. "Never enable a missing one" and
+  "verify before load" were #794's per-version rules + preflight. Auto-INSTALL per project was not built: with
+  imap in every tree there is nothing left to install on demand. L1 on the Win11 VM, 21/21.
+
 - [x] **Windows: PHP 7.4, 8.0, 8.1, 8.4 and 8.5 groups cannot start — one extension list, read off 8.3's
   zip, was written into every minor's ini** (user report, 8 Oct 2026, Windows 11 build 26300, rexenv 0.8.12,
   a cloned Laravel site needing `^8.4.1`): `rex start` refused `PHP Startup: Unable to load dynamic library

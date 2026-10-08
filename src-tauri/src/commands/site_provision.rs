@@ -1187,6 +1187,26 @@ async fn drive<R: tauri::Runtime>(
             finish_phase(app, entry, progress, ix, "failed", Some(&format!("needs PHP {requirement}")));
             return JobEnd::Failed(why);
         }
+        // And the extensions it requires (`ext-*`, the root's and every locked package's), asked
+        // of the site's REAL PHP — only when there are any, so a repo that needs none never
+        // waits on a PHP download here. A Windows 8.4 site needed `ext-imap` and was told by
+        // `composer install`, after the database (8 Oct 2026, #802).
+        if !core::repo::project_ext_requirements(&project).is_empty() {
+            if let Ok((php_bin, _)) = composer_tools(&state, &minor).await {
+                let (p2, m2) = (project.clone(), minor.clone());
+                let refused = tauri::async_runtime::spawn_blocking(move || {
+                    core::repo::ext_requirement_refused_in(&p2, &m2, &php_bin)
+                })
+                .await
+                .ok()
+                .flatten();
+                if let Some(why) = refused {
+                    append_line(app, entry, &why);
+                    finish_phase(app, entry, progress, ix, "failed", Some("needs a PHP extension"));
+                    return JobEnd::Failed(why);
+                }
+            }
+        }
         bail_if_cancelled!();
     }
 
@@ -2151,6 +2171,17 @@ async fn deps_phase<R: tauri::Runtime>(
         append_line(app, entry, &format!("composer.json requires PHP {requirement}; this site runs PHP {minor}"));
         return Some(JobEnd::Failed(why));
     }
+    // The extensions too, against the PHP that will run composer (#802) — the same question the
+    // clone phase asked, at the step that needs the answer.
+    let (p2, m2, b2) = (project.to_path_buf(), minor.to_string(), php_bin.to_path_buf());
+    let refused = tauri::async_runtime::spawn_blocking(move || core::repo::ext_requirement_refused_in(&p2, &m2, &b2))
+        .await
+        .ok()
+        .flatten();
+    if let Some(why) = refused {
+        append_line(app, entry, &why);
+        return Some(JobEnd::Failed(why));
+    }
     let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
     let (p2, c2, d2) =
         (php_bin.to_path_buf(), composer_phar.to_path_buf(), project.to_path_buf());
@@ -2270,6 +2301,9 @@ mod tests {
             .min()
             .unwrap();
         assert!(check < first_db, "the require.php check moved after a database phase");
+        // #802: and the extension check, in the same place.
+        let ext = src.find("core::repo::ext_requirement_refused_in(&p2, &m2, &php_bin)").expect("the clone-end ext check");
+        assert!(ext < first_db, "the ext-* check moved after a database phase");
     }
 
     /// The blueprint rule, stated once. Accepting a blueprint for a site that

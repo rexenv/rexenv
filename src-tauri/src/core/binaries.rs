@@ -1377,6 +1377,82 @@ fn php_windows_toolset(version: &str) -> &'static str {
     }
 }
 
+/// A file an artifact's own archive does not carry, fetched from its publisher and placed
+/// inside the tree before it is published — so a cached tree either has it or is stale
+/// (`cached_path` → `needs_repair` → the next resolve fetches it).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Addon {
+    /// What it is, for messages.
+    pub label: &'static str,
+    pub url: String,
+    pub sha256: &'static str,
+    /// The one file taken out of the addon's zip.
+    pub member: &'static str,
+    /// Where it lands, relative to the tree.
+    pub dest: &'static str,
+}
+
+/// The addons `name`@`version` needs on `os`.
+///
+/// Windows PHP 8.4 and 8.5: IMAP. PHP 8.4 moved it to PECL, so php.net's 8.4+ zips have no
+/// `php_imap.dll` — while rexenv's macOS and Linux builds compile `imap` into every 8.x
+/// (`rexenv/runtimes` `build-php.sh`). A project requiring `ext-imap` ran on a Mac and failed
+/// on Windows, and a user installed the DLL by hand (8 Oct 2026). These are the official PECL
+/// builds for the exact ABI (NTS, VS17, x64) from php.net's own Windows mirror — the host the
+/// PHP zips come from — pinned from our download (#801). Its imports: system DLLs, the VC++
+/// runtime PHP needs anyway, and `php8.dll`.
+pub fn addons(name: &str, version: &str, os: &str) -> Vec<Addon> {
+    let imap = |minor: &str, sha256: &'static str| Addon {
+        label: "the PECL imap extension",
+        url: format!(
+            "https://downloads.php.net/~windows/pecl/releases/imap/1.0.3/php_imap-1.0.3-{minor}-nts-vs17-x64.zip"
+        ),
+        sha256,
+        member: "php_imap.dll",
+        dest: "ext/php_imap.dll",
+    };
+    match (name, os) {
+        ("php", "windows") if version.starts_with("8.4.") => {
+            vec![imap("8.4", "09d8de85b24ab8794a14332b365585581f0105f81ad5ffe38e0f6235da830384")]
+        }
+        ("php", "windows") if version.starts_with("8.5.") => {
+            vec![imap("8.5", "9e4f58d3a9f16d238a4e9f370cfaf13002575049389b7255fae165718df81755")]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// Whether every addon `name`@`version` needs is in the tree at `dir`.
+fn addons_satisfied(dir: &Path, name: &str, version: &str, os: &str) -> bool {
+    addons(name, version, os).iter().all(|a| dir.join(a.dest).is_file())
+}
+
+/// Fetch each addon into `staging` — inside the staged block, so a tree is published
+/// with its addons or not at all.
+async fn stage_addons(name: &str, version: &str, os: &str, staging: &Path, id: &str) -> Result<()> {
+    for addon in addons(name, version, os) {
+        let archive = staging.join(".addon.zip");
+        let unpacked = staging.join(".addon");
+        download(&addon.url, &archive, Some(&Checksum::Sha256(addon.sha256.to_string())), Some(id)).await?;
+        extract_zip_tree(&archive, &unpacked, 0)?;
+        let from = unpacked.join(addon.member);
+        if !from.is_file() {
+            return Err(Error::Other(format!(
+                "{} for {name} {version} has no {} inside it ({})",
+                addon.label, addon.member, addon.url
+            )));
+        }
+        let to = staging.join(addon.dest);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::rename(&from, &to)?;
+        std::fs::remove_dir_all(&unpacked)?;
+        std::fs::remove_file(&archive)?;
+    }
+    Ok(())
+}
+
 fn mysql_windows_sha256(version: &str) -> Option<&'static str> {
     match version {
         "8.4.6" => Some("b6c152f9f3aaa7294eb47db698e47974d37b261bf3cab4f90dc1243bb5ecd204"),
@@ -3106,6 +3182,7 @@ pub fn cached_path(platform: &dyn Platform, name: &str, version: &str) -> Option
             if !member.exists()
                 || !cache_matches_pin(&dir, version, &spec.checksum)
                 || !licenses_satisfied(&dir, &spec.url)
+                || !addons_satisfied(&dir, name, version, os)
             {
                 return None;
             }
@@ -3532,6 +3609,20 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
     if let Some(hit) = cached_path(platform, name, version) {
         return Ok(hit);
     }
+    // Present but stale — a re-pinned archive, licences or an addon it now needs (#801): move
+    // it aside and fetch, as `resolve` drops a stale file. Without this a stale tree was never
+    // replaced: `publish` keeps an existing tree that has its member (a concurrent publish), so
+    // the fresh staging was thrown away and every resolve fetched again for nothing — found when
+    // the Windows 8.4/8.5 trees would not take their PECL imap (Win11 VM, 8 Oct 2026).
+    // RENAMED, not deleted in place: a running php-cgi holds its tree on Windows, a
+    // `remove_dir_all` then deletes what it can and leaves a half tree, while a rename either
+    // moves the whole tree or nothing. In use → keep serving it; a later resolve repairs it.
+    if let Err(e) = retire_stale_tree(&bin_dir, &dir) {
+        if dir.join(spec.member).exists() {
+            log::warn!("{name} {version}: the cached tree is stale but in use ({e}); serving it until it is free");
+            return Ok(dir);
+        }
+    }
 
     if !matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
@@ -3570,6 +3661,9 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
         // dead 600MB archive into the final dir.
         std::fs::remove_file(&archive)?;
+        // Before the tree check, so an addon's DLL is checked (and loses its Mark of the
+        // Web) like every other file in the tree.
+        stage_addons(name, version, os, &staging, &id).await?;
         // Inside the staged block, so a tree that fails it is removed with the
         // staging dir and never becomes the cached tree.
         platform.binaries().prepare_binary_dir(&staging)?;
@@ -3581,6 +3675,20 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
     finish_item(&id, &staged);
     staged?;
     Ok(dir)
+}
+
+/// Move a stale tree out of `dir` whole and delete it; `Ok` when `dir` is gone (or never was),
+/// `Err` when it could not be moved — in use — and is left exactly as it was.
+fn retire_stale_tree(bin_dir: &Path, dir: &Path) -> std::io::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let name = dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let aside = bin_dir.join(format!(".{name}.stale-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&aside);
+    std::fs::rename(dir, &aside)?;
+    let _ = std::fs::remove_dir_all(&aside);
+    Ok(())
 }
 
 /// How many times a transient download failure (network drop, timeout, 5xx) is
@@ -5795,6 +5903,70 @@ mod tests {
     /// `php-debug` is a custom static-php compile rexenv hosts itself (see
     /// `PHP_DEBUG_TAG`), and the name check excluded it. See
     /// `the_debug_build_is_ours_too`.
+    /// #801: every Windows PHP whose php.net zip has no IMAP (8.4 on) gets the PECL DLL — derived
+    /// from the pinned versions, so a new minor joins by existing and fails here until pinned;
+    /// nothing is added where the zip has it (≤ 8.3) or on macOS/Linux (compiled in).
+    #[test]
+    fn every_windows_php_without_imap_in_its_zip_gets_the_pecl_dll() {
+        let mut digests = Vec::new();
+        for &v in PHP_VERSIONS {
+            let minor = crate::core::php::minor_of(v);
+            let (major, m): (u32, u32) = {
+                let mut it = minor.split('.').map(|x| x.parse().unwrap());
+                (it.next().unwrap(), it.next().unwrap())
+            };
+            let windows = addons("php", v, "windows");
+            if (major, m) >= (8, 4) {
+                let imap = windows.iter().find(|a| a.member == "php_imap.dll").unwrap_or_else(|| panic!("PHP {v}: no imap addon"));
+                assert_eq!(imap.dest, "ext/php_imap.dll");
+                assert!(imap.url.starts_with("https://downloads.php.net/~windows/pecl/releases/imap/"), "{}", imap.url);
+                assert!(imap.url.ends_with(&format!("-{minor}-nts-vs17-x64.zip")), "PHP {v} must take its OWN minor's ABI: {}", imap.url);
+                assert_eq!(imap.sha256.len(), 64, "PHP {v}");
+                digests.push(imap.sha256);
+            } else {
+                assert!(windows.is_empty(), "PHP {v}'s own zip ships imap");
+            }
+            for os in ["macos", "linux"] {
+                assert!(addons("php", v, os).is_empty(), "{os} compiles imap in");
+            }
+        }
+        let n = digests.len();
+        digests.sort();
+        digests.dedup();
+        assert_eq!(digests.len(), n, "two minors pinned to one archive");
+    }
+
+    /// #801: a stale tree is moved out WHOLE (so `publish` can put the fresh one in its place —
+    /// it keeps an existing tree that has its member), and nothing of it is left behind.
+    #[test]
+    fn a_stale_tree_is_retired_whole() {
+        let bin = std::env::temp_dir().join(format!("rexenv-retire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&bin);
+        let dir = bin.join("php-8.4.23");
+        std::fs::create_dir_all(dir.join("ext")).unwrap();
+        std::fs::write(dir.join("php.exe"), "x").unwrap();
+        std::fs::write(dir.join("ext/php_curl.dll"), "x").unwrap();
+        retire_stale_tree(&bin, &dir).unwrap();
+        assert!(!dir.exists(), "the stale tree is still where the fresh one must go");
+        assert_eq!(std::fs::read_dir(&bin).unwrap().count(), 0, "nothing left aside");
+        retire_stale_tree(&bin, &dir).expect("an absent tree is already retired");
+        let _ = std::fs::remove_dir_all(&bin);
+    }
+
+    /// A cached tree without its addon is stale — the repair path for every 8.4/8.5 tree
+    /// published before #801.
+    #[test]
+    fn a_tree_without_its_addon_is_not_satisfied() {
+        let dir = std::env::temp_dir().join(format!("rexenv-addon-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("ext")).unwrap();
+        assert!(!addons_satisfied(&dir, "php", "8.4.23", "windows"));
+        std::fs::write(dir.join("ext/php_imap.dll"), "x").unwrap();
+        assert!(addons_satisfied(&dir, "php", "8.4.23", "windows"));
+        assert!(addons_satisfied(&dir, "php", "8.3.32", "windows"), "nothing owed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn every_php_we_distribute_ourselves_ships_its_licences() {
         let mut ours = 0;

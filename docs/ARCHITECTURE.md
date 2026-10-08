@@ -595,6 +595,11 @@ Live-proven end to end by `site_stop_start_check`.
   for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
   per-engine SELECTED version — so the watchdog respawns a crashed engine on the
   selected version, not the default pin).
+- **A cloned repository is judged at the clone phase, before any database** (#796, #802): its
+  `require.php` against the site's minor, and every `ext-*` it or a locked package requires
+  against the site's REAL PHP (`php -m` — the same on every OS, no list to keep in step). Each
+  refusal names the fix (a minor to switch to; the missing extension and who requires it).
+  `deps` asks both again, at the step that needs the answer.
 - **Start all refuses up front when a runtime the servers need is missing**
   (`BinaryProvider::runtime_problem`, #798 — Windows' Visual C++ Redistributable; `None` on macOS
   and Linux). `start_stack`'s first step, so the refusal names the runtime and Microsoft's link

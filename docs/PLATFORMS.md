@@ -213,7 +213,8 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   slashes, so a backslashed app-data marker disowned rexenv's own PostgreSQL and `rex doctor` told the
   user to kill it (#800). Compare paths by folding BOTH case and separator
   (`port_table::command_carries_marker`).
-- **Every PHP minor's official zip ships a DIFFERENT extension set.** 8.4+ has no IMAP, zip is
+- **Every PHP minor's official zip ships a DIFFERENT extension set.** 8.4+ has no IMAP (rexenv adds
+  the official PECL DLL back — `binaries::addons`, #801 — because macOS/Linux have it), zip is
   built in before 8.2, gd is `php_gd2.dll` on 7.4. One list read off 8.3's zip was written into
   every minor's ini, and the preflight refused 7.4, 8.0, 8.1, 8.4 and 8.5 groups outright — found
   by a user, since every proof had run on the default 8.3 (#603, 8 Oct 2026). A PHP claim on
