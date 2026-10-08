@@ -247,6 +247,7 @@ windows_cgi_breaker_check      demo    windows
 windows_wp_site_check          demo    windows
 windows_cli_mail_probe         demo    windows
 windows_loader_dialog_check    demo    windows
+windows_runtime_check          demo    windows
 pool_get_values_probe          demo    all
 pool_health_check              demo    all
 pool_busy_check                demo    all

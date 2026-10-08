@@ -121,6 +121,11 @@ mod windows_ipc_rules;
 #[allow(dead_code)]
 #[path = "windows/firefox_root.rs"]
 mod windows_firefox_root;
+// And whether the Visual C++ runtime is there (#798).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/vc_runtime_rules.rs"]
+mod windows_vc_runtime_rules;
 // And the CA trust's PEM read and cancel wording (ledger #613).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]

@@ -94,13 +94,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   L1 `windows_loader_dialog_check` 3/3 in the Win11 VM's desktop session (control held by the dialog;
   the fixed spawn exited `-1073741515` within 10 s). INSTALL §Windows names the requirement.
 
-- [ ] **Windows: detect a missing Visual C++ runtime BEFORE a service needs it, and prove the whole flow on
+- [x] **Windows: detect a missing Visual C++ runtime BEFORE a service needs it, and prove the whole flow on
   a machine without it** (follow-up to #794): today the first MySQL/PHP start is where a user learns it
   is missing — named and with the link, but after a failed provision. Owed: (1) a check (System32's
   `vcruntime140.dll` + `vcruntime140_1.dll` + `msvcp140.dll`, or the `VC\Runtimes\x64` registry key) shown
   in `rex doctor` and on the Services screen before any start; (2) the NSIS installer offering the
   official `vc_redist.x64.exe` (a UAC prompt — per-user installer, so an offer, never silent); (3) SMOKE
   §Windows "No Visual C++ runtime" run on a VM snapshot with the redistributable uninstalled.
+  ✓ **8 Oct 2026, (1) and (2)** (ledger #798): `BinaryProvider::runtime_problem` (Windows: registry
+  `VC\Runtimes\X64`, else the DLLs; macOS/Linux `None`) → the Services banner, `rex doctor`'s Runtime
+  line, `start_stack`'s up-front refusal, and the interactive installer's offer (`nsis/hooks.nsh`).
+  L0 plant-proven; L1 positive on the Dell. (3) is the row below.
+
+- [ ] **Prove #794/#798 on a Windows WITHOUT the Visual C++ Redistributable** — the one case no test
+  machine has: on the Win11 VM, uninstall "Microsoft Visual C++ 2015-2022 Redistributable (x64)"
+  (reinstall after), then run SMOKE §Windows "No Visual C++ runtime" — the installer's dialog (needs a
+  `tauri build` setup.exe from the Dell), the banner, `rex doctor`, Start all's refusal, and
+  `windows_runtime_check` reading "the verdict BLOCKS".
 
 - [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
   report): the phase order for a cloned Laravel site is `db → configure → deps`, and

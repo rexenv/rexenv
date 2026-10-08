@@ -987,6 +987,28 @@ pub trait BinaryProvider: Send + Sync {
     fn prepare_binary_dir(&self, _root: &std::path::Path) -> Result<()> {
         Ok(())
     }
+    /// A system runtime the downloaded servers need that this machine lacks — asked BEFORE any
+    /// start, so a user learns it on the Services screen and in `rex doctor` rather than from a
+    /// failed provision (user report, 8 Oct 2026). Windows: the Microsoft Visual C++
+    /// Redistributable that php.net's PHP and Oracle's MySQL link. macOS and Linux: `None` —
+    /// their servers are static or carry their own libraries.
+    fn runtime_problem(&self) -> Option<RuntimeProblem>;
+}
+
+/// What [`BinaryProvider::runtime_problem`] found. The sentence is the platform's, rendered as
+/// sent (a rule's words live beside the rule).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeProblem {
+    /// True when no database or PHP can start without it — Start all refuses up front. False for
+    /// a runtime that is there but older than some builds need: a warning, never a block.
+    pub blocking: bool,
+    /// What is wrong and what to do, in one or two sentences.
+    pub message: String,
+    /// Where the fix is downloaded from (the vendor's own link).
+    pub url: String,
+    /// The button that opens [`Self::url`] ("Download from Microsoft").
+    pub action: String,
 }
 
 /// Keeps the privileged Caddy edge (`:80`/`:443`, root) alive across ANY death —

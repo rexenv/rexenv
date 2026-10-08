@@ -1960,6 +1960,7 @@ where
                 },
                 "portConflicts": port_conflicts,
                 "cli": to_value(&cli)?,
+                "runtime": to_value(&state.platform.binaries().runtime_problem())?,
                 // Borrowed resolver files another tool reclaimed — invisible to
                 // every other probe, because our resolver keeps answering.
                 "resolverDrift": to_value(&resolver_drift)?,

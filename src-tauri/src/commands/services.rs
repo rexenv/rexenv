@@ -118,6 +118,13 @@ fn start_inputs(
     Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail))
 }
 
+/// A system runtime the servers need that this machine lacks (`BinaryProvider::runtime_problem`):
+/// the Services screen's banner and `rex doctor`'s Runtime line. `None` on macOS and Linux.
+#[tauri::command]
+pub fn runtime_problem(state: State<'_, AppState>) -> Option<crate::platform::traits::RuntimeProblem> {
+    state.platform.binaries().runtime_problem()
+}
+
 /// Start the shared stack (MySQL + a php-fpm pool per installed PHP version +
 /// Nginx + Caddy). Downloads binaries on first run; gated on free ports.
 #[tauri::command]
@@ -135,6 +142,12 @@ pub async fn start_services(state: State<'_, AppState>) -> Result<()> {
 /// readiness waits and the privileged edge prompt all run with the services
 /// lock FREE, so status polls stay live throughout.
 pub async fn start_stack(state: &AppState) -> Result<()> {
+    // Before anything: a runtime no database or PHP can start without (Windows' Visual C++
+    // Redistributable, #798) refuses here, whole, with the fix — not as MySQL's exit code
+    // after the downloads and half the stack.
+    if let Some(problem) = state.platform.binaries().runtime_problem().filter(|p| p.blocking) {
+        return Err(Error::Other(format!("{} ({})", problem.message, problem.url)));
+    }
     let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
         start_inputs(state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing

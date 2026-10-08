@@ -1088,6 +1088,10 @@ impl ShellRunner for LinuxShell {
 
 pub struct LinuxBinaryProvider;
 impl BinaryProvider for LinuxBinaryProvider {
+    /// None: the servers are static builds or carry their own libraries; 22.04's glibc is the floor.
+    fn runtime_problem(&self) -> Option<RuntimeProblem> {
+        None
+    }
     fn arch(&self) -> Arch {
         if cfg!(target_arch = "aarch64") {
             Arch::Arm64

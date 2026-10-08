@@ -49,6 +49,8 @@ mod shell_rules;
 mod stop_policy;
 mod user_path;
 mod user_path_rules;
+mod vc_runtime;
+mod vc_runtime_rules;
 
 pub(crate) use agent_output::send_output_to;
 pub(crate) use app_pipe::{
@@ -789,6 +791,10 @@ impl BinaryProvider for WindowsBinaryProvider {
     }
     fn prepare_binary_dir(&self, root: &Path) -> Result<()> {
         check_tree(root)
+    }
+    /// The Visual C++ Redistributable php.net's PHP and Oracle's MySQL link (`vc_runtime.rs`).
+    fn runtime_problem(&self) -> Option<RuntimeProblem> {
+        vc_runtime::problem()
     }
 }
 

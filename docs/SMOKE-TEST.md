@@ -2427,7 +2427,14 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       start it: a DLL it needs is missing — almost always the Microsoft Visual C++ Redistributable
       …` and Microsoft's link; NO "VCRUNTIME140.dll was not found" box appears; install the
       redistributable → Retry → the site provisions. **Tell:** a bare `exit Some(-1073741515)`, or
-      the box on screen with the card still spinning.
+      the box on screen with the card still spinning. **And before any of that (#798):** the
+      interactive `setup.exe` ends with "rexenv's PHP and MySQL need the Microsoft Visual C++
+      Redistributable (x64) … Open Microsoft's download now?" (Yes opens the link; `/S` shows
+      nothing); Services shows the red banner with "Download from Microsoft"; `rex doctor` prints
+      `✗ Runtime`; Start all refuses naming it; `windows_runtime_check` PASSes ("the verdict
+      BLOCKS"). After installing it: the banner leaves within 30 s, doctor's line is gone, Start
+      all works. The positive case (redistributable present → no banner, PHP runs) ✓ 8 Oct 2026
+      on the Dell.
 - [ ] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
       8.0, 8.1, 8.4 and 8.5 — `rex php install <minor>`, a Blank-PHP site on it, `rex start` → the
       `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that

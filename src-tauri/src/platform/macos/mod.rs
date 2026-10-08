@@ -2602,6 +2602,10 @@ impl MacosBinaryProvider {
 }
 
 impl BinaryProvider for MacosBinaryProvider {
+    /// None: every server rexenv runs here is static or carries its own dylibs (`prepare_binary_tree`).
+    fn runtime_problem(&self) -> Option<RuntimeProblem> {
+        None
+    }
     fn arch(&self) -> Arch {
         if cfg!(target_arch = "aarch64") {
             Arch::Arm64

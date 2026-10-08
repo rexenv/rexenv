@@ -376,7 +376,13 @@ which told a user who had quit that the app was still open; the words now live i
   software installed it). Without it the first MySQL or PHP start fails with
   `exit -1073741515 = 0xC0000135: Windows could not start it: a DLL it needs is missing …`
   and Microsoft's link; install
-  [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe) and Retry. Before
+  [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe) and Retry. **Since
+  8 Oct 2026 (#798) you are told before that:** the installer (interactive only) offers to open
+  Microsoft's download when the runtime is missing — installing it asks for administrator
+  permission, so it is an offer, never done for you; the Services screen shows the same as a
+  banner with a "Download from Microsoft" button; `rex doctor` prints a Runtime line; and Start
+  all refuses up front, naming it, instead of failing at MySQL. An older runtime (below 14.30)
+  is a warning only: PHP 8.4 and newer may not start on it. Before
   8 Oct 2026 the failure was a bare `exit Some(-1073741515)`, and on a Retry Windows' own
   "VCRUNTIME140.dll was not found" box held the start until someone closed it.
 - The same small read-only requests at launch as on macOS (php.net, and the signed

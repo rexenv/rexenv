@@ -1410,6 +1410,7 @@ pub fn run() {
             commands::services::stop_services,
             commands::services::restart_web_service,
             commands::services::services_status,
+            commands::services::runtime_problem,
             commands::downloads::downloads_state,
             commands::downloads::retry_download,
             commands::downloads::core_binaries_plan,

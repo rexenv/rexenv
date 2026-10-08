@@ -53,6 +53,32 @@ AllowSkipFiles off
   ${EndIf}
 !macroend
 
+; The Microsoft Visual C++ Redistributable (x64): php.net's PHP and Oracle's MySQL link it, a
+; fresh Windows may not have it, and a user's first site died on it (8 Oct 2026, #798). The same
+; test as platform/windows/vc_runtime_rules.rs (a Rust test holds the key and the link together):
+; the redistributable's own registry entry (64-bit view), else its DLL in the REAL System32
+; ($WINDIR\Sysnative when this installer runs as a 32-bit process, System32 otherwise).
+!define REXENV_VC_KEY "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64"
+!define REXENV_VC_URL "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+
+!macro REXENV_OFFER_VC_RUNTIME
+  SetRegView 64
+  ReadRegDWORD $0 HKLM "${REXENV_VC_KEY}" "Installed"
+  SetRegView lastused
+  ${If} $0 <> 1
+    StrCpy $1 "$WINDIR\System32"
+    ${If} ${FileExists} "$WINDIR\Sysnative\*.*"
+      StrCpy $1 "$WINDIR\Sysnative"
+    ${EndIf}
+    ${IfNot} ${FileExists} "$1\vcruntime140_1.dll"
+      ; An OFFER, never a silent install: it needs administrator permission (UAC), and this
+      ; installer is per-user. Silent installs skip it; the Services screen says the same.
+      MessageBox MB_YESNO|MB_ICONINFORMATION "rexenv's PHP and MySQL need the Microsoft Visual C++ Redistributable (x64), and this PC does not have it.$\r$\n$\r$\nOpen Microsoft's download now? Run the file it downloads (Windows asks for administrator permission), then start rexenv." /SD IDNO IDNO +2
+        ExecShell "open" "${REXENV_VC_URL}"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   ; The resolver comes back on the NEW binary. The task is the user's own, so no UAC; on a
   ; first install there is no task yet and the error is harmless. The app is NOT launched:
@@ -60,6 +86,8 @@ AllowSkipFiles off
   ${If} ${Silent}
     nsExec::ExecToLog 'schtasks /Run /TN "${REXENV_DNS_TASK}"'
     Pop $0
+  ${Else}
+    !insertmacro REXENV_OFFER_VC_RUNTIME
   ${EndIf}
 !macroend
 

@@ -595,6 +595,12 @@ Live-proven end to end by `site_stop_start_check`.
   for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
   per-engine SELECTED version — so the watchdog respawns a crashed engine on the
   selected version, not the default pin).
+- **Start all refuses up front when a runtime the servers need is missing**
+  (`BinaryProvider::runtime_problem`, #798 — Windows' Visual C++ Redistributable; `None` on macOS
+  and Linux). `start_stack`'s first step, so the refusal names the runtime and Microsoft's link
+  before any download or spawn, rather than MySQL's exit code half-way through. The same verdict
+  is the Services screen's banner (re-asked every 30 s — the fix happens outside rexenv) and
+  `rex doctor`'s Runtime line. An OLDER runtime is a warning, never a block.
 - **Stop all is refused while a site is being provisioned** (`stack_guard::stop_refusal`, ledger
   #795, 8 Oct 2026). Every Stop all — footer, tray, `rex stop`, `rex restart`, the MCP stack tool —
   goes through `stop_services`, which asks `ProvisionJobs::running_domains` first and stops nothing

@@ -98,6 +98,10 @@ pub struct StackSnapshot {
     /// Each database engine this platform offers: its versions and the one
     /// selected — what `stack` `set_engine_version` chooses between.
     pub engines: Vec<StackEngine>,
+    /// A system runtime the servers need that this machine lacks (`BinaryProvider::runtime_problem`,
+    /// #798 — Windows' Visual C++ Redistributable): why Start all refuses, said before an agent
+    /// tries it. `None` when nothing is missing, and always on macOS and Linux.
+    pub runtime_problem: Option<crate::platform::traits::RuntimeProblem>,
 }
 
 /// One database engine's version choice.
@@ -249,6 +253,7 @@ impl<'a> ReadCtx<'a> {
             firefox: core::firefox::status(platform.cert_trust().firefox_profiles_root().as_deref()),
             frankenphp_php: core::php::minor_of(core::binaries::pins().frankenphp_embedded_php),
             engines,
+            runtime_problem: platform.binaries().runtime_problem(),
         })
     }
 

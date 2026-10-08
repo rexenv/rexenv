@@ -4645,6 +4645,7 @@ mod tests {
                 Err(crate::error::Error::Other("codesign failed: the fixture's own refusal".into()))
             }
             fn prepare_binary_tree(&self, _root: &Path) -> Result<()> { unimplemented!() }
+            fn runtime_problem(&self) -> Option<crate::platform::traits::RuntimeProblem> { None }
         }
         let root = std::env::temp_dir().join(format!("rexenv-poison-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -4724,6 +4725,7 @@ mod tests {
         }
         fn prepare_binary(&self, _path: &Path) -> Result<()> { unimplemented!() }
         fn prepare_binary_tree(&self, _root: &Path) -> Result<()> { unimplemented!() }
+        fn runtime_problem(&self) -> Option<crate::platform::traits::RuntimeProblem> { None }
     }
     impl Platform for CachePlatform {
         fn paths(&self) -> &dyn crate::platform::traits::Paths {

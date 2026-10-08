@@ -812,6 +812,17 @@ export interface AppUpdateReadiness {
 export type ServiceKind = "php" | "database" | "mail" | "web";
 
 /** One shared service's status + live metrics (mirrors the Rust ServiceStatus DTO). */
+/** A system runtime the servers need that this machine lacks (`BinaryProvider::runtime_problem`,
+ *  #798) — Windows' Visual C++ Redistributable. The sentence is the backend's, rendered as sent. */
+export interface RuntimeProblem {
+  /** No database or PHP can start without it (Start all refuses); false = an older one, a warning. */
+  blocking: boolean;
+  message: string;
+  url: string;
+  /** The button that opens `url`. */
+  action: string;
+}
+
 export interface ServiceInfo {
   name: string;
   running: boolean;

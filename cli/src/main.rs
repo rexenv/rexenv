@@ -3866,6 +3866,20 @@ fn cmd_doctor(json_output: bool) {
         }
     }
 
+    // A system runtime the servers need and this machine lacks (Windows: the Visual C++
+    // Redistributable, #798). Printed only when there is one — null on macOS and Linux, and absent
+    // from an older app, neither of which is a finding.
+    let runtime = &data["runtime"];
+    if runtime.is_object() {
+        let blocking = runtime["blocking"] == json!(true);
+        line(
+            false,
+            !blocking,
+            "Runtime",
+            format!("{} {}", runtime["message"].as_str().unwrap_or("?"), runtime["url"].as_str().unwrap_or("")),
+        );
+    }
+
     let cli = &data["cli"];
     if cli.is_object() {
         // What THIS shell runs as `rex`, read from its own PATH: the app's status says only whether

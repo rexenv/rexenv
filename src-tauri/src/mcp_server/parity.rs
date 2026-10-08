@@ -97,6 +97,7 @@ mod tests {
         ("repo_run_offered_steps", Tool("repo")),
         // ── services
         ("services_status", Tool("stack_status")),
+        ("runtime_problem", Tool("stack_status")),
         // ── settings
         ("get_setting", Tool("settings_get")),
         ("default_tld", Tool("stack_status")),

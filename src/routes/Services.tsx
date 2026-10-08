@@ -7,7 +7,7 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
-import { defaultTld, dnsStatus, servicesStatus, setDefaultPhpVersion, startDatabase, startMail, stopDatabase, stopMail } from "@/lib/ipc";
+import { defaultTld, dnsStatus, openExternal, runtimeProblem, servicesStatus, setDefaultPhpVersion, startDatabase, startMail, stopDatabase, stopMail } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
 /** Tinted accent per kind (matches the group icon colors). */
@@ -297,6 +297,14 @@ export function Services() {
   // The user's configured TLD — the DNS card copy must describe THEIR domains,
   // not a hardcoded one (they can change it in Settings).
   const { data: tld = "rex" } = useQuery({ queryKey: ["default-tld"], queryFn: defaultTld });
+  // A system runtime the servers need and this PC lacks (Windows' Visual C++ Redistributable,
+  // #798) — said HERE, before Start all, not after a failed first site. Re-asked on focus and
+  // every 30 s: the fix happens outside rexenv, and the banner must leave once it is done.
+  const { data: runtime } = useQuery({
+    queryKey: ["runtime-problem"],
+    queryFn: runtimeProblem,
+    refetchInterval: 30000,
+  });
 
   return (
     <>
@@ -316,6 +324,27 @@ export function Services() {
           />
         ) : (
           <>
+            {runtime && (
+              <div
+                role="alert"
+                className={cn(
+                  "mb-[18px] flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-[0.75rem] leading-[1.5]",
+                  runtime.blocking
+                    ? "border-status-error-border bg-status-error-bg text-status-error-bright"
+                    : "border-status-warning-border bg-status-warning-bg text-status-warning-bright",
+                )}
+              >
+                <span>{runtime.message}</span>
+                <button
+                  type="button"
+                  onClick={() => void openExternal(runtime.url)}
+                  className="inline-flex shrink-0 items-center gap-1 rounded border border-current px-2 py-0.5 font-medium"
+                >
+                  {runtime.action}
+                  <ExternalLink className="h-3 w-3" />
+                </button>
+              </div>
+            )}
 
             {GROUPS.map((g) => {
               const rows = services.filter((s) => serviceKind(s) === g.kind);

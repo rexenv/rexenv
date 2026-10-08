@@ -20,6 +20,10 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   `Paths`, `PermissionManager` and `BinaryProvider`, written but not yet run on Windows, and
   `ProcessSupervisor`'s identity and port-gate half, run on the Dell:
   `windows/acl.rs` + `windows/owner_only.rs` (ledger #597), `windows/pe.rs` (ledger #598),
+  `windows/vc_runtime.rs` + `vc_runtime_rules.rs` (is the Visual C++ Redistributable there —
+  `BinaryProvider::runtime_problem`, read by `commands::services::runtime_problem` for the Services
+  banner, `rex doctor`'s Runtime line and `start_stack`'s up-front refusal; the installer's offer in
+  `nsis/hooks.nsh`; #798),
   `windows/process.rs` (Win32 reads), `windows/job_guard.rs` + `job_guard_rules.rs` (the one-hop start out of a launcher's job that forbids breakaway, #692) + `windows/port_table.rs` (their pure rules, tested on
   every host — ledger #599), and its spawn/stop half: `WindowsSupervisor`'s spawn family +
   `process.rs::Stoppable` + `windows/stop_policy.rs` (the stop sequencing, tested on every
@@ -149,7 +153,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 | Onboarding | `/onboarding` | `src/routes/Onboarding.tsx` |
 | Dev-only harnesses (tree-shaken from prod) | `/dev/git-panel`, `/dev/ui-review` | `src/routes/DevGitPanel.tsx`, `src/routes/DevUiReview.tsx` |
 | Tutorial video recorder (dev tooling, never shipped) | `scripts/video/demo.html` (vite dev); `record-all.mjs` (the series); `record-intro.mjs [portrait]`; `record-tour.mjs` | `scripts/video/` + its README: `stage.{html,ts}` (frame, cursor, camera, captions, headline, terminal, menu bar; landscape or 1080×1920), `demo-backend.ts` (the base scripted IPC — mirrors `commands/site_provision.rs`'s phases; `?scene=a,b` merges scenes), `scenes/<name>.ts` (one video's fixtures + replayed jobs, each naming the Rust it mirrors), `wp-fixtures.ts`, `adminer/` (Database Browser stand-in), `lib.mjs` (recorder), `voice.mjs` (edge-tts narration), `record-*.mjs` (one per video), `videos.json` + `make-index.mjs` (the series and its `out/index.html`) |
-| IPC bridge (the ONLY invoke path; 266 exports) | — | `src/lib/ipc/index.ts` |
+| IPC bridge (the ONLY invoke path; 267 exports) | — | `src/lib/ipc/index.ts` |
 | Self-update card (Settings → About) | `/settings?section=about` | `src/components/settings/AppUpdateCard.tsx`; `UpdateWatch` in `src/App.tsx`; Settings nav badge in `Sidebar.tsx`; L2 `uireview.js` `appupdate-*` |
 | Missing long-named core + default-theme files (0.4.0–0.7.1 tarball casualties, #793) | `core/wordpress.rs` (`cut_name_casualties`, `cut_name_report`, `restore_release_file`), `core/wporg.rs` (`core_file_list`, `release_file`), `commands/wordpress.rs` (`wp_core_cut_names`, `wp_core_repair_cut_names`, `cut_name_report_for`), MCP `wp_maintain` `core_repair`, `cli_server.rs` doctor `coreFiles`, cli `core_files_verdict` | `src/components/wordpress/CoreFilesBanner.tsx` (SiteDetail Overview) · example `wp_core_zip_check` |
 | Add a plugin/theme — the four sources behind `SourceTabs` | — | `components/wordpress/WordPressManager.tsx` (wp.org search + the shared `WpInstallCard`), `ZipAddPanel.tsx` (Upload zip), `GitAddPanel.tsx` (From Git), `LinkFolderPanel.tsx` (Link folder); probes `wk-checks/{zipinstall,wptoast,check,linkpanel}.js` |
