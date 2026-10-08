@@ -139,7 +139,12 @@ the agent RUNNING — the case #787/`e6d75d3a` fixed):** exit 0, `rexenv.exe` 0.
 Features 0.8.12, the agent back under its task (`Running`, a new pid), the Run key's `--hidden`
 kept; launched through Explorer (`launch.cmd` from a `/IT` task): `0.8.12 (282f945)`, the agent on
 `udp 53`, seven services running, `lm.rex` / `lv.rex` 200, PHP 8.3's curl to `lv.rex` 200 (curl
-8.21.0). (The Dell was unreachable this morning, so the Windows row ran on the VM only.)
+8.21.0). **And on the Dell (Windows 10 22H2 x64, native), the same day once it was switched on:**
+`/S` over 0.8.11 with the agent running → exit 0, `rexenv.exe` 0.8.11 → 0.8.12 (`687b5772…`, the
+VM's bytes), Apps & Features 0.8.12, the agent back under its task; launched through Explorer →
+`0.8.12 (282f945)`, the agent on `udp 53`; Start all (`rex start`, 8 s, the stack had been stopped)
+→ seven services up but PostgreSQL (unused there), `w7check.rex` 200, PHP 8.3's and 8.2's curl to
+it 200, no new crash dump.
 **Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows.
 **Next (owner):** Publish → the tap's Update cask; in `rexenv/runtimes` "Publish app update
 manifest" once per descriptor + `scripts/check-app-manifest.sh` each; `rexenv/apt` → "Publish apt
