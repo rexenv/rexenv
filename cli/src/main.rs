@@ -3868,18 +3868,12 @@ fn cmd_doctor(json_output: bool) {
 
     let cli = &data["cli"];
     if cli.is_object() {
-        line(
-            cli["current"] == json!(true),
-            true, // absent/stale link is a warning, not a fault
-            "CLI",
-            if cli["current"] == json!(true) {
-                format!("{} → this app", cli["linkPath"].as_str().unwrap_or("?"))
-            } else if cli["installed"] == json!(true) {
-                "rex on PATH points at a different copy (Settings → Reinstall)".into()
-            } else {
-                "rex not on PATH (Settings → Command-line tool → Install)".into()
-            },
-        );
+        // What THIS shell runs as `rex`, read from its own PATH: the app's status says only whether
+        // the Settings install is in place, and a user who put the app's folder on PATH by hand was
+        // told "not on PATH" while typing `rex` (user report, 8 Oct 2026).
+        let on_path = first_on_path(std::env::var_os("PATH").as_deref(), &format!("rex{}", std::env::consts::EXE_SUFFIX));
+        let (ok, msg) = cli_finding(cli, on_path.as_deref());
+        line(ok, true, "CLI", msg);
     }
 
     if findings > 0 {
@@ -4119,8 +4113,85 @@ fn cmd_status(json_output: bool) {
     }
 }
 
+/// The first `exe` on `path` (a PATH value), as the shell would find it.
+fn first_on_path(path: Option<&std::ffi::OsStr>, exe: &str) -> Option<PathBuf> {
+    std::env::split_paths(path?).map(|dir| dir.join(exe)).find(|f| f.is_file())
+}
+
+/// The doctor's CLI line: `(ok, sentence)`. `found` is what this shell's PATH runs as `rex`. It is
+/// fine when that IS the app's own `rex` — installed from Settings or put on PATH by hand — and a
+/// warning, naming the file, when it is another copy; "not on PATH" only when PATH has none.
+fn cli_finding(cli: &Value, found: Option<&Path>) -> (bool, String) {
+    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    let bundled = cli["bundledPath"].as_str().map(Path::new);
+    if cli["current"] == json!(true) {
+        return (true, format!("{} → this app", cli["linkPath"].as_str().unwrap_or("?")));
+    }
+    match (found, bundled) {
+        (Some(f), Some(b)) if same(f, b) => {
+            (true, format!("{} → this app (on PATH by hand; Settings → Command-line tool installs it too)", f.display()))
+        }
+        (Some(f), _) if cli["installed"] == json!(true) && cli["linkPath"].as_str().is_some_and(|l| same(f, Path::new(l))) => {
+            (false, format!("{} is an older copy of rex (Settings → Command-line tool → Reinstall)", f.display()))
+        }
+        (Some(f), _) => (false, format!("`rex` on PATH is {}, not this app's (Settings → Command-line tool → Install)", f.display())),
+        (None, _) if cli["installed"] == json!(true) => {
+            (false, "rex is installed but not on this shell's PATH — open a new terminal (Settings → Command-line tool)".into())
+        }
+        (None, _) => (false, "rex not on PATH (Settings → Command-line tool → Install)".into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    /// `rex doctor`'s CLI line reads what THIS shell's PATH runs (user report, 8 Oct 2026: the app's folder
+    /// put on PATH by hand was still reported "rex not on PATH"). Real files, a real PATH value.
+    #[test]
+    fn the_cli_line_judges_the_rex_this_shell_would_run() {
+        use super::{cli_finding, first_on_path};
+        use serde_json::json;
+        let root = std::env::temp_dir().join(format!("rex-doctor-path-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let exe = format!("rex{}", std::env::consts::EXE_SUFFIX);
+        let (app, settings, other, empty) = (root.join("app"), root.join("settings"), root.join("other"), root.join("empty"));
+        for d in [&app, &settings, &other, &empty] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        for d in [&app, &settings, &other] {
+            std::fs::write(d.join(&exe), "rex").unwrap();
+        }
+        let path = |dirs: &[&std::path::PathBuf]| std::env::join_paths(dirs.iter().map(|d| d.as_path())).unwrap();
+        let status = |installed: bool, current: bool| {
+            json!({ "installed": installed, "current": current, "linkPath": settings.join(&exe).display().to_string(),
+                    "bundledPath": app.join(&exe).display().to_string() })
+        };
+        let judge = |s: &serde_json::Value, dirs: &[&std::path::PathBuf]| {
+            cli_finding(s, first_on_path(Some(&path(dirs)), &exe).as_deref())
+        };
+
+        // The report's case: no Settings install, the app's own folder on PATH by hand → fine.
+        let (ok, msg) = judge(&status(false, false), &[&empty, &app]);
+        assert!(ok && msg.contains("this app") && msg.contains("by hand"), "{msg}");
+        // The FIRST hit wins, as in a shell: another copy ahead of the app's is the finding, named.
+        let (ok, msg) = judge(&status(false, false), &[&other, &app]);
+        assert!(!ok && msg.contains(&other.join(&exe).display().to_string()), "{msg}");
+        // A stale Settings copy found on PATH → Reinstall.
+        let (ok, msg) = judge(&status(true, false), &[&settings]);
+        assert!(!ok && msg.contains("Reinstall"), "{msg}");
+        // Installed but this shell's PATH predates it → a new terminal, not "not on PATH".
+        let (ok, msg) = judge(&status(true, false), &[&empty]);
+        assert!(!ok && msg.contains("new terminal"), "{msg}");
+        // Nothing anywhere → the original finding, now true by construction.
+        let (ok, msg) = judge(&status(false, false), &[&empty]);
+        assert!(!ok && msg.contains("not on PATH"), "{msg}");
+        // The Settings install current → as before.
+        assert!(judge(&status(true, true), &[&empty]).0);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Ledger #767 — **every line rex prints goes through `emit`**: std's print macros panic on a reader that
     /// closed its end (`rex status | head -1`, the 22.04 VM, 30 Sep 2026), so none may remain in this crate's
     /// production code, and no raw stdout/stderr writer may appear beside `emit` and the MCP bridge's pump

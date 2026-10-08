@@ -1390,7 +1390,7 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
         Box::pin(async move { crate::commands::services::start_services(self.state()?).await })
     }
     fn stop_all<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
-        Box::pin(async move { crate::commands::services::stop_services(self.state()?).await })
+        Box::pin(async move { crate::commands::services::stop_services(self.state()?, self.jobs()?).await })
     }
     fn restart_web<'a>(&'a self, target: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::services::WebRestartReport>> {
         Box::pin(async move { crate::commands::services::restart_web_service(self.state()?, target).await })

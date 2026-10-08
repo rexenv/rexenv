@@ -102,22 +102,35 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   official `vc_redist.x64.exe` (a UAC prompt — per-user installer, so an offer, never silent); (3) SMOKE
   §Windows "No Visual C++ runtime" run on a VM snapshot with the redistributable uninstalled.
 
-- [ ] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
+- [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
   report): the phase order for a cloned Laravel site is `db → configure → deps`, and
   `php_requirement_refusal` runs inside `deps` (`commands/site_provision.rs`). `composer.json` is on disk
   once the clone lands, so the refusal can run before `db` and save the database start + `.env` write.
+  ✓ **8 Oct 2026** (ledger #796): the clone phase asks `php_requirement_refused` the moment the code is
+  on disk (fresh clone or a Retry's skip) and fails THAT phase, before `db`/`configure`; `deps` keeps the
+  check. L0 + a TEXT order test, plant-proven; SMOKE "refused at the CLONE" owed.
 
-- [ ] **Provisioning and `rex start`/restart are not coordinated; an interrupted `artisan migrate` leaves a
+- [x] **Provisioning and `rex start`/restart are not coordinated; an interrupted `artisan migrate` leaves a
   half-applied migration** (same report, cause unproven): a `rex start` issued while provisioning ran, MySQL's
   pid changed, migrate died `SQLSTATE[70100] 1317 Query execution was interrupted`, and Retry then failed
   `1050 Table … already exists` (the project's migration is not idempotent — not rexenv's schema). Owed:
   reproduce first (does a stack start/restart during provisioning restart MySQL?); then refuse or defer a
   stack restart while a provision job runs. Also: a migrate failure that came from a composer script
   surfaces as `composer install failed: …` — say which command failed.
+  ✓ **8 Oct 2026** (ledger #795): reproduced on paper — `rex start` cannot do it (`spawn_db` skips a
+  running engine), `rex restart` = stop + start can, and a server shutdown under a running query is
+  exactly `1317`. `stop_services` (footer, tray, `rex stop`/`restart`, MCP) now refuses while
+  `ProvisionJobs::running_domains` is non-empty, naming the site. And `map_composer_error` names a failed
+  repository script (`… post-install-cmd script `@php artisan migrate --force` failed`, 6 lines of its
+  output); the double "composer install failed: composer install failed:" prefix is gone. L0 + TEXT,
+  plant-proven; SMOKE "Stop all is refused while a site is being provisioned" owed (a live run).
 
-- [ ] **`rex doctor` on Windows says "rex not on PATH" when it means "not installed via Settings"** (same
+- [x] **`rex doctor` on Windows says "rex not on PATH" when it means "not installed via Settings"** (same
   report): `core::cli::status_of_copy` judges the COPY in rexenv's own folder, not PATH; a user who put the
   bundled folder on PATH by hand still gets the finding. The sentence should name what is checked.
+  ✓ **8 Oct 2026** (ledger #797): the CLI line reads THIS shell's PATH (`first_on_path` / `cli_finding`):
+  the app's own `rex`, by Settings or by hand, is ✓; another copy is named; "not on PATH" only when none.
+  L0 with real files, plant-proven, run on macOS and on the Dell (Win10).
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

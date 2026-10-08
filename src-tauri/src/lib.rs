@@ -2351,7 +2351,7 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
                 let result = if start {
                     commands::services::start_services(state).await
                 } else {
-                    commands::services::stop_services(state).await
+                    commands::services::stop_services(state, handle.state()).await
                 };
                 if let Err(e) = result {
                     // No window may exist to show a toast in, so the log is the

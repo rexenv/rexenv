@@ -595,6 +595,13 @@ Live-proven end to end by `site_stop_start_check`.
   for all three): `set_php_settings`, `set_site_env`, and `set_db_versions` (the
   per-engine SELECTED version — so the watchdog respawns a crashed engine on the
   selected version, not the default pin).
+- **Stop all is refused while a site is being provisioned** (`stack_guard::stop_refusal`, ledger
+  #795, 8 Oct 2026). Every Stop all — footer, tray, `rex stop`, `rex restart`, the MCP stack tool —
+  goes through `stop_services`, which asks `ProvisionJobs::running_domains` first and stops nothing
+  while one runs, naming the site and the way out (wait, or Cancel on its card). Why: a user's
+  `rex restart` mid-provision stopped MySQL under `artisan migrate` (`1317 Query execution was
+  interrupted`), the migration was left half-applied, and every Retry then died `1050 Table …
+  already exists`. Start all needs no guard: it skips a running engine (`spawn_db`).
 - **"Restart this site" has no single meaning, and the API says so**
   (`restart_site_backend` → `SiteRestartOutcome`, 2 Sep 2026). The default topology
   gives a site NO process of its own: shared Nginx, and one php-fpm pool per PHP

@@ -63,6 +63,22 @@ impl ProvisionJobs {
             .values()
             .any(|e| e.domain == domain && e.running.load(Ordering::SeqCst))
     }
+
+    /// Every domain a provision job is RUNNING for, sorted — what Stop all must not cut off
+    /// (`core::stack_guard::stop_refusal`).
+    pub(crate) fn running_domains(&self) -> Vec<String> {
+        let mut domains: Vec<String> = self
+            .jobs
+            .lock()
+            .expect("provision jobs lock")
+            .values()
+            .filter(|e| e.running.load(Ordering::SeqCst))
+            .map(|e| e.domain.clone())
+            .collect();
+        domains.sort();
+        domains.dedup();
+        domains
+    }
 }
 
 struct ProvisionEntry {
@@ -1161,6 +1177,16 @@ async fn drive<R: tauri::Runtime>(
             );
             finish_phase(app, entry, progress, ix, "ok", None);
         }
+        // The repository's `require.php`, read the moment the code is on disk — fresh clone or a
+        // Retry's skip — and BEFORE the database starts and `.env` is written. It used to wait for
+        // `deps`, two phases on: a user's `^8.4.1` Laravel repo on 8.3 started MySQL and wired a
+        // database before being told to switch PHP (8 Oct 2026). `deps` still checks: the minor
+        // can change between this phase and that one only by a Retry, which comes back here.
+        if let Some((requirement, why)) = php_requirement_refused(&project, &minor) {
+            append_line(app, entry, &format!("composer.json requires PHP {requirement}; this site runs PHP {minor}"));
+            finish_phase(app, entry, progress, ix, "failed", Some(&format!("needs PHP {requirement}")));
+            return JobEnd::Failed(why);
+        }
         bail_if_cancelled!();
     }
 
@@ -2065,6 +2091,15 @@ async fn drive<R: tauri::Runtime>(
     }
 }
 
+/// `(requirement, the refusal)` when `project`'s composer.json requires a PHP that `minor` is
+/// not; `None` when it fits, has no composer.json, or states nothing this reads.
+fn php_requirement_refused(project: &Path, minor: &str) -> Option<(String, String)> {
+    let json = std::fs::read_to_string(project.join("composer.json")).ok()?;
+    let requirement = core::repo::composer_php_requirement(&json)?;
+    let why = core::repo::php_requirement_refusal(&requirement, minor, &core::php::all_minors())?;
+    Some((requirement, why))
+}
+
 /// The `deps` phase: `composer install` in a cloned project.
 ///
 /// `vendor/` is gitignored in every PHP project worth cloning, so this is what
@@ -2110,14 +2145,11 @@ async fn deps_phase<R: tauri::Runtime>(
     }
     // The site's PHP runs composer, so a `require.php` it cannot satisfy fails HERE, in one
     // sentence on the card naming the minor to switch to — not two screens away in composer's
-    // own refusal after the clone (`symfony/demo` on 8.3, 28 Sep 2026; ledger #751).
-    if let Some(requirement) =
-        std::fs::read_to_string(&manifest).ok().and_then(|j| core::repo::composer_php_requirement(&j))
-    {
-        if let Some(why) = core::repo::php_requirement_refusal(&requirement, minor, &core::php::all_minors()) {
-            append_line(app, entry, &format!("composer.json requires PHP {requirement}; this site runs PHP {minor}"));
-            return Some(JobEnd::Failed(why));
-        }
+    // own refusal after the clone (`symfony/demo` on 8.3, 28 Sep 2026; ledger #751). The clone
+    // phase asks first (8 Oct 2026); this is the same question at the step that needs the answer.
+    if let Some((requirement, why)) = php_requirement_refused(project, minor) {
+        append_line(app, entry, &format!("composer.json requires PHP {requirement}; this site runs PHP {minor}"));
+        return Some(JobEnd::Failed(why));
     }
     let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
     let (p2, c2, d2) =
@@ -2142,7 +2174,10 @@ async fn deps_phase<R: tauri::Runtime>(
             None
         }
         Ok(Err(_)) if entry.cancel.is_cancelled() => Some(JobEnd::Cancelled),
-        Ok(Err(e)) => Some(JobEnd::Failed(format!("composer install failed: {e}"))),
+        // `map_composer_error` already says what failed — "composer install failed: …", or the
+        // repository script that did; a second prefix here read "composer install failed:
+        // composer install failed:" and blamed Composer for a failed migration (8 Oct 2026).
+        Ok(Err(e)) => Some(JobEnd::Failed(e.to_string())),
         Err(e) => Some(JobEnd::Failed(format!("composer worker died: {e}"))),
     }
 }
@@ -2206,6 +2241,36 @@ async fn streamed_step<R: tauri::Runtime>(
 mod tests {
     use super::*;
     use crate::core::sites::Ownership;
+
+    /// A cloned repo's `require.php` is answered from the checkout, with the minor to switch to.
+    #[test]
+    fn a_repository_that_needs_another_php_is_refused_from_its_checkout() {
+        let dir = std::env::temp_dir().join(format!("rexenv-require-php-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(php_requirement_refused(&dir, "8.3").is_none(), "no composer.json, nothing to refuse");
+        std::fs::write(dir.join("composer.json"), r#"{"require":{"php":"^8.4.1"}}"#).unwrap();
+        let (req, why) = php_requirement_refused(&dir, "8.3").expect("8.3 cannot satisfy ^8.4.1");
+        assert_eq!(req, "^8.4.1");
+        assert!(why.contains("8.4") && why.contains("Retry"), "{why}");
+        assert!(php_requirement_refused(&dir, "8.4").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The refusal comes BEFORE any database phase (user report, 8 Oct 2026: a `^8.4.1` repo on 8.3
+    /// started MySQL and wrote `.env` first). The phases run in source order inside one function,
+    /// so the order IS the text: the clone-end check precedes every `"db"` and `"configure"` phase.
+    #[test]
+    fn the_php_requirement_is_checked_before_the_database_phase() {
+        let src = include_str!("site_provision.rs");
+        let check = src.find("if let Some((requirement, why)) = php_requirement_refused(&project, &minor)").expect("the clone-end check");
+        let first_db = ["phase_index(entry, \"db\")", "phase_index(entry, \"configure\")"]
+            .iter()
+            .map(|p| src.find(p).expect(p))
+            .min()
+            .unwrap();
+        assert!(check < first_db, "the require.php check moved after a database phase");
+    }
 
     /// The blueprint rule, stated once. Accepting a blueprint for a site that
     /// has no blueprint phase is the dishonest failure — it succeeds and does

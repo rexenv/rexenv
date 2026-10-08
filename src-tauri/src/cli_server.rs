@@ -546,7 +546,7 @@ where
             Ok(Value::Null)
         }
         "stop" => {
-            commands::services::stop_services(app_state(app)?).await?;
+            commands::services::stop_services(app_state(app)?, provision_jobs_state(app)?).await?;
             Ok(Value::Null)
         }
         // Sites — the Sites screen's data, merged client-side for display.

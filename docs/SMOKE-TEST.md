@@ -352,6 +352,19 @@ remotes — Laravel, Blank PHP with no `composer.json`, a failing clone, Bedrock
 Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2). The
 23 Sep clean-15.8 pass did not run this section.
 
+- [ ] **A repository that needs another PHP is refused at the CLONE, before any database**
+      (#796, 8 Oct 2026): clone a Laravel repo whose `composer.json` says `"php": "^8.4.1"` onto a
+      site on 8.3 → the card fails at `cloning the repository` ("needs PHP ^8.4.1") with "switch
+      the site's PHP version to 8.4 or 8.5 … and Retry"; `starting database` never ran (no MySQL
+      start, no `.env` written). Switch to 8.4 → Retry → the clone phase reads "already cloned
+      here" and the rest provisions. **Tell:** MySQL started or a database created before the
+      refusal.
+- [ ] **Stop all is refused while a site is being provisioned** (#795): start a Laravel-from-git
+      create, and while `installing dependencies` or `app key + migrations` runs, press Stop all
+      (and `rex restart` in a terminal) → "Nothing was stopped: <site> is still being set up …
+      Wait for it to finish, or Cancel it on its card, then Stop all."; MySQL's pid unchanged; the
+      job finishes. After it, Stop all works. **Tell:** `1317 Query execution was interrupted` in
+      the job log.
 - [x] **New site → Laravel → Files: From Git** → paste a real Laravel repo URL → **Fetch**.
       Within a few seconds a branch picker appears with the default marked, and the name field
       prefills from the repo. **Create stays disabled until Fetch succeeds** — try clicking it
@@ -503,7 +516,8 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       log), the site left as `setup incomplete`. **Since 0.8.11 (ledger #751) the card must say
       it before composer runs:** "this repository's composer.json requires PHP … and this site
       runs PHP 8.3 — … switch the site's PHP version to 8.4 or 8.5 (Site → Settings) and Retry"
-      — ◐ owed on this row's next run. `rex php install 8.4` + `rex site php
+      — ◐ owed on this row's next run. **Since 8 Oct 2026 (#796) it fails at the CLONE phase,
+      before `starting database`.** `rex php install 8.4` + `rex site php
       demosymdemo.rex 8.4` + `rex site retry` → dependencies installed, **`building front-end
       assets` → "no package.json in this repository — nothing to build"** (skipped, not
       failed), `starting to serve` → `https://demosymdemo.rex/` **200 "Symfony Demo
@@ -2402,6 +2416,10 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [ ] **`rex doctor` with rex on PATH by hand** (#797, 8 Oct 2026): without Settings → Install, add
+      the app's install folder (where `rex.exe` sits beside `rexenv.exe`) to the user Path, open a NEW
+      terminal → `rex doctor`'s CLI line is ✓ "… → this app (on PATH by hand …)", not "rex not on
+      PATH". L0 `the_cli_line_judges_the_rex_this_shell_would_run` ✓ on the Dell (Win10) 8 Oct 2026.
 - [ ] **No Visual C++ runtime → a named failure, never a hang** (8 Oct 2026, user report): on a
       Windows with NO Visual C++ Redistributable (a fresh install, or uninstall "Microsoft Visual
       C++ 2015-2022 Redistributable (x64)" on a VM snapshot), create a WordPress site → it fails

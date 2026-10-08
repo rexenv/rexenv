@@ -51,8 +51,37 @@ fn explicitly_allowed() -> bool {
         || std::env::var(ALLOW_ENV).map(|v| v == "1").unwrap_or(false)
 }
 
+/// Why Stop all (the footer, the tray, `rex stop`, and so `rex restart`) must not run now: a site is
+/// still being provisioned, and its install or migration is talking to the database this would stop.
+/// A user's `rex restart` mid-provision killed MySQL under `artisan migrate` — `1317 Query execution
+/// was interrupted`, then `1050 Table … already exists` on every Retry (8 Oct 2026). `None` = go.
+pub fn stop_refusal(provisioning: &[String]) -> Option<String> {
+    let names = match provisioning {
+        [] => return None,
+        [one] => one.clone(),
+        many => many.join(", "),
+    };
+    let is = if provisioning.len() == 1 { "is" } else { "are" };
+    Some(format!(
+        "Nothing was stopped: {names} {is} still being set up, and stopping the stack now would cut \
+         off its install or migrations mid-way — a half-applied migration does not undo itself. \
+         Wait for it to finish, or Cancel it on its card, then Stop all."
+    ))
+}
+
 #[cfg(test)]
 mod tests {
+    /// Ledger #795: nothing running → go; a site being provisioned → refuse, naming it and the way out.
+    #[test]
+    fn stop_is_refused_while_a_site_is_being_provisioned() {
+        assert_eq!(super::stop_refusal(&[]), None);
+        let one = super::stop_refusal(&["shop.rex".into()]).expect("refused");
+        assert!(one.starts_with("Nothing was stopped: shop.rex is still being set up"), "{one}");
+        assert!(one.contains("Cancel it on its card"), "{one}");
+        let two = super::stop_refusal(&["a.rex".into(), "b.rex".into()]).expect("refused");
+        assert!(two.contains("a.rex, b.rex are still being set up"), "{two}");
+    }
+
     use super::*;
 
     // One test for the whole flag sequence: the statics are process-wide, so

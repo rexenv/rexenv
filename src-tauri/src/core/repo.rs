@@ -2487,7 +2487,28 @@ pub fn map_composer_error(tail: &[String]) -> Error {
             last_lines(tail, 3)
         ));
     }
+    // The packages installed, and then one of the REPOSITORY's own scripts failed: composer says
+    // `Script <cmd> handling the <event> event returned with error code <n>`. Saying "composer
+    // install failed" there pointed a user at Composer when `artisan migrate` (a post-install
+    // script) had died on its database (8 Oct 2026); name the script, keep more of its output.
+    if let Some((script, event)) = failed_composer_script(tail) {
+        return Error::Other(format!(
+            "the packages installed, then this repository's {event} script `{script}` failed:\n{}",
+            last_lines(tail, 6)
+        ));
+    }
     Error::Other(format!("composer install failed:\n{}", last_lines(tail, 3)))
+}
+
+/// `(script, event)` from composer's `Script <script> handling the <event> event returned with
+/// error code <n>` line, the last one in `tail`.
+fn failed_composer_script(tail: &[String]) -> Option<(String, String)> {
+    tail.iter().rev().find_map(|line| {
+        let rest = line.trim().strip_prefix("Script ")?;
+        let (script, rest) = rest.split_once(" handling the ")?;
+        let (event, _) = rest.split_once(" event returned with error code")?;
+        Some((script.to_string(), event.to_string()))
+    })
 }
 
 /// npm/pnpm/yarn failures → honest messages. node-gyp is the classic one.
@@ -2536,6 +2557,26 @@ fn last_lines(tail: &[String], n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// A repository script that failed after the install is named as that script, not as Composer
+    /// (user report, 8 Oct 2026: `artisan migrate` in post-install-cmd, read as "composer install failed").
+    #[test]
+    fn a_failed_repository_script_is_named_not_blamed_on_composer() {
+        let tail: Vec<String> = [
+            "  INFO  Running migrations.",
+            "  2026_08_01_000006_create_blog_tables ......... FAIL",
+            "In Connection.php line 825:",
+            "  SQLSTATE[70100]: <<Unknown error>>: 1317 Query execution was interrupted",
+            "Script @php artisan migrate --force handling the post-install-cmd event returned with error code 1",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let msg = super::map_composer_error(&tail).to_string();
+        assert!(msg.contains("post-install-cmd script `@php artisan migrate --force` failed"), "{msg}");
+        assert!(msg.contains("1317 Query execution was interrupted"), "the cause must be in the message: {msg}");
+        assert!(!msg.starts_with("composer install failed"), "{msg}");
+    }
+
     /// The REAL tail of a failed `composer install`, copied verbatim from a
     /// live Bedrock run (11 Aug 2026): 72 packages resolved, 24 of 25 dist
     /// zips downloaded, and ONE dropped its HTTP/3 connection mid-stream. The
@@ -2962,7 +3003,8 @@ mod tests {
         let sp = crate::core::copy_scan::production_source(include_str!("../commands/site_provision.rs"));
         let deps = sp.split("async fn deps_phase<").nth(1).expect("deps_phase");
         let deps = &deps[..deps.find("\n}\n").expect("its end")];
-        let asked = deps.find("php_requirement_refusal(").expect("deps_phase reads the requirement");
+        // (through `php_requirement_refused`, the helper the clone phase asks first — 8 Oct 2026)
+        let asked = deps.find("php_requirement_refused(").expect("deps_phase reads the requirement");
         let ran = deps.find("composer_install(").expect("deps_phase runs composer");
         assert!(asked < ran, "the requirement is judged BEFORE composer runs");
     }

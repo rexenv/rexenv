@@ -244,7 +244,14 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
 
 /// Stop the shared stack.
 #[tauri::command]
-pub async fn stop_services(state: State<'_, AppState>) -> Result<()> {
+pub async fn stop_services(
+    state: State<'_, AppState>,
+    jobs: State<'_, super::site_provision::ProvisionJobs>,
+) -> Result<()> {
+    // Phase 0: never under a running provision job (`stack_guard::stop_refusal`).
+    if let Some(why) = core::stack_guard::stop_refusal(&jobs.running_domains()) {
+        return Err(Error::Other(why));
+    }
     // Phase 1 (locked, brief): is the edge ours-under-launchd?
     let need_bootout = state.services.lock().await.edge_daemon_needs_stop(state.platform.as_ref());
     // Phase 2 (UNLOCKED): boot the daemon out FIRST, before ANY manager state is
@@ -986,5 +993,22 @@ mod tests {
              used to find more than five. Either the lock moved, or the scan stopped seeing \
              bodies, and a lint that inspects nothing passes for the wrong reason"
         );
+    }
+}
+
+#[cfg(test)]
+mod stop_guard_tests {
+    /// Ledger #795 — TEXT: `stop_services` (the footer, the tray, `rex stop`/`restart`, the MCP stack
+    /// tool — every caller passes the job registry, which the compiler enforces) asks
+    /// `stack_guard::stop_refusal` BEFORE it stops anything, the edge daemon's bootout included.
+    #[test]
+    fn stop_all_asks_the_provision_guard_before_stopping_anything() {
+        let src = crate::core::copy_scan::production_source(include_str!("services.rs"));
+        let body = src.split("pub async fn stop_services(").nth(1).expect("stop_services");
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        let asked = body.find("core::stack_guard::stop_refusal(&jobs.running_domains())").expect("the guard");
+        for stop in ["stop_edge_daemon(", ".stop_all("] {
+            assert!(asked < body.find(stop).expect(stop), "{stop} runs before the provision guard");
+        }
     }
 }
