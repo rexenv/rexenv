@@ -738,8 +738,8 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
             Some(status) if status.success() => return Ok(()),
             Some(status) => {
                 return Err(crate::error::Error::Other(format!(
-                    "{what} failed (exit {:?})",
-                    status.code()
+                    "{what} failed (exit {})",
+                    crate::core::proc::exit_text(status.code())
                 )))
             }
             None => {

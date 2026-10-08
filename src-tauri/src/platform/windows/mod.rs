@@ -185,6 +185,17 @@ pub(crate) fn sweep_inheritable_handles() -> usize {
     process::keep_inheritable_handles_out_of_children()
 }
 
+/// The one `SetErrorMode` call (`platform::quiet_loader_dialogs_before_boot`). It ADDS
+/// `SEM_FAILCRITICALERRORS` to whatever mode this process was started with: every child inherits
+/// it, so a loader failure ends the child with a code instead of a box nobody is looking at.
+pub(crate) fn quiet_loader_dialogs() {
+    use windows_sys::Win32::System::Diagnostics::Debug::{GetErrorMode, SetErrorMode, SEM_FAILCRITICALERRORS};
+    // SAFETY: both only read or write this process's error-mode flag word.
+    unsafe {
+        SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
+    }
+}
+
 pub(crate) fn hide_console(cmd: &mut std::process::Command) {
     use std::os::windows::process::CommandExt;
     cmd.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);

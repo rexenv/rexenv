@@ -72,7 +72,7 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
         if status.success() {
             Ok(())
         } else {
-            Err(Error::Other(format!("initdb failed (exit {:?})", status.code())))
+            Err(Error::Other(format!("initdb failed (exit {})", crate::core::proc::exit_text(status.code()))))
         }
     })();
     crate::core::db::clean_datadir_on_init_failure(datadir, result)
@@ -204,8 +204,8 @@ pub fn start(platform: &dyn Platform, basedir: &Path, datadir: &Path, port: u16)
         let why = std::fs::read_to_string(&own_log).unwrap_or_default();
         let why = why.trim().lines().last().unwrap_or("").trim().to_string();
         return Err(Error::Other(format!(
-            "PostgreSQL did not start (pg_ctl exit {:?}){}{} — see {}",
-            status.code(),
+            "PostgreSQL did not start (pg_ctl exit {}){}{} — see {}",
+            crate::core::proc::exit_text(status.code()),
             if why.is_empty() { "" } else { ": " },
             why,
             log.display()
@@ -247,8 +247,8 @@ pub fn stop(platform: &dyn Platform, basedir: Option<&Path>, pid: u32) -> Result
             match out {
                 Ok(s) if s.success() => return Ok(()),
                 Ok(s) => log::warn!(
-                    "pg_ctl stop failed (exit {:?}) — falling back to stopping pid {pid}",
-                    s.code()
+                    "pg_ctl stop failed (exit {}) — falling back to stopping pid {pid}",
+                    crate::core::proc::exit_text(s.code())
                 ),
                 Err(e) => log::warn!("could not run pg_ctl stop: {e} — stopping pid {pid}"),
             }
@@ -324,8 +324,8 @@ fn psql_run(
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
         Err(Error::Other(format!(
-            "{what} failed (exit {:?}): {}",
-            out.status.code(),
+            "{what} failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
@@ -444,8 +444,8 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
         // to mistake for a good backup.
         let _ = std::fs::remove_file(&dest);
         return Err(Error::Other(format!(
-            "exporting database `{name}` failed (exit {:?}): {}",
-            out.status.code(),
+            "exporting database `{name}` failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }

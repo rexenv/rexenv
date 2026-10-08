@@ -500,7 +500,7 @@ pub fn verify_pair(php_bin: &std::path::Path, adminer_php: &std::path::Path) -> 
         .unwrap_or_else(|| {
             // No verdict at all: killed, or a fatal before the handler was
             // registered. Never treated as a pass.
-            format!("the probe produced no verdict (exit {:?})", out.status.code())
+            format!("the probe produced no verdict (exit {})", crate::core::proc::exit_text(out.status.code()))
         });
     Err(Error::Other(format!(
         "this Adminer build does not bind to rexenv's wrapper, so the database console's \

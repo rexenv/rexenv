@@ -137,6 +137,9 @@ windows-sys = { version = "0.61", features = [
     # registry. Same crate, more bindings.
     "Win32_System_JobObjects",
     "Win32_System_Registry",
+    # No loader dialog in front of a child (platform/windows/mod.rs `quiet_loader_dialogs`):
+    # SetErrorMode, inherited by every process rexenv starts. Same crate, more bindings.
+    "Win32_System_Diagnostics_Debug",
     # The local CA in this user's Root certificate store (platform/windows/cert_store.rs,
     # ledger #613): CertOpenStore / CertAddEncodedCertificateToStore / CertFindCertificateInStore /
     # CertDeleteCertificateFromStore. Same crate, more bindings.

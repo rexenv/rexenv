@@ -2402,6 +2402,14 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [ ] **No Visual C++ runtime → a named failure, never a hang** (8 Oct 2026, user report): on a
+      Windows with NO Visual C++ Redistributable (a fresh install, or uninstall "Microsoft Visual
+      C++ 2015-2022 Redistributable (x64)" on a VM snapshot), create a WordPress site → it fails
+      at "starting database" within seconds with `exit -1073741515 = 0xC0000135: Windows could not
+      start it: a DLL it needs is missing — almost always the Microsoft Visual C++ Redistributable
+      …` and Microsoft's link; NO "VCRUNTIME140.dll was not found" box appears; install the
+      redistributable → Retry → the site provisions. **Tell:** a bare `exit Some(-1073741515)`, or
+      the box on screen with the card still spinning.
 - [ ] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
       8.0, 8.1, 8.4 and 8.5 — `rex php install <minor>`, a Blank-PHP site on it, `rex start` → the
       `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that

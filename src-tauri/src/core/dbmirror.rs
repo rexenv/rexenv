@@ -219,8 +219,8 @@ pub(crate) fn run_sql(client: &SqlClient, port: u16, sql: &str, what: &str) -> R
     let out = child.wait_with_output()?;
     if !out.status.success() {
         return Err(Error::Other(format!(
-            "{what} failed (exit {:?}): {}",
-            out.status.code(),
+            "{what} failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }

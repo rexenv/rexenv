@@ -82,16 +82,25 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   seven pinned minors, 14/14 (ledger #603 amended). Owed: SMOKE-TEST §Windows "A site serves on
   EVERY PHP minor" (a group serving a request on each).
 
-- [ ] **Windows: a machine without the Visual C++ runtime cannot run MySQL (or PHP), and the loader's
+- [x] **Windows: a machine without the Visual C++ runtime cannot run MySQL (or PHP), and the loader's
   dialog hangs provisioning** (same report): `mysqld --initialize-insecure failed (exit Some(-1073741515))`
   = `0xC0000135`, `VCRUNTIME140.dll` not found; on Retry Windows raised its modal "code execution cannot
-  proceed" dialog and `database::initialize`'s `child.wait()` (no timeout) waited on it. php.net's vs16/vs17
-  builds need the same runtime, so `php_cgi::preflight` would wait the same way. Every test machine
-  (Dell, Win11 VM) already had the redistributable. Owed: (1) `SetErrorMode(SEM_FAILCRITICALERRORS)`
-  inherited by every child so a missing DLL exits instead of opening a dialog; (2) `0xC0000135` named as
-  "the Microsoft Visual C++ runtime is missing" with the official download link (`platform/words.rs`);
-  (3) the installer or first run checks for the runtime (`docs/INSTALL.md` §Windows); (4) a proof on a
-  clean Windows with no redistributable.
+  proceed" dialog and `database::initialize`'s `child.wait()` waited on it. php.net's PHP needs the same
+  runtime. Every test machine (Dell, Win11 VM) already had the redistributable.
+  ✓ **8 Oct 2026** (ledger #794): `SEM_FAILCRITICALERRORS` set before boot (`main.rs`
+  `quiet_loader_dialogs_before_boot`), inherited by every child; every `(exit …)` in core/ and commands/
+  through `core::proc::exit_text`, which names `0xC0000135`/`0xC0000139` with Microsoft's link
+  (`PlatformWords::loader_failures`), TEXT-guarded; the php-cgi preflight now reports its exit too.
+  L1 `windows_loader_dialog_check` 3/3 in the Win11 VM's desktop session (control held by the dialog;
+  the fixed spawn exited `-1073741515` within 10 s). INSTALL §Windows names the requirement.
+
+- [ ] **Windows: detect a missing Visual C++ runtime BEFORE a service needs it, and prove the whole flow on
+  a machine without it** (follow-up to #794): today the first MySQL/PHP start is where a user learns it
+  is missing — named and with the link, but after a failed provision. Owed: (1) a check (System32's
+  `vcruntime140.dll` + `vcruntime140_1.dll` + `msvcp140.dll`, or the `VC\Runtimes\x64` registry key) shown
+  in `rex doctor` and on the Services screen before any start; (2) the NSIS installer offering the
+  official `vc_redist.x64.exe` (a UAC prompt — per-user installer, so an offer, never silent); (3) SMOKE
+  §Windows "No Visual C++ runtime" run on a VM snapshot with the redistributable uninstalled.
 
 - [ ] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
   report): the phase order for a cloned Laravel site is `db → configure → deps`, and

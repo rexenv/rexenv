@@ -252,8 +252,11 @@ pub fn preflight(platform: &dyn Platform, group: &CgiGroup, version: &str, php_d
     let mut child = platform.supervisor().spawn_logged(&php_cgi_bin(php_dir), &args, &probe)?;
     let status = child.wait()?;
     let output = std::fs::read_to_string(&probe).unwrap_or_default();
-    preflight_verdict(group, version, status.success(), &output)
-        .map_err(|why| Error::Other(format!("PHP refused its configuration ({}): {why}", ini.display())))
+    preflight_verdict(group, version, status.success(), &output).map_err(|why| {
+        // A php-cgi the loader refused prints nothing at all: the exit code is the whole story.
+        let exit = if status.success() { String::new() } else { format!(" (exit {})", super::proc::exit_text(status.code())) };
+        Error::Other(format!("PHP refused its configuration ({}): {why}{exit}", ini.display()))
+    })
 }
 
 /// Start the group for `minor` on `port`: write the ini, pass the preflight, spawn the

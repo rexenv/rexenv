@@ -307,8 +307,8 @@ pub fn test_fpm_config(platform: &dyn Platform, php_fpm_bin: &Path, conf: &Path)
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "php-fpm config test failed (exit {:?})",
-            status.code()
+            "php-fpm config test failed (exit {})",
+            crate::core::proc::exit_text(status.code())
         )))
     }
 }
@@ -841,8 +841,8 @@ pub fn test_nginx_config(
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "nginx -t failed (exit {:?})",
-            status.code()
+            "nginx -t failed (exit {})",
+            crate::core::proc::exit_text(status.code())
         )))
     }
 }

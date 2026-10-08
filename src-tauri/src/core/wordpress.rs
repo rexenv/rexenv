@@ -699,9 +699,9 @@ pub fn wp_cli_checked(
             .map(|t| format!("\n\n{t}"))
             .unwrap_or_default();
         Err(Error::Other(format!(
-            "wp {} failed (exit {:?}): {stderr}{tell}",
+            "wp {} failed (exit {}): {stderr}{tell}",
             args.first().copied().unwrap_or(""),
-            out.status.code(),
+            crate::core::proc::exit_text(out.status.code()),
         )))
     }
 }
@@ -737,7 +737,7 @@ pub fn wp_run_script(php_bin: &Path, wp_phar: &Path, docroot: &Path, script: &st
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        Err(Error::Other(format!("wp eval-file failed (exit {:?}): {stderr}", out.status.code())))
+        Err(Error::Other(format!("wp eval-file failed (exit {}): {stderr}", crate::core::proc::exit_text(out.status.code()))))
     }
 }
 
@@ -1125,9 +1125,9 @@ fn wp_run_timed(
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
         Err(Error::Other(format!(
-            "wp {} failed (exit {:?}): {}",
+            "wp {} failed (exit {}): {}",
             args.first().copied().unwrap_or(""),
-            out.status.code(),
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
@@ -1448,9 +1448,9 @@ pub fn update_streamed(
         return Ok(());
     }
     Err(Error::Other(format!(
-        "wp {} update failed (exit {:?}): {}",
+        "wp {} update failed (exit {}): {}",
         kind.noun(),
-        res.exit,
+        crate::core::proc::exit_text(res.exit),
         res.tail.join(" / ")
     )))
 }

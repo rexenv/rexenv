@@ -144,8 +144,8 @@ fn bootstrap(basedir: &Path, datadir: &Path) -> Result<()> {
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "mariadbd --bootstrap failed (exit {:?}): {}",
-            out.status.code(),
+            "mariadbd --bootstrap failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }

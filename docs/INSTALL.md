@@ -371,6 +371,14 @@ which told a user who had quit that the app was still open; the words now live i
   nginx, MySQL, PostgreSQL, Mailpit, cloudflared) the first time, then works offline.
   The Windows builds are the same versions as macOS from different publishers; every one
   is checksum-locked (`docs/PORTS.md` names each archive and digest).
+- **The Microsoft Visual C++ Redistributable (x64)** — php.net's PHP and Oracle's MySQL
+  are built against it, and a fresh Windows may not have it (most PCs do, because other
+  software installed it). Without it the first MySQL or PHP start fails with
+  `exit -1073741515 = 0xC0000135: Windows could not start it: a DLL it needs is missing …`
+  and Microsoft's link; install
+  [vc_redist.x64.exe](https://aka.ms/vs/17/release/vc_redist.x64.exe) and Retry. Before
+  8 Oct 2026 the failure was a bare `exit Some(-1073741515)`, and on a Retry Windows' own
+  "VCRUNTIME140.dll was not found" box held the start until someone closed it.
 - The same small read-only requests at launch as on macOS (php.net, and the signed
   version lists on `raw.githubusercontent.com/rexenv/runtimes`). You can turn the release
   check off in **Settings → About**.

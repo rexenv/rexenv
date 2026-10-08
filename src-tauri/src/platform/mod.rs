@@ -302,6 +302,19 @@ pub fn sweep_inheritable_handles_before_boot() {
     }
 }
 
+/// Before boot, on one thread, beside the handle sweep: no process rexenv starts may stop on a
+/// dialog. On Windows a program whose DLL is missing (the Visual C++ runtime on a fresh PC) gets
+/// a modal "The code execution cannot proceed" box from the loader, and the child sits behind it,
+/// unstarted, while rexenv waits on it — a user's provisioning hung exactly there (8 Oct 2026).
+/// The error mode is inherited, so with it set the child exits at once with `0xC0000135`, which
+/// `core::proc::exit_text` turns into the fix. A no-op off Windows: no loader there opens a window.
+pub fn quiet_loader_dialogs_before_boot() {
+    #[cfg(target_os = "windows")]
+    {
+        windows::quiet_loader_dialogs();
+    }
+}
+
 /// When this process was started inside a job that forbids its services to break away — the
 /// installer's Finish page did that on the first installed copy, 19 Sep 2026 (ledger #692) — ask
 /// Explorer to start rexenv again and return the code this copy exits with; `None` means run here.

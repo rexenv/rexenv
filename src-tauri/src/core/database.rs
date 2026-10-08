@@ -76,8 +76,8 @@ pub fn initialize(platform: &dyn Platform, basedir: &Path, datadir: &Path) -> Re
             Ok(())
         } else {
             Err(Error::Other(format!(
-                "mysqld --initialize-insecure failed (exit {:?}); see {}",
-                status.code(),
+                "mysqld --initialize-insecure failed (exit {}); see {}",
+                crate::core::proc::exit_text(status.code()),
                 log.display()
             )))
         }
@@ -133,8 +133,8 @@ pub(crate) fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -
         Ok(())
     } else {
         Err(Error::Other(format!(
-            "{what} failed (exit {:?}): {}",
-            out.status.code(),
+            "{what} failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )))
     }
@@ -181,8 +181,8 @@ pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &s
         // to mistake for a good backup.
         let _ = std::fs::remove_file(&dest);
         return Err(Error::Other(format!(
-            "exporting database `{name}` failed (exit {:?}): {}",
-            out.status.code(),
+            "exporting database `{name}` failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
@@ -233,8 +233,8 @@ pub(crate) fn import_from_file(client: &SqlClient, port: u16, name: &str, file: 
         .output()?;
     if !out.status.success() {
         return Err(Error::Other(format!(
-            "importing into `{name}` failed (exit {:?}): {}",
-            out.status.code(),
+            "importing into `{name}` failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
@@ -306,8 +306,8 @@ pub(crate) fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64
         .output()?;
     if !out.status.success() {
         return Err(Error::Other(format!(
-            "listing database sizes failed (exit {:?}): {}",
-            out.status.code(),
+            "listing database sizes failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }

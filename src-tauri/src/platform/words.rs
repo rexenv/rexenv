@@ -120,6 +120,14 @@ pub struct PlatformWords {
     /// build) and the sentence is never shown; on Windows it is the permanent truth — no
     /// OpenLiteSpeed build exists for Windows at all, so "not available yet" would be a promise.
     pub openlitespeed_unavailable: &'static str,
+    /// Exit codes that mean the program never ran because the OS loader could not start it, and
+    /// what to do — said in place of a bare number wherever a child's exit is reported
+    /// (`core::proc::exit_text`). Windows: php.net's PHP and Oracle's MySQL link the Microsoft
+    /// Visual C++ runtime, which a fresh Windows does not have; a user's first site failed
+    /// `mysqld --initialize-insecure failed (exit Some(-1073741515))` and nothing said why
+    /// (8 Oct 2026). Empty on macOS and Linux: their servers are static or carry their own
+    /// libraries, and their loaders report on stderr rather than with a dedicated code.
+    pub loader_failures: &'static [(i32, &'static str)],
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -157,6 +165,7 @@ pub const MACOS: PlatformWords = PlatformWords {
          Apple developer signature yet, so each build is a new identity to it.",
     searching_browsers: "Chrome and Safari",
     openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
+    loader_failures: &[],
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -193,6 +202,20 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     update_reprompt: "",
     searching_browsers: "Chrome and Edge",
     openlitespeed_unavailable: "OpenLiteSpeed has no Windows build — it exists for macOS and Linux only. Choose Nginx for this site.",
+    loader_failures: &[
+        // STATUS_DLL_NOT_FOUND
+        (
+            0xC000_0135_u32 as i32,
+            "Windows could not start it: a DLL it needs is missing — almost always the Microsoft Visual C++ \
+             Redistributable (x64). Install it from Microsoft (https://aka.ms/vs/17/release/vc_redist.x64.exe), then try again",
+        ),
+        // STATUS_ENTRYPOINT_NOT_FOUND: a runtime is there, but older than the program needs.
+        (
+            0xC000_0139_u32 as i32,
+            "Windows could not start it: the Microsoft Visual C++ Redistributable on this PC is older than it needs. \
+             Install the current one from Microsoft (https://aka.ms/vs/17/release/vc_redist.x64.exe), then try again",
+        ),
+    ],
 };
 
 /// Ubuntu first (docs/PLAN-linux-port.md L3): GNOME's file manager is "Files" (Nautilus), tools
@@ -231,6 +254,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     update_reprompt: "",
     searching_browsers: "Chrome and Firefox",
     openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
+    loader_failures: &[],
 };
 
 impl PlatformWords {

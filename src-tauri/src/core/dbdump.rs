@@ -888,8 +888,8 @@ pub fn dump(
         // A failed dump leaves nothing that looks like a backup.
         let _ = std::fs::remove_file(&partial);
         return Err(Error::Other(format!(
-            "the dump failed (exit {:?}): {}",
-            status.code(),
+            "the dump failed (exit {}): {}",
+            crate::core::proc::exit_text(status.code()),
             stderr.trim()
         )));
     }

@@ -9,6 +9,25 @@
 use std::process::Child;
 use std::time::{Duration, Instant};
 
+/// A child's exit code as an error message says it — the number, and when this OS names it as
+/// the loader refusing to start the program, what to do (`PlatformWords::loader_failures`). Every
+/// `(exit …)` in `core` and `commands` goes through here (`no_exit_code_is_formatted_by_hand`):
+/// a missing Visual C++ runtime reached a user as `exit Some(-1073741515)` and nothing more.
+pub fn exit_text(code: Option<i32>) -> String {
+    exit_text_with(crate::platform::words::current(), code)
+}
+
+/// [`exit_text`] with the words given — so each OS's answer is tested on any host.
+pub fn exit_text_with(words: &crate::platform::words::PlatformWords, code: Option<i32>) -> String {
+    let Some(code) = code else {
+        return "none — it was ended by a signal".to_string();
+    };
+    match words.loader_failures.iter().find(|(c, _)| *c == code) {
+        Some((_, why)) => format!("{code} = {:#010X}: {why}", code as u32),
+        None => code.to_string(),
+    }
+}
+
 pub enum Proc {
     /// Spawned this session — we own the OS child handle (can `wait`/`kill`).
     /// The `Instant` is the spawn time, backing the health watchdog's start
@@ -131,6 +150,48 @@ impl From<Child> for Proc {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The user's code (8 Oct 2026): on Windows it names the runtime and Microsoft's link; on
+    /// macOS and Linux, where no exit code means "the loader refused", it stays the number.
+    #[test]
+    fn a_loader_refusal_is_named_where_the_os_has_one() {
+        use crate::platform::words::{LINUX, MACOS, WINDOWS};
+        let missing = exit_text_with(&WINDOWS, Some(-1073741515));
+        assert!(missing.starts_with("-1073741515 = 0xC0000135: "), "{missing}");
+        assert!(missing.contains("Visual C++ Redistributable") && missing.contains("https://aka.ms/vs/17/release/vc_redist.x64.exe"), "{missing}");
+        let old = exit_text_with(&WINDOWS, Some(0xC000_0139_u32 as i32));
+        assert!(old.contains("0xC0000139") && old.contains("older"), "{old}");
+        assert_eq!(exit_text_with(&WINDOWS, Some(1)), "1");
+        for words in [&MACOS, &LINUX] {
+            assert_eq!(exit_text_with(words, Some(-1073741515)), "-1073741515");
+            assert_eq!(exit_text_with(words, Some(2)), "2");
+        }
+        assert!(exit_text_with(&MACOS, None).contains("signal"));
+    }
+
+    /// Every `(exit …)` an error message reports goes through `exit_text`: one site spelling
+    /// the code itself would be where the next missing-runtime report says only a number.
+    #[test]
+    fn no_exit_code_is_formatted_by_hand() {
+        // Assembled, so this test does not find its own literal.
+        let by_hand = format!("exit {}{}", "{", ":?}");
+        let mut found = Vec::new();
+        for dir in ["src/core", "src/commands"] {
+            let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for (n, line) in text.lines().enumerate() {
+                        if line.contains(&by_hand) {
+                            found.push(format!("{}:{}", path.display(), n + 1));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found.is_empty(), "format the code through core::proc::exit_text: {found:?}");
+    }
 
     /// **A detached process is OURS: it gets the start grace, and the
     /// provenance check says we may stop it.**

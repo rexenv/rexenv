@@ -2195,7 +2195,7 @@ async fn streamed_step<R: tauri::Runtime>(
         Ok(Ok(sr)) if sr.ok => StepEnd::Ok,
         Ok(Ok(sr)) if sr.cancelled => StepEnd::Cancelled,
         Ok(Ok(sr)) => StepEnd::Failed(
-            sr.tail.last().cloned().unwrap_or_else(|| format!("exit {:?}", sr.exit)),
+            sr.tail.last().cloned().unwrap_or_else(|| format!("exit {}", crate::core::proc::exit_text(sr.exit))),
         ),
         Ok(Err(e)) => StepEnd::Failed(e.to_string()),
         Err(e) => StepEnd::Failed(format!("step worker died: {e}")),

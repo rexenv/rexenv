@@ -198,6 +198,14 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **A php-cgi group has no per-request ini.** `fastcgi_param PHP_VALUE` is php-fpm's; php-cgi
   ignores it (measured on the Dell). A per-vhost limit that must reach PHP goes in a `.user.ini`
   in the docroot — every CGI/FastCGI PHP reads it, so it is written on every OS (#788).
+- **A missing DLL is a modal box, not an exit.** The loader shows "The code execution cannot
+  proceed because VCRUNTIME140.dll was not found" and the child waits behind it, unstarted, while
+  its parent waits on the child — a user's provisioning hung there (8 Oct 2026). php.net's PHP and
+  Oracle's MySQL need the Visual C++ runtime, which a fresh Windows may lack; every test machine
+  already had it. `main.rs` sets `SEM_FAILCRITICALERRORS` before boot (inherited, so the child
+  exits `0xC0000135` at once), and `core::proc::exit_text` turns the code into the fix
+  (`PlatformWords::loader_failures`). Over SSH no dialog can appear at all — prove a dialog claim
+  in the desktop session (a `schtasks /IT` task).
 - **Every PHP minor's official zip ships a DIFFERENT extension set.** 8.4+ has no IMAP, zip is
   built in before 8.2, gd is `php_gd2.dll` on 7.4. One list read off 8.3's zip was written into
   every minor's ini, and the preflight refused 7.4, 8.0, 8.1, 8.4 and 8.5 groups outright — found

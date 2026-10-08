@@ -16,6 +16,8 @@ fn main() {
     // inherit the handles it was born with (ledger #600; the sweep must never run beside a
     // spawn, so it runs before there is one).
     rexenv_lib::platform::sweep_inheritable_handles_before_boot();
+    // And no child of it may stop on a loader dialog nobody sees (a missing Visual C++ runtime).
+    rexenv_lib::platform::quiet_loader_dialogs_before_boot();
     // `--print-version`: what THIS binary is, for the self-update's staged copy to answer for
     // itself (a Linux AppImage has no Info.plist or VERSIONINFO to read). Before everything —
     // it must open nothing and touch nothing.

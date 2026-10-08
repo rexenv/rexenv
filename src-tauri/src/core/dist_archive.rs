@@ -499,8 +499,8 @@ pub fn build_and_deliver(
     }
     if !result.ok {
         return Err(Error::Other(format!(
-            "wp dist-archive failed (exit {:?}): {}",
-            result.exit,
+            "wp dist-archive failed (exit {}): {}",
+            crate::core::proc::exit_text(result.exit),
             result.tail.join(" / ")
         )));
     }

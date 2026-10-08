@@ -224,8 +224,8 @@ pub fn feed(
     let stderr = stderr_thread.join().unwrap_or_default();
     if !status.success() {
         return Err(Error::Other(format!(
-            "the restore stopped part-way (exit {:?}): {}",
-            status.code(),
+            "the restore stopped part-way (exit {}): {}",
+            crate::core::proc::exit_text(status.code()),
             last_lines(&stderr, 3)
         )));
     }
