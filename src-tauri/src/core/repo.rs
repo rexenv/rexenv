@@ -2605,8 +2605,9 @@ pub fn map_composer_error(tail: &[String]) -> Error {
     // install failed" there pointed a user at Composer when `artisan migrate` (a post-install
     // script) had died on its database (8 Oct 2026); name the script, keep more of its output.
     if let Some((script, event)) = failed_composer_script(tail) {
+        let note = super::laravel::half_applied_migration_note(&joined).map(|n| format!("\n{n}")).unwrap_or_default();
         return Error::Other(format!(
-            "the packages installed, then this repository's {event} script `{script}` failed:\n{}",
+            "the packages installed, then this repository's {event} script `{script}` failed:\n{}{note}",
             last_lines(tail, 6)
         ));
     }
@@ -2738,6 +2739,16 @@ mod tests {
         assert!(msg.contains("post-install-cmd script `@php artisan migrate --force` failed"), "{msg}");
         assert!(msg.contains("1317 Query execution was interrupted"), "the cause must be in the message: {msg}");
         assert!(!msg.starts_with("composer install failed"), "{msg}");
+        // The user's SECOND failure, through the same script: the half-applied migration is named.
+        let dup: Vec<String> = [
+            "  SQLSTATE[42S01]: Base table or view already exists: 1050 Table 'blog_categories' already exists",
+            "Script @php artisan migrate --force handling the post-install-cmd event returned with error code 1",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let msg = super::map_composer_error(&dup).to_string();
+        assert!(msg.contains("stopped part-way") && msg.contains("Export the database first"), "{msg}");
     }
 
     /// The REAL tail of a failed `composer install`, copied verbatim from a

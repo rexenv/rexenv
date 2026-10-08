@@ -1792,7 +1792,11 @@ async fn drive<R: tauri::Runtime>(
             match migrated {
                 Ok(Ok(())) => append_line(app, entry, "migrations applied to the site's database"),
                 Ok(Err(e)) if e.to_string().contains("cancelled") => return JobEnd::Cancelled,
-                Ok(Err(e)) => return JobEnd::Failed(format!("php artisan migrate failed: {e}")),
+                Ok(Err(e)) => {
+                    let e = e.to_string();
+                    let note = core::laravel::half_applied_migration_note(&e).map(|n| format!("\n{n}")).unwrap_or_default();
+                    return JobEnd::Failed(format!("php artisan migrate failed: {e}{note}"));
+                }
                 Err(e) => return JobEnd::Failed(format!("artisan worker died: {e}")),
             }
         } else {

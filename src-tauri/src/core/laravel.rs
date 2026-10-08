@@ -166,6 +166,28 @@ pub fn create_project(
     Ok(())
 }
 
+/// What to tell the user when a migration failed because a table it creates is already there
+/// — a migration left HALF-applied, not a fault of the database. `None` for any other failure.
+///
+/// MySQL (and MariaDB) commit each `CREATE TABLE` on its own, so a multi-table migration that
+/// stops part-way keeps the tables it made while Laravel never records the migration; every Retry
+/// then dies on the first of them. A user lost an afternoon to exactly that (8 Oct 2026: `1317 Query
+/// execution was interrupted`, then `1050 Table 'blog_categories' already exists`). rexenv drops
+/// nothing and marks nothing as migrated — the tables may hold data — so the sentence is the way out.
+pub fn half_applied_migration_note(output: &str) -> Option<&'static str> {
+    let lower = output.to_ascii_lowercase();
+    let exists = lower.contains("42s01") // MySQL / MariaDB: base table or view already exists
+        || lower.contains("42p07") // PostgreSQL: duplicate table
+        || (lower.contains("table") && lower.contains("already exists"));
+    exists.then_some(
+        "A table this migration creates already exists, so an earlier run stopped part-way: MySQL \
+         keeps each table it created, while Laravel never recorded the migration as done. rexenv \
+         drops nothing and marks nothing as migrated. Export the database first (Databases → \
+         Export), then either drop that migration's half-made tables or let the migration skip \
+         tables that exist, and Retry.",
+    )
+}
+
 /// The MAIL_* environment a rexenv-spawned process gets so a Laravel app's mail
 /// lands in Mailpit — empty when the user has turned the catch-all off.
 ///
@@ -880,5 +902,18 @@ mod live_shape_tests {
         for line in original.lines().filter(|l| l.starts_with("APP_KEY=")) {
             assert!(out.contains(line), "APP_KEY must survive the rewrite");
         }
+    }
+}
+
+#[cfg(test)]
+mod half_applied_tests {
+    /// The user's own two failures: the interrupted one is NOT this; the duplicate-table one is.
+    #[test]
+    fn a_duplicate_table_reads_as_a_half_applied_migration() {
+        let dup = "SQLSTATE[42S01]: Base table or view already exists: 1050 Table 'blog_categories' already exists";
+        assert!(super::half_applied_migration_note(dup).is_some_and(|n| n.contains("Export the database first")));
+        assert!(super::half_applied_migration_note("SQLSTATE[42P07]: Duplicate table: relation \"posts\" already exists").is_some());
+        assert_eq!(super::half_applied_migration_note("SQLSTATE[70100]: <<Unknown error>>: 1317 Query execution was interrupted"), None);
+        assert_eq!(super::half_applied_migration_note("SQLSTATE[HY000] [2002] Connection refused"), None);
     }
 }

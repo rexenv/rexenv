@@ -69,6 +69,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **A half-applied migration is reported as a bare `1050 Table … already exists`** (report item 4's
+  "explain that MySQL DDL can leave partially applied migrations and offer backup/recovery guidance").
+  ✓ **8 Oct 2026** (ledger #803): `laravel::half_applied_migration_note` on both failure paths.
+
 - [x] **Windows lacks IMAP on PHP 8.4/8.5 while macOS/Linux have it; a project's `ext-*` needs are found only by
   Composer, after the database** (the same user's second message, 8 Oct 2026: ship the PECL DLL, never enable
   a missing one, detect `ext-imap`, verify before load, name what is missing).
