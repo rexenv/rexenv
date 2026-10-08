@@ -7,57 +7,57 @@ App version **0.8.12** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 ### Now — actionable code/test work — 12
 
 - `TODO.md:72` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
-- `TODO.md:83` The apt repository's first release run
-- `TODO.md:95` The website's GitHub Actions never start — billing
-- `TODO.md:101` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:151` PostgreSQL self-build for macOS 13/14
-- `TODO.md:157` Windows launch
-- `TODO.md:1221` Linux launch
-- `TODO.md:1303` In-app self-update — a dmg user has no update path at all
-- `TODO.md:1435` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:1462` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:1475` Radicle-hosted repos are unverified
-- `TODO.md:1477` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:84` The apt repository's first release run
+- `TODO.md:96` The website's GitHub Actions never start — billing
+- `TODO.md:102` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:152` PostgreSQL self-build for macOS 13/14
+- `TODO.md:158` Windows launch
+- `TODO.md:1222` Linux launch
+- `TODO.md:1304` In-app self-update — a dmg user has no update path at all
+- `TODO.md:1436` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:1463` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:1476` Radicle-hosted repos are unverified
+- `TODO.md:1478` Why that `rex` instance went deaf was never diagnosed
 
 ### Ledger-driven proof backlog — 2
 
-- `TODO.md:1490` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:1542` Bedrock live provision — the committed example (#35), deliberately not built
+- `TODO.md:1491` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:1543` Bedrock live provision — the committed example (#35), deliberately not built
 
 ### Release gates (human, scripted — see the docs named) — 11
 
-- `TODO.md:1562` PUBLISH-TESTING §D
-- `TODO.md:1580` The in-app update's remaining human rows (macOS)
-- `TODO.md:1587` PUBLISH-TESTING §K
-- `TODO.md:1588` PUBLISH-TESTING §F
-- `TODO.md:1589` PUBLISH-TESTING §G
-- `TODO.md:1595` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1601` Tunnel probe session
-- `TODO.md:1605` Intel spot-run
-- `TODO.md:1608` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1648` In-app verifies owed
-- `TODO.md:1660` PUBLISH-TESTING §E / §L
+- `TODO.md:1563` PUBLISH-TESTING §D
+- `TODO.md:1581` The in-app update's remaining human rows (macOS)
+- `TODO.md:1588` PUBLISH-TESTING §K
+- `TODO.md:1589` PUBLISH-TESTING §F
+- `TODO.md:1590` PUBLISH-TESTING §G
+- `TODO.md:1596` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1602` Tunnel probe session
+- `TODO.md:1606` Intel spot-run
+- `TODO.md:1609` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1649` In-app verifies owed
+- `TODO.md:1661` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:1666` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:1675` The live pool swap is still L3
-- `TODO.md:1679` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:1687` Install WordPress into an empty LINKED folder
-- `TODO.md:1694` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1667` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:1676` The live pool swap is still L3
+- `TODO.md:1680` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1688` Install WordPress into an empty LINKED folder
+- `TODO.md:1695` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 6
 
-- `TODO.md:1709` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:1746` `rexenv/website`'s "Release sync" has not run since 0.8.7
-- `TODO.md:1754` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:1765` Xdebug on PHP 8.0
-- `TODO.md:1770` SMAppService privileged helper
-- `TODO.md:1772` Developer ID signing + notarization
+- `TODO.md:1710` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:1747` `rexenv/website`'s "Release sync" has not run since 0.8.7
+- `TODO.md:1755` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:1766` Xdebug on PHP 8.0
+- `TODO.md:1771` SMAppService privileged helper
+- `TODO.md:1773` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:1776` Public distribution (the open-sourcing half of the old "packaging polish" row)
+- `TODO.md:1777` Public distribution (the open-sourcing half of the old "packaging polish" row)
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

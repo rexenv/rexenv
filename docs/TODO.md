@@ -77,8 +77,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`MpCmdRun -Scan -ScanType 3`), but an ML verdict can land on any build, and a user who meets it reads
   "rexenv is a trojan". Owed: (1) the owner submits both installers to Microsoft as a false positive
   (https://www.microsoft.com/wdsi/filesubmission — outward-facing, his); (2) a release step that scans every
-  Windows asset with Defender on the Dell before Publish (`docs/RELEASING.md`); (3) the Windows §M for
-  0.8.12 could not run on the Dell for the same reason (the Win11 VM had no signed-in console after a reboot).
+  Windows asset with Defender on the Dell before Publish (`docs/RELEASING.md`). The verdict is NEW in
+  signatures between 1.459.576.0 (the Win11 VM: 0.8.11 scans clean) and 1.459.601.0 (the Dell). The
+  0.8.12 Windows §M therefore ran on the VM only.
 
 - [ ] **The apt repository's first release run** (`docs/PLAN-apt-repo.md`, ledger #745, 29 Sep
   2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published

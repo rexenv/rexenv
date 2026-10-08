@@ -167,11 +167,17 @@ green — macOS serial 19, Windows 14, the four Linux 5; `rexenv/apt` published 
   -s` 0.8.12 → the dialog → OK → **reopened as 0.8.12 in 2 s, at Sites** (not onboarding's Welcome —
   0.8.11's finding, fixed by `2acf1322`), 7/7 running, the agent `agent`, `/var/crash` empty, no
   WebKitWebProcess dialog; `relaunch.log`: "parent 4292 was already gone … started /usr/bin/rexenv".
-- **Windows: NOT RUN.** The Win11 VM had no signed-in console after its restart (no `/IT` task can
-  reach a desktop; autologon needs the owner's password), and on the Dell **Windows Defender refused
-  the published 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** — an ML verdict on the unsigned
-  installer; the 0.8.12 `setup.exe` and `.zip` scan clean (`docs/TODO.md`, the Defender row). The
-  Windows half of this release rests on `/S` over a running 0.8.11 (VM and Dell, above).
+- **Win11 ARM VM** (after the owner signed in at its console; 0.8.11 put back with the app and the
+  agent stopped — its Defender, signatures 1.459.576.0, scans 0.8.11's `setup.exe` CLEAN): the
+  Settings badge `0.8.12`, About "rexenv 0.8.12 · 13.5 MB has been published" (serial 14) → Install
+  → "Downloading… 0 B" until the VM's MTU went to 1400 (the same host fact) → "swapped to 0.8.12
+  (RenamePair)" → the dialog → OK → **back as 0.8.12** with the toast "rexenv is now 0.8.12 (updated
+  from 0.8.11)", the agent on `udp 53`, Apps & Features 0.8.12, `lm.rex` / `lv.rex` 200;
+  `relaunch.log`: "parent 1216 exited after 0.1s … started …\rexenv.exe (pid 7428)".
+- **The Dell: not run.** Its Defender (signatures **1.459.601.0**) refused the published 0.8.11
+  `setup.exe` as **`Trojan:Win32/Bearfoos.B!ml`** — an ML verdict on the unsigned installer that the
+  VM's older signatures (1.459.576.0) do not give; the 0.8.12 `setup.exe` and `.zip` scan clean on the
+  Dell (`docs/TODO.md`, the Defender row).
 
 ## A) ✅ 0.8.11 — DRAFTED on `rexenv/rexenv` by CI (30 Sep 2026, the third draft: the release host moved that afternoon) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green on every draft
 
