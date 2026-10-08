@@ -103,6 +103,48 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.12 — DRAFTED on `rexenv/rexenv` by CI (8 Oct 2026) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green
+
+**Run 37722475279, source `282f9459` (tag `v0.8.12`, pushed — not a dispatch, so #765's trap
+cannot apply), every lane green, 16 assets, the body the tag's verbatim (26 lines).** dmg
+`c0d297e58294d0de94d81a08fe2474103d701d344a7eca8e5358244c07aa5f27`, `.app.tar.gz` `4c03c8f1…`,
+arm64 deb `8abf4d22…`, setup.exe `8a9ed322…`; `shasum -c` against every attached `.sha256`: all OK.
+**§A0 ✅ by hand on the downloaded assets:** `rexenv` and `rex` both `x86_64 arm64`,
+`Dist_Archive_Command` ×5 and the update key ×2 in EACH slice, `minos 13.0` in both, codesign
+valid, Info.plist `0.8.12` — on the dmg's app AND the archive's; one top-level `rexenv.app/`, no
+AppleDouble; dmg app == archive app (`diff -rq`).
+**§A ✅ on the 15.8 arm64 UTM VM, over the published 0.8.11** (put back from its kept copy first:
+`0.8.11 (21f8a1b)`): the dmg `scp`'d (hash re-checked), app quit, the DNS agent booted out, `rm -rf`
+the app, copied out of the mounted dmg, a synthetic `0083` quarantine → Gatekeeper **"rexenv" Not
+Opened** (Done / Move to Bin); Done → no rexenv process (only the services that outlive the app);
+`sudo xattr -rd` → launched `rex 0.8.12 (282f945) · app rexenv 0.8.12 (282f945)`, no crash report
+(0 → 0), the DNS agent back by itself (`program` = the launcher, `answering (agent)`). Stop all →
+the branded "stop its HTTPS server" prompt → stopped; Start all → (the PHP `-8` downloads first,
+then) the branded "start its HTTPS server" prompt → the edge `running` 13 s after the password,
+`smoke1.rex` 200, no "Bootstrap failed". **This release's own rows:** PHP 8.3's cache was refetched
+on 0.8.12's first launch (`.pinned-digest` `16fb4520…` = `PHP_8_3_32_CLI_MAC_ARM64_SHA256`, the
+php-8x-8 build — `cache_matches_pin`, no user step), and `curl_init("https://smoke1.rex/")` from
+it answered **200** (curl 8.22.0); the core-files banner + Repair (#793) ran on this VM the same
+morning on the release-candidate build (SMOKE "A site missing long core files…").
+**Linux ✅ on the 22.04 arm64 VM (the arm64 deb, `apt-get install ./…deb` over the published
+0.8.11):** `dpkg -s` 0.8.12; the 0.8.11 app closed and 0.8.12 launched from Activities: `0.8.12
+(282f945)`, 7/7 running, the DNS agent relaunched (`agent`); P1: a fresh `.rex` name →
+127.0.0.1, `~rex` on link 3 (`rexenv0`) only, `example.com` via the network; route and edge units
+active; `/var/crash` empty. Sites answer 404 from rexenv's nginx (the VM's docroots were deleted by
+an earlier cleanup — recorded at 0.8.11, not a release fact); PHP 8.3's `curl_init("https://lv.rex/")`
+resolved and connected (404, no curl error).
+**Windows ✅ on the Win11 ARM VM (the `setup.exe /S` over the published 0.8.11 with the app AND
+the agent RUNNING — the case #787/`e6d75d3a` fixed):** exit 0, `rexenv.exe` 0.8.11 → **0.8.12**
+(`7ce5ba2d…` → `687b5772…`; 0.8.11's installer left the old binary in exactly this case), Apps &
+Features 0.8.12, the agent back under its task (`Running`, a new pid), the Run key's `--hidden`
+kept; launched through Explorer (`launch.cmd` from a `/IT` task): `0.8.12 (282f945)`, the agent on
+`udp 53`, seven services running, `lm.rex` / `lv.rex` 200, PHP 8.3's curl to `lv.rex` 200 (curl
+8.21.0). (The Dell was unreachable this morning, so the Windows row ran on the VM only.)
+**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows.
+**Next (owner):** Publish → the tap's Update cask; in `rexenv/runtimes` "Publish app update
+manifest" once per descriptor + `scripts/check-app-manifest.sh` each; `rexenv/apt` → "Publish apt
+repository" + `scripts/check-apt-repo.sh`; then §M — the 0.8.11 → 0.8.12 in-app update on the VMs.
+
 ## A) ✅ 0.8.11 — DRAFTED on `rexenv/rexenv` by CI (30 Sep 2026, the third draft: the release host moved that afternoon) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green on every draft
 
 **The third draft: `rexenv/rexenv` run 36683920844, dmg
