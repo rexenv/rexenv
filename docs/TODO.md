@@ -69,10 +69,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **Every other new site settles "setup incomplete" with `caddy reload failed (exit 1)` although it serves**
+- [x] **Every other new site settles "setup incomplete" with `caddy reload failed (exit 1)` although it serves**
   (Win11 VM, 9 Oct 2026, the every-minor SMOKE): Caddy's admin restart cuts the reload's own connection
   while applying the config. Fix in tree (#804, retry once + quote Caddy); owed: the VM's back-to-back
   install + create run settling every site ok.
+  ✓ **9 Oct 2026** (ledger #804): the VM run, 5 of 5 created and serving (2 of 5 before).
 
 - [x] **A half-applied migration is reported as a bare `1050 Table … already exists`** (report item 4's
   "explain that MySQL DDL can leave partially applied migrations and offer backup/recovery guidance").
