@@ -26,7 +26,12 @@ case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     # Windows (Git Bash on a Windows build host, W8 S4, ledger #633): the x64 sidecar, named for its target
     # triple so Tauri bundles it beside rexenv.exe as rex.exe — the name `core::cli::bundled_rex` looks for.
-    cargo build --manifest-path cli/Cargo.toml --release --target x86_64-pc-windows-msvc
+    # The C runtime linked IN (`+crt-static`): an MSVC Rust binary otherwise imports VCRUNTIME140.dll,
+    # and the shipped 0.8.12 `rex.exe` exited 0xC0000135 on a Windows without the Visual C++
+    # Redistributable — the very PC `rex doctor`'s Runtime line exists for (Win11 VM, 8 Oct 2026, #799).
+    # rexenv.exe needs nothing here: tauri-build links its runtime statically already.
+    RUSTFLAGS="-C target-feature=+crt-static" \
+      cargo build --manifest-path cli/Cargo.toml --release --target x86_64-pc-windows-msvc
     cp cli/target/x86_64-pc-windows-msvc/release/rex.exe src-tauri/binaries/rex-x86_64-pc-windows-msvc.exe
     echo "build-cli: staged rex sidecar (x86_64-pc-windows-msvc)"
     ;;

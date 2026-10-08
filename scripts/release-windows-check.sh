@@ -68,6 +68,21 @@ for f in "$REL/rexenv.exe" "$REL/rex.exe"; do
 done
 echo "PE machine: x64 (rexenv.exe, rex.exe)"
 
+# (3b) Neither binary needs the Visual C++ Redistributable: the C runtime is linked IN
+#      (tauri-build's static vcruntime for rexenv.exe, `+crt-static` in build-cli.sh for
+#      rex.exe). The shipped 0.8.12 rex.exe imported VCRUNTIME140.dll and exited 0xC0000135
+#      on a Windows without it (Win11 VM, 8 Oct 2026, #799) — the one PC `rex doctor`'s Runtime
+#      line is for. An import table names its DLLs as plain ASCII, so a binary grep sees them.
+#      CASE-SENSITIVE on purpose: imports are spelled `VCRUNTIME140.dll`, while rexenv's own code
+#      holds the lowercase names as data (`vc_runtime_rules::DLLS`, what it looks for in System32) —
+#      an insensitive match would fail every build on its own string table.
+for f in "$REL/rexenv.exe" "$REL/rex.exe"; do
+  if grep -aqE 'VCRUNTIME140(_1)?\.dll|MSVCP140\.dll' "$f"; then
+    fail "$f imports the Visual C++ runtime — it would not start on a Windows without the redistributable"
+  fi
+done
+echo "C runtime: linked in (rexenv.exe, rex.exe import no VCRUNTIME140/MSVCP140)"
+
 # (4) The payloads compiled INTO the binary are in it. Today's list: the vendored
 #     `wp dist-archive` tree, which `build.rs` turns into `include_bytes!`. Grepped
 #     as binary — `strings` is not guaranteed on a Git Bash host.

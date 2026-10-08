@@ -2420,7 +2420,7 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       the app's install folder (where `rex.exe` sits beside `rexenv.exe`) to the user Path, open a NEW
       terminal → `rex doctor`'s CLI line is ✓ "… → this app (on PATH by hand …)", not "rex not on
       PATH". L0 `the_cli_line_judges_the_rex_this_shell_would_run` ✓ on the Dell (Win10) 8 Oct 2026.
-- [ ] **No Visual C++ runtime → a named failure, never a hang** (8 Oct 2026, user report): on a
+- [x] **No Visual C++ runtime → a named failure, never a hang** (8 Oct 2026, user report): on a
       Windows with NO Visual C++ Redistributable (a fresh install, or uninstall "Microsoft Visual
       C++ 2015-2022 Redistributable (x64)" on a VM snapshot), create a WordPress site → it fails
       at "starting database" within seconds with `exit -1073741515 = 0xC0000135: Windows could not
@@ -2434,7 +2434,15 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       `✗ Runtime`; Start all refuses naming it; `windows_runtime_check` PASSes ("the verdict
       BLOCKS"). After installing it: the banner leaves within 30 s, doctor's line is gone, Start
       all works. The positive case (redistributable present → no banner, PHP runs) ✓ 8 Oct 2026
-      on the Dell.
+      on the Dell. ✓ **The negative case, 8 Oct 2026, Win11 ARM VM** (its "Redistributable (Arm64)"
+      uninstalled — which also removes the x64 runtime; restored to 14.44 after): this tree's
+      interactive `setup.exe` (built on the Dell) showed the offer word for word, Yes opened
+      `aka.ms/vs/17/release/vc_redist.x64.exe` in Edge; Services showed the red banner; Start all
+      refused with the sentence + link, 0 services started; the installed `rex doctor` printed
+      `✗ Runtime …`; `windows_runtime_check` (static build) PASSed "the verdict BLOCKS" with
+      `php -v` exit `-1073741515`. After the reinstall the banner left on its own and Start all
+      brought 7/7 up. **Found there:** the shipped 0.8.12 `rex.exe` itself exits `0xC0000135`
+      on such a PC (#799, fixed: static CRT).
 - [ ] **A site serves on EVERY PHP minor, not just 8.3** (ledger #603, amended 8 Oct 2026): for 7.4,
       8.0, 8.1, 8.4 and 8.5 — `rex php install <minor>`, a Blank-PHP site on it, `rex start` → the
       `PHP-CGI <minor>` row runs and the site answers HTTPS 200 with `<?php phpinfo();` showing that

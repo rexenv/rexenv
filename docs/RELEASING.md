@@ -201,7 +201,9 @@ release** — which is the property that makes a stolen key survivable. Ledger
    script, not the config, so the macOS build is not changed for a Windows reason.
    **After the build it runs `scripts/release-windows-check.sh`** — §A0's Windows
    half: exactly one installer named for the version, the `rex` sidecar present, the
-   PE machine field read off the header (not the filename), the embedded
+   PE machine field read off the header (not the filename), neither `rexenv.exe` nor
+   `rex.exe` importing `VCRUNTIME140`/`MSVCP140` (#799 — the 0.8.12 `rex.exe` did, and would
+   not start on a Windows without the Visual C++ Redistributable), the embedded
    `Dist_Archive_Command` payload, and `NotSigned` — asserted, because
    `docs/INSTALL.md` promises the user a specific "Unknown Publisher" dialog and that
    page becomes a lie the day a certificate appears without it being rewritten.

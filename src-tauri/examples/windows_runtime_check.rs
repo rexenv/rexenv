@@ -3,8 +3,15 @@
 //! dies `0xC0000135` gets the BLOCKING verdict.
 //!
 //! ```text
+//! RUSTFLAGS="-C target-feature=+crt-static" cargo xwin build --release \
+//!     --target x86_64-pc-windows-msvc --example windows_runtime_check
 //! ssh dell@<host> .\windows_runtime_check.exe
 //! ```
+//!
+//! BUILD IT STATIC: an MSVC Rust binary imports `VCRUNTIME140.dll` by default, so on the very PC
+//! this checks for — one without the redistributable — a default build of this example exits
+//! `0xC0000135` before `main` and prints nothing (measured on the Win11 VM, 8 Oct 2026, which is
+//! also how the shipped `rex.exe` was found to need it, #799).
 //!
 //! What it proves there: the registry/System32 reader's answer, printed, against a real `php.exe -v`
 //! of the pinned tree. Run it on a PC with the redistributable (the consistent-positive case) AND on

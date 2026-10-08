@@ -106,11 +106,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   line, `start_stack`'s up-front refusal, and the interactive installer's offer (`nsis/hooks.nsh`).
   L0 plant-proven; L1 positive on the Dell. (3) is the row below.
 
-- [ ] **Prove #794/#798 on a Windows WITHOUT the Visual C++ Redistributable** — the one case no test
+- [x] **Prove #794/#798 on a Windows WITHOUT the Visual C++ Redistributable** — the one case no test
   machine has: on the Win11 VM, uninstall "Microsoft Visual C++ 2015-2022 Redistributable (x64)"
   (reinstall after), then run SMOKE §Windows "No Visual C++ runtime" — the installer's dialog (needs a
   `tauri build` setup.exe from the Dell), the banner, `rex doctor`, Start all's refusal, and
   `windows_runtime_check` reading "the verdict BLOCKS".
+  ✓ **8 Oct 2026, Win11 ARM VM** — every item, SMOKE §Windows "No Visual C++ runtime" ticked with the
+  evidence. It found #799: the shipped `rex.exe` imported `VCRUNTIME140.dll` and could not start there;
+  `build-cli.sh` now links the C runtime in, and `release-windows-check.sh` refuses either binary
+  importing it.
+
+- [ ] **`rex doctor` on Windows calls rexenv's OWN PostgreSQL a foreign holder of :15432** (seen 8 Oct
+  2026, Win11 VM, right after Start all brought 7/7 up): `✗ Ports  port 15432 (needed by PostgreSQL) held
+  by postgres.exe (pid …, …\rexenv\data\bin\postgres-18.6.0\bin\postgres.exe) $ Stop-Process -Id …` —
+  the binary is rexenv's own, under its own data dir, and Services says it is running. Likely the
+  pg_ctl-detached server (#698, `Proc::Detached`) is not counted as ours by the doctor's port scan. A
+  finding that tells the user to kill their own database is worse than none.
 
 - [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
   report): the phase order for a cloned Laravel site is `db → configure → deps`, and
