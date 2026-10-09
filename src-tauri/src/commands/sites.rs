@@ -1499,18 +1499,28 @@ pub async fn change_site_domain(
         )?;
 
         // 3) URL migration. Dry-run first as an environment gate (wp-cli boots,
-        //    DB reachable) — if it fails, nothing has been mutated. Then two
-        //    real passes: full URL, then bare domain (srcset, protocol-relative
-        //    and hardcoded refs). wp-cli handles serialized data; --all-tables
-        //    covers non-prefix tables (each site owns its database).
-        let (from_url, to_url) = (format!("https://{old_domain}"), format!("https://{domain}"));
+        //    DB reachable) — if it fails, nothing has been mutated. Then the
+        //    passes of `url_rehome_pairs`, the same list a copied database is
+        //    moved with: full URLs (http and https, plain and JSON-escaped) to
+        //    `https://new`, then the bare domain (srcset, protocol-relative and
+        //    hardcoded refs). wp-cli handles serialized data; --all-tables covers
+        //    non-prefix tables (each site owns its database).
+        //
+        //    Until 9 Oct 2026 this was its own three calls, `https://old` then
+        //    bare `old`, and a rename to a longer name ending in the old one
+        //    (`shop.rex` → `myshop.rex`) rewrote the new URL a second time:
+        //    `https://mymyshop.rex` (ledger #818). The shared list routes that
+        //    case through a token.
+        let pairs = core::wordpress::url_rehome_pairs(&old_domain, &domain);
         replacements = {
-            let (old, new) = (old_domain.clone(), domain.clone());
             super::wordpress::wp_blocking(move || {
-                core::wordpress::search_replace(&php, &wp, &docroot, &from_url, &to_url, true, true)?;
-                let mut n =
-                    core::wordpress::search_replace(&php, &wp, &docroot, &from_url, &to_url, false, true)?;
-                n += core::wordpress::search_replace(&php, &wp, &docroot, &old, &new, false, true)?;
+                if let Some((a, b)) = pairs.first() {
+                    core::wordpress::search_replace(&php, &wp, &docroot, a, b, true, true)?;
+                }
+                let mut n = 0;
+                for (a, b) in &pairs {
+                    n += core::wordpress::search_replace(&php, &wp, &docroot, a, b, false, true)?;
+                }
                 Ok(n)
             })
             .await?

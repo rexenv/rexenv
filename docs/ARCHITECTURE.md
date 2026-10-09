@@ -1592,6 +1592,13 @@ honest footer —
   restored database name (PHP keeps the first definition; wp-config still names
   Local's socket), `--skip-plugins --skip-themes`. It runs before the import is
   recorded, and `siteurl` must re-read as `https://<new>` or the job fails (#573).
+  **When the new name CONTAINS the old one** (`shop.rex` → `feature-x.shop.rex`, or a
+  rename to `myshop.rex`), the bare pass runs FIRST and through a token
+  (`wordpress::REHOME_TOKEN`). In the plain order it would rewrite the `https://new` the
+  URL passes had just written, giving `https://feature-x.feature-x.shop.rex` (#818, found
+  9 Oct 2026 building worktree sites). Change domain uses this same pair list since that
+  fix; until then it ran its own `https://old` + bare passes and carried the bug for any
+  rename to a longer name ending in the old one.
   A NETWORK copy (the site recorded as multisite) first lists its blogs — a mapped-domain
   blog fails the job before any replace — moves each subsite's `http(s)://sub.old` onto
   `https://sub.new` BEFORE the bare network rename (the network's own pairs never match

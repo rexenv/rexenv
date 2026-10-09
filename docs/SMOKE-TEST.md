@@ -584,6 +584,11 @@ Every ✓ below: 18 Sep 2026 (clean 15.6.1 VM, 39610cc7 + self-update to 0.7.2).
       list; sidebar, Settings and dialog clicks work. A hand run (or a tool that sends real
       HID events) is what this row and the Database-tab / delete-confirm rows wait for; the
       23 Sep hand run reached the page.
+- [ ] **Change domain to a name that CONTAINS the old one** (`shop.rex` → `myshop.rex`) on a
+      WordPress site with a post that links to itself: afterwards the post's link, `siteurl`
+      and `home` read `https://myshop.rex` — never `https://mymyshop.rex` (ledger #818; the
+      L0 test applies the passes to strings, and this is the one run where real wp-cli applies
+      them to a real database). Same on Windows and Linux.
 
 ## PHP 7.4 — the one leg no automated tier covers
 **Moved here 15 Aug 2026 from the MCP section, where it was step "11b".** The

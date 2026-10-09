@@ -2741,20 +2741,45 @@ pub fn search_replace(
         .map_err(|e| Error::Other(format!("search-replace count: {e} (output: {out:?})")))
 }
 
+/// The stand-in a bare-host move passes through when the new name CONTAINS the
+/// old one (see [`url_rehome_pairs`]). Letters, digits and `_` only, so it is
+/// one plain argument to wp-cli, and long and odd enough that no real database
+/// holds it.
+pub const REHOME_TOKEN: &str = "__rexenv_rehome_7c1f2b__";
+
 /// The search-replace passes that move a COPIED database from the hostname its
 /// source served to the one rexenv serves: `http://old` and `https://old` →
 /// `https://new` (rexenv serves every site over HTTPS), the same in WordPress's
 /// JSON-escaped `http:\/\/` spelling, then the bare `old` → `new` LAST when the
 /// name itself changed — Change domain's shape. A pair that would replace a
 /// string with itself is dropped. Pure.
+///
+/// **When the new name contains the old one, the bare pass goes FIRST, through
+/// [`REHOME_TOKEN`]** (found 9 Oct 2026 while building worktree sites, whose
+/// `feature-x.shop.rex` contains `shop.rex`). Run in the plain order, the URL
+/// passes write `https://feature-x.shop.rex`, and the bare `shop.rex` →
+/// `feature-x.shop.rex` pass then rewrites that INSIDE the new URL, giving
+/// `https://feature-x.feature-x.shop.rex`. Change domain had the same bug for
+/// any rename to a longer name ending in the old one: `shop.rex` →
+/// `myshop.rex` gave `mymyshop.rex`. So for that case: every `old` becomes the
+/// token, the URL pairs move `…//token` to `https://new`, and the token left
+/// over becomes `new`. Every pass then matches only text the previous passes
+/// cannot have produced.
 pub fn url_rehome_pairs(from: &str, to: &str) -> Vec<(String, String)> {
+    let through_token = from != to && to.contains(from);
     let mut out = Vec::new();
+    let src = if through_token {
+        out.push((from.to_string(), REHOME_TOKEN.to_string()));
+        REHOME_TOKEN
+    } else {
+        from
+    };
     for scheme in ["http", "https"] {
-        out.push((format!("{scheme}://{from}"), format!("https://{to}")));
-        out.push((format!("{scheme}:\\/\\/{from}"), format!("https:\\/\\/{to}")));
+        out.push((format!("{scheme}://{src}"), format!("https://{to}")));
+        out.push((format!("{scheme}:\\/\\/{src}"), format!("https:\\/\\/{to}")));
     }
     if from != to {
-        out.push((from.to_string(), to.to_string()));
+        out.push((src.to_string(), to.to_string()));
     }
     out.retain(|(a, b)| a != b);
     out
@@ -2954,6 +2979,44 @@ mod copy_rehome_tests {
     /// The schemes move to HTTPS on the new name, the escaped spelling too, and
     /// the bare name goes LAST (earlier, it would turn `http://ea.local` into
     /// `http://ea.rex` and the scheme passes would never match).
+    /// Apply passes the way wp-cli's search-replace does to one string: each
+    /// pair in order, every occurrence.
+    fn apply(pairs: &[(String, String)], text: &str) -> String {
+        pairs.iter().fold(text.to_string(), |t, (a, b)| t.replace(a.as_str(), b.as_str()))
+    }
+
+    /// **A move to a name that CONTAINS the old one never doubles the prefix**
+    /// (ledger #818). Plant: drop `through_token` (always the plain order) and
+    /// every assert below with a nested or longer name fails — the plain order
+    /// yields `https://feature-x.feature-x.shop.rex`.
+    #[test]
+    fn a_move_into_a_name_containing_the_old_one_never_doubles_it() {
+        let text = "home=https://shop.rex/ a=http://shop.rex/x j=http:\\/\\/shop.rex\\/y bare=shop.rex";
+        let p = url_rehome_pairs("shop.rex", "feature-x.shop.rex");
+        assert_eq!(
+            apply(&p, text),
+            "home=https://feature-x.shop.rex/ a=https://feature-x.shop.rex/x \
+             j=https:\\/\\/feature-x.shop.rex\\/y bare=feature-x.shop.rex"
+        );
+        // Change domain's case: a longer name ending in the old one.
+        let p = url_rehome_pairs("shop.rex", "myshop.rex");
+        assert_eq!(apply(&p, "https://shop.rex and shop.rex"), "https://myshop.rex and myshop.rex");
+        // And a name that merely STARTS with it.
+        let p = url_rehome_pairs("shop.rex", "shop.rex.test");
+        assert_eq!(apply(&p, "http://shop.rex/"), "https://shop.rex.test/");
+        // No token survives.
+        for (from, to) in [("shop.rex", "feature-x.shop.rex"), ("a.b", "xa.b"), ("ea.local", "ea.rex")] {
+            assert!(!apply(&url_rehome_pairs(from, to), "x https://a.b shop.rex ea.local").contains(REHOME_TOKEN));
+        }
+    }
+
+    #[test]
+    fn an_unrelated_move_keeps_the_plain_order() {
+        let p = url_rehome_pairs("ea.local", "ea.rex");
+        assert!(p.iter().all(|(a, b)| a != REHOME_TOKEN && b != REHOME_TOKEN), "{p:?}");
+        assert_eq!(p.last().unwrap(), &("ea.local".to_string(), "ea.rex".to_string()));
+    }
+
     #[test]
     fn a_copy_moves_to_https_on_the_new_name_bare_name_last() {
         let p = url_rehome_pairs("ea.local", "ea.rex");
