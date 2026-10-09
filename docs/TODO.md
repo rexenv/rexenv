@@ -1479,6 +1479,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 
+- [ ] **Windows `setup.exe /S` over a running app + agent sometimes exits 2** — 2 of 16 rounds on the
+  Win11 ARM VM (0.8.13, 9 Oct 2026), 0 of 5 on the Dell. Safe failure (an abort before any file is
+  replaced: the old version stays, the agent comes back), but a scripted silent update reports failure.
+  Excluded by measurement: a file-lock race (`rexenv.exe` writable within ~50 ms of the kill). Fits:
+  Tauri's own `CheckIfAppIsRunning` (right after our PREINSTALL) finding a `rexenv.exe` that started
+  AFTER our kill loop — in the first failure the agent was restarted mid-install — and its kill
+  returning an error → `Abort`. Next: run the failing shape under a console (`-NoNewWindow`) until it
+  fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
+  re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
