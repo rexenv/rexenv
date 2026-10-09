@@ -6,6 +6,20 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 9 Oct 2026, the full judgement pass** (HEAD `f8447efc`, v0.8.12 + 11 commits): 15 ticked
+blocks moved by the script, then 1 more after the ticks (13 from Now, 1 from Blocked, 1 from Phase 4+ — the 8 Oct Windows report's rows and the apt +
+website closures). All 34 open rows audited against code, git and CI. **Shape 1 (open only on paper): 4**
+— the release-on-Actions and L9 children (v0.8.12's `release.yml` run, 16 assets), the W9 screens child
+(`a9d987bf`), Public distribution (repo public since 30 Sep); ticked in place with evidence (the nested
+ones stay as their open parents' evidence). **Shape 2 (a row claiming what is no longer true): 6
+corrected** — §G's "#243 is 🔨" (✅ L2 since 2 Sep), the floor row's "15.0" and nginx question, the
+in-app-verifies list naming two CLI legs that ran 5 Sep, §D's tap-hosting, ledger #95's line; and a
+wp-cli re-check paragraph that sat in the private-window row moved to the wp-cli row. Two rows got the
+SMOKE legs they had not named (#768, #772). **Shape 3 (bloat): left as is** — the Windows/Linux launch
+parents, macOS 13 floor, self-update and four one-off investigations each carry pages for one open
+reason; collapsing them is its own pass. Shape 4: none. Orphaned prose: the evidence of two of this
+pass's own ticks had landed inside other rows (a row with no blank line after it) — moved under its rows.
+
 **Reconciled 8 Oct 2026, before the 0.8.12 cut, mechanical pass** (HEAD `5c92e4f8`, v0.8.11 + 53
 commits): 17 ticked blocks moved by the script into the new `docs/archive/SHIPPED-2026-10.md` (15 from
 Now, 1 from Release gates, 1 from Blocked): the update card's one size, the empty-log hint, the tutorial
@@ -69,113 +83,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [x] **Every other new site settles "setup incomplete" with `caddy reload failed (exit 1)` although it serves**
-  (Win11 VM, 9 Oct 2026, the every-minor SMOKE): Caddy's admin restart cuts the reload's own connection
-  while applying the config. Fix in tree (#804, retry once + quote Caddy); owed: the VM's back-to-back
-  install + create run settling every site ok.
-  ✓ **9 Oct 2026** (ledger #804): the VM run, 5 of 5 created and serving (2 of 5 before).
-
-- [x] **A half-applied migration is reported as a bare `1050 Table … already exists`** (report item 4's
-  "explain that MySQL DDL can leave partially applied migrations and offer backup/recovery guidance").
-  ✓ **8 Oct 2026** (ledger #803): `laravel::half_applied_migration_note` on both failure paths.
-
-- [x] **Windows lacks IMAP on PHP 8.4/8.5 while macOS/Linux have it; a project's `ext-*` needs are found only by
-  Composer, after the database** (the same user's second message, 8 Oct 2026: ship the PECL DLL, never enable
-  a missing one, detect `ext-imap`, verify before load, name what is missing).
-  ✓ **8 Oct 2026**: (1) #801 — the official PECL `php_imap.dll` in every Windows 8.4/8.5 tree, stale caches
-  replaced (and the stale-tree gap it exposed fixed: `retire_stale_tree`); (2) #802 — `ext-*` (root + lock)
-  checked at the clone phase against the site's real `php -m`, refusal names the extension and its requirer;
-  Composer's extension refusal named, and no longer read as a PHP-version one. "Never enable a missing one" and
-  "verify before load" were #794's per-version rules + preflight. Auto-INSTALL per project was not built: with
-  imap in every tree there is nothing left to install on demand. L1 on the Win11 VM, 21/21.
-
-- [x] **Windows: PHP 7.4, 8.0, 8.1, 8.4 and 8.5 groups cannot start — one extension list, read off 8.3's
-  zip, was written into every minor's ini** (user report, 8 Oct 2026, Windows 11 build 26300, rexenv 0.8.12,
-  a cloned Laravel site needing `^8.4.1`): `rex start` refused `PHP Startup: Unable to load dynamic library
-  'imap'` — PHP 8.4 moved IMAP to PECL. `php_cgi::preflight_verdict` refuses any startup warning, so a
-  line a minor cannot load refuses its whole group. `windows_php_cli_check`, extended to every pinned
-  minor and run on the Win11 VM, then found the rest: zip is built in before 8.2 (no `php_zip.dll`),
-  gd's file is `php_gd2.dll` on 7.4. Only 8.2 and 8.3 ran — every Windows proof had used 8.3
-  (`binaries::pins().php`). Fix: `CgiGroup::per_version` (`ExtChange`), `ext_lines` / `modules`.
-  ✓ **8 Oct 2026**: L0 `each_minor_writes_and_expects_what_its_own_build_ships` (plant-proven four
-  ways); L1 `windows_php_cli_check` on the Win11 VM — `php -m` + the group's preflight green on all
-  seven pinned minors, 14/14 (ledger #603 amended). Owed: SMOKE-TEST §Windows "A site serves on
-  EVERY PHP minor" (a group serving a request on each).
-
-- [x] **Windows: a machine without the Visual C++ runtime cannot run MySQL (or PHP), and the loader's
-  dialog hangs provisioning** (same report): `mysqld --initialize-insecure failed (exit Some(-1073741515))`
-  = `0xC0000135`, `VCRUNTIME140.dll` not found; on Retry Windows raised its modal "code execution cannot
-  proceed" dialog and `database::initialize`'s `child.wait()` waited on it. php.net's PHP needs the same
-  runtime. Every test machine (Dell, Win11 VM) already had the redistributable.
-  ✓ **8 Oct 2026** (ledger #794): `SEM_FAILCRITICALERRORS` set before boot (`main.rs`
-  `quiet_loader_dialogs_before_boot`), inherited by every child; every `(exit …)` in core/ and commands/
-  through `core::proc::exit_text`, which names `0xC0000135`/`0xC0000139` with Microsoft's link
-  (`PlatformWords::loader_failures`), TEXT-guarded; the php-cgi preflight now reports its exit too.
-  L1 `windows_loader_dialog_check` 3/3 in the Win11 VM's desktop session (control held by the dialog;
-  the fixed spawn exited `-1073741515` within 10 s). INSTALL §Windows names the requirement.
-
-- [x] **Windows: detect a missing Visual C++ runtime BEFORE a service needs it, and prove the whole flow on
-  a machine without it** (follow-up to #794): today the first MySQL/PHP start is where a user learns it
-  is missing — named and with the link, but after a failed provision. Owed: (1) a check (System32's
-  `vcruntime140.dll` + `vcruntime140_1.dll` + `msvcp140.dll`, or the `VC\Runtimes\x64` registry key) shown
-  in `rex doctor` and on the Services screen before any start; (2) the NSIS installer offering the
-  official `vc_redist.x64.exe` (a UAC prompt — per-user installer, so an offer, never silent); (3) SMOKE
-  §Windows "No Visual C++ runtime" run on a VM snapshot with the redistributable uninstalled.
-  ✓ **8 Oct 2026, (1) and (2)** (ledger #798): `BinaryProvider::runtime_problem` (Windows: registry
-  `VC\Runtimes\X64`, else the DLLs; macOS/Linux `None`) → the Services banner, `rex doctor`'s Runtime
-  line, `start_stack`'s up-front refusal, and the interactive installer's offer (`nsis/hooks.nsh`).
-  L0 plant-proven; L1 positive on the Dell. (3) is the row below.
-
-- [x] **Prove #794/#798 on a Windows WITHOUT the Visual C++ Redistributable** — the one case no test
-  machine has: on the Win11 VM, uninstall "Microsoft Visual C++ 2015-2022 Redistributable (x64)"
-  (reinstall after), then run SMOKE §Windows "No Visual C++ runtime" — the installer's dialog (needs a
-  `tauri build` setup.exe from the Dell), the banner, `rex doctor`, Start all's refusal, and
-  `windows_runtime_check` reading "the verdict BLOCKS".
-  ✓ **8 Oct 2026, Win11 ARM VM** — every item, SMOKE §Windows "No Visual C++ runtime" ticked with the
-  evidence. It found #799: the shipped `rex.exe` imported `VCRUNTIME140.dll` and could not start there;
-  `build-cli.sh` now links the C runtime in, and `release-windows-check.sh` refuses either binary
-  importing it.
-
-- [x] **`rex doctor` on Windows calls rexenv's OWN PostgreSQL a foreign holder of :15432** (seen 8 Oct
-  2026, Win11 VM, right after Start all brought 7/7 up): `✗ Ports  port 15432 (needed by PostgreSQL) held
-  by postgres.exe (pid …, …\rexenv\data\bin\postgres-18.6.0\bin\postgres.exe) $ Stop-Process -Id …` —
-  the binary is rexenv's own, under its own data dir, and Services says it is running. Likely the
-  pg_ctl-detached server (#698, `Proc::Detached`) is not counted as ours by the doctor's port scan. A
-  finding that tells the user to kill their own database is worse than none.
-  ✓ **8 Oct 2026** (ledger #800): not `Proc::Detached` — the MARKER. `pg_ctl` forward-slashes every path on
-  the command line, and `port_table::command_carries_marker` compared a backslashed marker. It now folds
-  `\` to `/` as well as case. Live on the VM: same pid 4800, `✗ Ports` before, `✓ Ports` after.
-
-- [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
-  report): the phase order for a cloned Laravel site is `db → configure → deps`, and
-  `php_requirement_refusal` runs inside `deps` (`commands/site_provision.rs`). `composer.json` is on disk
-  once the clone lands, so the refusal can run before `db` and save the database start + `.env` write.
-  ✓ **8 Oct 2026** (ledger #796): the clone phase asks `php_requirement_refused` the moment the code is
-  on disk (fresh clone or a Retry's skip) and fails THAT phase, before `db`/`configure`; `deps` keeps the
-  check. L0 + a TEXT order test, plant-proven; SMOKE "refused at the CLONE" owed.
-
-- [x] **Provisioning and `rex start`/restart are not coordinated; an interrupted `artisan migrate` leaves a
-  half-applied migration** (same report, cause unproven): a `rex start` issued while provisioning ran, MySQL's
-  pid changed, migrate died `SQLSTATE[70100] 1317 Query execution was interrupted`, and Retry then failed
-  `1050 Table … already exists` (the project's migration is not idempotent — not rexenv's schema). Owed:
-  reproduce first (does a stack start/restart during provisioning restart MySQL?); then refuse or defer a
-  stack restart while a provision job runs. Also: a migrate failure that came from a composer script
-  surfaces as `composer install failed: …` — say which command failed.
-  ✓ **8 Oct 2026** (ledger #795): reproduced on paper — `rex start` cannot do it (`spawn_db` skips a
-  running engine), `rex restart` = stop + start can, and a server shutdown under a running query is
-  exactly `1317`. `stop_services` (footer, tray, `rex stop`/`restart`, MCP) now refuses while
-  `ProvisionJobs::running_domains` is non-empty, naming the site. And `map_composer_error` names a failed
-  repository script (`… post-install-cmd script `@php artisan migrate --force` failed`, 6 lines of its
-  output); the double "composer install failed: composer install failed:" prefix is gone. L0 + TEXT,
-  plant-proven; SMOKE "Stop all is refused while a site is being provisioned" owed (a live run).
-
-- [x] **`rex doctor` on Windows says "rex not on PATH" when it means "not installed via Settings"** (same
-  report): `core::cli::status_of_copy` judges the COPY in rexenv's own folder, not PATH; a user who put the
-  bundled folder on PATH by hand still gets the finding. The sentence should name what is checked.
-  ✓ **8 Oct 2026** (ledger #797): the CLI line reads THIS shell's PATH (`first_on_path` / `cli_finding`):
-  the app's own `rex`, by Settings or by hand, is ✓; another copy is named; "not on PATH" only when none.
-  L0 with real files, plant-proven, run on macOS and on the Dell (Win10).
-
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),
@@ -188,29 +95,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   signatures between 1.459.576.0 (the Win11 VM: 0.8.11 scans clean) and 1.459.601.0 (the Dell). The
   0.8.12 Windows §M therefore ran on the VM only.
 
-- [x] **The apt repository's first release run** (`docs/archive/PLAN-apt-repo.md`, ledger #745, 29 Sep
-  2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
-  through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
-  `scripts/check-apt-repo.sh`) and the tap's `install-scripts.yml` passing its lag path on that
-  publish. (The key's backup: ✓ 30 Sep 2026, the owner holds it; the agent's only copy deleted.)
-  ✓ **RAN 30 Sep 2026 for 0.8.11** (run 36689575061, one approval; since that afternoon
-  `build-site.sh` reads the newest published releases on `rexenv/rexenv`, where 0.8.8–0.8.10 are
-  mirrored, so `KEEP=3` resolves): `check-apt-repo.sh` all green — InRelease signed by the
-  repository's key, amd64 and arm64 at 0.8.11, the latest release. The tap's `install-scripts.yml`
-  lag path was not exercised (its run installed the release's `.deb` directly, as designed while
-  apt is not yet current) — left open for that one leg.
-  ✓ **CLOSED 9 Oct 2026** — the open leg ran on its own: the tap's `install-scripts.yml` took the
-  FROM-THE-REPOSITORY path on 5 Oct (weekly run 37304112051, ubuntu-22.04: "installing rexenv 0.8.11 from
-  the repository") and the LAG path on 0.8.12's publish (run 37730225752, ubuntu-24.04-arm: "the repository
-  does not offer 0.8.12 yet; installing the release's .deb directly", apt candidate 0.8.12 by the check);
-  `check-apt-repo.sh` 9 Oct: signature good, amd64 + arm64 at 0.8.12. Plan archived.
-
-- [x] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
-  least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
-  needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
-  all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
-  and unaffected. (The site was brought to 0.8.9 by hand on 29 Sep — `rexenv/website` #14, merged
-  with its CI job never started and its bar run locally instead; the bot stays dark.)
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
   with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
@@ -715,7 +599,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     - Found, not fixed: `rex`'s stall notice ("no reply yet after 10s — the app is either still working or
       wedged") prints even while progress records are arriving — the timer is not reset by progress; seen on the
       Dell's `site create`, every OS
-  - [ ] **W9 screens, LOOKED AT on the Dell 19 Sep 2026** — the app built and run there, every screen
+  - [x] **W9 screens, LOOKED AT on the Dell 19 Sep 2026** — the app built and run there, every screen
+    ✓ **9 Oct 2026, open only on paper:** all five findings fixed in `a9d987bf` and re-read on the Dell the same night (below); the follow-ups ticked (stopped-site tabs, terminals #687–689).
     captured and read. The wording W9 shipped is CORRECT where it landed: Local CA card
     ("trusted · Trusted Root store"), the re-trust sentence, "asks for an administrator's approval
     once", the change-domain dialog ("register it with Windows"), Uninstall ("remove every rexenv
@@ -1330,9 +1215,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     A cross build names the file it lacks and who stages it instead of failing mutely at `tauri_build`.
     Plant-proven (ledger #685): `cargo xwin check` with no placeholder prints
     `no rex sidecar for x86_64-pc-windows-msvc …` and skips `build-cli.sh`
-  ✓ **CLOSED 9 Oct 2026** (open only on paper since 1 Oct): the org's billing was fixed — the last
-  failed run is 30 Sep 20:49 UTC, 133 successful "Release sync" runs since. The CI gate runs on every PR
-  again (#20 failed, was fixed, went green, merged).
 
 - [ ] **Linux launch** — 24 Sep 2026, owner: "ami chai ekhon rexenv er linux version o build
   korte … at least Ubuntu". Reasoning, measurements, the decisions D-L1–D-L10 (defaults
@@ -1393,11 +1275,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     needed freetype's `LICENSE.TXT` and a SQLite public-domain note; the static ELFs export no Zend
     symbols, so 7.4 on Linux gets no Xdebug — not in v1 anyway). Then: owner merges PR #7 and publishes
     `php-7.4.33-7`; pin the Linux arms in `binaries.rs` (`php_self_hosted_tag`), drop #728's refusal for 7.4
-  - [ ] **Release = GitHub Actions only, all three OSes at once** (owner ruling 27 Sep 2026,
+  - [x] **Release = GitHub Actions only, all three OSes at once** (owner ruling 27 Sep 2026,
+    ✓ **9 Oct 2026, open only on paper:** `release.yml` ran end to end on tag `v0.8.12` (run 37722475279, success, 8 Oct) and published 16 assets — macOS, Windows, Linux amd64 + arm64 — on rexenv/rexenv.
     `docs/PLAN-ci-release.md`) — `release.yml` rewritten (macos-14 / windows-latest / ubuntu-22.04 /
     ubuntu-22.04-arm → one draft on the tap with eight assets, or nothing). **Owed:** the owner's
     `TAP_TOKEN` secret and the arm64 runner decision; the first tag run (it has never executed end to end)
-  - [ ] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
+  - [x] L9 the release leg — `release-linux-check.sh` (§A0-linux) + `release.yml`'s x86_64
+    ✓ **9 Oct 2026, open only on paper:** the same `v0.8.12` run built `rexenv_0.8.12_{amd64,arm64}.deb` + both AppImages from the 22.04 floor; the download paths are the tap's `install.sh` (apt) and the website's Linux card (`rexenv/website` #14).
     `release-linux` job landed 25 Sep 2026; **VM (aarch64) `pnpm release:linux` exit 0 — §A0-linux all
     green on the rebuilt 0.8.7 deb + AppImage (`--print-version` answers, polkit action, Depends, rex
     sidecar), and that deb installed and runs**; **x86_64 built 25 Sep 2026 on the Dell's WSL2 Ubuntu 26.04**
@@ -1584,8 +1468,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
-  **Re-checked 2 Oct 2026:** still v2.12.0 (`gh api repos/wp-cli/wp-cli/releases/latest`,
-  published 2025-05-07) — nothing to bump; the containment stays.
 ### Open work that was living inside ticked rows
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
@@ -1682,7 +1564,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   never run anywhere. Original text, still accurate about what was proven:
   full tap install dry-run. **Half done 12 Aug 2026**:
   v0.1.0 is published on `rexenv/homebrew-tap` (private repos 404 `brew`'s anonymous
-  fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section),
+  fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section; **since 30 Sep
+  2026 the app repo is public and the cask downloads from `rexenv/rexenv`**),
   the cask is bumped to the shipped `b29f21f7…`, the asset fetches anonymously (200),
   and `brew fetch --cask rexenv` verifies ✔︎. **Install half ✅ ran the same day**:
   installs, postflight de-quarantines (`No such xattr`), `rex` links to
@@ -1700,14 +1583,17 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   left, reconciled 28 Sep 2026 — `docs/SMOKE-TEST.md` §"In-app self-update": the card when
   current, the offline leg against #540's fix, the Homebrew consent sentence on a cask-installed
   copy, and which permissions come back per macOS major. None can be run by any tier.
+  (Added 9 Oct 2026, also open in that section: the relauncher's record, ledger #768, and Start all
+  over a running edge adding no "Background Items Added" card, ledger #772.)
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
 - [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
   type-checked; Stage 1's status line now says so). **Grew step 9 on 8 Aug**: the
   batch progress card (`valet-import://progress`) — its arithmetic is L0-proven, but
   that `detail` really is the child job's own label and that the bar FREEZES rather
-  than rolls back on a mid-batch failure are 🔨 L2 (ledger #243) and only this pass
-  covers them today.
+  than rolls back on a mid-batch failure are ✅ L2 since 2 Sep 2026 (ledger #243,
+  `scripts/wk-checks/importbar.js`; corrected 9 Oct — this row said 🔨). What only this pass covers
+  is the PACKAGED app emitting those events from a real import.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): cold runs on a clean
   macOS 15.6.1 VM (18 Sep 2026) and a clean 15.8 VM (23 Sep, 0.8.7) since the 10 Jul first
   pass. Open for the file's own **"Still open on macOS"** list (reconciled 28 Sep 2026) —
@@ -1722,7 +1608,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
   Intel machine.
 - [ ] ⚠ **The macOS floor is a claim about BOTH slices — the metadata half is now
-  measured, the run half is not** (narrowed 23 Sep 2026: `docs/PLAN-macos-13-floor.md`
+  measured, the run half is not** — **corrected 9 Oct 2026:** the floor is 13.0 now
+  (`tauri.conf.json`), not the 15.0 below, and nginx is rexenv's own build at `minos 12.0` on both
+  slices (`docs/PORTS.md`), so child 3's nginx question is gone. The ONE thing left is an Intel
+  run-verify — the same as the "Intel spot-run" row; the rest is the 30 Aug record. (narrowed 23 Sep 2026: `docs/PLAN-macos-13-floor.md`
   swept every default-stack, PHP, FrankenPHP, cloudflared and PostgreSQL artifact on BOTH
   slices; only the bottle bundles' x86_64 blobs and MySQL 8.0.44 x86_64 remain arm64-only.
   The paragraph below is the 30 Aug state, kept for the reasoning). PORTS.md's `minos` table is measured from this machine's
@@ -1765,6 +1654,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site
   server/domain/move`, `mail clear`, `tunnel start`, `wp core update/switch`,
+  (**corrected 9 Oct 2026:** `wp core switch/update` and `tunnel start --yes`/`stop` were live-run 5 Sep —
+  `docs/CLI-ROADMAP.md`'s live-run record; `php install` ran on the Linux VM 24 Sep and on the Win11 VM
+  9 Oct. Still owed: `php uninstall`, `php settings set`, `db versions --set`, `site server/domain/move`,
+  `mail clear`, plus CLI-ROADMAP's `tld --remove` real-removal leg and `site restart`'s other outcomes.)
   `site create --starter-db` (**RUN 3 Sep 2026** — the seed is real: table
   `starter_items`, a `db.php`, the page renders "connected" and one row) —
   plus the packaged-GUI walks still noted inside their shipped entries: MariaDB
@@ -1856,17 +1749,11 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   *(Not doing: forcing `display_errors=stderr` into the rexenv terminal too. That terminal
   is deliberately the user's own environment (#228) and the flag would have to arrive as an
   injected env var, which is a bigger promise broken than a deprecation line shown.)*
+  **Re-checked 2 Oct 2026:** still v2.12.0 (`gh api repos/wp-cli/wp-cli/releases/latest`,
+  published 2025-05-07) — nothing to bump; the containment stays.
   **Re-checked 6 Oct 2026:** latest release still v2.12.0 (2025-05-07; `gh api …/releases`), so
   still nothing to bump — and moved here from "Now": the work waits on an upstream release, not
   on anything rexenv can do. Re-check when a wp-cli release appears.
-- [x] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
-  since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
-  account payments have failed or your spending limit needs to be increased" (GitHub billing,
-  the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR was ever opened; the site
-  was synced to 0.8.9 BY HAND on 29 Sep (`rexenv/website` #14 — both changelog entries, and
-  `sync-release.mjs` now reads every OS's asset names). The next release has no such hand, so:
-  owner, fix billing, then the next poll (or a manual run) syncs — it reads the tap release body,
-  which is the real tag notes again since 28 Sep (the row in Release gates).
 - [ ] ⚠ **Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more**
   (found 23 Sep 2026 while walking ghcr for `docs/PLAN-macos-13-floor.md`: `formulae.brew.sh`
   lists only `arm64_*` + Linux for redis 8.10.2 and mariadb 13.0.2; `mariadb@11.4`,
@@ -1888,17 +1775,6 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
 ## Phase 4+ (next era)
-  ✓ **CLOSED 9 Oct 2026**: the bot does its job again — the scheduled run 37735780467 (8 Oct 06:06 UTC)
-  opened `release/v0.8.12` itself (PR #20, "rexenv 0.8.12 — website sync"), CI green, merged. (0.8.10 and
-  0.8.11 were synced by hand, #15/#16, before billing came back.)
-
-- [ ] Public distribution (the open-sourcing half of the old "packaging polish" row).
-  **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
-  self-update" row under *Now*, planned in `docs/archive/PLAN-self-update.md`, and it does
-  NOT use the Tauri updater the archived §6.1 checklist proposed: that plugin's
-  macOS install deletes its own backup and can run a root `rm -rf` outside
-  `PrivilegeManager`, and its relaunch bypasses this app's ONE quit gate.
-
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"

@@ -515,3 +515,170 @@
   refusal rows on the Dell (installed NSIS build), which found #786 (the switch downloaded before
   it refused); #785 L0 `load_mirrors_hands_the_manager_the_stored_env`.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Every other new site settles "setup incomplete" with `caddy reload failed (exit 1)` although it serves**
+  (Win11 VM, 9 Oct 2026, the every-minor SMOKE): Caddy's admin restart cuts the reload's own connection
+  while applying the config. Fix in tree (#804, retry once + quote Caddy); owed: the VM's back-to-back
+  install + create run settling every site ok.
+  ✓ **9 Oct 2026** (ledger #804): the VM run, 5 of 5 created and serving (2 of 5 before).
+
+- [x] **A half-applied migration is reported as a bare `1050 Table … already exists`** (report item 4's
+  "explain that MySQL DDL can leave partially applied migrations and offer backup/recovery guidance").
+  ✓ **8 Oct 2026** (ledger #803): `laravel::half_applied_migration_note` on both failure paths.
+
+- [x] **Windows lacks IMAP on PHP 8.4/8.5 while macOS/Linux have it; a project's `ext-*` needs are found only by
+  Composer, after the database** (the same user's second message, 8 Oct 2026: ship the PECL DLL, never enable
+  a missing one, detect `ext-imap`, verify before load, name what is missing).
+  ✓ **8 Oct 2026**: (1) #801 — the official PECL `php_imap.dll` in every Windows 8.4/8.5 tree, stale caches
+  replaced (and the stale-tree gap it exposed fixed: `retire_stale_tree`); (2) #802 — `ext-*` (root + lock)
+  checked at the clone phase against the site's real `php -m`, refusal names the extension and its requirer;
+  Composer's extension refusal named, and no longer read as a PHP-version one. "Never enable a missing one" and
+  "verify before load" were #794's per-version rules + preflight. Auto-INSTALL per project was not built: with
+  imap in every tree there is nothing left to install on demand. L1 on the Win11 VM, 21/21.
+
+- [x] **Windows: PHP 7.4, 8.0, 8.1, 8.4 and 8.5 groups cannot start — one extension list, read off 8.3's
+  zip, was written into every minor's ini** (user report, 8 Oct 2026, Windows 11 build 26300, rexenv 0.8.12,
+  a cloned Laravel site needing `^8.4.1`): `rex start` refused `PHP Startup: Unable to load dynamic library
+  'imap'` — PHP 8.4 moved IMAP to PECL. `php_cgi::preflight_verdict` refuses any startup warning, so a
+  line a minor cannot load refuses its whole group. `windows_php_cli_check`, extended to every pinned
+  minor and run on the Win11 VM, then found the rest: zip is built in before 8.2 (no `php_zip.dll`),
+  gd's file is `php_gd2.dll` on 7.4. Only 8.2 and 8.3 ran — every Windows proof had used 8.3
+  (`binaries::pins().php`). Fix: `CgiGroup::per_version` (`ExtChange`), `ext_lines` / `modules`.
+  ✓ **8 Oct 2026**: L0 `each_minor_writes_and_expects_what_its_own_build_ships` (plant-proven four
+  ways); L1 `windows_php_cli_check` on the Win11 VM — `php -m` + the group's preflight green on all
+  seven pinned minors, 14/14 (ledger #603 amended). Owed: SMOKE-TEST §Windows "A site serves on
+  EVERY PHP minor" (a group serving a request on each).
+
+- [x] **Windows: a machine without the Visual C++ runtime cannot run MySQL (or PHP), and the loader's
+  dialog hangs provisioning** (same report): `mysqld --initialize-insecure failed (exit Some(-1073741515))`
+  = `0xC0000135`, `VCRUNTIME140.dll` not found; on Retry Windows raised its modal "code execution cannot
+  proceed" dialog and `database::initialize`'s `child.wait()` waited on it. php.net's PHP needs the same
+  runtime. Every test machine (Dell, Win11 VM) already had the redistributable.
+  ✓ **8 Oct 2026** (ledger #794): `SEM_FAILCRITICALERRORS` set before boot (`main.rs`
+  `quiet_loader_dialogs_before_boot`), inherited by every child; every `(exit …)` in core/ and commands/
+  through `core::proc::exit_text`, which names `0xC0000135`/`0xC0000139` with Microsoft's link
+  (`PlatformWords::loader_failures`), TEXT-guarded; the php-cgi preflight now reports its exit too.
+  L1 `windows_loader_dialog_check` 3/3 in the Win11 VM's desktop session (control held by the dialog;
+  the fixed spawn exited `-1073741515` within 10 s). INSTALL §Windows names the requirement.
+
+- [x] **Windows: detect a missing Visual C++ runtime BEFORE a service needs it, and prove the whole flow on
+  a machine without it** (follow-up to #794): today the first MySQL/PHP start is where a user learns it
+  is missing — named and with the link, but after a failed provision. Owed: (1) a check (System32's
+  `vcruntime140.dll` + `vcruntime140_1.dll` + `msvcp140.dll`, or the `VC\Runtimes\x64` registry key) shown
+  in `rex doctor` and on the Services screen before any start; (2) the NSIS installer offering the
+  official `vc_redist.x64.exe` (a UAC prompt — per-user installer, so an offer, never silent); (3) SMOKE
+  §Windows "No Visual C++ runtime" run on a VM snapshot with the redistributable uninstalled.
+  ✓ **8 Oct 2026, (1) and (2)** (ledger #798): `BinaryProvider::runtime_problem` (Windows: registry
+  `VC\Runtimes\X64`, else the DLLs; macOS/Linux `None`) → the Services banner, `rex doctor`'s Runtime
+  line, `start_stack`'s up-front refusal, and the interactive installer's offer (`nsis/hooks.nsh`).
+  L0 plant-proven; L1 positive on the Dell. (3) is the row below.
+
+- [x] **Prove #794/#798 on a Windows WITHOUT the Visual C++ Redistributable** — the one case no test
+  machine has: on the Win11 VM, uninstall "Microsoft Visual C++ 2015-2022 Redistributable (x64)"
+  (reinstall after), then run SMOKE §Windows "No Visual C++ runtime" — the installer's dialog (needs a
+  `tauri build` setup.exe from the Dell), the banner, `rex doctor`, Start all's refusal, and
+  `windows_runtime_check` reading "the verdict BLOCKS".
+  ✓ **8 Oct 2026, Win11 ARM VM** — every item, SMOKE §Windows "No Visual C++ runtime" ticked with the
+  evidence. It found #799: the shipped `rex.exe` imported `VCRUNTIME140.dll` and could not start there;
+  `build-cli.sh` now links the C runtime in, and `release-windows-check.sh` refuses either binary
+  importing it.
+
+- [x] **`rex doctor` on Windows calls rexenv's OWN PostgreSQL a foreign holder of :15432** (seen 8 Oct
+  2026, Win11 VM, right after Start all brought 7/7 up): `✗ Ports  port 15432 (needed by PostgreSQL) held
+  by postgres.exe (pid …, …\rexenv\data\bin\postgres-18.6.0\bin\postgres.exe) $ Stop-Process -Id …` —
+  the binary is rexenv's own, under its own data dir, and Services says it is running. Likely the
+  pg_ctl-detached server (#698, `Proc::Detached`) is not counted as ours by the doctor's port scan. A
+  finding that tells the user to kill their own database is worse than none.
+  ✓ **8 Oct 2026** (ledger #800): not `Proc::Detached` — the MARKER. `pg_ctl` forward-slashes every path on
+  the command line, and `port_table::command_carries_marker` compared a backslashed marker. It now folds
+  `\` to `/` as well as case. Live on the VM: same pid 4800, `✗ Ports` before, `✓ Ports` after.
+
+- [x] **A cloned repository's `require.php` is checked only at `deps`, after the database phase** (same
+  report): the phase order for a cloned Laravel site is `db → configure → deps`, and
+  `php_requirement_refusal` runs inside `deps` (`commands/site_provision.rs`). `composer.json` is on disk
+  once the clone lands, so the refusal can run before `db` and save the database start + `.env` write.
+  ✓ **8 Oct 2026** (ledger #796): the clone phase asks `php_requirement_refused` the moment the code is
+  on disk (fresh clone or a Retry's skip) and fails THAT phase, before `db`/`configure`; `deps` keeps the
+  check. L0 + a TEXT order test, plant-proven; SMOKE "refused at the CLONE" owed.
+
+- [x] **Provisioning and `rex start`/restart are not coordinated; an interrupted `artisan migrate` leaves a
+  half-applied migration** (same report, cause unproven): a `rex start` issued while provisioning ran, MySQL's
+  pid changed, migrate died `SQLSTATE[70100] 1317 Query execution was interrupted`, and Retry then failed
+  `1050 Table … already exists` (the project's migration is not idempotent — not rexenv's schema). Owed:
+  reproduce first (does a stack start/restart during provisioning restart MySQL?); then refuse or defer a
+  stack restart while a provision job runs. Also: a migrate failure that came from a composer script
+  surfaces as `composer install failed: …` — say which command failed.
+  ✓ **8 Oct 2026** (ledger #795): reproduced on paper — `rex start` cannot do it (`spawn_db` skips a
+  running engine), `rex restart` = stop + start can, and a server shutdown under a running query is
+  exactly `1317`. `stop_services` (footer, tray, `rex stop`/`restart`, MCP) now refuses while
+  `ProvisionJobs::running_domains` is non-empty, naming the site. And `map_composer_error` names a failed
+  repository script (`… post-install-cmd script `@php artisan migrate --force` failed`, 6 lines of its
+  output); the double "composer install failed: composer install failed:" prefix is gone. L0 + TEXT,
+  plant-proven; SMOKE "Stop all is refused while a site is being provisioned" owed (a live run).
+
+- [x] **`rex doctor` on Windows says "rex not on PATH" when it means "not installed via Settings"** (same
+  report): `core::cli::status_of_copy` judges the COPY in rexenv's own folder, not PATH; a user who put the
+  bundled folder on PATH by hand still gets the finding. The sentence should name what is checked.
+  ✓ **8 Oct 2026** (ledger #797): the CLI line reads THIS shell's PATH (`first_on_path` / `cli_finding`):
+  the app's own `rex`, by Settings or by hand, is ✓; another copy is named; "not on PATH" only when none.
+  L0 with real files, plant-proven, run on macOS and on the Dell (Win10).
+
+- [x] **The apt repository's first release run** (`docs/archive/PLAN-apt-repo.md`, ledger #745, 29 Sep
+  2026): the repository is live (0.8.8–0.8.10) and `install.sh` uses it; owed — 0.8.11 published
+  through the pipeline (`rexenv/apt` → "Publish apt repository", approve,
+  `scripts/check-apt-repo.sh`) and the tap's `install-scripts.yml` passing its lag path on that
+  publish. (The key's backup: ✓ 30 Sep 2026, the owner holds it; the agent's only copy deleted.)
+  ✓ **RAN 30 Sep 2026 for 0.8.11** (run 36689575061, one approval; since that afternoon
+  `build-site.sh` reads the newest published releases on `rexenv/rexenv`, where 0.8.8–0.8.10 are
+  mirrored, so `KEEP=3` resolves): `check-apt-repo.sh` all green — InRelease signed by the
+  repository's key, amd64 and arm64 at 0.8.11, the latest release. The tap's `install-scripts.yml`
+  lag path was not exercised (its run installed the release's `.deb` directly, as designed while
+  apt is not yet current) — left open for that one leg.
+  ✓ **CLOSED 9 Oct 2026** — the open leg ran on its own: the tap's `install-scripts.yml` took the
+  FROM-THE-REPOSITORY path on 5 Oct (weekly run 37304112051, ubuntu-22.04: "installing rexenv 0.8.11 from
+  the repository") and the LAG path on 0.8.12's publish (run 37730225752, ubuntu-24.04-arm: "the repository
+  does not offer 0.8.12 yet; installing the release's .deb directly", apt candidate 0.8.12 by the check);
+  `check-apt-repo.sh` 9 Oct: signature good, amd64 + arm64 at 0.8.12. Plan archived.
+
+- [x] **The website's GitHub Actions never start — billing** — found 28 Sep 2026: every run since at
+  least 27 Sep 22:34 UTC fails with "recent account payments have failed or your spending limit
+  needs to be increased", so the site's CI, its scheduled Release sync and its weekly checks are
+  all dark. The org's billing settings; nothing in code. The tap and `rexenv/runtimes` are public
+  and unaffected. (The site was brought to 0.8.9 by hand on 29 Sep — `rexenv/website` #14, merged
+  with its CI job never started and its bar run locally instead; the bot stays dark.)
+  ✓ **CLOSED 9 Oct 2026** (open only on paper since 1 Oct): the org's billing was fixed — the last
+  failed run is 30 Sep 20:49 UTC, 133 successful "Release sync" runs since. The CI gate runs on every PR
+  again (#20 failed, was fixed, went green, merged).
+
+
+### From “Blocked on external work”
+
+- [x] ⚠ **`rexenv/website`'s "Release sync" has not run since 0.8.7** — every scheduled run
+  since 27 Sep 2026 19:18 is `failure` in ~5 s with "The job was not started because recent
+  account payments have failed or your spending limit needs to be increased" (GitHub billing,
+  the org's Actions). So no `release/v0.8.8` / `v0.8.9` changelog PR was ever opened; the site
+  was synced to 0.8.9 BY HAND on 29 Sep (`rexenv/website` #14 — both changelog entries, and
+  `sync-release.mjs` now reads every OS's asset names). The next release has no such hand, so:
+  owner, fix billing, then the next poll (or a manual run) syncs — it reads the tap release body,
+  which is the real tag notes again since 28 Sep (the row in Release gates).
+  ✓ **CLOSED 9 Oct 2026**: the bot does its job again — the scheduled run 37735780467 (8 Oct 06:06 UTC)
+  opened `release/v0.8.12` itself (PR #20, "rexenv 0.8.12 — website sync"), CI green, merged. (0.8.10 and
+  0.8.11 were synced by hand, #15/#16, before billing came back.)
+
+
+## Reconcile of 9 Oct 2026
+
+### From “Phase 4+ (next era)”
+
+- [x] Public distribution (the open-sourcing half of the old "packaging polish" row).
+  ✓ **9 Oct 2026, open only on paper:** `rexenv/rexenv` is public since 30 Sep 2026 (Apache-2.0; LICENSE, NOTICE, SECURITY.md in tree), 0.8.12 published there 8 Oct, and it ships through the cask, `install.sh`/apt and winget.
+  **The updater half moved out of Phase 4+ on 6 Sep 2026** — it is the "In-app
+  self-update" row under *Now*, planned in `docs/archive/PLAN-self-update.md`, and it does
+  NOT use the Tauri updater the archived §6.1 checklist proposed: that plugin's
+  macOS install deletes its own backup and can run a root `rm -rf` outside
+  `PrivilegeManager`, and its relaunch bypasses this app's ONE quit gate.
+

@@ -424,7 +424,7 @@ L3 = scripted manual.
 | 92 | sites.rs:1206 | Linked docroot never created/written/deleted by us | ✅ 2 lib tests + `linked_site_check` |
 | 93 | sites.rs:270 | mu-plugins dir removed only when recorded ours | ✅ 2 lib tests |
 | 94 | sites.rs:684 | Content-dir detection never runs at write time (poison-resistant) | ✅ `content_dir_rel_reads_layout_markers_and_resists_poison` |
-| 95 | sites.rs:704 | Radicle `public/content` layout UNVERIFIED (self-declared) | 🚫 needs a real Radicle project → PLAN §5 |
+| 95 | sites.rs (`detect_content_dir_rel`'s Radicle arm, ~1113) | Radicle `public/content` layout UNVERIFIED (self-declared) | 🚫 needs a real Radicle project → PLAN §5 |
 | 96 | sites.rs:368 | Recorded-port conflict belt on the allocator | ✅ 2 lib tests |
 | 97 | sites.rs:377 | db_name stored not re-derived; injective + bounded. **Widened 13 Aug 2026**: the prefix is the SITE TYPE's (`wp_`/`lv_`/`php_`) and only WordPress owns `wp_` — checked over the whole `SiteType` enum, so a type added later cannot quietly inherit it (the original bug was exactly that: the rule took a domain alone, so a Laravel app stored `wp_myapp_rex`). Pre-existing rows keep their stored `wp_` name — creation-time only, nothing renames a live site's database | ✅ 4 lib tests (`db_name_prefix_is_per_site_type_and_never_wp_for_a_non_wp_site` + `create_stores_the_prefix_of_the_sites_own_type_not_wordpresss`) |
 | 98 | sites.rs:800 | Blast-radius link refusals (docroot is one click from public) | ◐ refusal ✅; dotfile-guard premise = #103 |
