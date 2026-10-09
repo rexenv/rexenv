@@ -424,16 +424,60 @@ pub fn add(
             path.display()
         )));
     }
-    match spec {
+    let spec = match spec {
         AddSpec::Existing(b) => {
             repo::validate_ref(b)?;
+            spec.clone()
         }
         AddSpec::New { branch, base } => {
             repo::validate_ref(branch)?;
             repo::validate_ref(base)?;
+            // A Retry rebuilds the request from the row, and `-b` refuses a branch
+            // that already exists — which it does after any earlier attempt got as
+            // far as creating it (a cancel mid-checkout, a remove whose site delete
+            // then failed). The branch the user asked to make IS that branch, so
+            // check it out (review, 10 Oct 2026).
+            if branch_exists(supervisor, git, env, repo_dir, branch) {
+                on_line(&format!("branch {branch} already exists — checking it out"));
+                AddSpec::Existing(branch.clone())
+            } else {
+                spec.clone()
+            }
         }
-    }
-    repo::run_git_op(supervisor, git, env, repo_dir, "worktree add", &add_args(path, spec), cancel, on_line)
+    };
+    repo::run_git_op(supervisor, git, env, repo_dir, "worktree add", &add_args(path, &spec), cancel, on_line)
+}
+
+/// Does `refs/heads/<branch>` exist in the repository at `repo_dir`?
+pub fn branch_exists(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    repo_dir: &Path,
+    branch: &str,
+) -> bool {
+    repo::run_git_lines(supervisor, git, env, repo_dir, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")])
+        .map(|l| !l.is_empty())
+        .unwrap_or(false)
+}
+
+/// Is `path` a REGISTERED worktree of the repository at `repo_dir`, with a
+/// complete checkout? A Retry skips the `worktree` phase only on this answer, not
+/// on "a `.git` file exists": a `git worktree add` cancelled mid-checkout leaves
+/// the file with the checkout half done, and that read as "already checked out"
+/// (review, 10 Oct 2026). A clean `git status` is the "complete" half.
+pub fn checked_out(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    repo_dir: &Path,
+    path: &Path,
+) -> Result<bool> {
+    let want = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let registered = list(supervisor, git, env, repo_dir)?
+        .iter()
+        .any(|e| std::fs::canonicalize(&e.path).unwrap_or_else(|_| e.path.clone()) == want);
+    Ok(registered && uncommitted(supervisor, git, env, path)?.iter().all(|l| is_rexenv_owned(l)))
 }
 
 // ── Shape A: a WordPress copy with one plugin/theme dir as a worktree (W4/W5) ──
@@ -528,6 +572,19 @@ pub fn copy_site_tree(
                 continue;
             }
             let ft = entry.file_type()?; // does not follow links
+            // A `.git` FILE whose repository is outside the source tree (another
+            // worktree, a submodule of an outside repo): a copy would be a second
+            // checkout pointing at the SAME `.git/worktrees/<x>` — git commands in
+            // the copy would move the original's HEAD, and the copy could never be
+            // `git worktree remove`d, so its site could never be deleted (review,
+            // 10 Oct 2026). Left out, and listed with the links.
+            if ft.is_file() && entry.file_name() == ".git" {
+                let inside = gitdir_of(&entry.path()).is_some_and(|g| resolved(&g).starts_with(resolved(source)));
+                if !inside {
+                    stats.skipped_links.push(child);
+                    continue;
+                }
+            }
             if ft.is_symlink() {
                 stats.skipped_links.push(child);
             } else if ft.is_dir() {
@@ -668,8 +725,16 @@ pub fn is_rexenv_owned(porcelain_line: &str) -> bool {
     let p = Path::new(porcelain_path(porcelain_line));
     let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let in_mu = p.parent().and_then(|d| d.file_name()).and_then(|n| n.to_str()) == Some("mu-plugins");
-    in_mu && name.starts_with("rexenv-") && name.ends_with(".php")
+    // The EXACT names rexenv writes (`sites::cleanup_muplugin_artifacts`' list), not
+    // a `rexenv-*.php` prefix: a user's own `rexenv-notes.php` there is their work
+    // (review, 10 Oct 2026).
+    in_mu && REXENV_MU_PLUGINS.contains(&name)
 }
+
+/// Every mu-plugin file rexenv writes into a site: login, mail catch, scratch
+/// mail, loopback DNS, tunnel.
+pub const REXENV_MU_PLUGINS: [&str; 5] =
+    ["rexenv-login.php", "rexenv-mail.php", "rexenv-scratch-mail.php", "rexenv-dns.php", "rexenv-tunnel.php"];
 
 /// `git worktree remove` — git deletes the folder. Run from the REPOSITORY the
 /// worktree belongs to (`repo_dir`), never from inside the worktree itself.
@@ -978,6 +1043,12 @@ mod tests {
         std::fs::write(src.join("wp-content/uploads/2026/p.jpg"), "jpg").unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(&other, src.join("wp-content/plugins/linked")).unwrap();
+        // A plugin that is itself a worktree of an OUTSIDE repository: its `.git`
+        // file must not be copied (the copy would share the original's worktree).
+        let wt = src.join("wp-content/plugins/wt");
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(wt.join(".git"), "gitdir: /far/away/.git/worktrees/wt\n").unwrap();
+        std::fs::write(wt.join("wt.php"), "1").unwrap();
 
         let skip = [PathBuf::from("wp-content/plugins/mine"), PathBuf::from("wp-content/uploads")];
         let stats = copy_site_tree(&src, &dst, &skip, &|| false).unwrap();
@@ -985,12 +1056,14 @@ mod tests {
         assert!(dst.join("wp-content/plugins/other/o.php").exists());
         assert!(!dst.join("wp-content/plugins/mine").exists(), "the asset dir is the worktree's");
         assert!(!dst.join("wp-content/uploads").exists(), "uploads skipped when asked");
-        assert_eq!(stats.files, 2);
-        assert_eq!(stats.bytes, 5 + 5);
+        assert_eq!(stats.files, 3);
+        assert_eq!(stats.bytes, 5 + 5 + 1);
+        assert!(dst.join("wp-content/plugins/wt/wt.php").exists() && !dst.join("wp-content/plugins/wt/.git").exists(), "an outside worktree's pointer is not copied");
+        assert!(stats.skipped_links.contains(&PathBuf::from("wp-content/plugins/wt/.git")));
         #[cfg(unix)]
         {
             assert!(!dst.join("wp-content/plugins/linked").exists(), "a link is not followed");
-            assert_eq!(stats.skipped_links, vec![PathBuf::from("wp-content/plugins/linked")]);
+            assert!(stats.skipped_links.contains(&PathBuf::from("wp-content/plugins/linked")));
         }
         // Never over an existing destination; a cancel stops it.
         assert!(copy_site_tree(&src, &dst, &[], &|| false).is_err());
@@ -1053,6 +1126,7 @@ mod tests {
             " M wp-content/mu-plugins/rexenv-mail.php",
             "?? web/app/mu-plugins/rexenv-login.php",
             "?? \"site dir/wp-content/mu-plugins/rexenv-tunnel.php\"",
+            "?? wp-content/mu-plugins/rexenv-scratch-mail.php",
         ] {
             assert!(is_rexenv_owned(owned), "{owned}");
         }
@@ -1061,6 +1135,7 @@ mod tests {
             " M wp-content/mu-plugins/my-loader.php",
             "?? wp-content/plugins/rexenv-dns.php",
             " M wp-content/mu-plugins/rexenv-notes.txt",
+            "?? wp-content/mu-plugins/rexenv-my-loader.php",
             "R  wp-content/mu-plugins/rexenv-dns.php -> wp-content/mu-plugins/mine.php",
         ] {
             assert!(!is_rexenv_owned(theirs), "{theirs}");

@@ -109,9 +109,14 @@ back unchanged. `null` means done.
 | `POST /files/read` | `{paths: [..]}` (≤ 200) | **framed binary** (§4.3) |
 | `GET /db/export?table=&cursor=` | one table | `{table, sql, sha256, rows, cursor}`. The first chunk starts with `DROP TABLE IF EXISTS` + `CREATE TABLE`; later chunks are `INSERT` batches. `sha256` is of this chunk's `sql` |
 
-- `checksum` is `CHECKSUM TABLE`'s value where the host allows it. Otherwise it is
-  `"rows:<n>:max:<maxpk>:upd:<UPDATE_TIME>"`. rexenv only compares checksums for EQUALITY
-  between two manifests of the same site, so the two forms never meet.
+- `checksum` is a change STAMP, `"rows:<n>:len:<data_length>:upd:<UPDATE_TIME>"`, never
+  `CHECKSUM TABLE`: that reads the whole table on InnoDB, on every `/manifest`, and a big
+  site's manifest would pass `max_execution_time`. rexenv only compares stamps of the same
+  site for EQUALITY. Views are not listed.
+- `/db/export`'s cursor is `"k:<json>"` (keyset: a single-column primary key, `WHERE pk >
+  last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
+  written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes
+  and break the chunk's `sha256`.
 - `/db/export` never emits the plugin's own option rows (§5), by `WHERE option_name NOT IN
   (...)` on the options table and `sitemeta` alike.
 

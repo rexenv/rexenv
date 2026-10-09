@@ -128,5 +128,44 @@ $check( 0 === strpos( $d['sql'], 'DROP TABLE IF EXISTS' ), 'the first chunk star
 $r = $send( 'GET', '/rexenv-sync/v1/db/export', array( 'table' => 'not_a_table' ) );
 $check( 404 === $r->get_status(), 'an unknown table is refused' );
 
+// 7. A table with BINARY cells, exported in several chunks across a delete: every
+//    chunk's sha256 survives a JSON round trip, and keyset paging skips nothing.
+$t    = $wpdb->prefix . 'rexsync_bin';
+$copy = $wpdb->prefix . 'rexsync_bin_copy';
+$wpdb->query( "DROP TABLE IF EXISTS `$t`, `$copy`" );
+$wpdb->query( "CREATE TABLE `$t` (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, ip BINARY(4) NOT NULL, note TEXT) ENGINE=InnoDB" );
+for ( $i = 0; $i < 450; $i++ ) {
+	$wpdb->query( $wpdb->prepare( "INSERT INTO `$t` (ip, note) VALUES (%s, %s)", random_bytes( 4 ), "row $i; it's \"quoted\"\nand multi-line" ) );
+}
+$before = $wpdb->get_var( "SELECT COUNT(*) FROM `$t`" );
+$want   = $wpdb->get_var( "SELECT SUM(CRC32(CONCAT(id, HEX(ip), note))) FROM `$t`" );
+add_filter( 'rexsync_max_chunk_bytes', function () { return 2000; } );
+$cursor = null;
+$chunks = 0;
+$sql    = '';
+$intact = true;
+do {
+	$q = array( 'table' => $t );
+	if ( null !== $cursor ) {
+		$q['cursor'] = $cursor;
+	}
+	$data   = json_decode( wp_json_encode( $send( 'GET', '/rexenv-sync/v1/db/export', $q )->get_data() ), true ); // the wire
+	$intact = $intact && hash( 'sha256', $data['sql'] ) === $data['sha256'];
+	$sql   .= $data['sql'];
+	$cursor = $data['cursor'];
+	$chunks++;
+	if ( 1 === $chunks ) {
+		$wpdb->query( "DELETE FROM `$t` WHERE id = 1" ); // already exported: an offset would now skip a row
+	}
+} while ( null !== $cursor && $chunks < 1000 );
+$check( $chunks > 2, "the export took several chunks ($chunks)" );
+$check( $intact, 'every chunk\'s sha256 survives the JSON round trip, binary cells and all' );
+foreach ( array_filter( explode( ";\n", str_replace( "`$t`", "`$copy`", $sql ) ) ) as $stmt ) {
+	$wpdb->query( $stmt );
+}
+$got = $wpdb->get_var( "SELECT SUM(CRC32(CONCAT(id, HEX(ip), note))) FROM `$copy`" );
+$check( (string) $want === (string) $got && (int) $before === (int) $wpdb->get_var( "SELECT COUNT(*) FROM `$copy`" ), 'the import of those chunks is the table, row for row, nothing skipped' );
+$wpdb->query( "DROP TABLE IF EXISTS `$t`, `$copy`" );
+
 Rexenv_Sync_Pairing::delete();
 echo "integration: $fail failed\n";

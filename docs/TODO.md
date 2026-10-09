@@ -250,6 +250,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   only; on Windows its children are not in a process group with it. Fix in `examples/common` (kill the tree,
   or ask `pg_ctl stop`), then re-run `starter_seed_check` and `db_clone_check` on the Dell twice in a row.
 
+- [ ] **Live sync: `/files/list` walks ALL of `wp-content` on every page** (code review, 10 Oct 2026). The
+  walk is sorted so a cursor can be a path, but nothing bounds the walk itself. A site with 100k
+  uploads could pass `max_execution_time` before the first page returns. Fix: walk in sorted order
+  and STOP at the budget (resume by descending into the cursor's directories), or cache the sorted
+  list per pull in a transient. `companion/rexenv-sync/includes/class-rexenv-sync-reader.php`.
+- [ ] **Worktree git runs block an async worker** (code review, 10 Oct 2026): `commands::worktree::start`
+  (Shape B's `git worktree add`) and `release_for_delete` (`git worktree remove`) run git synchronously
+  inside async commands, the delete path included. A big checkout holds a tokio worker for its whole
+  length, with no cancel. Move both into `spawn_blocking`.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line

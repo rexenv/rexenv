@@ -2360,15 +2360,19 @@ async fn drive_worktree_copy<R: tauri::Runtime>(
         // `remove_dir`, never `remove_dir_all`: the OS refuses a non-empty
         // docroot, so this can only ever remove the empty folder prepare made
         // (the git-site-clone argument, `sites::clone_into_docroot`).
-        if let Err(e) = std::fs::remove_dir(&docroot).and_then(|_| std::fs::rename(&staging, &docroot)) {
+        if let Err(e) = std::fs::remove_dir(&docroot) {
             let _ = std::fs::remove_dir_all(&staging);
             return fail(&format!(
                 "{} is not empty — rexenv only copies into a folder it just created ({e})",
                 docroot.display()
             ));
         }
-        if let Err(e) = worktree::strip_site_specific_mu_plugins(&docroot) {
-            return fail(&e);
+        if let Err(e) = std::fs::rename(&staging, &docroot) {
+            // Put back the empty docroot `remove_dir` just took, or every Retry would
+            // fail in `remove_dir` with a misleading "not empty" (review, 10 Oct 2026).
+            let _ = std::fs::remove_dir_all(&staging);
+            let _ = std::fs::create_dir_all(&docroot);
+            return fail(&format!("moving the copy into {} failed ({e}) — Retry", docroot.display()));
         }
         append_line(
             app,
@@ -2379,6 +2383,11 @@ async fn drive_worktree_copy<R: tauri::Runtime>(
             append_line(app, entry, &format!("! not copied (a link): {}", link.display()));
         }
         finish_phase(app, entry, progress, ix, "ok", None);
+    }
+    // On every run, not only the one that copied: a Retry after this failed would
+    // otherwise skip the copy ("already copied") and never strip them.
+    if let Err(e) = worktree::strip_site_specific_mu_plugins(&docroot) {
+        return fail(&e);
     }
     if entry.cancel.is_cancelled() {
         return Some(JobEnd::Cancelled);
@@ -2402,7 +2411,33 @@ async fn drive_worktree_copy<R: tauri::Runtime>(
     // ── worktree ─────────────────────────────────────────────────────────
     let ix = phase_index(entry, "worktree");
     enter_phase(app, entry, ix);
-    if child_asset.join(".git").exists() {
+    let present = {
+        let (a2, env2, repo_dir, path) = (app.clone(), env.clone(), parent_asset.clone(), child_asset.clone());
+        tauri::async_runtime::spawn_blocking(move || -> Result<Option<bool>> {
+            if !path.exists() {
+                return Ok(None);
+            }
+            let st = a2.state::<AppState>();
+            let git = core::devtools::resolve_git(st.platform.as_ref(), &env2)?;
+            worktree::checked_out(st.platform.supervisor(), &git.path, &env2, &repo_dir, &path).map(Some)
+        })
+        .await
+    };
+    match present {
+        Ok(Ok(Some(false))) => {
+            return fail(&format!(
+                "{} is a worktree that did not finish checking out (an earlier attempt stopped part-way). \
+                 Remove it, then Retry:\n  $ git -C \"{}\" worktree remove --force \"{}\"",
+                child_asset.display(),
+                parent_asset.display(),
+                child_asset.display()
+            ))
+        }
+        Ok(Err(e)) => return fail(&e),
+        Err(e) => return fail(&format!("git worker died: {e}")),
+        _ => {}
+    }
+    if matches!(present, Ok(Ok(Some(true)))) {
         finish_phase(app, entry, progress, ix, "skipped", Some("already checked out"));
     } else {
         let spec = match &wt.base {
@@ -2571,6 +2606,23 @@ async fn drive_worktree_site<R: tauri::Runtime>(
         })
         .await;
         match copied {
+            Ok(Ok(st)) if !st.skipped_links.is_empty() => {
+                // Links in vendor/ are Composer path repositories (`symlink: true`);
+                // a copy without them is a vendor/ missing packages. Install instead
+                // (review, 10 Oct 2026).
+                let _ = std::fs::remove_dir_all(root.join("vendor")); // the copy just made it
+                append_line(app, entry, &format!(
+                    "vendor/ holds {} linked package(s) — installing instead of copying",
+                    st.skipped_links.len()
+                ));
+                let (composer_php, composer_phar) = match composer_tools(&state, &minor).await {
+                    Ok(t) => t,
+                    Err(e) => return fail(&e),
+                };
+                if let Some(end) = deps_phase(app, entry, progress, &root, &minor, &composer_php, &composer_phar, &env).await {
+                    return Some(end);
+                }
+            }
             Ok(Ok(st)) => finish_phase(
                 app,
                 entry,

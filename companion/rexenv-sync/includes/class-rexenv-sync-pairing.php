@@ -19,7 +19,7 @@ final class Rexenv_Sync_Pairing {
 
 	/** Every option row this plugin owns — never exported, never overwritten by a push. */
 	public static function owned_option_patterns() {
-		return array( self::OPTION, '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+		return array( self::OPTION, 'rexsync\_n\_%', '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
 	}
 
 	/** ['key_id' => ..., 'secret' => raw bytes] or an empty array. */
@@ -71,13 +71,28 @@ final class Rexenv_Sync_Pairing {
 		delete_option( self::OPTION );
 	}
 
-	/** Has this nonce been seen in the last NONCE_TTL? Records it when not. */
+	/**
+	 * Has this nonce been seen in the last NONCE_TTL? Records it when not — in ONE
+	 * step: `add_option` is an INSERT on a unique key, so of two copies of a request
+	 * arriving together exactly one wins. Transients were get-then-set, and both
+	 * copies could pass (review, 10 Oct 2026). Expired rows are swept now and then.
+	 */
 	public static function nonce_seen( $nonce_key ) {
-		$t = 'rexsync_n_' . substr( $nonce_key, 0, 40 );
-		if ( false !== get_transient( $t ) ) {
-			return true;
+		global $wpdb;
+		$name = 'rexsync_n_' . substr( $nonce_key, 0, 40 );
+		$now  = time();
+		if ( add_option( $name, $now, '', 'no' ) ) {
+			if ( 0 === wp_rand( 0, 49 ) ) {
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+				$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND option_value < %d", 'rexsync\_n\_%', $now - Rexenv_Sync_Signature::NONCE_TTL ) );
+			}
+			return false;
 		}
-		set_transient( $t, 1, Rexenv_Sync_Signature::NONCE_TTL );
-		return false;
+		$at = (int) get_option( $name );
+		if ( $now - $at > Rexenv_Sync_Signature::NONCE_TTL ) {
+			update_option( $name, $now, false ); // an expired nonce, used again much later
+			return false;
+		}
+		return true;
 	}
 }

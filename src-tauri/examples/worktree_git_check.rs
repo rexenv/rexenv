@@ -18,6 +18,8 @@
 //!      a "site" folder holding the worktree is flagged, naming the worktree,
 //!      and the same folder without it is not (ledger #814 against real git).
 //!   5. Adding into a path that already exists is refused BEFORE git runs.
+//!   6. A NEW-branch request whose branch already exists (a Retry) checks it out
+//!      instead of failing on `-b`.
 //!
 //! Everything written lives under this example's own temp root; the sandbox
 //! `Platform` is only used to resolve git and spawn it (examples/common).
@@ -150,6 +152,26 @@ fn main() {
     assert!(err.contains("already exists"), "{err}");
     assert_eq!(worktree::list(sup, &git, &env, &repo).unwrap().len(), 3);
     println!("5 ok — an existing path is refused, nothing added");
+
+    // 6. A Retry of a NEW-branch request after the branch was already made: the
+    //    worktree is gone, `fix-y` is not — `add` must check it out, not `-b` it.
+    git_in(&repo, &["worktree", "remove", "--force", &wt_b.to_string_lossy()]);
+    let wt_c = root.join("Sites/fix-y-again.shop.rex/wp-content/plugins/my-plugin");
+    std::fs::create_dir_all(wt_c.parent().unwrap()).unwrap();
+    worktree::add(
+        sup,
+        &git,
+        &env,
+        &repo,
+        &wt_c,
+        &worktree::AddSpec::New { branch: "fix-y".into(), base: "main".into() },
+        &cancel,
+        &mut log,
+    )
+    .expect("a retried new-branch add checks the existing branch out");
+    let e = worktree::list(sup, &git, &env, &repo).unwrap();
+    assert!(e.iter().any(|w| same(&w.path, &wt_c) && w.branch.as_deref() == Some("fix-y")), "{e:?}");
+    println!("6 ok — a retried new-branch add checks out the branch an earlier attempt made");
 
     std::fs::remove_dir_all(&root).expect("cleanup of our own temp root");
     println!("worktree_git_check: all green");

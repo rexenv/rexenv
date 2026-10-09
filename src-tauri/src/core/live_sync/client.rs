@@ -11,7 +11,7 @@ use crate::error::{Error, Result};
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// One table in the manifest (§4.1).
@@ -82,12 +82,19 @@ struct FrameHeader {
 }
 
 /// A `wp-content`-relative path the protocol allows: `/`-separated, relative, no
-/// `.`/`..` segments, no `\`, nothing empty. Pure.
+/// `.`/`..` segments, no `\`, no `:`, nothing empty. Pure.
+///
+/// `:` is refused everywhere (found by review, 10 Oct 2026): on Windows a segment
+/// like `C:` is a drive prefix, and `PathBuf::push` REPLACES the whole path with
+/// it — so a hostile site that listed and served `C:/x/evil.php` would have been
+/// written outside the pull folder. `name:stream` (an NTFS alternate stream)
+/// goes the same way. No WordPress path needs one.
 pub fn safe_rel(rel: &str) -> bool {
     !rel.is_empty()
         && !rel.starts_with('/')
         && !rel.contains('\\')
         && !rel.contains('\0')
+        && !rel.contains(':')
         && rel.split('/').all(|s| !s.is_empty() && s != "." && s != "..")
 }
 
@@ -154,7 +161,11 @@ pub struct Client {
 impl Client {
     /// Requests go to the key's own site.
     pub fn new(key: PairingKey) -> Result<Self> {
+        // No redirects: a site that answered with a redirect would send the signed
+        // headers on to wherever it pointed — an `http://` URL included, which is
+        // the plain-connection pull `parse_key` exists to refuse (review, 10 Oct 2026).
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
             .timeout(Duration::from_secs(60))
             .build()
             .map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?;
@@ -264,7 +275,7 @@ impl Client {
                     refused.push(rec);
                     continue;
                 }
-                let to = join_rel(dest, &rec.path);
+                let to = join_rel(dest, &rec.path)?;
                 if let Some(p) = to.parent() {
                     std::fs::create_dir_all(p)?;
                 }
@@ -317,14 +328,20 @@ impl Client {
 }
 
 /// `dest` joined with a [`safe_rel`] path, segment by segment (so a `/` in the
-/// protocol's spelling becomes this OS's separator). The caller checked the path.
-fn join_rel(dest: &Path, rel: &str) -> PathBuf {
+/// protocol's spelling becomes this OS's separator) — and CHECKED to still be
+/// under `dest` afterwards, whatever the segments were. Two walls, not one: the
+/// `safe_rel` rule is about spellings, this is about where the bytes would land.
+fn join_rel(dest: &Path, rel: &str) -> Result<PathBuf> {
     let mut p = dest.to_path_buf();
     for seg in rel.split('/') {
         p.push(seg);
     }
-    debug_assert!(p.components().all(|c| !matches!(c, Component::ParentDir)));
-    p
+    // `starts_with` compares COMPONENTS: a push that replaced the path (a drive, a
+    // root) no longer starts with `dest`.
+    if !safe_rel(rel) || !p.starts_with(dest) {
+        return Err(Error::Other(format!("rexenv Sync: refused to write {rel} outside the pull folder.")));
+    }
+    Ok(p)
 }
 
 #[cfg(test)]
@@ -371,12 +388,24 @@ mod tests {
         assert!(parse_frame(&lie, &asked(&["a.txt"])).unwrap_err().to_string().contains("checksum"));
     }
 
+    /// **Nothing a site sends can be written outside the pull folder** (ledger
+    /// #826, the review's finding). Plant: drop the `:` rule and `C:/x` passes
+    /// `safe_rel`, and on Windows `join_rel` would land at the drive root.
+    #[test]
+    fn join_rel_never_leaves_the_destination() {
+        let dest = std::env::temp_dir().join("rexenv-join-rel");
+        assert_eq!(join_rel(&dest, "plugins/a/b.php").unwrap(), dest.join("plugins").join("a").join("b.php"));
+        for bad in ["C:/x/evil.php", "../x", "/etc/passwd", "a:b"] {
+            assert!(join_rel(&dest, bad).is_err(), "{bad}");
+        }
+    }
+
     #[test]
     fn paths_and_refusals() {
         for ok in ["a", "plugins/x/y.php", "uploads/2026/10/a b.jpg"] {
             assert!(safe_rel(ok), "{ok}");
         }
-        for bad in ["", "/etc/passwd", "a/../b", "./a", "a//b", "a\\b", "..", "a/"] {
+        for bad in ["", "/etc/passwd", "a/../b", "./a", "a//b", "a\\b", "..", "a/", "C:/x/evil.php", "plugins/a.php:stream"] {
             assert!(!safe_rel(bad), "{bad:?}");
         }
         let e = refusal(401, r#"{"code":"unknown_key","message":"x"}"#).to_string();

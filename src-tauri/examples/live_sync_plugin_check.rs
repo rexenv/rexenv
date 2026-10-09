@@ -43,7 +43,7 @@ async fn main() -> std::process::ExitCode {
     let conn = rexenv_lib::state::db::open(&db_file).unwrap();
     let _sites_dir = common::pin_fixture_sites_dir(&conn, "livesync");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
     let (mysql, _) = rexenv_lib::core::db::DbEngine::Mysql
         .sql_client_bins(&*plat, binaries::pins().mysql)
@@ -105,7 +105,11 @@ async fn main() -> std::process::ExitCode {
     if ok {
         let docroot = site.served_root();
         let plugin = docroot.join("wp-content/plugins/rexenv-sync");
-        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../companion/rexenv-sync");
+        // The tree's copy, or — on a machine the binary was copied to (the Dell) — the
+        // folder `REXENV_SYNC_PLUGIN_DIR` names.
+        let src = std::env::var_os("REXENV_SYNC_PLUGIN_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../companion/rexenv-sync"));
         copy_dir(&src, &plugin);
         match wordpress::wp_run(&php, &wp, &docroot, &["plugin", "activate", "rexenv-sync"]) {
             Ok(o) => println!("{o}"),

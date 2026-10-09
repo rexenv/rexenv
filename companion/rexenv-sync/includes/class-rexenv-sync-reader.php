@@ -30,6 +30,9 @@ final class Rexenv_Sync_Reader {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$rows = $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A );
 		foreach ( (array) $rows as $r ) {
+			if ( self::is_view( $r ) ) {
+				continue; // a view is a query, not data: never listed, never exported
+			}
 			$tables[] = array(
 				'name'     => $r['Name'],
 				'rows'     => (int) $r['Rows'],
@@ -53,21 +56,23 @@ final class Rexenv_Sync_Reader {
 		);
 	}
 
-	/** CHECKSUM TABLE where the host allows it, else the cheap fallback (§4.1). */
+	/**
+	 * The table's change stamp (§4.1): rows, data length and the engine's update
+	 * time. NOT `CHECKSUM TABLE` — that reads the whole table on InnoDB, on every
+	 * `/manifest`, and a big site's manifest ran past `max_execution_time` (review,
+	 * 10 Oct 2026). rexenv only compares stamps of the same site for equality.
+	 */
 	private static function checksum( array $status ) {
-		global $wpdb;
-		$name = $status['Name'];
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-		$row = $wpdb->get_row( 'CHECKSUM TABLE `' . esc_sql( $name ) . '`', ARRAY_A );
-		if ( is_array( $row ) && isset( $row['Checksum'] ) && null !== $row['Checksum'] ) {
-			return (string) $row['Checksum'];
-		}
-		return 'rows:' . (int) $status['Rows'] . ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' );
+		return 'rows:' . (int) $status['Rows'] . ':len:' . (int) $status['Data_length'] . ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' );
+	}
+
+	private static function is_view( array $status ) {
+		return null === $status['Engine'] || ( isset( $status['Comment'] ) && 'VIEW' === strtoupper( (string) $status['Comment'] ) );
 	}
 
 	/** Is `rel` (relative to wp-content, `/`-separated) a path we may serve at all? */
 	public static function safe_rel( $rel ) {
-		if ( ! is_string( $rel ) || '' === $rel || '/' === $rel[0] || false !== strpos( $rel, '\\' ) || false !== strpos( $rel, "\0" ) ) {
+		if ( ! is_string( $rel ) || '' === $rel || '/' === $rel[0] || false !== strpos( $rel, '\\' ) || false !== strpos( $rel, "\0" ) || false !== strpos( $rel, ':' ) ) {
 			return false;
 		}
 		foreach ( explode( '/', $rel ) as $seg ) {
@@ -185,7 +190,10 @@ final class Rexenv_Sync_Reader {
 		global $wpdb;
 		$like = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		return (array) $wpdb->get_col( $wpdb->prepare( 'SHOW TABLES LIKE %s', $like ) );
+		// BASE TABLEs only — a view is never exported (it would arrive as a CREATE VIEW
+		// followed by INSERTs into the view, which an import refuses).
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (array) $wpdb->get_col( $wpdb->prepare( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE %s", $like ) );
 	}
 
 	/**
@@ -199,9 +207,10 @@ final class Rexenv_Sync_Reader {
 			return new WP_Error( 'unknown_table', 'No such table on this site.', array( 'status' => 404 ) );
 		}
 		$q      = '`' . str_replace( '`', '``', $table ) . '`';
-		$offset = ( null === $cursor || '' === $cursor ) ? 0 : max( 0, (int) $cursor );
+		$first  = null === $cursor || '' === $cursor;
+		$offset = 0;
 		$sql    = '';
-		if ( 0 === $offset ) {
+		if ( $first ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
 			$create = $wpdb->get_row( "SHOW CREATE TABLE $q", ARRAY_N );
 			$sql   .= "DROP TABLE IF EXISTS $q;\n" . $create[1] . ";\n";
@@ -215,17 +224,32 @@ final class Rexenv_Sync_Reader {
 			}
 			$where = ' WHERE ' . implode( ' AND ', $parts );
 		}
-		// A stable order across calls, or an offset could skip or repeat rows between
-		// them: the primary key where there is one (every core table has one).
+		// Paging (review, 10 Oct 2026): with a single-column primary key, by KEY —
+		// `WHERE pk > last` — so a row deleted between two calls cannot shift the
+		// next page and skip one. Otherwise by offset in primary-key order (composite
+		// keys), or by offset alone (no key) — the residual risk the plan's conflict
+		// pass exists for. The cursor says which: "k:<json value>" or "o:<offset>".
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
 		$keys  = $wpdb->get_col( "SHOW KEYS FROM $q WHERE Key_name = 'PRIMARY'", 4 );
-		$order = $keys ? ' ORDER BY `' . implode( '`,`', array_map( 'esc_sql', $keys ) ) . '`' : '';
+		$by_key = 1 === count( $keys );
+		$order  = $keys ? ' ORDER BY `' . implode( '`,`', array_map( 'esc_sql', $keys ) ) . '`' : '';
+		$last   = null;
+		if ( is_string( $cursor ) && 0 === strpos( $cursor, 'k:' ) ) {
+			$last = json_decode( substr( $cursor, 2 ), true );
+		} elseif ( is_string( $cursor ) && 0 === strpos( $cursor, 'o:' ) ) {
+			$offset = max( 0, (int) substr( $cursor, 2 ) );
+		}
 		$start = microtime( true );
 		$rows  = 0;
 		$batch = 200;
 		while ( true ) {
+			$cond = $where;
+			if ( $by_key && null !== $last ) {
+				$cond .= ( '' === $where ? ' WHERE ' : ' AND ' ) . $wpdb->prepare( '`' . esc_sql( $keys[0] ) . '` > %s', $last ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
+			}
+			$limit = $by_key ? " LIMIT $batch" : " LIMIT $offset, $batch";
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
-			$chunk = $wpdb->get_results( "SELECT * FROM $q$where$order LIMIT $offset, $batch", ARRAY_A );
+			$chunk = $wpdb->get_results( "SELECT * FROM $q$cond$order$limit", ARRAY_A );
 			if ( ! $chunk ) {
 				return array( 'table' => $table, 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ), 'rows' => $rows, 'cursor' => null );
 			}
@@ -233,7 +257,7 @@ final class Rexenv_Sync_Reader {
 			foreach ( $chunk as $row ) {
 				$cells = array();
 				foreach ( $row as $cell ) {
-					$cells[] = null === $cell ? 'NULL' : "'" . $wpdb->_real_escape( $cell ) . "'";
+					$cells[] = self::sql_value( $cell );
 				}
 				$values[] = '(' . implode( ',', $cells ) . ')';
 			}
@@ -241,12 +265,35 @@ final class Rexenv_Sync_Reader {
 			$sql    .= "INSERT INTO $q ($cols) VALUES\n" . implode( ",\n", $values ) . ";\n";
 			$rows   += count( $chunk );
 			$offset += count( $chunk );
+			if ( $by_key ) {
+				$last = $chunk[ count( $chunk ) - 1 ][ $keys[0] ];
+			}
+			$next = $by_key ? 'k:' . wp_json_encode( $last ) : 'o:' . $offset;
 			if ( count( $chunk ) < $batch ) {
 				return array( 'table' => $table, 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ), 'rows' => $rows, 'cursor' => null );
 			}
-			if ( strlen( $sql ) > self::MAX_BYTES || ( microtime( true ) - $start ) > self::MAX_SECONDS ) {
-				return array( 'table' => $table, 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ), 'rows' => $rows, 'cursor' => (string) $offset );
+			if ( strlen( $sql ) > (int) apply_filters( 'rexsync_max_chunk_bytes', self::MAX_BYTES ) || ( microtime( true ) - $start ) > self::MAX_SECONDS ) {
+				return array( 'table' => $table, 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ), 'rows' => $rows, 'cursor' => $next );
 			}
 		}
+	}
+
+	/**
+	 * One cell as a SQL literal. A value that is not valid UTF-8 (a `binary(16)` IP in
+	 * Wordfence's tables, a serialized blob with raw bytes) is written as `0x<hex>`:
+	 * the chunk travels inside JSON, and JSON encoding rewrites invalid UTF-8 — the
+	 * client then saw text that no longer matched its sha256, and a pull of any such
+	 * table failed every time (review, 10 Oct 2026).
+	 */
+	public static function sql_value( $cell ) {
+		global $wpdb;
+		if ( null === $cell ) {
+			return 'NULL';
+		}
+		$cell = (string) $cell;
+		if ( '' !== $cell && ! preg_match( '//u', $cell ) ) {
+			return '0x' . bin2hex( $cell );
+		}
+		return "'" . $wpdb->_real_escape( $cell ) . "'";
 	}
 }
