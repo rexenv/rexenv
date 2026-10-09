@@ -6,3 +6,5 @@
 //! the HTTP client, the jobs and the UI are later tasks of the plan.
 
 pub mod sign;
+
+pub mod client;
