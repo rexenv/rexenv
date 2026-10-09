@@ -464,6 +464,15 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
 ## Phase 4+ (next era)
+
+- [ ] **Git worktree workflow** — one branch = one running linked site (`<parent>-<branch>.rex`, own DB
+  cloned from the parent, removal only through `git worktree remove`), plus serving worktrees that agents
+  (Claude Code, Cursor…) made outside rexenv. Plan + tasks W0–W10: `docs/PLAN-git-worktrees.md`.
+  Blocked on W0: the owner's answers to its §9.
+- [ ] **WordPress live ↔ local sync** — a companion plugin on the live site + signed HTTPS from rexenv:
+  clone a live site locally, Pull, Push with backup + Roll back, per-table conflict choice. Needs a new
+  `SecretStore` platform trait (all three OSes). Plan + tasks L0–L15: `docs/PLAN-wp-live-sync.md`.
+  Blocked on L0: the owner's answers to its §11.
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"
