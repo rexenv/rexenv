@@ -14,7 +14,8 @@
 //!
 //! Edge safety: the fixture manager adopts ONLY the database tier
 //! (`adopt_dbs`) — never the edge/nginx — so `is_running()` stays false and
-//! the serve phase is SKIPPED: this example can never rebuild the real
+//! the serve phase is SKIPPED (a stopped stack is started only by the app —
+//! `stack_guard::may_control_real_stack`, ledger #805): this example can never rebuild the real
 //! stack's vhosts from its throwaway database.
 //! Run: `cargo run --example site_provision_check`
 

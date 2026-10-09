@@ -25,7 +25,9 @@
 //! Edge safety: the fixture manager adopts ONLY the database tier
 //! (`adopt_dbs`) — never the edge/nginx — so `is_running()` stays false and the
 //! serve phase is SKIPPED. This example can never rebuild the real stack's
-//! vhosts from its throwaway database.
+//! vhosts from its throwaway database — nor START the real stack: a stopped
+//! stack is started only by the app (`stack_guard::may_control_real_stack`,
+//! ledger #805; between 18 Sep and 9 Oct 2026 this run called `start_stack`).
 //!
 //! Cleanup: every site it creates is recorded AS CREATED and torn down from
 //! that record — never a derived path (the 24 Jul Sites-folder incident).

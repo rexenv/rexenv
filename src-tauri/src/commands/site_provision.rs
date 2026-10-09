@@ -2057,6 +2057,24 @@ async fn drive<R: tauri::Runtime>(
     // privileged edge prompt off the runtime, the wire verified — so a foreign
     // :443 or a port conflict fails THIS job with the same words Start all
     // would use, and Retry re-runs exactly this step.
+    // …but only the APP starts the real stack. A live-check example drives this same job on a
+    // fixture manager that adopts the database tier and nothing else, so `is_running()` is false and
+    // this branch was reached on every run: since the 18 Sep change it called `start_stack` with the
+    // REAL binaries, ports and privileged edge — on the dev Mac it collided with the user's own PHP
+    // pools ("port 9783 … held by a leftover rexenv process"), and on a machine with nothing running
+    // it would have started the whole stack, edge prompt included, from an example (found 9 Oct 2026,
+    // ledger #805). Such a process settles as it did before 18 Sep: created, served on the next Start
+    // all. `stack_guard::may_control_real_stack` is the one answer to "is this the app".
+    if checks.is_none() && !crate::core::stack_guard::may_control_real_stack() {
+        append_line(
+            app,
+            entry,
+            "the stack is stopped, and this process is not the rexenv app — leaving it as it is \
+             (a live check never starts the real stack)",
+        );
+        finish_phase(app, entry, progress, ix, "skipped", Some("not started outside the app"));
+        return JobEnd::Ok(format!("created — {} serves on the next Start all", site.domain));
+    }
     let started = if checks.is_none() {
         append_line(
             app,
@@ -2290,6 +2308,20 @@ mod tests {
         assert!(why.contains("8.4") && why.contains("Retry"), "{why}");
         assert!(php_requirement_refused(&dir, "8.4").is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// #805 — TEXT: the serve phase asks `stack_guard::may_control_real_stack` BEFORE its one
+    /// `start_stack`, so a live-check example (not the app) never starts the real stack. Behaviour
+    /// cannot be shown here: under `cfg(test)` the guard always answers "the app".
+    #[test]
+    fn only_the_app_starts_the_real_stack_from_a_provision() {
+        let src = crate::core::copy_scan::production_source(include_str!("site_provision.rs"));
+        assert_eq!(src.matches("services::start_stack(").count(), 1, "one stack start in the job");
+        let start = src.find("services::start_stack(").unwrap();
+        let guard = src.find("stack_guard::may_control_real_stack()").expect("the guard");
+        assert!(guard < start, "the stack start moved ahead of the not-the-app guard");
+        let between = &src[guard..start];
+        assert!(between.contains("return JobEnd::Ok("), "outside the app the job must settle without starting");
     }
 
     /// The refusal comes BEFORE any database phase (user report, 8 Oct 2026: a `^8.4.1` repo on 8.3

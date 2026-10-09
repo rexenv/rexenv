@@ -698,3 +698,25 @@
   this row named. Live: WordPress loads the probe in `web/app/mu-plugins` and not the one in `web/wp-content`;
   plant-proven (dirs swapped → both red).
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Ledger-driven proof backlog”
+
+- [x] **`git_site_provision_check` (and the other provisioning examples) reach `start_stack` against the
+  REAL app data** (found 9 Oct 2026, running case 4 on the dev Mac): its header says the serve phase is
+  SKIPPED because the fixture manager adopts only the database tier — true until 18 Sep 2026, when the
+  serve phase learned to START a stopped stack (`commands/site_provision.rs`, the clean-VM fix). Now the
+  fixture's manager never reads as running, so every case that reaches serve calls `start_stack` with the
+  real binaries, ports and the privileged edge: on the dev Mac it collided with the user's PHP-FPM pools
+  ("port 9783 … held by a leftover rexenv process") and settled `failed`; on a machine with nothing running
+  it would start the whole stack, edge prompt included, from an example. `site_provision_check`,
+  `site_matrix_check`, `postgres_site_lifecycle_check`, `prefetch_responsiveness_check` and
+  `tunnel_delete_order_check` drive the same job. Owed: a decision per example — refuse the stack start
+  outside the app (`stack_guard::may_control_real_stack`, opt-in for the ones that mean it) or stop the
+  job before serve — and the header made true again.
+  ✓ **9 Oct 2026** (ledger #805): the serve phase asks `stack_guard::may_control_real_stack` first — outside
+  the app a stopped stack is left alone and the job settles "created — serves on the next Start all", as
+  before 18 Sep; all six examples wanted exactly that (serve skipped, status ok). TEXT guard plant-proven;
+  `git_site_provision_check` ALL PASS on the dev Mac, where it had failed on the user's PHP pools.
+
