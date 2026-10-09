@@ -2048,7 +2048,9 @@ itself the first check.
 §M); the clean UTM VM (macOS 15.6.1 arm64), 18 Sep 2026 — build `39610cc7` then the in-app
 update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 dmg → the published
 0.8.8 (`docs/PUBLISH-TESTING.md` §A 0.8.8).
-- [ ] **The relauncher's record** (ledger #768): after an in-app update, `logs/relaunch.log` under
+- [x] **The relauncher's record** (ledger #768): ✓ 8 and 9 Oct 2026 (15.8 VM): written by 0.8.12's and 0.8.13's
+  relaunchers — "parent 94675 exited after 0.4s … opened /Applications/rexenv.app (open exit 0)" (PUBLISH-TESTING
+  §A 0.8.13). After an in-app update, `logs/relaunch.log` under
   the app data folder has three new lines — `started: waiting for pid <old pid> …`, `parent <pid>
   exited after N.Ns`, `opened /Applications/rexenv.app (open exit 0)`. If the app did NOT come back
   (30 Sep 2026, 1 of 2 on the 15.8 VM), this file is the first thing to read: `open exited …`,
@@ -2426,8 +2428,8 @@ Sep). Until 28 Sep each ticked row here carried its evidence and then the origin
 glued on after it, and three rows still described states later runs had closed; reconciled
 into one row per step, with each open row saying what it is waiting for.
 
-**Still open on Windows, in one list:** Firefox's typed addresses (#706 — proven on macOS
-only) · the one command under Smart App Control ON (no machine has it on) · WebView2's
+**Still open on Windows, in one list** (corrected 9 Oct 2026 — Firefox's typed addresses closed 5 Oct and
+was still listed here): the one command under Smart App Control ON (no machine has it on) · WebView2's
 bootstrapper on a machine without it · uninstalling an UPDATED copy with the in-app step first
 (needs a published release newer than the installed one, AND a person for the in-app step's UAC —
 the Dell prompts on the secure desktop, which no automation can answer; checked 5 Oct 2026).
@@ -2657,7 +2659,8 @@ fixture can do is the real install directory, the real quit gate and the real re
 The first installed copy (`276fc7cb`, before per-OS descriptors) read the macOS descriptor and
 logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on fetch
 `app-manifest-windows.json`, and that sentence is OS-neutral.
-- [ ] **The relauncher's record** (ledger #768): after an in-app update,
+- [x] **The relauncher's record** (ledger #768): ✓ 9 Oct 2026 (Win11 VM, 0.8.12 → 0.8.13): "parent 13116 exited
+      after 0.1s … started …\rexenv.exe (pid 14016)" (PUBLISH-TESTING §A 0.8.13). After an in-app update,
       `%LOCALAPPDATA%\rexenv\logs\relaunch.log` has three new lines — `started: waiting for pid …`,
       `parent <pid> exited after N.Ns`, `started …\rexenv.exe (pid …)`. The NEW build's own
       `rexenv.exe` runs the relauncher here, so the first update TO a build carrying #768 writes
@@ -3243,7 +3246,8 @@ rexenv0 <name>` and read `Current Scopes:`.
       exit (webviews destroyed first): 0 of 4** — 30 Sep, and three in a row 6 Oct 2026 (a 0.8.10
       stamp of this tree → the published 0.8.11): no dialog, `/var/crash` empty, no segfault in
       the journal.
-- [ ] **The relauncher's record** (ledger #768): after an in-app update (`.deb` or AppImage),
+- [x] **The relauncher's record** (ledger #768): ✓ 8 and 9 Oct 2026 (22.04 VM, deb): "parent 49093 exited after
+      0.0s … started /usr/bin/rexenv" (PUBLISH-TESTING §A 0.8.13). After an in-app update (`.deb` or AppImage),
       `~/.local/share/rexenv/logs/relaunch.log` has three new lines — `started: waiting for pid …`,
       `parent <pid> exited after N.Ns`, `started /usr/bin/rexenv (pid …)` (or the AppImage path).
       The NEW package's `/usr/bin/rexenv` runs the relauncher (#729), so the first update TO a build
