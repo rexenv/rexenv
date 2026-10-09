@@ -1019,7 +1019,7 @@ combined into a single privileged shell by the fix).
 
 ---
 
-## D) ◐ Full custom-tap install dry-run — run 9 Oct 2026 (zap gaps found; the tap fix waits to be pushed)
+## D) ✅ Full custom-tap install dry-run — run 9 Oct 2026 (zap gaps found and fixed in the tap, #4)
 
 **Why:** the real end-to-end a user experiences. The tap repo exists and is public —
 `github.com/rexenv/homebrew-tap` (2026-08-08), `brew tap rexenv/tap` resolves and
@@ -1093,7 +1093,7 @@ but both launchd jobs stayed LOADED — the DNS agent kept running from its copy
 data and answering UDP 15353 until logout; (2) `~/Library/Caches/dev.rexenv.rexenv` and
 `~/Library/WebKit/dev.rexenv.rexenv` were left; (3) the `rexenv Local CA` certificate stays in the
 login keychain (untrusted — Remove system changes removes trust, not the item).
-**Fixed for (1)+(2) in the tap, not yet pushed** (`rexenv/homebrew-tap` branch `zap-unload-agents`:
+**Fixed for (1)+(2) in the tap — merged as `rexenv/homebrew-tap#4` (`430cf38f`)** (
 `zap launchctl:` both labels + the two folders) and **proven the same day** with that caskfile in
 the VM's tap: zap printed "Removing launchctl service …" twice and left no job, no process and none
 of the folders. (3) is an app-side TODO row. The VM was restored afterwards (its app data from
@@ -1889,7 +1889,7 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | M | **In-app self-update on a real Mac** (0.6.0 → 0.6.1) | ◐ **RAN 7 Sep 2026 on 0.6.0 → 0.6.1** — the apply, the swap, the relaunch, the changed cdhash, no quarantine, `rex --version` agreeing with About, the DNS agent re-execed from the new bundle (pid changed), leftovers swept, services outlived it, and the descriptor chain end to end. Details in §A 0.6.1. **Still owed, and honestly so:** whether any Gatekeeper/App-Management dialog appeared, which permission prompts returned, the startup notice, the tray item, the offline check and the public-share path — the update was run, those legs were not observed. It also produced the release’s one real finding: `auto_updates` does not stop `brew upgrade --cask rexenv` |
 | B | Uninstall removes the root :443 daemon | 🚧 do when convenient (tears down your edge) |
 | C | B31 CSP packaged smoke test | ✅ done |
-| D | Full tap install dry-run (after Release + tap push) | 🚧 **`--zap` ONLY** — the install half passed 12 Aug 2026 and the cask has bumped cleanly through 0.1.1 / 0.2.0 / 0.3.0 / 0.4.0 since. The trigger used to read "do once the dmg is released", an event that happened four releases ago |
+| D | Full tap install dry-run (after Release + tap push) | ✅ 9 Oct 2026, 15.8 VM — `--zap` ran; its two gaps (agents left loaded, Caches/WebKit left) fixed in the tap, `rexenv/homebrew-tap#4` |
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |

@@ -1553,11 +1553,6 @@ SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publish
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **PUBLISH-TESTING §D** — open ONLY for pushing the tap fix. **`--zap` ran 9 Oct 2026 on the
-  15.8 VM** (the whole user path green; record in §D) and found: both LaunchAgents stay loaded
-  after zap (the DNS agent keeps answering UDP 15353 until logout), and Caches + WebKit are left.
-  Fixed and proven on the VM in `rexenv/homebrew-tap` branch `zap-unload-agents` (local commit,
-  NOT pushed — the tap is the owner's to merge). Close when that lands on `main`.
 - [ ] **The local CA stays in the login keychain after Remove system changes** — trust is removed
   (`SecTrustSettingsRemoveTrustSettings`) but the `rexenv Local CA` item is not deleted, and the
   cask's `--zap` cannot reach a keychain. Inert, but a leftover a "remove everything" user finds.

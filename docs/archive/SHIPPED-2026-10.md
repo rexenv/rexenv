@@ -754,3 +754,14 @@
   5–8 and 10–13; found and fixed #809. Not covered there: 4 (needs Herd) and 9's multi-GB database
   inside an import batch — both now in SMOKE-TEST's "Still open on macOS". Record: §G.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **PUBLISH-TESTING §D** — the full custom-tap install dry-run, `--zap` included. ✓ 9 Oct 2026 on
+  the 15.8 VM: the whole user path green (record in §D); the first `--zap` anywhere found both
+  LaunchAgents left loaded (the DNS agent answering UDP 15353 until logout) and Caches + WebKit
+  left behind. Fixed in the tap — `zap launchctl:` both labels + the two folders — proven on the VM
+  with that caskfile, merged as `rexenv/homebrew-tap#4` (`430cf38f`).
+
