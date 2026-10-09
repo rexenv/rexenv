@@ -10,9 +10,11 @@ Xdebug, and PHP **8.0–8.5**) rexenv is not the distributor: those are fetched
 from their own distributors, checksum-pinned, and carry their own licences; the
 pinned versions and sources are listed in `docs/PORTS.md`.
 
-**Windows (port in progress, 13 Sep 2026 — no Windows build has shipped).** The Windows
-build downloads from distributors too, never from us: PHP from the PHP project's own
-Windows builds (`downloads.php.net/~windows`), nginx from nginx.org's Windows zip, MySQL
+**Windows (shipped since 0.8.x; this paragraph dated 13 Sep 2026, corrected 9 Oct 2026).** The
+Windows build downloads from distributors too, never from us: PHP from the PHP project's own
+Windows builds (`downloads.php.net/~windows`) — for PHP 8.4 and 8.5 also the PECL `imap` 1.0.3
+extension from the same site's official PECL builds (`~windows/pecl`, PHP License 3.01), because
+php.net's 8.4+ zips stopped carrying IMAP — nginx from nginx.org's Windows zip, MySQL
 from Oracle's `winx64` zips, PostgreSQL from theseus-rs's `x86_64-pc-windows-msvc`
 builds, and Caddy, Mailpit and cloudflared from their GitHub releases. So the three
 "rexenv's own build" sections below describe **macOS artifacts only** (OpenLiteSpeed's, macOS and Linux) — none of them is
