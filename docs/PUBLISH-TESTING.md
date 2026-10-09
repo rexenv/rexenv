@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.8.13 — DRAFTED on `rexenv/rexenv` by CI (9 Oct 2026) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM, the setup.exe on the Dell and the Win11 VM green; Defender clean
+## A) ✅ 0.8.13 — PUBLISHED 9 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 
 **Run 37907730103, source `75f7b3ed` (tag `v0.8.13`, pushed), every lane green, 16 assets, the body the
 tag's verbatim.** dmg `19b8d65c…`, `.app.tar.gz` `666f33c3…`, arm64 deb `4f197810…`, setup.exe
@@ -142,6 +142,32 @@ once** (#603 amended — the per-version extension fix), IMAP loaded on 8.4 (`ph
 0 of 5 on the Dell; a file-lock race was measured and excluded (`rexenv.exe` writable within ~50 ms of
 the kill). Tracked in TODO. The in-app updater does not run `setup.exe`.
 **Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows.
+**PUBLISHED 9 Oct 2026, 10:23:37Z.** Within seconds `release-published.yml` → the tap's Update cask
+(`0.8.13` / `19b8d65c…` = the dmg's), Install scripts and website notify green; `brew fetch --cask
+rexenv/tap/rexenv` ✔︎ 0.8.13. The macOS descriptor's dry run (serial 19 → 20, sha `666f33c3…` = the
+archive hashed for §A0, the shipped key), then the six publishes approved together and
+`check-app-manifest.sh` ×6 all green (macOS serial 20); `rexenv/apt` published (KEEP=3) and
+`check-apt-repo.sh` green (InRelease signed, amd64 and arm64 at 0.8.13).
+**§M — the 0.8.12 → 0.8.13 in-app update, on all three:**
+- **macOS 15.8 VM** (the published 0.8.12 put back from its kept copy): Settings → About already offered
+  "rexenv 0.8.13 · 28.6 MB has been published" (the badge `0.8.13`) → Install → "swapped to 0.8.13
+  (AtomicSwap)" → the dialog → OK → **reopened as 0.8.13 in ~7 s**, no crash report, the agent
+  `agent`, `smoke1.rex` 200; `relaunch.log`: "parent 94675 exited after 0.4s … opened /Applications/
+  rexenv.app (open exit 0)". The MTU workaround 0.8.12 needed was NOT needed today (1500).
+- **Ubuntu 22.04 arm64 VM** (`apt-get install --allow-downgrades rexenv=0.8.12` from the KEEP=3
+  repository): the badge `0.8.13`, "14.8 MB has been published" → Install → ONE polkit naming the
+  update → `dpkg -s` 0.8.13 → the dialog → OK → **reopened as 0.8.13 within ~1 s, at Sites**, the toast
+  "rexenv is now 0.8.13 (updated from 0.8.12)", 7/7, `/var/crash` empty; `relaunch.log`: "parent 49093
+  exited after 0.0s … started /usr/bin/rexenv". Harness facts, not product: the app must be started
+  from GNOME (Activities), not from ssh — an ssh-started app has no polkit agent and the Install
+  correctly says so ("…no authentication agent is running… The rexenv you were running is still
+  installed and untouched."); and WebKitGTK takes an xdotool click only after the pointer has moved
+  onto the target.
+- **Win11 ARM VM** (`setup.exe /S` of the published 0.8.12 first): the badge `0.8.13`, the toast
+  "rexenv 0.8.13 can be installed", About "13.6 MB has been published" → Install → "swapped to 0.8.13
+  (RenamePair)" → the dialog → OK → **back as 0.8.13** (one white frame while WebView2 painted, then
+  Sites), Apps & Features 0.8.13, the agent on `udp 53`, 12/12 running, `lm.rex` / `lv.rex` 200;
+  `relaunch.log`: "parent 13116 exited after 0.1s … started …\rexenv.exe (pid 14016)".
 
 ## A) ✅ 0.8.12 — DRAFTED on `rexenv/rexenv` by CI (8 Oct 2026) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green
 
