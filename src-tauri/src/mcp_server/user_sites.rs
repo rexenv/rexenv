@@ -823,6 +823,41 @@ static REGISTRY: &[UserTool] = &[
         scope: Scope::Manage,
         handler: site_retry,
     },
+    UserTool {
+        name: "worktree",
+        description: "Worktree SITES of a WordPress plugin or theme that is a git checkout: a copy of \
+                      the user's site, at its own domain, with that plugin's folder a `git worktree` \
+                      on another branch and its own copy of the database. Takes `action`: \
+                      `list` {site_id} — the parent's worktree sites with git's live branch and \
+                      uncommitted count (`read`); `preview` {site_id, kind, dir, branch, base?, \
+                      domain?} — the domain it would get, or the refusal (`read`); `create` (same \
+                      fields, plus skip_uploads?) — makes it and blocks until its setup settles \
+                      (`manage` on the parent: the parent is only read); `remove` {site_id: the \
+                      WORKTREE site, force?} — removes the worktree through git and deletes that \
+                      site and its database; refused while the worktree holds uncommitted work \
+                      unless force (`destroy` on that site). The branch is always kept. `branch` \
+                      is checked out as is, or made NEW from `base` when base is given.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["list", "preview", "create", "remove"] },
+                "site_id": { "type": "string" },
+                "kind": { "type": "string", "enum": ["plugin", "theme"] },
+                "dir": { "type": "string" },
+                "branch": { "type": "string" },
+                "base": { "type": "string" },
+                "domain": { "type": "string" },
+                "skip_uploads": { "type": "boolean" },
+                "force": { "type": "boolean" }
+            },
+            "required": ["action", "site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "list" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("worktree {a}")),
+        scope: Scope::Destroy,
+        handler: worktree,
+    },
 ];
 
 fn configure_params() -> Value {
@@ -962,6 +997,12 @@ pub trait SiteOps: Send + Sync {
         enabled: bool,
     ) -> OpFuture<'a, Result<Option<crate::commands::sites::SiteEnabledReport>>>;
     fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
+    // ── worktree sites (`docs/PLAN-git-worktrees.md`) — the app's commands ──
+    fn worktree_children<'a>(&'a self, parent_id: String) -> OpFuture<'a, Result<Vec<crate::commands::worktree::WorktreeView>>>;
+    fn worktree_preview<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::worktree::WorktreePreview>>;
+    /// Start the child's job and answer with its SETTLED state, like `retry`.
+    fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
+    fn worktree_remove<'a>(&'a self, id: String, force: bool) -> OpFuture<'a, Result<bool>>;
     /// Truncate one log by its key — the Logs tab's own clear. Shared logs are
     /// every site's, which is why the tool arm that reaches this is `destroy`.
     fn log_clear<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
@@ -1778,6 +1819,99 @@ fn site_restart<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::A
             "poolRestarted": r.pool_restarted,
             "detail": detail,
         }))
+    })
+}
+
+/// Which scope each worktree action demands (`docs/PLAN-git-worktrees.md` §2.8):
+/// reading the list or a preview reads; making one copies the parent (which is
+/// only READ) into a NEW site — `manage`, like `site_create`; removing deletes
+/// files and a database — `destroy`, on the worktree site itself.
+pub(crate) fn worktree_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "list" | "preview" => Scope::Read,
+        "create" => Scope::Manage,
+        "remove" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+fn worktree<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("worktree needs an `action`.".into()))?;
+        let scope = worktree_scope(action)
+            .ok_or_else(|| Error::Other(format!("`{action}` is not a worktree action. Use list, preview, create or remove.")))?;
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("worktree `{action}` needs a `site_id`.")))?;
+        let field = |k: &str| -> Result<String> {
+            args.get(k)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| Error::Other(format!("worktree `{action}` needs `{k}`.")))
+        };
+        let request = |parent_id: String| -> Result<crate::commands::worktree::WorktreeRequest> {
+            let kind = match args.get("kind").and_then(Value::as_str).unwrap_or("plugin") {
+                "plugin" => crate::core::worktree::AssetKind::Plugin,
+                "theme" => crate::core::worktree::AssetKind::Theme,
+                other => return Err(Error::Other(format!("`{other}` is not a worktree kind — use plugin or theme."))),
+            };
+            Ok(crate::commands::worktree::WorktreeRequest {
+                parent_id,
+                asset_kind: kind,
+                asset_dir: field("dir")?,
+                branch: field("branch")?,
+                base: field("base").ok(),
+                domain: field("domain").ok(),
+                skip_uploads: args.get("skip_uploads").and_then(Value::as_bool).unwrap_or(false),
+            })
+        };
+        let wanted = match action {
+            "list" => "list its worktree sites".to_string(),
+            "preview" => format!("preview a worktree site of `{}` on `{}`", field("dir")?, field("branch")?),
+            "create" => format!("make a worktree site of `{}` on `{}` (a copy of this site and its database)", field("dir")?, field("branch")?),
+            _ => format!(
+                "delete this worktree site — its worktree through git, its files and its database{}",
+                if args.get("force").and_then(Value::as_bool).unwrap_or(false) { ", even with uncommitted work" } else { "" }
+            ),
+        };
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        let known = super::view::KnownPaths::for_site(ctx.state.platform.paths(), &site.path);
+        let scrub = |s: Option<String>| s.map(|t| super::view::scrub_log_line(&t, &known));
+        Ok(match action {
+            "list" => {
+                let rows = ctx.ops.worktree_children(site.id.clone()).await?;
+                json!(rows.iter().map(|w| json!({
+                    "siteId": w.site_id, "domain": w.domain, "kind": w.asset_kind, "dir": w.asset_dir,
+                    "branch": w.branch, "askedBranch": w.asked_branch, "uncommitted": w.uncommitted,
+                    "present": w.present, "provisioned": w.provisioned,
+                })).collect::<Vec<_>>())
+            }
+            "preview" => {
+                let p = ctx.ops.worktree_preview(request(site.id.clone())?).await?;
+                json!({ "domain": p.domain, "fallback": p.fallback })
+            }
+            "create" => {
+                let st = ctx.ops.worktree_create(request(site.id.clone())?).await?;
+                json!({
+                    "siteId": st.site_id, "domain": st.domain, "status": st.status,
+                    "phases": st.phases.iter().map(|p| json!({ "label": p.label, "status": p.status })).collect::<Vec<_>>(),
+                    "summary": scrub(st.summary), "error": scrub(st.error),
+                })
+            }
+            _ => {
+                // Only a WORKTREE site: `worktree_remove` on any other site would be a
+                // plain delete through a door named for something else — `site_delete`
+                // is that door, with its own refusals.
+                let is_child = crate::state::store::get_site_worktree(&*ctx.db()?, &site.id)?.is_some();
+                if !is_child {
+                    return Err(Error::Other(format!("{} is not a worktree site — use site_delete for it.", site.domain)));
+                }
+                let force = args.get("force").and_then(Value::as_bool).unwrap_or(false);
+                let removed = ctx.ops.worktree_remove(site.id.clone(), force).await.map_err(|e| Error::Other(scrub(Some(e.to_string())).unwrap_or_default()))?;
+                json!({ "removed": removed, "branchKept": true })
+            }
+        })
     })
 }
 
@@ -3721,6 +3855,22 @@ pub(crate) mod tests {
                 })
             })
         }
+        fn worktree_children<'a>(&'a self, parent_id: String) -> OpFuture<'a, Result<Vec<crate::commands::worktree::WorktreeView>>> {
+            self.calls.lock().unwrap().push(format!("worktree list {parent_id}"));
+            Box::pin(async { Ok(vec![]) })
+        }
+        fn worktree_preview<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::worktree::WorktreePreview>> {
+            self.calls.lock().unwrap().push(format!("worktree preview {}", req.branch));
+            Box::pin(async { Ok(crate::commands::worktree::WorktreePreview { domain: "fix.mine.rex".into(), fallback: None }) })
+        }
+        fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>> {
+            self.calls.lock().unwrap().push(format!("worktree create {} {}", req.asset_dir, req.branch));
+            self.retry("child".into())
+        }
+        fn worktree_remove<'a>(&'a self, id: String, force: bool) -> OpFuture<'a, Result<bool>> {
+            self.calls.lock().unwrap().push(format!("worktree remove {id} {force}"));
+            Box::pin(async { Ok(true) })
+        }
         fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>> {
             self.calls.lock().unwrap().push(format!("retry {site_id}"));
             Box::pin(async move {
@@ -5233,6 +5383,69 @@ pub(crate) mod tests {
         let err = blueprints(ctx, &json!({ "action": "delete", "name": "Nope" }), &acted).await.unwrap_err().to_string();
         assert!(err.contains("no blueprint called"), "{err}");
         assert!(ops.calls.lock().unwrap().iter().any(|c| c == "blueprint save Shop 8.3"));
+    }
+
+    /// **`worktree`: list and preview under `read` on the parent, create under
+    /// `manage` on the parent, remove under `destroy` on the WORKTREE site — and
+    /// remove refuses any site that is not one** (ledger #822). Plant: give
+    /// `create` `Scope::Read` in `worktree_scope` and the Read-level create stops
+    /// being refused.
+    #[tokio::test]
+    async fn worktree_actions_claim_their_own_level_and_remove_takes_only_a_worktree() {
+        assert_eq!(worktree_scope("list"), Some(Scope::Read));
+        assert_eq!(worktree_scope("preview"), Some(Scope::Read));
+        assert_eq!(worktree_scope("create"), Some(Scope::Manage));
+        assert_eq!(worktree_scope("remove"), Some(Scope::Destroy));
+        assert_eq!(worktree_scope("merge"), None);
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let parent = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        let child = test_site("bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", "fix.mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &parent).unwrap();
+            store::insert_site(&conn, &child).unwrap();
+            store::insert_site_worktree(
+                &conn,
+                &store::NewWorktree {
+                    site_id: &child.id,
+                    parent_id: &parent.id,
+                    shape: crate::state::models::WorktreeShape::Asset,
+                    worktree_path: "/Users/somebody/rexenv/Sites/fix.mine.rex/wp-content/plugins/acme",
+                    adopted: false,
+                    asset_kind: Some("plugin"),
+                    asset_dir: Some("acme"),
+                    branch: "fix",
+                    base: None,
+                    skip_uploads: false,
+                },
+            )
+            .unwrap();
+        }
+        let create = json!({ "site_id": parent.id, "action": "create", "dir": "acme", "branch": "fix" });
+        dial(&state, crate::core::agent_access::AccessLevel::Read);
+        worktree(ctx, &json!({ "site_id": parent.id, "action": "list" }), &acted).await.unwrap();
+        let v = worktree(ctx, &json!({ "site_id": parent.id, "action": "preview", "dir": "acme", "branch": "fix" }), &acted).await.unwrap();
+        assert_eq!(v["domain"], "fix.mine.rex", "{v}");
+        let err = worktree(ctx, &create, &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`manage`"), "a read grant does not make a site: {err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
+        worktree(ctx, &create, &acted).await.unwrap();
+        let err = worktree(ctx, &json!({ "site_id": child.id, "action": "remove" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "changes does not delete: {err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        let err = worktree(ctx, &json!({ "site_id": parent.id, "action": "remove" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a worktree site") && err.contains("site_delete"), "{err}");
+        let v = worktree(ctx, &json!({ "site_id": child.id, "action": "remove" }), &acted).await.unwrap();
+        assert_eq!(v["branchKept"], true);
+        let calls = ops.calls.lock().unwrap().clone();
+        for c in [format!("worktree list {}", parent.id), "worktree preview fix".into(), "worktree create acme fix".into(), format!("worktree remove {} false", child.id)] {
+            assert!(calls.contains(&c), "missing {c} in {calls:?}");
+        }
+        assert!(!calls.contains(&format!("worktree remove {} false", parent.id)), "the parent was never removed");
     }
 
     /// **`repo`: reads under `read` on the site (two under rexenv itself), every

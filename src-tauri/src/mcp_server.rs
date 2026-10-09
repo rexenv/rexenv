@@ -1152,6 +1152,23 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn restart<'a>(&'a self, id: String, pool: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::sites::SiteRestartReport>> {
         Box::pin(async move { crate::commands::sites::restart_site(self.state()?, id, pool).await })
     }
+    fn worktree_children<'a>(&'a self, parent_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::worktree::WorktreeView>>> {
+        Box::pin(async move { crate::commands::worktree::worktree_children(self.app.clone(), parent_id).await })
+    }
+    fn worktree_preview<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::worktree::WorktreePreview>> {
+        Box::pin(async move { crate::commands::worktree::worktree_preview(self.state()?, req).await })
+    }
+    fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
+        Box::pin(async move {
+            let (state, jobs) = (self.state()?, self.jobs()?);
+            let started = crate::commands::worktree::start(&self.app, state.inner(), jobs.inner(), req)?;
+            // The OUTCOME, as `retry` answers (the first snapshot says `running`).
+            crate::commands::site_provision::settle(&jobs, &started.id, None).await
+        })
+    }
+    fn worktree_remove<'a>(&'a self, id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
+        Box::pin(async move { crate::commands::worktree::worktree_remove(self.state()?, self.tunnels()?, id, force).await })
+    }
     fn retry<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
         Box::pin(async move {
             let started =

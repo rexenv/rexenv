@@ -321,6 +321,15 @@ COMMANDS:
                 Delete with the loss-warning preview; symlinked assets are
                 UNLINKED only (your real folder is never touched)
   repo tools [--refresh]               Detected git/node (login-shell resolution)
+  worktree <domain> list               Worktree sites of the site's git plugins/themes
+                                       (git's live branch + uncommitted count)
+  worktree <domain> add <dir> <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]
+                A copy of the site at its own domain, with <dir> a git worktree on
+                <branch> (made NEW from --from) and its own copy of the database
+  worktree <worktree-domain> remove [--force]
+                Delete a worktree site: the worktree through git first (refused
+                while it has uncommitted work, unless --force), then the site.
+                The branch is always kept
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   config get|set <key> [value]       Settings the CLI may touch (refusals say why)
@@ -949,6 +958,7 @@ fn main() {
         Some("php") => cmd_php(&words[1..], json_output),
         Some("wp") => cmd_wp(&words[1..], json_output),
         Some("repo") => cmd_repo(&words[1..], json_output),
+        Some("worktree") => cmd_worktree(&words[1..], json_output),
         Some("service") => cmd_service(&words[1..], json_output),
         Some("config") => cmd_config(&words[1..], json_output),
         Some("mail") => cmd_mail(&words[1..], json_output),
@@ -1751,6 +1761,112 @@ fn follow_watch_log(w: &Value, dir: &str) {
     tail_loop(json!({ "key": key }), 200, true);
 }
 
+const WORKTREE_USAGE: &str =
+    "rex worktree <domain> list | add <dir> <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | <worktree-domain> remove [--force]";
+
+/// Worktree sites (`docs/PLAN-git-worktrees.md`) — the same commands the app's
+/// Worktree sites panel calls, through `worktree.*` on the socket.
+fn cmd_worktree(words: &[String], json_output: bool) {
+    let known: &[&str] = match words.get(1).map(String::as_str) {
+        Some("add") => &["--theme", "--from", "--domain", "--skip-uploads"],
+        Some("remove") => &["--force"],
+        _ => &[],
+    };
+    reject_unknown_flags(words, "worktree", known, WORKTREE_USAGE);
+    let site = find_site(words, WORKTREE_USAGE);
+    let id = site["id"].clone();
+    // Positionals after the verb, skipping each value-taking flag's value —
+    // `--from main` is not a branch.
+    let mut rest: Vec<&String> = Vec::new();
+    let mut skip_next = false;
+    for w in words.iter().skip(2) {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if w == "--from" || w == "--domain" {
+            skip_next = true;
+            continue;
+        }
+        if !w.starts_with("--") {
+            rest.push(w);
+        }
+    }
+    match words.get(1).map(String::as_str) {
+        Some("list") | None => {
+            let data = request("worktree.list", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["worktrees"].as_array().filter(|a| !a.is_empty()) else {
+                return outln!("no worktree sites (make one: rex worktree <domain> add <dir> <branch>)");
+            };
+            for w in rows {
+                let branch = if w["present"] == json!(true) {
+                    w["branch"].as_str().unwrap_or("detached").to_string()
+                } else {
+                    format!("{} (not checked out)", w["askedBranch"].as_str().unwrap_or("?"))
+                };
+                let dirty = w["uncommitted"].as_u64().unwrap_or(0);
+                outln!(
+                    "{:<36} {}/{:<20} {}{}",
+                    w["domain"].as_str().unwrap_or("?"),
+                    w["assetKind"].as_str().unwrap_or("?"),
+                    w["assetDir"].as_str().unwrap_or("?"),
+                    branch,
+                    if dirty > 0 { format!("  {dirty} uncommitted") } else { String::new() },
+                );
+            }
+        }
+        Some("add") => {
+            let (Some(dir), Some(branch)) = (rest.first(), rest.get(1)) else {
+                errln!("rex: usage: {WORKTREE_USAGE}");
+                exit(1);
+            };
+            let data = request(
+                "worktree.add",
+                json!({
+                    "id": id,
+                    "kind": if words.iter().any(|w| w == "--theme") { "theme" } else { "plugin" },
+                    "dir": dir, "branch": branch,
+                    "base": flag_value(words, "--from"), "domain": flag_value(words, "--domain"),
+                    "skipUploads": words.iter().any(|w| w == "--skip-uploads"),
+                }),
+            );
+            if json_output {
+                return print_json(&data);
+            }
+            match data["status"].as_str() {
+                Some("ok") => outln!(
+                    "{} — {}",
+                    data["domain"].as_str().unwrap_or("?"),
+                    data["summary"].as_str().unwrap_or("created")
+                ),
+                other => {
+                    errln!(
+                        "rex: the worktree site did not finish ({}): {}",
+                        other.unwrap_or("?"),
+                        data["error"].as_str().unwrap_or("no reason given")
+                    );
+                    exit(1);
+                }
+            }
+        }
+        Some("remove") => {
+            let force = words.iter().any(|w| w == "--force");
+            let data = request("worktree.remove", json!({ "id": id, "force": force }));
+            if json_output {
+                return print_json(&data);
+            }
+            outln!("removed {} (the branch is kept)", site["domain"].as_str().unwrap_or("?"));
+        }
+        Some(other) => {
+            errln!("rex: unknown worktree verb `{other}` — usage: {WORKTREE_USAGE}");
+            exit(1);
+        }
+    }
+}
+
 fn cmd_repo(words: &[String], json_output: bool) {
     // `rex repo tools` is app-wide, not site-scoped.
     if words.first().map(String::as_str) == Some("tools") {
@@ -2189,7 +2305,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// zsh:  rex completions zsh  > ~/.zfunc/_rex   (with ~/.zfunc in $fpath)
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
-    const TOP: &str = "status start stop restart site wp repo php db service logs doctor mail tunnel tld blueprints config version completions help";
+    const TOP: &str = "status start stop restart site wp repo worktree php db service logs doctor mail tunnel tld blueprints config version completions help";
     const SITE: &str = "list create delete info open login logs php xdebug server restart start stop domains rename domain move relink retry env cert";
     const DB: &str = "export import reset versions browse";
     const PHP: &str = "list default install uninstall settings";
@@ -4408,6 +4524,7 @@ mod tests {
             "fn cmd_db_versions(",
             "fn cmd_site_enabled(",
             "fn cmd_repo(",
+            "fn cmd_worktree(",
             "fn cmd_mail(",
             "fn cmd_tunnel(",
             "fn cmd_logs(",

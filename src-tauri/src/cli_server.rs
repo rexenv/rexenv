@@ -1518,6 +1518,56 @@ where
         // ── repo group (git/asset assets) — wave 1: pure request/response.
         // Every arm rides the SAME commands::repo fns the UI calls; `--theme`
         // arrives as `theme: true` and flips the kind.
+        // ── worktree sites (docs/PLAN-git-worktrees.md) — the panel's commands.
+        "worktree.list" => {
+            let id = need_str(&args, "id", cmd)?;
+            let rows = commands::worktree::worktree_children(app.app_handle().clone(), id).await?;
+            Ok(json!({ "worktrees": to_value(&rows)? }))
+        }
+        "worktree.add" => {
+            let state = app_state(app)?;
+            // An `if`, not a match: `scripts/doc-counts.sh` counts every quoted
+            // match arm in this file as a command (CLI-ROADMAP's count note).
+            let kind = if args["kind"].as_str() == Some("theme") {
+                crate::core::worktree::AssetKind::Theme
+            } else {
+                crate::core::worktree::AssetKind::Plugin
+            };
+            let req = commands::worktree::WorktreeRequest {
+                parent_id: need_str(&args, "id", cmd)?,
+                asset_kind: kind,
+                asset_dir: need_str(&args, "dir", cmd)?,
+                branch: need_str(&args, "branch", cmd)?,
+                base: args["base"].as_str().map(str::to_string),
+                domain: args["domain"].as_str().map(str::to_string),
+                skip_uploads: args["skipUploads"].as_bool().unwrap_or(false),
+            };
+            let jobs = provision_jobs_state(app)?;
+            let started = commands::worktree::start(app.app_handle(), state.inner(), jobs.inner(), req)?;
+            // Progress from the job's own published state, as `site.create` does.
+            let mut sent_phase = usize::MAX;
+            loop {
+                let snap = commands::site_provision::state_of(jobs.inner(), &started.id)?;
+                if snap.phase_cursor != sent_phase {
+                    sent_phase = snap.phase_cursor;
+                    progress.send(provision_progress(&snap));
+                }
+                if snap.status != "running" {
+                    return to_value(&snap);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            }
+        }
+        "worktree.remove" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let tunnels = app
+                .try_state::<commands::tunnels::Tunnels>()
+                .ok_or_else(|| Error::Other("tunnel registry not ready".into()))?;
+            let force = args["force"].as_bool().unwrap_or(false);
+            let removed = commands::worktree::worktree_remove(state.clone(), tunnels, id, force).await?;
+            Ok(json!({ "removed": removed }))
+        }
         "repo.list" => {
             let state = app_state(app)?;
             let id = need_str(&args, "id", cmd)?;

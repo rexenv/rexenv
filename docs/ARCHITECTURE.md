@@ -1499,6 +1499,10 @@ honest footer —
   git processes. Every worktree query sits under the `["sites", …]` key, so one invalidation
   refreshes them all. A refused (dirty) remove is never forced without a second, explicit
   yes that quotes the files (#821).
+- **`rex worktree` and the MCP `worktree` tool** (W9, #822) call the same
+  `commands::worktree` functions as the panel. The MCP levels: list/preview are Read,
+  create is Changes (`manage` on the parent, which is only read), remove is Full
+  (`destroy` on the worktree site). `remove` refuses a site that is not a worktree.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

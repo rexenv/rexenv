@@ -970,6 +970,11 @@ branch in that repository:
       file; Cancel leaves everything; Remove anyway deletes it. `git branch` in the plugin still
       lists the branch.
 - [ ] Delete the PARENT while a worktree site exists → refused, naming the child.
+- [ ] `rex worktree <site> add <plugin-dir> <branch>` prints the phases and ends `… — created`;
+      `rex worktree <site> list` shows it with its branch; `rex worktree <child> remove` refuses
+      while a file is uncommitted and `--force` removes it.
+- [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
+      `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
 - **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:
   an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
   "Access is denied", and the site stays — close the editor, Delete again.

@@ -162,13 +162,11 @@ mod tests {
         // The banner's question, answered more widely: `checksums` names EVERY missing core file,
         // the long-named casualties included, and wp_maintain's `core_reinstall` is the repair.
         ("wp_core_cut_names", Tool("wp_info")),
-        // ── worktree (docs/PLAN-git-worktrees.md — the MCP `worktree` action is W9)
-        ("worktree_create", Gap("W9 of docs/PLAN-git-worktrees.md adds the repo tool's worktree action (Changes level); TODO row Git worktree workflow")),
-        ("worktree_remove", Gap("W9 of docs/PLAN-git-worktrees.md adds the repo tool's worktree action (Full level: it deletes files); TODO row Git worktree workflow")),
-        ("worktree_preview", Gap("W9 of docs/PLAN-git-worktrees.md — the worktree action's dry run; TODO row Git worktree workflow")),
-        ("worktree_children", Gap("W9 of docs/PLAN-git-worktrees.md — the worktree action's list (Read); TODO row Git worktree workflow")),
-        ("worktree_of", Gap("W9 of docs/PLAN-git-worktrees.md — site_info should name a child's parent and branch; TODO row Git worktree workflow")),
-        ("worktree_relations", Never("the Sites list's grouping rows; an agent reads the same through the worktree action's list (W9)")),
+        // ── worktree (docs/PLAN-git-worktrees.md) — `worktree_children/preview/remove`
+        //    are called by name from the MCP source; these two are reached otherwise:
+        ("worktree_create", Tool("worktree")),
+        ("worktree_of", Tool("worktree")),
+        ("worktree_relations", Never("the Sites list's grouping rows; an agent reads the same through the worktree action's list")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),
