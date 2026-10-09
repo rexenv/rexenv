@@ -45,7 +45,10 @@ use tauri::{Listener, Manager};
 mod common;
 
 fn git_in(dir: &Path, args: &[&str]) {
+    // Signing off: a machine whose global config signs every commit (the Dell
+    // does, through gpg) would otherwise wait on a pinentry no SSH session has.
     let out = Command::new("git")
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .current_dir(dir)
         .env("GIT_AUTHOR_NAME", "rexenv checks")

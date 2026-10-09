@@ -965,6 +965,13 @@ about Windows behaviour is proven one of three ways, cheapest first:
    waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
    guard refuses a click unless rexenv is frontmost).
 
+**A fixture that COMMITS must turn signing off** (`git -c commit.gpgsign=false`), found 10 Oct 2026.
+The Dell's global git config signs every commit through gpg. Over SSH there is no pinentry, so
+`worktree_git_check` died at its first fixture commit with `gpg: signing failed: Timeout`. That
+is a fact about the machine, not about the code under test. The worktree examples now pass the
+flag; the older git fixtures (`git_site_clone_check`) will hit the same wall the first time
+they run there.
+
 **Is the `.rex` answer the machine's own? — yes on Windows, measured 28 Sep 2026.** The Win11
 VM's upstream DNS is the Mac, which answers `.rex` itself (the trap that hid a dead Linux route,
 §"Proving a Linux claim"). NRPT does not fall back: with the agent stopped `anything.rex` FAILS

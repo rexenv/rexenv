@@ -243,6 +243,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
 
+- [ ] **On Windows, an example's `Reaped` PostgreSQL leaves `--forkchild` workers alive** (found 10 Oct 2026 on
+  the Dell running `db_clone_check`): the run passed, but an `io_worker` child of the sandbox postmaster kept
+  listening on :13393 and holding the example's stdout. The ssh call hung, and the next run refused the port.
+  `taskkill /T` on the postmaster pid after the fact took all but one. `Reaped::from_proc` kills the postmaster
+  only; on Windows its children are not in a process group with it. Fix in `examples/common` (kill the tree,
+  or ask `pg_ctl stop`), then re-run `starter_seed_check` and `db_clone_check` on the Dell twice in a row.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
