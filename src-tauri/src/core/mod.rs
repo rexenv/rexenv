@@ -44,6 +44,7 @@ pub mod downloads;
 pub mod firefox;
 pub mod frankenphp;
 pub mod laravel;
+pub mod live_sync;
 pub mod logs;
 pub mod macho;
 pub mod mail;

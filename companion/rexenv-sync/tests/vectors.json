@@ -1,0 +1,37 @@
+{
+  "comment": "rexsync1 signing vectors (docs/rexsync-protocol.md §7). Read by BOTH the Rust client's tests (src-tauri/src/core/live_sync/sign.rs) and the plugin's (tests/signature-test.php), so a canonicalisation difference fails on both sides.",
+  "secret_b64u": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8",
+  "key_id": "k_0123abcd",
+  "nonce": "AAECAwQFBgcICQoLDA0ODw",
+  "ts": "1760054400",
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/wp-json/rexenv-sync/v1/db/export",
+      "query": [["table", "wp_options"], ["a", "1"]],
+      "body": "{\"tables\":[\"wp_options\"]}",
+      "body_sha256": "d1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131",
+      "canonical": "rexsync1\nPOST\n/wp-json/rexenv-sync/v1/db/export\na=1&table=wp_options\n1760054400\nAAECAwQFBgcICQoLDA0ODw\nd1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131",
+      "sig": "JX8A3PW2MeskG4FNSVjY6-PY8mJpanuQYn_dI5JQAyg"
+    },
+    {
+      "method": "GET",
+      "path": "/wp-json/rexenv-sync/v1/manifest",
+      "query": [],
+      "body": "",
+      "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "canonical": "rexsync1\nGET\n/wp-json/rexenv-sync/v1/manifest\n\n1760054400\nAAECAwQFBgcICQoLDA0ODw\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig": "oMvLYflG-gH5D-6C4AOTqQRIPeFpBS0YTe9Bl4aB9TA"
+    }
+  ],
+  "key": {
+    "text": "rexsync1:eyJ1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImsiOiJrXzAxMjNhYmNkIiwicyI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDgifQ",
+    "site_url": "https://example.com",
+    "key_id": "k_0123abcd"
+  },
+  "bad_keys": [
+    "rexsync2:eyJ1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9",
+    "rexsync1:not-base64!!",
+    "rexsync1:eyJ1IjoiaHR0cDovL2V4YW1wbGUuY29tIiwiayI6ImtfMDEyM2FiY2QiLCJzIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EeEFSRWhNVUZSWVhHQmthR3h3ZEhoOCJ9"
+  ]
+}

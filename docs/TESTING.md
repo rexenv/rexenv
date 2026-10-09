@@ -973,6 +973,13 @@ Mac's shape: a `/repo/…` path that is not absolute without a drive, and a `con
 whose separators differ. A tauri **mock-app example** needs the same manifest, or it dies at load
 with `0xC0000139`.
 
+**The live-sync signature is proven from both sides by one file** (10 Oct 2026, #824).
+`companion/rexenv-sync/tests/vectors.json` is read by the Rust lib tests (`core::live_sync::sign`,
+in the bar) and by the plugin's plain-PHP test. That one is outside the bar because the bar
+has no PHP of its own to run it with: `php companion/rexenv-sync/tests/signature-test.php`, with
+any 7.4+ PHP. The app's bundled ones, under app data `bin/php-*/php`, work. Run it after any
+change to either side.
+
 **A fixture that COMMITS must turn signing off** (`git -c commit.gpgsign=false`), found 10 Oct 2026.
 The Dell's global git config signs every commit through gpg. Over SSH there is no pinentry, so
 `worktree_git_check` died at its first fixture commit with `gpg: signing failed: Timeout`. That
