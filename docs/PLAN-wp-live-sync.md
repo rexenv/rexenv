@@ -279,7 +279,7 @@ Stages, each shippable on its own:
 | # | Task | Done when |
 |---|---|---|
 | L0 | Owner answers §11; plan updated | §11 answered |
-| L1 | Protocol spec (a new `rexsync-protocol` doc beside this plan): endpoints, signing, cursor, framing, versions; shared test vectors | reviewed; vectors file in repo |
+| L1 | Protocol spec: endpoints, signing, cursor, framing, versions; shared test vectors | ✓ DRAFT 10 Oct 2026 — `docs/rexsync-protocol.md`: the pairing key (JSON in base64url, `https://` only), the seven-line canonical string + HMAC-SHA256, the plugin's check order, the read/push routes with cursor bounds, the binary file frame with a terminator, exclusions, error codes, three vectors computed with Python's `hmac` (the vectors FILE lands with L3/L5, which read it). Reviewed by nobody yet |
 | L2 | `SecretStore` trait + macOS / Windows / Linux impls + words ×3 | round-trip proven on all three OSes; ledger #3 |
 | L3 | Plugin skeleton: pairing UI, key, HMAC verify, nonce cache, `/manifest` | PHPUnit incl. replay + skew refusal; ledger #4 |
 | L4 | Plugin read endpoints: DB export by cursor, file manifest, file read stream; exclusion of its own options | PHPUnit on the shared-host profile |
