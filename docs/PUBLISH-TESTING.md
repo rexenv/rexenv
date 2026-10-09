@@ -1385,7 +1385,7 @@ Scan: 10 rows, 4 ready.
 - **Hand-back row** in Settings — only appears for a BORROWED TLD, so it needs
   §F's takeover first.
 
-## E) Other live/GUI items from the review & publish
+## E) ✅ Other live/GUI items from the review & publish (run 9 Oct 2026; clean-Mac QA is SMOKE-TEST's)
 
 - **🟢 Clean-Mac release QA** — `docs/SMOKE-TEST.md` on a fresh Mac / user account. The
   broadest confidence check; especially worth it before sharing with your QA friend.
@@ -1418,6 +1418,29 @@ Scan: 10 rows, 4 ready.
     and/or Apache site created BEFORE this build, launch once. *Expected:* each existing override
     site keeps its **exact current backend port** (compare `lsof -iTCP -sTCP:LISTEN` on 8200–8399
     before/after, and the site still serves) — the migration preserves non-colliding ports.
+- **Run 9 Oct 2026** (dev Mac for the networked example; the 15.8 VM, 0.8.12, for the stack items):
+  - **B22/B23 ✅** (VM, MariaDB 12.3.2, a fixture datadir): one bootstrap SQL file made unreadable →
+    `rex service start mariadb` failed with "read bootstrap SQL … Permission denied" and left NO
+    datadir (no lying `mysql/` marker); file restored → the next start initialized cleanly and ran.
+  - **B4 ✅** (dev Mac, `repo_clone_check`, new leg): `git-fixtures/submodule` (two submodules)
+    cloned with exit 0, `basic/` and `itself/` present and EMPTY.
+  - **B24 ✅** (VM): `rex wp smoke1.rex plugin install hello-dolly --activate`, list, deactivate,
+    delete; `theme list` — every wp-cli call parsed as before.
+  - **B20 reap-guard ✅** (VM, two FrankenPHP fixture sites on 8200/8201): b28b's recorded port set
+    to 8200 in SQLite, its backend restart forced → "can't start FrankenPHP for "b28b.rex": its
+    backend port (8200) collides with "b28a.rex"…", and b28a's backend (pid 45315) kept serving.
+  - **B28 ✅** (VM): the app quit and relaunched (both override backends ADOPTED, ports and pids
+    identical), then `rex site env b28a.rex set FOO=b28` → returned in 1 s, a new backend pid
+    served `FOO=b28` — no resolve/download stall.
+  - **B29 ✅** (VM, MySQL adopted after a relaunch): (a) `kill -STOP` for 25 s → still "running"
+    on the same pid, no health event; (b) `kill -9` → "[restarted] MySQL: process was dead (port
+    closed); respawned" 21 s later (~2 ticks), sites still 200.
+  - **B7 ✅** (dev Mac, `repo_clone_check`, new leg): a probe of `ssh://git@10.255.255.1/…` (a
+    black hole) errored at 30.1 s ("timed out after 30s") and no process for that host survived.
+  - **B20 backfill** — the migration ran once, long ago; what can still be checked is that the
+    recorded ports survive: both fixture override sites kept their exact ports (and pids)
+    across a quit + relaunch. Treated as ✅ for what it can still mean.
+  - **Clean-Mac release QA** is `docs/SMOKE-TEST.md`'s own row (Release 5.4 in TODO), not re-run here.
 - **🟢 B32 signing/notarization** — N/A for the ad-hoc tap path you've chosen. If you ever
   want a Gatekeeper-clean, no-`xattr`-needed distribution, `docs/SIGNING.md` has the exact
   steps (one config change + notarization env vars).
@@ -1750,7 +1773,7 @@ PATH, use DBngin's bundled one.)
 
 ---
 
-## L) 🟢 Phase-A never-resolves spot-check (ledger #19) — wire-level, one-off
+## L) ✅ Phase-A never-resolves spot-check (ledger #19) — wire-level, one-off (9 Oct 2026, reqwest 0.12.28)
 
 **Why:** `phase_a_never_plans_a_system_dns_query` pins the DECISION layer (Phase A
 builds no system-DNS plan), but "reqwest's `.resolve()` pre-pin never falls back to
@@ -1768,7 +1791,13 @@ sudo tcpdump -i any -l -n 'udp port 53' | grep -i trycloudflare
 **Expected:** ZERO trycloudflare lines during Phase A (the probe phase before the
 gate opens). Lines appearing only AFTER the badge settles are Phase B/browser
 traffic and fine. Any hit during Phase A = the `.resolve()` pin leaked — file it.
-Result: ____ (date, reqwest version).
+Result: **✅ 9 Oct 2026, reqwest 0.12.28, the 15.8 VM.** One refinement the run needed: that
+machine's system resolver IS `1.1.1.1`, so the destination cannot tell rexenv's own direct
+`1.1.1.1` lookup (Phase A's design) from a getaddrinfo fallback. `tcpdump -k` (PKTAP process
+metadata) can: on macOS getaddrinfo goes through **mDNSResponder**. Over the first 40 s of a
+share, the tunnel host was queried twice, both by `proc rexenv` straight to 1.1.1.1, and
+**zero** times by mDNSResponder. Use `-k` on any re-run:
+`sudo tcpdump -k -i any -l -n 'udp port 53'`.
 
 ---
 

@@ -781,3 +781,10 @@
   the site's settled import job and the card re-reads; a ThisSite refusal is `nothingToDo`, shown
   neutral without Retry. L0 + TEXT + WebKit `card-thissite`, all plant-proven.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **PUBLISH-TESTING §E / §L** — ✓ 9 Oct 2026: §L on the 15.8 VM (reqwest 0.12.28, zero mDNSResponder queries during Phase A, ledger #19 → ✅); §E's B22/B23, B4, B24, B20 (guard + recorded ports), B28, B29, B7 all ✅ — record in PUBLISH-TESTING §E; `repo_clone_check` grew the B4 and B7 legs. Clean-Mac QA stays SMOKE-TEST's row.
+

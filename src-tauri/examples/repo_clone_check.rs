@@ -16,6 +16,11 @@ use std::time::{Duration, Instant};
 const SMALL_REPO: &str = "https://github.com/octocat/Hello-World.git";
 const BIG_REPO: &str = "https://github.com/WordPress/gutenberg.git"; // long transfer → cancellable
 const MISSING_REPO: &str = "https://github.com/rexenv-fixtures/definitely-not-here-xyz.git";
+/// Two submodules (`basic`, `itself`), 128 KB — go-git's own fixture (PUBLISH-TESTING §E, B4).
+const SUBMODULE_REPO: &str = "https://github.com/git-fixtures/submodule.git";
+/// A non-routable address: the TCP SYN is never answered, so ssh hangs until something kills it
+/// (PUBLISH-TESTING §E, B7). Port 22 on 10.255.255.1 never reaches a host.
+const BLACKHOLE_REMOTE: &str = "ssh://git@10.255.255.1/rexenv/never.git";
 
 fn ps_group(pgid: u32) -> String {
     let out = std::process::Command::new("ps")
@@ -120,6 +125,46 @@ fn main() {
                 failures.push("collision guard DELETED existing content".into());
             }
         }
+    }
+
+    // 4b. B4 — a repo WITH submodules clones clean: exit 0, the submodule folders exist and are
+    //     empty (`--no-recurse-submodules`; init is a deferred, explicit step). Before B4 the
+    //     clone of such a repo errored.
+    let sub_dest = scratch.join("with-submodules");
+    print!("clone {SUBMODULE_REPO} … ");
+    match repo::clone_repo(plat.supervisor(), &git, &env, SUBMODULE_REPO, None, &sub_dest, &repo::CancelToken::new(), &mut |_| {}) {
+        Ok(()) => {
+            let empty = |d: &str| {
+                std::fs::read_dir(sub_dest.join(d)).map(|mut r| r.next().is_none()).unwrap_or(false)
+            };
+            let (basic, itself) = (empty("basic"), empty("itself"));
+            println!("ok: .gitmodules = {}, basic/ empty = {basic}, itself/ empty = {itself}", sub_dest.join(".gitmodules").is_file());
+            if !(basic && itself) {
+                failures.push("a submodule repo cloned with its submodule folders filled — recursion is on".into());
+            }
+        }
+        Err(e) => failures.push(format!("a repo with submodules failed to clone: {e}")),
+    }
+
+    // 4c. B7 — a probe against a black-holed ssh remote returns an error within the cap, and the
+    //     group kill takes ssh with it: no ssh for that host survives.
+    print!("probe {BLACKHOLE_REMOTE} (black hole) … ");
+    let t = Instant::now();
+    let res = repo::probe_remote(plat.supervisor(), &git, &env, BLACKHOLE_REMOTE);
+    let took = t.elapsed();
+    std::thread::sleep(Duration::from_millis(300));
+    let orphans = std::process::Command::new("pgrep").args(["-fl", "10.255.255.1"]).output().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
+    match res {
+        Ok(_) => failures.push("the black-holed remote probed Ok?!".into()),
+        Err(e) => println!("errored in {:.1}s (good): {e}", took.as_secs_f32()),
+    }
+    if took > Duration::from_secs(35) {
+        failures.push(format!("the black-holed probe took {:.1}s — past the 30s cap", took.as_secs_f32()));
+    }
+    if orphans.is_empty() {
+        println!("  no process for 10.255.255.1 survived (good)");
+    } else {
+        failures.push(format!("ORPHANED after the probe:\n{orphans}"));
     }
 
     // 5. THE cancel test: big clone, cancel mid-transfer, prove the group died.

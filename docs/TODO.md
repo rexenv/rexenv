@@ -1634,12 +1634,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   chips + streamed installs, New Site streamed provisioning card, **Upload zip
   through the real native file dialog** (SMOKE §WordPress Manager — L0 proves
   the gate, L1 the install, L2 the card; nothing can drive the picker).
-- [ ] **PUBLISH-TESTING §E / §L** — 🟢 nice-to-haves (B22/B23 datadir recovery,
-  B4 submodule clone, B24 wp-cli `--`, B20/B28/B29/B7 runtime wiring; §L Phase-A
-  tcpdump one-off, re-run per reqwest bump).
-
-## Parked (deliberate — needs explicit go; don't pick up silently)
-
 - [ ] **Windows: the Sites takeback banner names Valet/Herd and a "resolver file"** — `Sites.tsx`'s
   `ResolverDriftBanner` reads "Valet or Herd took <tld>'s resolver file back". **Measured 16 Sep 2026,
   and deliberately NOT fixed:** `drifted_takeovers` filters `list_resolver_takeovers` — only TLDs
