@@ -1481,6 +1481,13 @@ honest footer —
   7. `serve`.
 
   Each step is skipped on Retry once its result is on disk.
+- **Deleting a worktree child goes through git first** (#820, W6). `delete_site_owned`'s
+  step 0 is `commands::worktree::release_for_delete`. It runs `git worktree remove` from
+  the PARENT's repository, never `rm`. While `git status --porcelain` lists anything, the
+  delete is refused with those files named. Only then does the preflight run, and the
+  ordinary delete (tunnel, database, row, docroot). git refuses a dirty worktree itself
+  too, so the pre-check exists to name the files, and git is the second wall. The branch
+  is never deleted. An adopted worktree (§2.7) is never git-removed.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

@@ -11,7 +11,8 @@ use crate::commands::site_provision::{self, ProvisionJobs, SiteProvisionState};
 use crate::core::{self, worktree};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{MultisiteMode, NewSite, SiteType, WorktreeShape};
+use crate::state::models::{MultisiteMode, NewSite, Site, SiteType, WorktreeShape};
+use std::path::PathBuf;
 use crate::state::store;
 use serde::Deserialize;
 use tauri::{AppHandle, State};
@@ -180,4 +181,72 @@ pub async fn worktree_create<R: tauri::Runtime>(
     request: WorktreeRequest,
 ) -> Result<SiteProvisionState> {
     start(&app, &state, &jobs, request)
+}
+
+/// Release a worktree child's checkout through git, before its site is
+/// deleted — the ONE path that deletes a worktree (ledger #814: no
+/// `remove_dir_all` may). Called by `commands::sites::delete_site_owned`
+/// before anything destructive; a refusal (uncommitted work) therefore leaves
+/// the site, its database and its folder exactly as they were.
+///
+/// No-op for a site that is not a worktree child, for an ADOPTED one (§2.7:
+/// the tool that made it owns its lifecycle — rexenv only stops serving it),
+/// and for one whose worktree was never added or is already gone (a job that
+/// failed before the `worktree` phase). `force` is the user's "remove anyway".
+/// The BRANCH is never deleted.
+pub(crate) fn release_for_delete(state: &AppState, site: &Site, force: bool) -> Result<()> {
+    let (wt, parent) = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let Some(wt) = store::get_site_worktree(&conn, &site.id)? else { return Ok(()) };
+        let parent = store::get_site(&conn, &wt.parent_id)?;
+        (wt, parent)
+    };
+    if wt.adopted {
+        return Ok(());
+    }
+    let path = PathBuf::from(&wt.worktree_path);
+    if !path.join(".git").is_file() {
+        return Ok(());
+    }
+    let parent = parent.ok_or_else(|| {
+        Error::Other(format!("{}'s parent site is gone — remove {} with git by hand", site.domain, path.display()))
+    })?;
+    let repo_dir = match (wt.shape, wt.asset_kind.as_deref().and_then(worktree::AssetKind::parse_db), wt.asset_dir.as_deref()) {
+        (Some(WorktreeShape::Asset), Some(kind), Some(dir)) => {
+            parent.served_root().join(worktree::asset_rel(parent.content_dir_rel(), kind, dir)?)
+        }
+        (Some(WorktreeShape::Site), _, _) => PathBuf::from(&parent.path),
+        _ => return Err(Error::Other(format!("{}'s worktree record is incomplete", site.domain))),
+    };
+    let env = state.platform.shell().login_shell_env()?;
+    let git = core::devtools::resolve_git(state.platform.as_ref(), &env)?;
+    worktree::remove(
+        state.platform.supervisor(),
+        &git.path,
+        &env,
+        &repo_dir,
+        &path,
+        force,
+        &core::repo::CancelToken::new(),
+        &mut |l| log::info!("worktree: {l}"),
+    )
+}
+
+/// `worktree_remove` — delete a worktree child: its checkout through git
+/// (refused while it holds uncommitted work, unless `force`), then the site
+/// exactly as Delete does.
+#[tauri::command]
+pub async fn worktree_remove(
+    state: State<'_, AppState>,
+    tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    id: String,
+    force: bool,
+) -> Result<bool> {
+    let site = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        store::get_site(&conn, &id)?
+    };
+    let Some(site) = site else { return Ok(false) };
+    release_for_delete(&state, &site, force)?;
+    crate::commands::sites::delete_site_owned(&state, &tunnels, id).await
 }

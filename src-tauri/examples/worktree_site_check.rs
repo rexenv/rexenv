@@ -21,7 +21,12 @@
 //!      (`feature-probe.feature-probe.…`, ledger #818's real-wp-cli leg), while
 //!      the parent's still read the parent;
 //!   5. deleting the parent is refused (it has a child, #815), and deleting the
-//!      child is refused (its folder holds a worktree, #814) — before anything.
+//!      child is refused (its folder holds a worktree, #814) — before anything;
+//!   6. Delete on a child with an UNCOMMITTED file is refused, naming the file —
+//!      site, database and file untouched (W6);
+//!   7. Delete on a clean child: git removes the worktree, the folder and the
+//!      child's database go, and the BRANCH is kept;
+//!   8. the parent then deletes.
 //!
 //! Edge safety: the fixture manager adopts the database tier only, so the
 //! serve phase is SKIPPED and the real edge is never touched (the
@@ -78,6 +83,7 @@ async fn main() -> std::process::ExitCode {
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());
     app.manage(site_provision::ProvisionJobs::default());
+    app.manage(commands::tunnels::Tunnels::default());
     app.manage(AppState::new(conn, plat, ca));
     let handle = app.handle().clone();
     let _engines = common::engines_as_found();
@@ -278,6 +284,70 @@ async fn main() -> std::process::ExitCode {
             }
             (p, c) => failures.push(format!("5: parent {p:?} / child {c:?}")),
         }
+    }
+
+    // ── 6–8. removal through Delete (W6) ────────────────────────────────────
+    let delete = |id: String| {
+        let handle = handle.clone();
+        async move {
+            commands::sites::delete_site(
+                handle.state::<AppState>(),
+                handle.state::<commands::tunnels::Tunnels>(),
+                id,
+            )
+            .await
+        }
+    };
+    let db_exists = |name: &str| {
+        query(&mysql, "mysql", &format!("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='{name}'"))
+            == name
+    };
+    let stray = child_plugin.join("uncommitted.php");
+    std::fs::write(&stray, "<?php // work in progress").unwrap();
+    match delete(child.id.clone()).await {
+        Err(e) if e.to_string().contains("uncommitted.php")
+            && site_of(&child.id).is_some()
+            && db_exists(&child.db_name)
+            && stray.exists() =>
+        {
+            println!("6 ok — a dirty worktree refuses Delete, naming the file; site, DB and file intact")
+        }
+        other => failures.push(format!("6: dirty delete gave {other:?}")),
+    }
+    std::fs::remove_file(&stray).unwrap();
+    match delete(child.id.clone()).await {
+        Ok(true) => {
+            let wts = String::from_utf8_lossy(
+                &Command::new("git").args(["worktree", "list", "--porcelain"]).current_dir(&plugin).output().unwrap().stdout,
+            )
+            .matches("worktree ")
+            .count();
+            let branch = String::from_utf8_lossy(
+                &Command::new("git").args(["branch", "--list", "feature/probe"]).current_dir(&plugin).output().unwrap().stdout,
+            )
+            .trim()
+            .to_string();
+            if site_of(&child.id).is_none()
+                && !child.served_root().exists()
+                && !db_exists(&child.db_name)
+                && wts == 1
+                && branch.contains("feature/probe")
+            {
+                println!("7 ok — a clean worktree child deletes: folder, DB and worktree gone; the branch kept");
+            } else {
+                failures.push(format!(
+                    "7: row={} folder={} db={} worktrees={wts} branch={branch:?}",
+                    site_of(&child.id).is_some(),
+                    child.served_root().exists(),
+                    db_exists(&child.db_name)
+                ));
+            }
+        }
+        other => failures.push(format!("7: clean delete gave {other:?}")),
+    }
+    match delete(parent.id.clone()).await {
+        Ok(true) if site_of(&parent.id).is_none() => println!("8 ok — with its child gone, the parent deletes"),
+        other => failures.push(format!("8: parent delete gave {other:?}")),
     }
 
     finish(&handle, &mysql, &plugin, &created, &db_file, failures)

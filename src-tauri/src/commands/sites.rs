@@ -1693,15 +1693,20 @@ pub(crate) async fn delete_site_owned(
 ) -> Result<bool> {
     let site = {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
-        let site = core::sites::get(&conn, &id)?;
-        // 0) Refusals come BEFORE the first destructive step — a parent with
-        //    worktree children, a docroot holding a worktree (ledger #814, #815).
-        if let Some(site) = &site {
-            core::sites::delete_preflight(&conn, state.platform.as_ref(), site)?;
-        }
-        site
+        core::sites::get(&conn, &id)?
     };
     let Some(site) = site else { return Ok(false) };
+    // 0) Refusals come BEFORE the first destructive step. A worktree child's
+    //    checkout goes first, through git — the one path that deletes a
+    //    worktree, refused while it holds uncommitted work (W6) — with the
+    //    database lock NOT held across the git run. Then the preflight: a
+    //    parent with worktree children, a docroot still holding a worktree
+    //    (ledger #814, #815).
+    crate::commands::worktree::release_for_delete(state, &site, false)?;
+    {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        core::sites::delete_preflight(&conn, state.platform.as_ref(), &site)?;
+    }
 
     // 1) A deleted site must not stay publicly shared: kill its live tunnel
     //    (registry keyed by domain). Its mu-plugins do NOT simply "go away

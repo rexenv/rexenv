@@ -584,6 +584,70 @@ pub fn defines_constant(php: &str, name: &str) -> bool {
     })
 }
 
+// ── Removing a worktree (W6, §2.6) ─────────────────────────────────────────────
+
+/// What `git status --porcelain` lists in a worktree — tracked changes and
+/// untracked files, NOT ignored ones (`vendor/`, a build) — the work a removal
+/// would destroy. Empty = clean.
+pub fn uncommitted(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    worktree: &Path,
+) -> Result<Vec<String>> {
+    repo::run_git_lines(supervisor, git, env, worktree, &["status", "--porcelain", "--untracked-files=all"])
+}
+
+/// The refusal a dirty worktree gets — names the folder, the first files and
+/// the two ways out. Pure.
+pub fn dirty_refusal(worktree: &Path, files: &[String]) -> String {
+    const SHOWN: usize = 8;
+    let list: Vec<&str> = files.iter().take(SHOWN).map(String::as_str).collect();
+    let more = files.len().saturating_sub(SHOWN);
+    let tail = if more > 0 { format!("\n  … and {more} more") } else { String::new() };
+    format!(
+        "{} has {} uncommitted change{} — removing it would lose {}:\n  {}{tail}\n\
+         Commit or stash them (the branch itself is kept either way), or remove it anyway.",
+        worktree.display(),
+        files.len(),
+        if files.len() == 1 { "" } else { "s" },
+        if files.len() == 1 { "it" } else { "them" },
+        list.join("\n  "),
+    )
+}
+
+/// `git worktree remove` — git deletes the folder. Run from the REPOSITORY the
+/// worktree belongs to (`repo_dir`), never from inside the worktree itself.
+/// Without `force`, git refuses a worktree with changes; this checks first and
+/// refuses with [`dirty_refusal`]'s list, so the user sees the files, not
+/// git's one-line refusal. `force` is the user's "remove anyway" — and still
+/// only ever removes the worktree, never the branch.
+#[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (clone_repo precedent)
+pub fn remove(
+    supervisor: &dyn ProcessSupervisor,
+    git: &Path,
+    env: &[(String, String)],
+    repo_dir: &Path,
+    worktree: &Path,
+    force: bool,
+    cancel: &CancelToken,
+    on_line: &mut dyn FnMut(&str),
+) -> Result<()> {
+    if !force {
+        let dirty = uncommitted(supervisor, git, env, worktree)?;
+        if !dirty.is_empty() {
+            return Err(Error::Other(dirty_refusal(worktree, &dirty)));
+        }
+    }
+    let path = worktree.to_string_lossy().into_owned();
+    let mut args: Vec<String> = vec!["worktree".into(), "remove".into()];
+    if force {
+        args.push("--force".into());
+    }
+    args.push(path);
+    repo::run_git_op(supervisor, git, env, repo_dir, "worktree remove", &args, cancel, on_line)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -885,5 +949,16 @@ mod tests {
         assert!(defines_constant("define ( 'X' , 1 );", "X"));
         assert!(!defines_constant("# define('X', 1);", "X"));
         assert!(!defines_constant("define('XY', 1);", "X"), "a longer name is a different constant");
+    }
+
+    #[test]
+    fn a_dirty_worktree_is_refused_with_its_files_named() {
+        let files: Vec<String> = (1..=10).map(|i| format!("?? f{i}.php")).collect();
+        let m = dirty_refusal(Path::new("/s/x/wp-content/plugins/p"), &files);
+        assert!(m.contains("/s/x/wp-content/plugins/p") && m.contains("10 uncommitted changes"), "{m}");
+        assert!(m.contains("?? f8.php") && !m.contains("?? f9.php") && m.contains("and 2 more"), "{m}");
+        assert!(m.contains("branch itself is kept"), "{m}");
+        let one = dirty_refusal(Path::new("/w"), &[" M a.php".to_string()]);
+        assert!(one.contains("1 uncommitted change ") && one.contains("lose it"), "{one}");
     }
 }
