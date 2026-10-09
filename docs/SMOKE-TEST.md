@@ -50,8 +50,6 @@ recorded" where nothing was found).
 - *Tunnels:* the stopped-share strip and stop page, sharing a stopped site, the live filter
   (#371), an override site's content through the tunnel (◐), the refusals (stopped server, no
   recorded backend port, "never busy"), the orphan WARN.
-- *Partial stack:* a site created or imported while only the boot edge runs serves without a
-  Restart (#806).
 - *Menu bar / links / Settings / terminal:* the dock tile going away (◐), the 30 s hold (#437),
   routes from a closed window, services up after a real login, the agent after a real login
   (◐), a login launch with setup
@@ -1163,7 +1161,7 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       print the counts. ✓ 18 Sep 2026 (same VM and build).
 
 ## A site added while the stack is Partial (edge adopted at boot) — #806
-- [ ] Reboot the Mac with sites set to start at login OFF, so only the edge daemon comes up and
+- [x] Reboot the Mac with sites set to start at login OFF, so only the edge daemon comes up and
       the footer reads **Partial 1/N**. Create a site (or import one from Valet/Herd) — its job
       runs Start all — and `curl -sI https://<new-site>/` answers **200 with no Restart**.
       **Tell:** `curl` exit 35 / TLS alert 80 and `curl -s --unix-socket <app-data>/config/caddy-admin.sock
@@ -1171,6 +1169,8 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       it — the edge kept its boot config. **Open:** the bug was SEEN on the 15.8 VM with 0.8.12
       (PUBLISH-TESTING §F step 5, 9 Oct 2026); the fixed build has not run it yet. Common code —
       Windows and Linux take the same path (their sections need no extra row).
+      ✓ 9 Oct 2026 (15.8 VM, release build of `ac92ff52`): the Partial state made by stopping all
+      but the root edge and relaunching; `rex site create fix806.rex` → 200 without a restart.
 
 ## The Sites list's two filters
 - [x] Open Sites: it opens on **All** — every site visible on arrival — and only a tab you

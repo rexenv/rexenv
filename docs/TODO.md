@@ -1582,14 +1582,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (Added 9 Oct 2026, also open in that section: the relauncher's record, ledger #768, and Start all
   over a running edge adding no "Background Items Added" card, ledger #772.)
 - [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
-- [ ] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only. **Ran 9 Oct 2026
-  on the 15.8 VM (0.8.12, real Valet 4):** steps 1–4, 6, 7a/b/d, 8b, 9, 10 ✅; open for step 7
-  (re-take → Remove system changes restores theirs) and the re-run of steps 5 and 7c on a build
-  carrying the three fixes the run found — #806 (an import in a Partial stack never reached the
-  edge), #807 (a re-take on Import hid the next loss's banner), #808 (Settings called a reclaimed
-  `.test` "rexenv answers this"). Record: PUBLISH-TESTING §F "Run 9 Oct 2026".
-- [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass (only ever
-  type-checked; Stage 1's status line now says so). **Grew step 9 on 8 Aug**: the
+- [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass. **Steps 1–3, 5–8 ✅ on the 15.8 VM,
+  9 Oct 2026** (record in §G; found #809, fixed); open: 8's delete + the databases-on pass, 9's
+  multi-GB case, 10 on a build with #809, 11–13. Was: only ever
+  type-checked; Stage 1's status line now says so. **Grew step 9 on 8 Aug**: the
   batch progress card (`valet-import://progress`) — its arithmetic is L0-proven, but
   that `detail` really is the child job's own label and that the bar FREEZES rather
   than rolls back on a mid-batch failure are ✅ L2 since 2 Sep 2026 (ledger #243,

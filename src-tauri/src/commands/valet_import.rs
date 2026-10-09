@@ -921,6 +921,13 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // Rows the queue already rejected are terminal — the bar starts where the
     // real work does, not at zero.
     batch.done = outcomes.len();
+    // ...and the SCREEN hears it now, not never: rows settle only from these events, so a
+    // rejection that was counted but not emitted read "waiting" for the whole run and fell back
+    // to the fresh scan's status afterwards — the 15.8 VM's §G run, 9 Oct 2026 (a folder moved
+    // after the scan: "1 of 2 done" over a row still "waiting"; ledger #809).
+    for row in &outcomes {
+        let _ = app.emit(import_event(), row.clone());
+    }
     for tld in &tlds {
         batch.tick("resolvers", 0, None, Some(format!("making .{tld} resolve to rexenv")), 0);
         match core::dns::resolver_owner(
@@ -1633,6 +1640,17 @@ mod unported_scan_tests {
 
 #[cfg(test)]
 mod tests {
+    /// #809 — TEXT: every row the queue rejects reaches the screen before the work starts.
+    /// Behaviour needs an `AppHandle`; the 15.8 VM run is the L1.
+    #[test]
+    fn queue_time_rejections_are_emitted_before_the_work() {
+        let src = crate::core::copy_scan::production_source(include_str!("valet_import.rs"));
+        let body = &src[src.find("batch.done = outcomes.len();").expect("the queue's tally")..];
+        let emit = body.find("for row in &outcomes").expect("the rejected rows are emitted");
+        let work = body.find("batch.tick(").expect("the first progress tick");
+        assert!(emit < work, "rejected rows must be emitted before the batch starts working");
+    }
+
     use super::*;
 
     /// The fault this replaced: ONE boolean answered two situations, and the

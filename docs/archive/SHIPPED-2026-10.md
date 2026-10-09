@@ -720,3 +720,14 @@
   before 18 Sep; all six examples wanted exactly that (serve skipped, status ok). TEXT guard plant-proven;
   `git_site_provision_check` ALL PASS on the dev Mac, where it had failed on the user's PHP pools.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **PUBLISH-TESTING §F** — resolver takeover/hand-back/drift: clean-VM only. ✓ 9 Oct 2026 on
+  the 15.8 VM with a real Valet 4 — every step, the fixes re-run on a release build of `ac92ff52`;
+  found and fixed #806 (an import in a Partial stack never reached the edge), #807 (a re-take on
+  Import hid the next loss's banner), #808 (Settings called a reclaimed `.test` "rexenv answers
+  this"). Record: PUBLISH-TESTING §F.
+

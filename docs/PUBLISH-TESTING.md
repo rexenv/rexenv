@@ -1085,7 +1085,7 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 
 ---
 
-## F) 🚧 Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026; step 7 and the fixes' re-run open)
+## F) ✅ Resolver TAKEOVER + RESTORE — live-run 9 Oct 2026 on the 15.8 VM (found and fixed #806–#808)
 
 **Why this is here:** a machine that has never run Valet/Herd resolver setup has no foreign
 `/etc/resolver/test`, so the foreign-file paths of the Valet/Herd resolver takeover have never
@@ -1179,6 +1179,16 @@ the admin prompt answered by keystroke.
   the other tool will need to put its own back." (it does not name `valet install`; the per-TLD
   hand-back toast does). `valet install` restored theirs (`cf658391…`).
 - 10 ✅ `/etc/resolver/rex` unchanged through takeover, hand-back and drift; nothing of Valet's removed.
+
+**Re-run the same day on a release build of `ac92ff52` (the three fixes), same VM:**
+- 5 ✅ the Partial state reproduced on purpose (stack stopped but the root edge, app relaunched →
+  only Caddy running): `rex site create fix806.rex` → 200 with no restart; `noconsent.test`
+  imported → 200 serving their `index.php`; `pin82`, `larafix` (serving `public/`), `pin72` → 200.
+- 7c ✅ re-taken on Import with no Sites visit, `valet install` again, relaunch → the banner is
+  back (#807). Settings → DNS & SSL now reads "Valet or Herd took this back…" (#808).
+- 7 ✅ re-taken, then Remove system changes: `/etc/resolver/test` back to `cf658391…` (root,
+  644), backup and row gone, `.rex` removed; notice "Handed back to Valet/Herd: .test".
+**§F is fully run.**
 
 **Rollback — if the takeover goes wrong or you stop halfway (keep this beside the run).**
 The takeover is **record-before-write** (`core/dns.rs` `take_over_resolver`): it writes the
@@ -1318,6 +1328,30 @@ exactly with the scan, not that any machine matches the original pass.
     dumps) — only the borrowed-resolver hand-back rows, which are DNS. Owner, 12 Sep
     2026: import was a card inside DNS & SSL, and it is not part of DNS & SSL.
 13. **Banner dismissal** — Dismiss on Sites, reload the app, it stays dismissed.
+
+**Run 9 Oct 2026 — the 15.8 VM, a release build of `ac92ff52`, real Valet 4** with fixtures
+shaped like a real machine: parked `~/ValetSites` (`pin84` php@8.4 marker, `pin82` bare `82`,
+`pin72` php@7.2, `driverfix` with a `LocalValetDriver.php`, `larafix` Laravel), leftover confs
+`oldsite.test` and `legacy.dev`, a dangling `Sites/ghost` link, an empty parked `~/EmptyParked`.
+Scan: 10 rows, 4 ready.
+- 1 ✅ 10 found · 4 ready, one Valet card with "parked folder /Users/linkonvm/EmptyParked has no
+  sites in it" · 2 ✅ `ghost.test` "can't import — its folder is missing (/Users/linkonvm/GoneProject)",
+  box disabled · 3 ✅ `oldsite.test` and `legacy.dev` (a TLD the config never names) "leftover
+  config with no site folder" · 4 — no Herd on the VM (dedupe not exercisable) · 5 ✅ both marker
+  formats (`8.4`, `8.2`); `pin72` amber "PHP 7.2 isn't one rexenv ships — choose a version", box
+  disabled until 8.3 is picked, then "Imports on PHP 8.3 instead of 7.2 — check the site works on
+  it" (served `pin72 on 8.3.32`) · 6 ✅ `larafix` "(serving public/)", `driverfix` amber naming
+  the driver · 7 ✅ select-all ticked only the 4 ready ("4 of 4 ready selected"); Rescan dropped a
+  moved folder's row and found it back.
+- 8 ✅ one site (`noconsent.test`), databases unticked: one prompt (the takeover's), the row went
+  `imported`, the **external** badge on Sites, `https://noconsent.test` 200 with THEIR file.
+- 9 ◐ the card reported real phases ("Getting PHP ready · getting PHP 8.2 ready" with the
+  download chip; "Importing pin72.test · starting to serve"), unsettled rows read `waiting` /
+  `importing…`. 10 **❌→fixed (#809):** a folder moved after the scan — the card read "site 1 · 1 of
+  2 done" over a row still `waiting`, and afterwards the row fell back to the rescan's "leftover
+  config" with no word that it was skipped. The rejection was counted but never emitted.
+- Open: 8's delete-leaves-the-folder, the databases-on pass, 9's multi-GB case, 10's re-run on a
+  build with #809, 11 cancel, 12, 13.
 
 **CLEAN-VM only** (cannot be exercised here):
 - The **empty state** (no Valet or Herd at all) — the "No Valet or Herd sites
@@ -1802,7 +1836,7 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
-| F | Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026 on the 15.8 VM — found #806–#808; step 7 + the fixes' re-run open) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| F | Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026 on the 15.8 VM — found and fixed #806–#808) | ✅ **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
 | N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ✅ passed 13 Sep 2026 (owner-run, `multisite.local`) |
