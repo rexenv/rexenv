@@ -465,14 +465,16 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   runbook ready in `docs/SIGNING.md`.
 ## Phase 4+ (next era)
 
-- [ ] **Git worktree workflow** — one branch = one running linked site (`<parent>-<branch>.rex`, own DB
-  cloned from the parent, removal only through `git worktree remove`), plus serving worktrees that agents
-  (Claude Code, Cursor…) made outside rexenv. Plan + tasks W0–W10: `docs/PLAN-git-worktrees.md`.
-  Blocked on W0: the owner's answers to its §9.
+- [ ] **Git worktree workflow** — one branch = one running site at `feature-x.shop.rex` (falling back to
+  `shop-feature-x.rex`), with its own DB cloned from the parent and removal only through `git worktree
+  remove`. It also serves worktrees that agents (Claude Code, Cursor…) made outside rexenv. The WP
+  plugin/theme-repo shape comes first (owner, 9 Oct 2026). Plan + tasks W0–W11:
+  `docs/PLAN-git-worktrees.md`; W0 answered, **W1 next**.
 - [ ] **WordPress live ↔ local sync** — a companion plugin on the live site + signed HTTPS from rexenv:
   clone a live site locally, Pull, Push with backup + Roll back, per-table conflict choice. Needs a new
   `SecretStore` platform trait (all three OSes). Plan + tasks L0–L15: `docs/PLAN-wp-live-sync.md`.
-  Blocked on L0: the owner's answers to its §11.
+  Owner answered 9 Oct 2026: in-app zip only, and a push always needs a human click (never MCP). §11 Q2–Q7
+  are still open; L1 (the protocol spec) can start before them.
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"

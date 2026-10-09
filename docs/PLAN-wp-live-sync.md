@@ -2,7 +2,9 @@
 
 **Status:** PLANNED 9 Oct 2026 — not started. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
-recommendation waiting for the owner's yes (the open questions are §11). Planned against
+recommendation waiting for the owner's yes (the open questions are §11). **Owner answered
+9 Oct 2026:** the plugin ships as an in-app zip only for v1, and a push always needs a
+human click (never MCP). See §11. Planned against
 `00bc4dd1` (v0.8.13). Task list: §10, mirrored as one row in `docs/TODO.md`.
 
 > **The one-sentence design:** a small **companion plugin** on the live site answers
@@ -172,8 +174,9 @@ Multisite: **refused in v1** with the reason (domain mapping, per-blog uploads);
   back, Disconnect. History of syncs.
 - **CLI**: `rex live <domain> status | pull [--db-only|--files-only] | push --confirm <live-host> | rollback | disconnect`.
 - **MCP**: `live` action — `status`/`diff` (Read), `pull` (Full — overwrites the local
-  site), `push`/`rollback`: **not exposed in v1** (a push is the only operation in rexenv
-  that can damage something outside this machine; it stays a human click + typed domain).
+  site), `push`/`rollback`: **never exposed** (owner, 9 Oct 2026). A push is the only operation in
+  rexenv that can damage something outside this machine, so it stays a human click plus a
+  typed domain.
 
 ## 3. Three platforms (`docs/PLATFORMS.md` §4)
 
@@ -221,7 +224,8 @@ keychain" / "Windows Credential Manager" / "your keyring").
 5. A pull never deletes a local file that was not in the previous base; neither side ever
    touches a path outside `wp-content/` (traversal-checked on both ends).
 6. A failed pull leaves the local site exactly as it was (old DB kept until verify).
-7. Push / rollback are not reachable through MCP in v1.
+7. Push / rollback are not reachable through MCP — owner ruling 9 Oct 2026, not a v1 limit; a
+   test asserts the MCP tool list has no push/rollback action.
 
 ## 6. Out of scope (v1)
 
@@ -293,8 +297,9 @@ Stages, each shippable on its own:
 
 ## 11. Open questions for the owner
 
-1. **Plugin distribution** — in-app zip only for v1 (recommended), or wordpress.org from
-   the start (weeks of review, but users find it by search)?
+1. **Plugin distribution** — ANSWERED 9 Oct 2026: **in-app zip only for v1**. wordpress.org
+   is a later decision. The plugin is still written to its guidelines (GPL, no
+   phoning home, nonce/capability checks), so that door stays open.
 2. **Name** — "rexenv Sync" for the plugin / "Live" for the tab — fine?
 3. **Huge uploads** — offer "skip uploads older than N months" / "uploads on demand"
    (fetch a missing image from live the first time it is requested locally, via a local
@@ -305,3 +310,6 @@ Stages, each shippable on its own:
 6. **Anonymise on pull** — wanted (privacy for agencies handling client data), or later?
 7. **Push scope default** — whole DB minus live-owned tables (recommended), or files-only
    by default with DB as an explicit opt-in (safer, less useful)?
+8. **MCP push** — ANSWERED 9 Oct 2026: **a push needs a human click.** Push and Roll back
+   are never MCP actions, at any dial level (invariant #7). That holds even after v1; it
+   is not a v1 limit.

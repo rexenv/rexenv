@@ -49,7 +49,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 ### Phase 4+ (next era) — 2
 
 - `TODO.md:468` Git worktree workflow
-- `TODO.md:472` WordPress live ↔ local sync
+- `TODO.md:473` WordPress live ↔ local sync
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
@@ -60,7 +60,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 | Plan | Status |
 |---|---|
 | `docs/PLAN-ci-release.md` | (no Status line in the first 20 lines) |
-| `docs/PLAN-git-worktrees.md` | PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); this |
+| `docs/PLAN-git-worktrees.md` | PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); the |
 | `docs/PLAN-linux-port.md` | IN PROGRESS — started 24 Sep 2026 (overnight, owner asleep; the agent proceeds on |
 | `docs/PLAN-local-multisite.md` | IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan), |
 | `docs/PLAN-macos-13-floor.md` | PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component); |

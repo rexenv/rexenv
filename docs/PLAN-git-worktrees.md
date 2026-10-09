@@ -1,9 +1,10 @@
 # Git worktree workflow — one branch, one running site
 
-**Status:** PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); this
-plan was written by the agent while the owner was away, so every decision in §2 is a
-recommendation waiting for the owner's yes (the open questions are §9). Planned against
-`00bc4dd1` (v0.8.13). Task list: §8, mirrored as one row in `docs/TODO.md`.
+**Status:** PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); the
+agent wrote it while the owner was away. **Owner answered 9 Oct 2026** (§9). Domain:
+`feature-x.shop.rex` first, falling back to `shop-feature-x.rex` (§2.2). The WP plugin/theme
+shape comes FIRST (§2.1, task order in §8). Planned against `00bc4dd1` (v0.8.13). Task
+list: §8, mirrored as one row in `docs/TODO.md`.
 
 > **The one-sentence design:** a worktree site is a **linked site whose folder is a
 > `git worktree` of another site's checkout** — everything after the folder exists
@@ -48,45 +49,87 @@ in a worktree with a live URL it can test".
 **What does NOT exist:** any `git worktree` call; any site→site relation (no
 `parent_site_id`); any same-server DB copy; any "duplicate site".
 
-## 2. The decisions (recommendations — owner confirms, §9)
+## 2. The decisions (owner answers in §9)
 
-### 2.1 Which sites can have worktrees
+### 2.1 Which sites can have worktrees — two shapes, **Shape A first** (owner, 9 Oct)
 
-**v1: a site whose own root is a git checkout** (`repo_site_info.present`): Laravel,
-Bedrock, Radicle, Blank PHP, Symfony… and a WordPress site whose whole docroot is a repo.
+**Shape A (built first): a plugin or theme checkout inside a WordPress site.** This is how
+most WordPress developers work. The repo is `wp-content/plugins/my-plugin` (a
+`site_git_assets` row, or any `wp-content/{plugins,themes}/<dir>` with a `.git` that
+`scan_unmanaged` finds), and the site itself is not in git. The child site is **the parent
+site copied, with that ONE asset directory replaced by a worktree of the asset's repo**:
 
-**v2 (Stage 4): a plugin or theme checkout inside a WordPress site** — the far more common
-WordPress shape (the repo is `wp-content/plugins/my-plugin`, the site is not in git). The
-child site there is "the parent site, copied, with that ONE plugin directory replaced by a
-worktree of the plugin's repo". It needs the site-copy machinery v1 builds, so it is
-staged after it, not beside it.
+1. rexenv creates the child docroot `<sites_dir>/<child-domain>/` (a managed folder,
+   `docroot_managed = 1`).
+2. It copies the parent's docroot into it with `clone_tree`, **skipping the asset dir**.
+   Other git-checkout assets are copied whole, `.git` included, so each is an independent
+   copy. The dialog lists them with their size.
+3. `git -C <parent asset dir> worktree add <child>/wp-content/plugins/<dir> <branch>`.
+4. The asset's own deps run in the worktree (`composer install`, package-manager install,
+   build). This is the asset path that already exists (`core/repo.rs` ~`:2390`).
+5. `wp-config.php` is rewritten: `DB_NAME`, plus `WP_HOME`/`WP_SITEURL` when defined.
+6. The DB is cloned (§2.4) and its URLs rehomed.
 
-### 2.2 Where the worktree lives, and its domain
+Shape A needs **site copy** (files + DB). Shape B reuses most of it.
 
-- Folder: `<sites_dir>/<parent-name>--<branch-slug>/` — inside the Sites folder (same
-  volume, visible to the user, the place they already look), never inside the parent's
-  checkout (a worktree nested in its own repo shows up in the parent's `git status` and in
-  the parent site's served tree).
-- Domain: `<parent-name>-<branch-slug>.<tld>` (e.g. `shop-feature-x.rex`). **Not**
-  `feature-x.shop.rex`: a subdomain-multisite parent already owns `*.shop.rex`, and an
-  alias of the parent could own it too. Collisions with an existing domain get `-2`, `-3`.
-- `branch-slug` = branch name lowercased, `/` and non-`[a-z0-9-]` → `-`, trimmed to keep
-  the label ≤ 63 bytes (DNS limit) — a pure function with tests.
-- The user can override folder and domain in the dialog; the defaults are the rule.
+**Shape B (second): a site whose own root is a git checkout** (`repo_site_info.present`).
+That covers Laravel, Bedrock, Radicle, Blank PHP, Symfony… and a WordPress site whose whole
+docroot is a repo. Here the worktree IS the docroot: a linked child (`docroot_managed = 0`)
+at `<sites_dir>/<child-domain>/`, made by `git -C <parent-root> worktree add`. The ignored
+files it needs are copied or rebuilt as §2.5 says.
 
-### 2.3 The row: a linked site that knows its parent
+In both shapes the worktree folder is **never inside the parent's own tree**. A worktree
+nested in its own repo would show up in the parent's `git status` and in the parent site's
+served files.
 
-Migration: `sites.worktree_of INTEGER NULL REFERENCES sites(id)`. Nothing else — the
-**branch is read live from git** (`git -C <path> branch --show-current`), never stored:
-`sites.git_ref` is already documented as "chosen at creation, never kept in sync"
-(`records_asset_ref`, `commands/repo.rs:1183`), and a stored branch would lie the first
-time the user runs `git switch` in the worktree.
+### 2.2 Domain: `feature-x.shop.rex` first, `shop-feature-x.rex` as the fallback (owner, 9 Oct)
 
-- `docroot_managed = 0` (linked) — so the generic delete path physically cannot remove the
-  folder. Removal goes only through §2.6.
-- PHP version, web server, Xdebug: copied from the parent at creation, then independent.
-- Deleting a parent with live children is refused with the list of children ("remove these
-  worktrees first") — a worktree whose main repo vanished is a broken checkout.
+- **Default:** `<branch-slug>.<parent-domain>`, e.g. `feature-x.shop.rex`. It reads as
+  "this branch of shop".
+- **Fallback:** `<parent-label>-<branch-slug>.<tld>`, e.g. `shop-feature-x.rex`. It is used
+  when ANY of these holds. The dialog shows the reason in one line.
+  1. **The parent is a subdomain multisite.** nginx already serves `*.shop.rex` from the
+     parent's block (`core/services.rs::server_block`). An exact-name child would win in
+     nginx and silently shadow the network sub-site of that name, current or future.
+  2. **The name is already taken.** That means a site domain, an alias (`site_domains`), a
+     parent alias that carries a wildcard, or a sub-site domain in the parent's network.
+  3. **The name breaks a DNS limit.** A label over 63 bytes or a name over 253; the fallback
+     trims the slug.
+  4. **The parent's own domain is already nested** (e.g. `a.shop.rex`). Each worktree would
+     otherwise add a level. Kept flat on purpose.
+- If the fallback is also taken, `-2`, `-3`… are appended.
+- `branch-slug`: the branch name lowercased, with `/` and anything outside `[a-z0-9-]`
+  turned into `-`, then trimmed. It is a pure function with tests. `feature/checkout-v2` →
+  `feature-checkout-v2`.
+- **To prove (W2):**
+  - the DNS agent answers a two-level name (`feature-x.shop.rex`) on all three OSes; the
+    Windows NRPT rule is per-namespace, so it should, but this must be measured;
+  - Caddy picks the child's exact-name leaf by SNI over any parent cert;
+  - the per-site cert is issued for the exact name.
+- The user can override the domain in the dialog. The default is the rule.
+
+### 2.3 The row: a site that knows its parent
+
+Migration: `sites.worktree_of INTEGER NULL REFERENCES sites(id)` and
+`sites.worktree_path TEXT NULL`. In Shape A that path is the asset dir inside the child; in
+Shape B it is the docroot. The **branch is read live from git**
+(`git -C <worktree_path> branch --show-current`) and never stored. `sites.git_ref` is
+already documented as "chosen at creation, never kept in sync" (`records_asset_ref`,
+`commands/repo.rs:1183`). A stored branch would lie the first time the user runs
+`git switch` in the worktree.
+
+- **Shape B** is `docroot_managed = 0` (linked), so the generic delete path physically
+  cannot remove the folder. Removal goes only through §2.6.
+- **Shape A** is `docroot_managed = 1`: the child's copied WordPress is rexenv's to delete.
+  But it CONTAINS a worktree, and that worktree can hold uncommitted work. So teardown's
+  `remove_dir_all` on a docroot is **refused while any `.git` FILE (a registered worktree)
+  exists under it**. §2.6 removes the worktree through git first. This guard goes into the
+  generic teardown, not only the worktree path. It also protects a user who ran
+  `git worktree add` into a managed site by hand.
+- PHP version, web server and Xdebug are copied from the parent at creation, then
+  independent.
+- Deleting a parent that has live children is refused, with the list of children ("remove
+  these worktrees first"). A worktree whose main repo has vanished is a broken checkout.
 
 ### 2.4 The database — three choices, default **clone**
 
@@ -105,8 +148,10 @@ bundled `mysqldump --single-transaction | mysql`. PostgreSQL: `CREATE DATABASE �
 needs no connections on the source — not true while a site runs — so `pg_dump | psql`.
 SQLite (Laravel `database.sqlite`): file copy.
 
-### 2.5 Untracked files a branch needs to run
+### 2.5 Untracked files a branch needs to run (Shape B)
 
+Shape A does not need this section: the copied parent already has config, uploads and
+other assets, and only the asset's own deps are rebuilt (§2.1 step 4). In Shape B,
 `git worktree add` gives tracked files only. A running site also needs what `.gitignore`
 hides: `.env`, `wp-config.php` (WP repos), `vendor/`, `node_modules/`, built assets,
 `storage/` (Laravel), `wp-content/uploads/`.
@@ -136,6 +181,12 @@ parsed by `parse_status_v2`). Order:
    force needed there, so step 3 runs with `--force` ONLY after step 0 below proved the
    ignored files present are exactly the ones rexenv copied, or the user confirmed),
 4. delete the row.
+
+**Shape A** runs the same steps 0–3, with `<path>` being the asset dir inside the child.
+Only after git has removed it, and the `.git`-file guard (§2.3) confirms no worktree is
+left under the docroot, does the normal managed teardown `remove_dir_all` the child's
+copied WordPress. If git refuses, nothing else is deleted: the site stays up and the row
+stays, so the user can commit and Retry.
 
 Step 0: before any of this, list dirty tracked/untracked (non-ignored) files. Ignored
 files are expected (vendor, .env). Branch is **never** deleted — that is the user's call
@@ -188,8 +239,9 @@ for Linux); the ledger rows say which OS the proof came from.
 
 ## 4. Invariants (each becomes a ledger row in the commit that writes its comment)
 
-1. A worktree child is always `docroot_managed = 0` — no rexenv code path `remove_dir_all`s
-   a worktree; only `git worktree remove` deletes one.
+1. No rexenv code path `remove_dir_all`s a worktree; only `git worktree remove` deletes one.
+   Shape B children are `docroot_managed = 0`. Shape A's managed teardown refuses while any
+   `.git` FILE exists under the docroot, and that guard sits in the generic teardown (§2.3).
 2. The child's DB is dropped only when the CHILD row has `db_created = 1`; a `share` child
    can never drop the parent's DB.
 3. `dbdump::gate`'s self-import refusal is untouched; `dbclone` is the only same-server
@@ -197,6 +249,8 @@ for Linux); the ledger rows say which OS the proof came from.
 4. Branch is never stored as truth — always read from git.
 5. An adopted worktree is never `git worktree remove`d without an explicit user action.
 6. A parent with children cannot be deleted.
+7. A worktree child never takes a name under a subdomain-multisite parent, or a name an
+   existing site, alias or network sub-site answers to (§2.2 fallback).
 
 ## 5. What is out of scope
 
@@ -229,27 +283,27 @@ for Linux); the ledger rows say which OS the proof came from.
 
 | # | Task | Done when |
 |---|---|---|
-| W0 | Owner answers §9; plan updated | §9 has answers |
-| W1 | Migration `worktree_of`; `Site` model; delete-parent-with-children refusal | L0 tests; ledger #6 |
-| W2 | `core/worktree.rs`: `list` (porcelain parse), `add` (existing/new branch), `slug`/domain derivation, git version floor in `git_preflight` + `words.rs` ×3 | L0 tests on all parsers |
-| W3 | `core/dbclone.rs` (MySQL/MariaDB, PostgreSQL, SQLite) on top of `dbrestore` pieces | L0 + L1 copy on a sandbox server; ledger #2, #3 |
-| W4 | Child provisioning job: linked row → config copy + rewrite → deps phases → DB (clone/fresh/share) → URL rehome → serve; reuses `site_provision` card | L1 `worktree_site_check` add leg green |
-| W5 | Remove flow (§2.6) incl. dirty-file confirmation and Windows lock message | L1 remove leg green; ledger #1 |
-| W6 | Adopt / Serve existing worktrees + prune (§2.7) | L1 leg: a worktree made by plain `git worktree add` gets served; removal leaves its folder; ledger #5 |
-| W7 | UI: Worktrees section, child banner, Sites-list grouping, Re-clone DB | Playwright WebKit pass; DESIGN.md rules kept |
-| W8 | CLI `rex worktree …` + MCP `repo` `worktree` action + dial levels | `cli` tests; CLI-ROADMAP.md; MCP parity test |
-| W9 | Stage 4: plugin/theme worktree inside a WP site (§2.1 v2) | own L1 leg; separate sign-off |
-| W10 | Per-OS proof: L1 on macOS, Windows (Dell), Linux (UTM VM); SMOKE sections ×3; ARCHITECTURE/MAP/TESTING updated | ledger rows name the OS of each proof |
+| W0 | Owner answers §9; plan updated | ✓ 9 Oct 2026 (Q1, Q4 answered; Q2, Q3, Q5 take the recommendation unless the owner says otherwise) |
+| W1 | Migration `worktree_of` + `worktree_path`; `Site` model; delete-parent-with-children refusal; the `.git`-file teardown guard | L0 tests incl. a plant (guard removed → test red); ledger #1, #6 |
+| W2 | `core/worktree.rs`: `list` (porcelain parse), `add` (existing/new branch), slug + domain derivation with the four fallback rules, git version floor in `git_preflight` + `words.rs` ×3. Measure two-level `.rex` names: DNS agent, Caddy SNI, leaf cert | L0 tests on every parser + each fallback rule; the two-level name answers on macOS / Windows / Linux; ledger #7 |
+| W3 | `core/dbclone.rs` (MySQL/MariaDB, PostgreSQL, SQLite) on top of the `dbrestore` pieces | L0 + L1 copy on a sandbox server; ledger #2, #3 |
+| W4 | **Site copy** (Shape A base): `clone_tree` of the parent docroot minus one asset dir, `wp-config.php` rewrite, DB clone + rehome, as a `site_provision` job | L1: the copy serves HTTP 200 on its domain; the parent is untouched |
+| W5 | **Shape A**: plugin/theme worktree on top of W4 (`worktree add` into the copy, the asset's deps) + the Worktrees list on a plugin/theme in the WordPress tab's asset list | L1 `worktree_site_check` leg A: the plugin file differs between parent and child per branch |
+| W6 | Remove flow (§2.6), both shapes: dirty-file confirmation, Windows lock message, git-first then teardown | L1 remove leg: dirty refused and the site stays up; clean removes the folder and the DB, and the parent stays intact |
+| W7 | Adopt / Serve existing worktrees + prune (§2.7) | L1 leg: a worktree made by plain `git worktree add` gets served; its removal leaves the folder; ledger #5 |
+| W8 | UI: Worktrees section (asset row for Shape A, Repository tab for Shape B), child banner, Sites-list grouping, Re-clone DB | Playwright WebKit pass; DESIGN.md rules kept |
+| W9 | CLI `rex worktree …` + MCP `repo` `worktree` action + dial levels | `cli` tests; CLI-ROADMAP.md; MCP parity test |
+| W10 | **Shape B**: whole-site repo as a linked child (§2.5 ignored files, lockfile-identical vendor copy) | L1 leg B on a Laravel fixture repo |
+| W11 | Per-OS proof: L1 on macOS, Windows (Dell), Linux (UTM VM); SMOKE sections ×3; ARCHITECTURE/MAP/TESTING updated | ledger rows name the OS of each proof |
 
-## 9. Open questions for the owner
+## 9. Owner's answers (9 Oct 2026) and what is still open
 
-1. **Domain shape** — `shop-feature-x.rex` (recommended, §2.2) or `feature-x.shop.rex`
-   (prettier, collides with subdomain multisite)?
-2. **Default DB mode** — clone (recommended) or ask every time?
-3. **Dependencies** — always run `composer install`/npm in the worktree (correct, slow), or
-   offer "copy vendor/node_modules from parent" (fast, wrong when the branch changed
-   `composer.lock`)? Recommendation: copy when the lockfiles are byte-identical to the
-   parent's, install otherwise — automatic, no knob.
-4. **Stage 4 priority** — is the plugin/theme-repo shape (most WordPress devs) more
-   urgent than the whole-site-repo shape? If yes, swap W4–W6 and W9 order.
-5. **Placement** — Worktrees as a section in the Repository tab (recommended), or its own tab?
+1. **Domain** — ANSWERED: `feature-x.shop.rex` first, `shop-feature-x.rex` when it would
+   cause a problem. §2.2 lists the four rules that decide "a problem".
+2. **Default DB mode** — not asked yet; the plan goes with **clone**.
+3. **Dependencies (Shape B)** — not asked yet; the plan copies `vendor/`/`node_modules`
+   when the lockfiles are byte-identical to the parent's, and installs otherwise. No knob.
+4. **Priority** — ANSWERED: the WP plugin/theme shape first (Shape A, W4–W5). The
+   whole-site repo is W10.
+5. **Placement** — not asked yet. Shape A's entry point is the plugin/theme row in the
+   WordPress tab, where the repo lives. Shape B's is the Repository tab.
