@@ -1553,25 +1553,16 @@ SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publish
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **PUBLISH-TESTING §D** — `--zap` ONLY; everything else has now run four times.
-  **Re-scoped 21 Aug 2026**: the row below pins the v0.1.0 cask hash, but the cask has
-  bumped cleanly through 0.1.1, 0.2.0, 0.3.0 and 0.4.0 since, so the install half is not "half
-  done from August 12" — it is the routine path and `--zap` is the single step that has
-  never run anywhere. Original text, still accurate about what was proven:
-  full tap install dry-run. **Half done 12 Aug 2026**:
-  v0.1.0 is published on `rexenv/homebrew-tap` (private repos 404 `brew`'s anonymous
-  fetch, so the artefact ships from the tap — `docs/RELEASING.md`, interim section; **since 30 Sep
-  2026 the app repo is public and the cask downloads from `rexenv/rexenv`**),
-  the cask is bumped to the shipped `b29f21f7…`, the asset fetches anonymously (200),
-  and `brew fetch --cask rexenv` verifies ✔︎. **Install half ✅ ran the same day**:
-  installs, postflight de-quarantines (`No such xattr`), `rex` links to
-  `/opt/homebrew/bin/rex`, app launches, `rex --version`/`status` answer, DNS agent
-  plist repointed at `/Applications`. **Left: `--zap` only**, and NOT on this Mac —
-  it trashes 17 GB of live app data behind real `.rex` sites. Clean Mac only
-  (`docs/SMOKE-TEST.md`).
-  Two teeth grown from the first real run: the cask hash bump now compares sha256
-  as well as version (a placeholder hash under an unchanged version silently
-  skipped), and `brew trust rexenv/tap` is a required user-facing install step.
+- [ ] **PUBLISH-TESTING §D** — open ONLY for pushing the tap fix. **`--zap` ran 9 Oct 2026 on the
+  15.8 VM** (the whole user path green; record in §D) and found: both LaunchAgents stay loaded
+  after zap (the DNS agent keeps answering UDP 15353 until logout), and Caches + WebKit are left.
+  Fixed and proven on the VM in `rexenv/homebrew-tap` branch `zap-unload-agents` (local commit,
+  NOT pushed — the tap is the owner's to merge). Close when that lands on `main`.
+- [ ] **The local CA stays in the login keychain after Remove system changes** — trust is removed
+  (`SecTrustSettingsRemoveTrustSettings`) but the `rexenv Local CA` item is not deleted, and the
+  cask's `--zap` cannot reach a keychain. Inert, but a leftover a "remove everything" user finds.
+  Seen on the 15.8 VM, §D, 9 Oct 2026. Decide: delete the item in `untrust` (macOS), or say in the
+  notice that the certificate is kept untrusted.
 - [ ] **The in-app update's remaining human rows (macOS)** — was "the swap probe (T0) and the
   first real in-app update (T11)", `docs/archive/PLAN-self-update.md` §6.5 and §13. **Both RAN:**
   T0 measured the swap on the dev Mac; T11 ran 0.6.0 → 0.6.1 there (7 Sep 2026, twice), on the

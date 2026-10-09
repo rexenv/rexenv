@@ -1019,7 +1019,7 @@ combined into a single privileged shell by the fix).
 
 ---
 
-## D) 🚧 Full custom-tap install dry-run — once the dmg is on GitHub Releases
+## D) ◐ Full custom-tap install dry-run — run 9 Oct 2026 (zap gaps found; the tap fix waits to be pushed)
 
 **Why:** the real end-to-end a user experiences. The tap repo exists and is public —
 `github.com/rexenv/homebrew-tap` (2026-08-08), `brew tap rexenv/tap` resolves and
@@ -1082,6 +1082,22 @@ brew uninstall --zap --cask rexenv                 # EXPECT: clean removal of us
 **Expected:** installs, **launches without a Gatekeeper block** (postflight did the
 de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run the app's
 **"Remove system changes"** before `brew uninstall` to clear the privileged bits (§B).
+
+**Run 9 Oct 2026 — the 15.8 VM, Homebrew 7.0.9, cask 0.8.12 — the first `--zap` anywhere.**
+Remove system changes first ("Handed back to Valet/Herd: .test", `.rex` removed, no daemon left).
+`brew tap` + `brew trust rexenv/tap` ✅ · `brew install --cask rexenv` ✅ (no quarantine xattr,
+`x86_64 arm64`, `codesign --verify --deep --strict` clean, `rex` → `/opt/homebrew/bin/rex`) ·
+`open -a rexenv` ✅ no Gatekeeper, Welcome screen · `rex --version` ✅ `rex 0.8.12 (282f945)` ·
+the DNS agent plist names `/Applications`. **`--zap` ❌ three gaps:** (1) the plists were trashed
+but both launchd jobs stayed LOADED — the DNS agent kept running from its copy in the trashed app
+data and answering UDP 15353 until logout; (2) `~/Library/Caches/dev.rexenv.rexenv` and
+`~/Library/WebKit/dev.rexenv.rexenv` were left; (3) the `rexenv Local CA` certificate stays in the
+login keychain (untrusted — Remove system changes removes trust, not the item).
+**Fixed for (1)+(2) in the tap, not yet pushed** (`rexenv/homebrew-tap` branch `zap-unload-agents`:
+`zap launchctl:` both labels + the two folders) and **proven the same day** with that caskfile in
+the VM's tap: zap printed "Removing launchctl service …" twice and left no job, no process and none
+of the folders. (3) is an app-side TODO row. The VM was restored afterwards (its app data from
+backup, 0.8.12 re-placed, onboarding re-run, `smoke1.rex` 200).
 
 ---
 
