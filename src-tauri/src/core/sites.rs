@@ -5635,7 +5635,10 @@ mod tests {
         let plugin = plant_worktree(&dir);
         let err = delete_preflight(&conn, &*platform, &site).unwrap_err().to_string();
         assert!(err.contains("git worktree remove"), "names the fix: {err}");
-        assert!(err.contains(&plugin.display().to_string()), "names the folder: {err}");
+        // Names the folder — by its last two components, because the message prints
+        // the path the walk found (native separators) while `plugin` was built with
+        // `/` joins, and on Windows those two spellings differ (10 Oct 2026).
+        assert!(err.contains("my-plugin") && err.contains("plugins"), "names the folder: {err}");
         std::fs::remove_dir_all(&plugin).unwrap();
         assert!(delete_preflight(&conn, &*platform, &site).is_ok());
 

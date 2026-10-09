@@ -723,8 +723,14 @@ mod tests {
     fn gitdir_is_read_absolute_and_relative() {
         let d = tmp("gitdir");
         let f = d.join(".git");
-        std::fs::write(&f, "gitdir: /repo/.git/worktrees/feature-x\n").unwrap();
-        assert_eq!(gitdir_of(&f).unwrap(), PathBuf::from("/repo/.git/worktrees/feature-x"));
+        // An ABSOLUTE path in this OS's own shape — `/repo/…` is not absolute on
+        // Windows (no drive), which is how the first Windows run of this test
+        // failed (10 Oct 2026). Written with `/`, the way git writes it there too
+        // (`gitdir: C:/Users/…`); `Path` equality compares components, so the
+        // separator spelling does not matter.
+        let abs = d.join("repo").join(".git").join("worktrees").join("feature-x");
+        std::fs::write(&f, format!("gitdir: {}\n", abs.display().to_string().replace('\\', "/"))).unwrap();
+        assert_eq!(gitdir_of(&f).unwrap(), abs);
         std::fs::write(&f, "gitdir: ../main/.git/worktrees/x\n").unwrap();
         assert_eq!(gitdir_of(&f).unwrap(), normalize(&d.join("../main/.git/worktrees/x")));
         std::fs::write(&f, "not a pointer\n").unwrap();

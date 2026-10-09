@@ -965,6 +965,14 @@ about Windows behaviour is proven one of three ways, cheapest first:
    waits. Screenshots and clicks go through `C:\Users\Public\rexenv-smoke` (the foreground
    guard refuses a click unless rexenv is frontmost).
 
+**A test that cannot run on the Dell's checkout can still run there** (10 Oct 2026). Build
+the lib test binary on the Mac with cargo-xwin and the comctl32 manifest flags (`cargo xwin
+test --no-run --lib`, plus the `/MANIFESTINPUT` link args above), copy the `.exe`, and run it with
+a filter. The worktree tests ran that way. The first run caught two tests that had asserted the
+Mac's shape: a `/repo/…` path that is not absolute without a drive, and a `contains` on a path
+whose separators differ. A tauri **mock-app example** needs the same manifest, or it dies at load
+with `0xC0000139`.
+
 **A fixture that COMMITS must turn signing off** (`git -c commit.gpgsign=false`), found 10 Oct 2026.
 The Dell's global git config signs every commit through gpg. Over SSH there is no pinentry, so
 `worktree_git_check` died at its first fixture commit with `gpg: signing failed: Timeout`. That
