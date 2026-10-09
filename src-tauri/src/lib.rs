@@ -1292,6 +1292,7 @@ pub fn run() {
             commands::valet_import::resolver_take_over,
             commands::valet_import::resolver_hand_back,
             commands::valet_import::resolver_drift,
+            commands::valet_import::resolver_drift_records,
             commands::valet_import::valet_import_run,
             commands::valet_import::valet_import_cancel,
             commands::db_import::db_import_start,

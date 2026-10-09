@@ -66,6 +66,9 @@ mod tests {
         ("app_update_skip", Never(UPDATE_FLOW)),
         ("app_update_apply", Never(UPDATE_FLOW)),
         ("app_update_restart", Never(UPDATE_FLOW)),
+        // ── valet_import: the banner's generation-keyed feed (#807); `valet_import` action
+        //    `drift` reaches the same `drifted_takeover_records` (it reports the TLDs).
+        ("resolver_drift_records", Tool("valet_import")),
         // ── blueprints
         ("list_blueprints", Tool("blueprints_list")),
         // ── database

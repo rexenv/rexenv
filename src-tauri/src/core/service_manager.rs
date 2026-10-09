@@ -823,10 +823,16 @@ impl ServiceManager {
         caddyfile: PathBuf,
     ) -> Result<Option<EdgePlan>> {
         let alive = proxy::admin_alive(platform);
-        if !matches!(self.caddy, CaddyHandle::Stopped) {
-            if alive {
-                return Ok(None);
-            }
+        // An edge that is already ours and alive is NOT a reason to return without pushing the
+        // config: `start_core` has just rewritten the Caddyfile, and the edge must load it. An
+        // early "nothing to do" return stood here and served the BOOT config forever: on macOS the
+        // edge daemon starts at boot and the app adopts it while the rest of the stack is down
+        // ("Partial 1/7"), so a site created or imported in that state — whose job runs Start all —
+        // got no route and no certificate on the edge (TLS internal error, `curl` exit 35) while
+        // its card said it was served (the 15.8 macOS VM, an imported `valetdemo.test`,
+        // 9 Oct 2026, ledger #806). Alive and ours → the reload below, as an adopt does.
+        let already = !matches!(self.caddy, CaddyHandle::Stopped);
+        if already && !alive {
             // The handle says running but the socket is dead — a STALE handle
             // ("running" = ownership AND liveness, H2; never trust state alone).
             // Seen live: the watchdog re-adopted a Daemon edge in the window
@@ -840,13 +846,13 @@ impl ServiceManager {
             }
             self.caddy = CaddyHandle::Stopped;
         }
-        let bins = self.bins()?;
+        let caddy_bin = self.bins()?.caddy.clone();
         // A live listener on OUR admin socket is rexenv's own edge (private path,
         // 0600) — adopt it and push the current config through its admin API. Only
         // if the reload is refused (wedged edge, or a port set it can't rebind) do
         // we fall through to the stop + fresh-start path.
         let reloaded = alive
-            && match proxy::reload(platform, &bins.caddy, &caddyfile, false) {
+            && match proxy::reload(platform, &caddy_bin, &caddyfile, false) {
                 Ok(()) => true,
                 // Logged, because this refusal is what turns an adopt into a privileged
                 // reinstall — and on 29 Sep 2026 (the 15.8 VM) nobody could say why one had.
@@ -856,20 +862,33 @@ impl ServiceManager {
                 }
             };
         if reloaded {
-            // A live edge backed by the KeepAlive daemon is tracked as `Daemon` so an
-            // explicit Stop-all boots it out (an admin `caddy stop` alone would just
-            // be relaunched); a live edge with no daemon is the legacy osascript one.
-            self.caddy = if platform.edge().is_installed() {
-                CaddyHandle::Daemon
-            } else {
-                CaddyHandle::Privileged
-            };
+            // An edge this manager already tracks keeps its handle (a `Child` is the process we
+            // spawned and must go on owning); an ADOPTED one is classified: a live edge backed
+            // by the KeepAlive daemon is tracked as `Daemon` so an explicit Stop-all boots it
+            // out (an admin `caddy stop` alone would just be relaunched); a live edge with no
+            // daemon is the legacy osascript one.
+            if !already {
+                self.caddy = if platform.edge().is_installed() {
+                    CaddyHandle::Daemon
+                } else {
+                    CaddyHandle::Privileged
+                };
+            }
             return Ok(None);
+        }
+        // A tracked, live edge that refused the reload: let go of the handle (reaping a child
+        // of ours) so the fresh-start path below replaces it, exactly as for an adopted one.
+        if already {
+            if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            self.caddy = CaddyHandle::Stopped;
         }
         // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
         // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
         // default :2019 admin is never touched (task 2.4 / M1).
-        proxy::recover_stale_edge(platform, &bins.caddy)?;
+        proxy::recover_stale_edge(platform, &caddy_bin)?;
         // If OUR KeepAlive daemon is installed, it (or a wedged instance of it) is what
         // holds :443 — and its admin socket may be unreachable (e.g. root-owned again
         // after a reload) so the adopt-reload above couldn't take it. Do NOT treat :443
@@ -883,7 +902,7 @@ impl ServiceManager {
         Ok(Some(EdgePlan {
             // The OS answers, not the Unix rule: Windows binds :443 unprivileged (ledger #611).
             privileged: platform.privileges().port_needs_privilege(self.ports.https),
-            caddy_bin: bins.caddy.clone(),
+            caddy_bin,
             caddyfile,
         }))
     }
@@ -3570,6 +3589,20 @@ mod tests {
         let cmd = include_str!("../commands/services.rs");
         let f = &cmd[cmd.find("pub async fn stop_services(").expect("stop_services")..];
         assert!(f[..f.find("\n}\n").unwrap()].contains("edge_daemon_needs_stop("), "Stop all must ask the fact, not only the handle");
+    }
+
+    /// #806 — TEXT: `prepare_edge` never returns "nothing to start" before it has pushed the
+    /// config. Its old first branch returned for any live, tracked edge, so a Start all whose
+    /// `start_core` had just added a site left the edge on its boot config (the 15.8 VM, 9 Oct 2026).
+    /// Behaviour needs a live admin socket and a caddy — the macOS VM's run is the L1.
+    #[test]
+    fn prepare_edge_pushes_the_config_before_it_reports_the_edge_up() {
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let body = &src[src.find("pub fn prepare_edge(").expect("prepare_edge")..];
+        let body = &body[..body.find("\n    }\n").expect("its end")];
+        let reload = body.find("proxy::reload(").expect("prepare_edge reloads a live edge");
+        let first_none = body.find("return Ok(None)").expect("an up edge returns None");
+        assert!(reload < first_none, "prepare_edge reports the edge up before pushing the new config");
     }
 
     /// The live incident: a bootout raced the watchdog's re-adopt, leaving a

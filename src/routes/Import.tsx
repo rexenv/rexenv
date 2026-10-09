@@ -1066,6 +1066,7 @@ export function ResolverConsentFor({
  */
 export function ResolverHandBackRow({ tld }: { tld: ResolverTldStatus }) {
   const qc = useQueryClient();
+  const drifted = tld.owner === "drifted";
   const give = useMutation({
     mutationFn: () => resolverHandBack(tld.tld),
     onSuccess: (plan) => {
@@ -1085,8 +1086,13 @@ export function ResolverHandBackRow({ tld }: { tld: ResolverTldStatus }) {
     <div className="flex items-center justify-between gap-4 rounded-lg border border-rex-border-subtle px-3 py-2.5">
       <div className="min-w-0">
         <div className="font-mono text-[0.78125rem] text-rex-text-bright">.{tld.tld}</div>
-        <div className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
-          rexenv answers this, borrowed from Valet/Herd. Their file is backed up.
+        {/* A DRIFTED borrow is theirs again: "rexenv answers this" was printed for it too until
+            the 15.8 VM's §F run (9 Oct 2026, ledger #808) — a green-sounding row for sites
+            that no longer resolve. */}
+        <div data-probe="handback-copy" className="mt-0.5 text-[0.71875rem] text-rex-text-muted">
+          {drifted
+            ? "Valet or Herd took this back, so rexenv sites on it don't resolve. Take it over again from Import, or hand it back to forget the borrow."
+            : "rexenv answers this, borrowed from Valet/Herd. Their file is backed up."}
         </div>
       </div>
       <Button
@@ -1095,7 +1101,12 @@ export function ResolverHandBackRow({ tld }: { tld: ResolverTldStatus }) {
         onClick={async () => {
           const ok = await confirm({
             title: `Hand .${tld.tld} back?`,
-            message: (
+            message: drifted ? (
+              <>
+                Valet or Herd already answer <span className="font-mono">.{tld.tld}</span> — their file
+                is left as it is. rexenv forgets the borrow and deletes its backup of their old file.
+              </>
+            ) : (
               <>
                 Valet and Herd answer <span className="font-mono">.{tld.tld}</span> again, and their
                 original file is restored.

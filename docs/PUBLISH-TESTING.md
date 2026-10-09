@@ -1085,7 +1085,7 @@ de-quarantine), `rex` is on PATH, `--zap` cleans user-level state. Reminder: run
 
 ---
 
-## F) 🚧 Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run)
+## F) 🚧 Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026; step 7 and the fixes' re-run open)
 
 **Why this is here:** a machine that has never run Valet/Herd resolver setup has no foreign
 `/etc/resolver/test`, so the foreign-file paths of the Valet/Herd resolver takeover have never
@@ -1152,6 +1152,33 @@ at least once**, so `/etc/resolver/<tld>` genuinely exists and is theirs.
    the backup was gone and to run `valet install`.
 10. Throughout: `/etc/resolver/rex` must be untouched, and no file we did not create may
     ever be removed.
+
+**Run 9 Oct 2026 — the 15.8 VM, 0.8.12 from the tap, Laravel Valet 4 installed and started
+(`/etc/resolver/test` = `nameserver 127.0.0.1`, root, shasum `cf658391…`).** Driven over ssh;
+the admin prompt answered by keystroke.
+- 1 ✅ · 2 ✅ the card shows theirs beside ours · 3 ✅ `rex site create noconsent.test` refused,
+  file byte-identical · 4 ✅ our signature, backup `0600` 21 bytes, one `resolver_takeovers` row.
+- 5 ❌→fixed: `valetdemo.test` imported, card Running, `curl` exit 35 (TLS alert 80). The live
+  admin config's hosts lacked it while the on-disk Caddyfile had it — the app had adopted the
+  boot edge (Partial 1/7) and `prepare_edge` returned "up" without a reload. **#806**; a
+  `rex restart` served it 200 (`valet demo on 8.3.32`).
+- 6 ✅ Settings → DNS & SSL → Hand back: confirm named "Your 1 rexenv site … will stop
+  resolving"; file back to `cf658391…`, backup and row gone, `/etc/resolver/rex` still `4e3be018…`.
+- 7 a ✅ banner after `valet install` + relaunch, symptom headline + the approved sentence ·
+  b ✅ dismissed, stays dismissed across a relaunch · **c ❌→fixed:** re-taken on Import, reclaimed
+  again, relaunched — NO banner (the dismissal was only pruned when the Sites banner saw `.test`
+  as ours) — **#807** · d ✅ `rex doctor`: `✗ Resolvers .test taken back by Valet or Herd`, exit 1.
+  Also: Settings → DNS & SSL listed the reclaimed `.test` as "rexenv answers this, borrowed from
+  Valet/Herd" — **#808**. Remove system changes with `.test` reclaimed ✅ their file untouched
+  (`cf658391…`), backup and row dropped, notice "Left alone (already reclaimed): .test".
+  **Step 7 itself (re-take, then Remove → theirs restored) was NOT run** — the next pass.
+- 8b ✅ after onboarding again and a re-take: no banner on Sites, `Resolvers ✓` (the only
+  doctor finding was `CLI rex not on PATH`, so exit 1 for that reason alone).
+- 9 ✅ backup deleted by hand → Remove: `/etc/resolver` empty (ours removed, record gone), notice
+  "Couldn't find our backup of the .test file under /etc/resolver, so rexenv's version was removed —
+  the other tool will need to put its own back." (it does not name `valet install`; the per-TLD
+  hand-back toast does). `valet install` restored theirs (`cf658391…`).
+- 10 ✅ `/etc/resolver/rex` unchanged through takeover, hand-back and drift; nothing of Valet's removed.
 
 **Rollback — if the takeover goes wrong or you stop halfway (keep this beside the run).**
 The takeover is **record-before-write** (`core/dns.rs` `take_over_resolver`): it writes the
@@ -1775,7 +1802,7 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
 | K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
-| F | Resolver TAKEOVER + RESTORE — clean-VM only (fixture-tested, never live-run) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| F | Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026 on the 15.8 VM — found #806–#808; step 7 + the fixes' re-run open) | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
 | N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ✅ passed 13 Sep 2026 (owner-run, `multisite.local`) |

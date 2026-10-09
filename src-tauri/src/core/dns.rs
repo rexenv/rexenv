@@ -866,11 +866,31 @@ pub fn drifted_takeovers(
     platform: &dyn Platform,
     port: u16,
 ) -> Vec<String> {
+    drifted_takeover_records(conn, platform, port).into_iter().map(|r| r.tld).collect()
+}
+
+/// One drifted borrow and WHICH takeover it was. The Sites banner keys a dismissal on the pair,
+/// never on the TLD alone: a TLD-only dismissal could only be cleared by the banner SEEING the TLD
+/// read as ours again, and a re-take made on Import or Settings (or by an agent) is never seen
+/// there — so the next loss stayed hidden behind the first one's dismissal (the 15.8 VM, §F 7c,
+/// 9 Oct 2026, ledger #807). A re-take refreshes `taken_at`, so it is a new key by construction.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DriftedTakeover {
+    pub tld: String,
+    pub taken_at: String,
+}
+
+pub fn drifted_takeover_records(
+    conn: &rusqlite::Connection,
+    platform: &dyn Platform,
+    port: u16,
+) -> Vec<DriftedTakeover> {
     crate::state::store::list_resolver_takeovers(conn)
         .unwrap_or_default()
         .into_iter()
         .filter(|r| matches!(resolver_owner(platform, &r.tld, port), ResolverOwner::Foreign { .. }))
-        .map(|r| r.tld)
+        .map(|r| DriftedTakeover { tld: r.tld, taken_at: r.taken_at })
         .collect()
 }
 
@@ -1846,6 +1866,26 @@ mod tests {
         let all = crate::state::store::list_resolver_takeovers(&conn).unwrap();
         assert_eq!(all.len(), 1, "one row per TLD");
         assert_eq!(all[0].original, "second\n", "newest backup is what we replaced");
+    }
+
+    /// #807: a re-take is a NEW generation — `taken_at` moves, so the drift banner's
+    /// `<tld>@<takenAt>` dismissal of the previous loss cannot hide the next one, wherever
+    /// the re-take was made. (The upsert must refresh it; an upsert that kept the first
+    /// takeover's time would silence every later loss.)
+    #[test]
+    fn re_takeover_refreshes_the_generation_the_banner_keys_on() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let store = crate::state::store::insert_resolver_takeover;
+        store(&conn, "test", "first\n", "/tmp/test").unwrap();
+        conn.execute("UPDATE resolver_takeovers SET taken_at = '2000-01-01 00:00:00'", []).unwrap();
+        let first = crate::state::store::list_resolver_takeovers(&conn).unwrap()[0].taken_at.clone();
+        assert_eq!(first, "2000-01-01 00:00:00", "the record reads its generation back");
+        store(&conn, "test", "second\n", "/tmp/test").unwrap();
+        let second = crate::state::store::list_resolver_takeovers(&conn).unwrap()[0].taken_at.clone();
+        assert_ne!(second, first, "a re-take must start a new generation");
+        // The wire shape the banner reads (`DriftedTakeover` in src/types).
+        let wire = serde_json::to_value(DriftedTakeover { tld: "test".into(), taken_at: second }).unwrap();
+        assert!(wire.get("tld").is_some() && wire.get("takenAt").is_some(), "{wire}");
     }
 
 

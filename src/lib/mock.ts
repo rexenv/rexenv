@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus } from "@/types";
+import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
 
 /** macOS's platform words — the browser shell's answer, and `usePlatformWords`' answer until the backend's
  *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
@@ -327,12 +327,16 @@ export function mockMailDetail(id: string): MailDetail {
 /** Resolver drift for the dev/WebKit harness: `?drift=test,dev` in the URL is
  *  the fixture. Absent/empty → `[]`, which is the ordinary state and MUST
  *  render nothing (the #306 rule) — the harness probe asserts both ways. */
-export function mockResolverDrift(): string[] {
-  const raw = new URLSearchParams(window.location.search).get("drift") ?? "";
-  return raw
+export function mockResolverDrift(): DriftedTakeover[] {
+  const q = new URLSearchParams(window.location.search);
+  // `?driftAt=` names the takeover generation (default one); changing it is a re-take made
+  // somewhere the banner never saw (#807).
+  const takenAt = q.get("driftAt") ?? "2026-10-09 05:00:00";
+  return (q.get("drift") ?? "")
     .split(",")
     .map((t) => t.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((tld) => ({ tld, takenAt }));
 }
 
 /** Who owns a TLD's resolver file, for the dev/WebKit harness: `?foreign=test,dev`

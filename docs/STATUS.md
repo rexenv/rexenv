@@ -27,33 +27,33 @@ App version **0.8.12** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 - `TODO.md:1575` The in-app update's remaining human rows (macOS)
 - `TODO.md:1584` PUBLISH-TESTING §K
 - `TODO.md:1585` PUBLISH-TESTING §F
-- `TODO.md:1586` PUBLISH-TESTING §G
-- `TODO.md:1593` Release 5.4 — clean-Mac smoke test
-- `TODO.md:1599` Tunnel probe session
-- `TODO.md:1603` Intel spot-run
-- `TODO.md:1606` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
-- `TODO.md:1649` In-app verifies owed
-- `TODO.md:1665` PUBLISH-TESTING §E / §L
+- `TODO.md:1591` PUBLISH-TESTING §G
+- `TODO.md:1598` Release 5.4 — clean-Mac smoke test
+- `TODO.md:1604` Tunnel probe session
+- `TODO.md:1608` Intel spot-run
+- `TODO.md:1611` The macOS floor is a claim about BOTH slices — the metadata half is now measured, the run half is not
+- `TODO.md:1654` In-app verifies owed
+- `TODO.md:1670` PUBLISH-TESTING §E / §L
 
 ### Parked (deliberate — needs explicit go; don't pick up silently) — 5
 
-- `TODO.md:1671` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:1683` The live pool swap is still L3
-- `TODO.md:1687` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:1695` Install WordPress into an empty LINKED folder
-- `TODO.md:1702` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:1676` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:1688` The live pool swap is still L3
+- `TODO.md:1692` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:1700` Install WordPress into an empty LINKED folder
+- `TODO.md:1707` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:1717` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:1756` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:1767` Xdebug on PHP 8.0
-- `TODO.md:1772` SMAppService privileged helper
-- `TODO.md:1774` Developer ID signing + notarization
+- `TODO.md:1722` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:1761` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:1772` Xdebug on PHP 8.0
+- `TODO.md:1777` SMAppService privileged helper
+- `TODO.md:1779` Developer ID signing + notarization
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 695 · ◐ 88 · 🔨 5 · 🚫 17** of 805 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 697 · ◐ 89 · 🔨 5 · 🚫 17** of 808 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

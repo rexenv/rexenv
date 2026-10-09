@@ -1307,6 +1307,14 @@ export function DevUiReview() {
           // `?drift=test,dev` is the fixture; absent → [] (the ordinary state,
           // which the probe requires to render NOTHING).
           return (params.get("drift") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+        case "resolver_drift_records":
+          // The banner's feed: the same fixture, each TLD with `?driftAt=` as its
+          // takeover generation — changing it is a re-take the banner never saw (#807).
+          return (params.get("drift") ?? "")
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((tld) => ({ tld, takenAt: params.get("driftAt") ?? "2026-10-09 05:00:00" }));
         case "mcp_status":
         case "mcp_set_enabled":
           return mcpStatusMock();
@@ -1417,7 +1425,9 @@ export function DevUiReview() {
           <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
             <div className="text-[0.8125rem] font-medium text-rex-text">Valet / Herd</div>
             <div className="mt-3 flex flex-col gap-2">
-              <ResolverHandBackRow tld={BORROWED} />
+              <ResolverHandBackRow
+                tld={params.get("owner") === "drifted" ? { ...BORROWED, owner: "drifted" } : BORROWED}
+              />
             </div>
           </div>
         )}

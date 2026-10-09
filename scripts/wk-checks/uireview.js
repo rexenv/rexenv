@@ -74,6 +74,8 @@ const SCENARIOS = [
   ["dbtab-stopped-web", "view=dbtab&shape=plain&stopped=web", []],
   ["sites-scale-menu", "view=sites&rows=28", ["lastMenu"]],
   ["resolver-handback", "view=resolver", []],
+  // #808: a DRIFTED borrow (Valet took the file back) must not read "rexenv answers this".
+  ["resolver-handback-drifted", "view=resolver&owner=drifted", []],
   ["toasts", "view=toast", []],
   // Every StatusPill state + every StartStopToggle state — the states the
   // other fixtures never render (they hardcode `running`).
@@ -882,10 +884,12 @@ const PROBES = {
       );
     const mounted = () =>
       page.evaluate(() => !!document.querySelector('[data-probe="drift-view"]'));
-    const goto = async (drift) => {
+    const goto = async (drift, driftAt = null) => {
       const u = new URL(page.url());
       if (drift === null) u.searchParams.delete("drift");
       else u.searchParams.set("drift", drift);
+      if (driftAt === null) u.searchParams.delete("driftAt");
+      else u.searchParams.set("driftAt", driftAt);
       await page.goto(u.toString());
       await page.waitForSelector('[data-probe="drift-view"]');
     };
@@ -926,19 +930,50 @@ const PROBES = {
     if (await banner()) problems.push("a dismissed drift re-rendered on reload (dismissal did not persist)");
     if (!(await mounted())) problems.push("CONTROL BROKEN: harness view absent — the dismissal legs prove nothing");
 
-    // 4. Zero drift renders NOTHING (the #306 rule) — and self-heals the
-    //    stored dismissals, because the TLDs read as ours again.
+    // 4. #807: a re-take the banner never SAW (made on Import, Settings or by an
+    //    agent — no zero-drift visit in between) and a second loss → the banner
+    //    is back. The 15.8 VM's §F 7c found it hidden by the first dismissal.
+    await goto("test", "2026-10-09 06:00:00");
+    if (!(await banner())) {
+      problems.push(
+        "a second loss after an unseen re-take stayed hidden behind the first loss's dismissal (#807)",
+      );
+      return problems; // nothing to dismiss — the later legs would only time out
+    }
+    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page.waitForFunction(
+      () => !document.querySelector('[data-probe="resolver-drift-banner"]'),
+    );
+
+    // 5. Zero drift renders NOTHING (the #306 rule) — and prunes the stored
+    //    dismissals, because the TLDs read as ours again.
     await goto(null);
     if (await banner()) problems.push("nothing is drifted and the banner rendered anyway (#306's shape)");
     if (!(await mounted())) problems.push("CONTROL BROKEN: harness view absent on the zero-drift leg");
 
-    // 5. The NEXT loss re-shows: the ours-again visit pruned the dismissal.
+    // 6. The NEXT loss re-shows after a SEEN ours-again visit too.
     await goto("test");
     if (!(await banner()))
       problems.push(
         "a re-drifted TLD stayed hidden behind an old dismissal — the self-heal is not pruning",
       );
     return problems;
+  },
+  // #808: the hand-back row's sentence follows WHO answers the TLD. Both legs
+  // (borrowed control + drifted) are scenarios, so neither passes vacuously.
+  handbackCopy: async (page) => {
+    const drifted = new URL(page.url()).searchParams.get("owner") === "drifted";
+    const t = await page.evaluate(
+      () => document.querySelector('[data-probe="handback-copy"]')?.innerText ?? null,
+    );
+    if (t === null) return ["CONTROL BROKEN: the hand-back row did not render"];
+    if (drifted) {
+      const p = [];
+      if (/rexenv answers this/.test(t)) p.push("a drifted borrow still claims \"rexenv answers this\" (#808)");
+      if (!/took this back/.test(t)) p.push(`the drifted row does not say the TLD was taken back: ${JSON.stringify(t)}`);
+      return p;
+    }
+    return /rexenv answers this/.test(t) ? [] : [`the borrowed row lost its sentence: ${JSON.stringify(t)}`];
   },
   deleteGate: async (page) => {
     const problems = await page.evaluate(() => {
@@ -1061,6 +1096,7 @@ function probeFor(name) {
   if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
+  if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached
   // to the first scenario only — attaching it to all six would run the same

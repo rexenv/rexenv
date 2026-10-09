@@ -345,6 +345,9 @@ pub struct ResolverTakeover {
     pub original: String,
     /// Our 0600 copy of it under app-data.
     pub backup_path: String,
+    /// When this takeover was (re)made — refreshed by every re-take (the upsert below), so it
+    /// names one GENERATION of the borrow. The drift banner keys its dismissal on it (#807).
+    pub taken_at: String,
 }
 
 fn row_to_takeover(row: &Row) -> rusqlite::Result<ResolverTakeover> {
@@ -352,6 +355,7 @@ fn row_to_takeover(row: &Row) -> rusqlite::Result<ResolverTakeover> {
         tld: row.get(0)?,
         original: row.get(1)?,
         backup_path: row.get(2)?,
+        taken_at: row.get(3)?,
     })
 }
 
@@ -379,7 +383,7 @@ pub fn insert_resolver_takeover(
 /// The takeover record for `tld`, if we hold one.
 pub fn get_resolver_takeover(conn: &Connection, tld: &str) -> Result<Option<ResolverTakeover>> {
     let mut stmt = conn
-        .prepare("SELECT tld, original, backup_path FROM resolver_takeovers WHERE tld = ?1")?;
+        .prepare("SELECT tld, original, backup_path, taken_at FROM resolver_takeovers WHERE tld = ?1")?;
     let mut rows = stmt.query_map([tld], row_to_takeover)?;
     match rows.next() {
         Some(v) => Ok(Some(v?)),
@@ -390,7 +394,7 @@ pub fn get_resolver_takeover(conn: &Connection, tld: &str) -> Result<Option<Reso
 /// Every resolver file we currently hold, TLD-sorted.
 pub fn list_resolver_takeovers(conn: &Connection) -> Result<Vec<ResolverTakeover>> {
     let mut stmt = conn.prepare(
-        "SELECT tld, original, backup_path FROM resolver_takeovers ORDER BY tld",
+        "SELECT tld, original, backup_path, taken_at FROM resolver_takeovers ORDER BY tld",
     )?;
     let rows = stmt.query_map([], row_to_takeover)?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)

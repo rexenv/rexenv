@@ -24,7 +24,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
-import type { DbImportRecord, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
+import type { DbImportRecord, DriftedTakeover, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
 
 /** **THE scratch predicate — the recorded fact, and nothing else.**
  *
@@ -1349,10 +1349,13 @@ function ReapBanner() {
  *  with one redline). Two load-bearing behaviours:
  *  - `[]` renders NOTHING. Nothing-taken-back is the ordinary state, and a
  *    notice for it would be the import bug's shape in a new place (#306).
- *  - Dismissal is PER-TLD and CLEARS when that TLD reads as ours again: the
- *    stored set self-heals against the live answer, so a dismissed .test
- *    returns on the NEXT loss and a newly lost .dev is never hidden by an
- *    old dismissal — nobody tracks that by hand. */
+ *  - Dismissal is PER-TAKEOVER: its key is `<tld>@<takenAt>`, and every
+ *    re-take refreshes `takenAt`, so a dismissed .test returns on the NEXT
+ *    loss and a newly lost .dev is never hidden by an old dismissal. The key
+ *    used to be the bare TLD, cleared only when THIS banner saw the TLD read
+ *    as ours again — a re-take made on Import or Settings never passed through
+ *    here, and the next loss stayed hidden (the 15.8 VM, §F 7c, 9 Oct 2026,
+ *    ledger #807). */
 export function ResolverDriftBanner() {
   const navigate = useNavigate();
   const DISMISS_KEY = "rexenv.resolverDriftDismissedTlds";
@@ -1372,10 +1375,20 @@ export function ResolverDriftBanner() {
   // Coerced, not trusted: the dev harness's catch-all mock once answered `1`
   // here and the crash took the whole Sites route with it. A malformed answer
   // must degrade to the ordinary state, never to a white page.
-  const drift = useMemo(() => (Array.isArray(data) ? data.filter((t) => typeof t === "string") : []), [data]);
-  // Self-heal: a dismissal only means anything about a CURRENTLY drifted TLD.
-  // Pruning here is what makes "dismissed .test re-shows on the next loss"
-  // true without any second record of when a takeover was redone.
+  const records = useMemo(
+    () =>
+      Array.isArray(data)
+        ? data.filter(
+            (r): r is DriftedTakeover =>
+              !!r && typeof r === "object" && typeof r.tld === "string" && typeof r.takenAt === "string",
+          )
+        : [],
+    [data],
+  );
+  const drift = useMemo(() => records.map((r) => `${r.tld}@${r.takenAt}`), [records]);
+  // Pruning keeps the stored set to CURRENT losses only (storage hygiene, and
+  // pre-#807 bare-TLD entries fall out here); re-showing on the next loss does
+  // not depend on it — a re-take is a new key.
   useEffect(() => {
     // ONLY on a resolved answer: while the query loads, `drift` is [] and []
     // means "unknown", not "ours again" — pruning on it wiped every dismissal
@@ -1388,10 +1401,10 @@ export function ResolverDriftBanner() {
       setDismissed(pruned);
     }
   }, [isSuccess, drift, dismissed]);
-  const visible = drift.filter((t) => !dismissed.includes(t));
+  const visible = records.filter((r) => !dismissed.includes(`${r.tld}@${r.takenAt}`));
   if (visible.length === 0) return null;
 
-  const names = visible.map((t) => `.${t}`);
+  const names = visible.map((r) => `.${r.tld}`);
   const list =
     names.length === 1
       ? names[0]
@@ -1419,7 +1432,7 @@ export function ResolverDriftBanner() {
       <Button
         variant="ghost"
         onClick={() => {
-          const next = [...new Set([...dismissed, ...visible])];
+          const next = [...new Set([...dismissed, ...visible.map((r) => `${r.tld}@${r.takenAt}`)])];
           localStorage.setItem(DISMISS_KEY, JSON.stringify(next));
           setDismissed(next);
         }}

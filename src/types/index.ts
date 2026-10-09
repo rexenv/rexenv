@@ -263,6 +263,13 @@ export interface ImportScan {
   unsupported: string | null;
 }
 
+/** A borrowed TLD another tool took back, and which takeover it was (mirrors
+ *  `core::dns::DriftedTakeover`). `takenAt` changes on every re-take. */
+export interface DriftedTakeover {
+  tld: string;
+  takenAt: string;
+}
+
 /** What handing a resolver file back actually did (mirrors ResolverPlan). */
 export interface ResolverPlan {
   remove: string[];

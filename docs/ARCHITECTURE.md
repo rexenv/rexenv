@@ -417,7 +417,12 @@ Live-proven end to end by `site_stop_start_check`.
 - **A live edge is adopted, never killed.** `prepare_edge()` first probes OUR socket:
   if it answers, the edge is adopted (`Daemon` if the daemon is installed, else legacy
   `Privileged`) and the current config is pushed via `caddy reload` — no stop, no
-  re-prompt, sites never drop. The health watchdog heals the reverse way too: an edge
+  re-prompt, sites never drop. An edge the manager ALREADY tracks gets the same reload: until
+  9 Oct 2026 a live tracked edge returned "up" without one, so a Start all run by a
+  site create or import while only the boot edge was running (Partial 1/N) left the
+  new site with no route and no certificate on the edge while its card said Running
+  (#806, seen on the 15.8 VM; TEXT-guarded). A tracked edge keeps its handle; one
+  that refuses the reload is replaced by the fresh-start path. The health watchdog heals the reverse way too: an edge
   answering while the manager says stopped is re-adopted (`"adopted"` event). A **`Daemon`
   edge whose socket goes dead gets a BOUNDED grace window** (`EDGE_SUPERVISOR_GRACE_POLLS`
   = 3 × 10s; KeepAlive's throttle is ~10s): ONE `"edge-restarting"` info on first
@@ -1450,6 +1455,13 @@ honest footer —
   between the two. `dns::drifted_takeovers` reports a borrowed file another tool
   reclaimed — checked at startup and in `rex doctor`, because our resolver keeps
   answering so every health probe stays green while those sites go dark.
+  The Sites banner reads `dns::drifted_takeover_records` (each TLD with its
+  `taken_at`) and keys a dismissal on `<tld>@<takenAt>`: every re-take refreshes
+  `taken_at`, so the next loss is a new key and shows again wherever the re-take
+  was made (#807 — the bare-TLD key was only cleared when the banner itself saw
+  the TLD read as ours, so a re-take on Import hid the second loss; the 15.8 VM,
+  9 Oct 2026). Settings' hand-back row says a DRIFTED borrow was taken back,
+  never "rexenv answers this" (#808).
   **The consent renders where the refusal lands (5 Sep 2026).** The takeover card
   (`ResolverConsent`: their file beside ours, unticked checkbox, the way out named)
   lived only on the Import page, and only for TLDs the scan derived from Valet's own

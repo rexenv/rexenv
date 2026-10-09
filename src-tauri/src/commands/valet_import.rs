@@ -567,6 +567,18 @@ pub fn resolver_drift(state: State<'_, AppState>) -> Result<Vec<String>> {
     ))
 }
 
+/// The same drift, each with the takeover generation it belongs to — what the Sites banner keys
+/// its dismissal on, so a re-take made anywhere un-dismisses the next loss (#807).
+#[tauri::command]
+pub fn resolver_drift_records(state: State<'_, AppState>) -> Result<Vec<core::dns::DriftedTakeover>> {
+    let conn = lock(&state)?;
+    Ok(core::dns::drifted_takeover_records(
+        &conn,
+        state.platform.as_ref(),
+        core::dns::DEFAULT_DNS_PORT,
+    ))
+}
+
 // ---------------------------------------------------------------------------
 // Import
 // ---------------------------------------------------------------------------
