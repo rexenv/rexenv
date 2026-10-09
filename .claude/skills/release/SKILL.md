@@ -43,7 +43,9 @@ While the interim note at the top of RELEASING.md stands, the workflow runs from
    said "the agent cannot run these", and the owner was handed the whole list after 0.8.10's
    draft while the VMs sat idle — he asked why.
    - macOS: `docs/PUBLISH-TESTING.md` §A0/§A, then `docs/SMOKE-TEST.md` main body, on the VM.
-   - Windows: `docs/SMOKE-TEST.md` § Windows on the drafted `setup.exe`, on the Dell.
+   - Windows: `docs/SMOKE-TEST.md` § Windows on the drafted `setup.exe`, on the Dell — and FIRST a
+     Defender scan of the draft's `setup.exe` + `.zip` on fresh signatures (RELEASING.md step 3; a
+     detection blocks Publish — 0.8.11's `setup.exe` was flagged `Bearfoos.B!ml` after it shipped).
    - Linux: `docs/SMOKE-TEST.md` § Linux on the drafted deb / AppImage (P1 first), on the VM.
    Start with what THIS release changed. Hand the owner ONLY what no machine here can do,
    and name the reason: a click on Windows' UAC secure desktop, a Mac with a second browser,

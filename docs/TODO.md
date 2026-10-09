@@ -94,6 +94,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Windows asset with Defender on the Dell before Publish (`docs/RELEASING.md`). The verdict is NEW in
   signatures between 1.459.576.0 (the Win11 VM: 0.8.11 scans clean) and 1.459.601.0 (the Dell). The
   0.8.12 Windows §M therefore ran on the VM only.
+  ✓ **(2) done 9 Oct 2026:** `docs/RELEASING.md` step 3 + the `release` skill's Windows gate — both
+  Windows assets scanned with `MpCmdRun` on fresh signatures before Publish, the signature version recorded,
+  a detection blocks Publish. Its first run is the next release's. **Open for (1) only** — the owner's
+  submission to Microsoft.
 
 - [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
   macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
@@ -1537,13 +1541,18 @@ first:
   original sighting was tangled with.
   **Still unexplained, and unchanged by this.** A working instrument is not an explanation;
   it only means the next occurrence will leave evidence. The row stays open for that.
-- [ ] **Bedrock live provision — the committed example (#35), deliberately not built.**
-  Split out of the compound row below on 30 Aug 2026, because that row's every other item
-  is struck through and its box could never close while this sat inside it. The PREMISE is
-  proven live (24 Aug 2026: a real Bedrock WordPress, two planted mu-plugins, only the
-  recorded content dir's one loaded; ledger #35 carries the method). What is open is a
-  COMMITTED example, and the reason it is open is a cost, not an oversight: it would
-  download core, create a database and install WordPress on every network-tier run.
+- [ ] **`git_site_provision_check` (and the other provisioning examples) reach `start_stack` against the
+  REAL app data** (found 9 Oct 2026, running case 4 on the dev Mac): its header says the serve phase is
+  SKIPPED because the fixture manager adopts only the database tier — true until 18 Sep 2026, when the
+  serve phase learned to START a stopped stack (`commands/site_provision.rs`, the clean-VM fix). Now the
+  fixture's manager never reads as running, so every case that reaches serve calls `start_stack` with the
+  real binaries, ports and the privileged edge: on the dev Mac it collided with the user's PHP-FPM pools
+  ("port 9783 … held by a leftover rexenv process") and settled `failed`; on a machine with nothing running
+  it would start the whole stack, edge prompt included, from an example. `site_provision_check`,
+  `site_matrix_check`, `postgres_site_lifecycle_check`, `prefetch_responsiveness_check` and
+  `tunnel_delete_order_check` drive the same job. Owed: a decision per example — refuse the stack start
+  outside the app (`stack_guard::may_control_real_stack`, opt-in for the ones that mean it) or stop the
+  job before serve — and the header made true again.
 
 ## Release gates (human, scripted — see the docs named)
 
@@ -1681,6 +1690,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   port, when that path exists on Windows at all
   (Moved here from "Now" 6 Oct 2026: nothing on Windows can make the banner render, so there is no
   work until the import port exists — it sat at the top of the actionable list as if there were.)
+  (9 Oct 2026: the "could not be tested" half is stale — `scripts/wk-checks/uireview.js`'s `resolver-drift`
+  scenario renders this banner from a mock on macOS words. The decision stands for the other reason: the
+  sentence is owner-approved copy the probe pins, and on Windows/Linux the banner cannot render.)
 - [ ] **The live pool swap is still L3.** `php_update_check` proves the chain up
   to "a pool on the new patch answers on a FIXTURE port". Stopping the running
   master on the PRODUCTION port and reverting when it does not come back needs

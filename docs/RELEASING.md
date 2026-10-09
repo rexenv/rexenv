@@ -467,6 +467,20 @@ Changelog link points at the website and never moved.
    four lanes delivered (dmg + app.tar.gz, setup.exe + zip, amd64/arm64 deb + AppImage, every
    `.sha256` matching). Download the attached dmg and run `docs/PUBLISH-TESTING.md` **§A** on
    it (§A0 already ran in CI, per OS). Record the pass next to the dmg's sha256 in that doc.
+   **And scan both Windows assets with Microsoft Defender on fresh signatures before Publish**
+   (since 9 Oct 2026). Defender's machine-learning heuristic called the PUBLISHED 0.8.11
+   `setup.exe` `Trojan:Win32/Bearfoos.B!ml` — a verdict that appeared between two signature
+   versions, after the release — and a user who meets it reads "rexenv is a trojan". On the Dell
+   (or the Win11 VM), in PowerShell, for the draft's `setup.exe` and `.zip`:
+   ```
+   $mp = "$env:ProgramFiles\Windows Defender\MpCmdRun.exe"
+   & $mp -SignatureUpdate; (Get-MpComputerStatus).AntivirusSignatureVersion
+   & $mp -Scan -ScanType 3 -File <asset> -DisableRemediation   # exit 0 + "found no threats"
+   ```
+   Record the signature version beside the result. A detection blocks Publish: submit the file to
+   Microsoft as a false positive (https://www.microsoft.com/wdsi/filesubmission — the owner's, it is
+   outward-facing) and publish once it is cleared. Clean today is not clean forever (the 0.8.11
+   verdict came later), so a user report of a detection re-runs this against the published asset.
 4. **Publish** the release — its notes are already the tag's body; read them once as a
    user would. Publishing fires `release-published.yml` → the tap's `update-cask.yml` (the
    cask bumps from the published dmg's hash) and its installer test; a failed dispatch is a

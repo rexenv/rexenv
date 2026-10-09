@@ -139,11 +139,11 @@ pub const BEDROCK_ENV_SEED: &str = "WP_ENV=development\n";
 /// Returns the rewritten text rather than writing it, so the whole edit is
 /// unit-testable against real `.env` shapes without a filesystem.
 ///
-/// **UNVERIFIED against a real Bedrock project** — the key set and the
-/// `${WP_HOME}/wp` convention come from Bedrock's documented `.env.example`,
-/// not from a live install (the same honest caveat `detect_content_dir_rel`
-/// carries for Radicle). Whoever first clones one should confirm the site boots
-/// before trusting this.
+/// **Verified against a real Bedrock project** (ledger #294): `git_site_provision_check`
+/// case 4 clones `roots/bedrock`, wires this `.env`, and `wp core install` lands its tables
+/// — since 11 Aug 2026; on 9 Oct 2026 it also ran `wp eval` through it (#35). It was written
+/// from Bedrock's documented `.env.example` and carried an UNVERIFIED caveat until then, as
+/// `detect_content_dir_rel` still does for Radicle.
 pub fn wire_bedrock_env(original: &str, home_url: &str, db: &BedrockDb) -> String {
     let mut text = crate::core::dotenv::set_keys(
         original,

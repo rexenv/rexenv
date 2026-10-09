@@ -18,7 +18,9 @@
 //!      the clone phase, `provisioned = 0`, the docroot is left EMPTY and no
 //!      `.rexenv-clone-*` staging directory survives.
 //!   4. **Bedrock** from `roots/bedrock` — the layout that was shipped marked
-//!      UNVERIFIED (ledger #294). Composer owns core, `.env` owns the config.
+//!      UNVERIFIED (ledger #294). Composer owns core, `.env` owns the config. And (#35) which
+//!      mu-plugins WordPress actually LOADS: a probe in the recorded `web/app` does, one in a
+//!      hardcoded `web/wp-content` does not, and every `rexenv-*.php` rexenv wrote is in `app`.
 //!
 //! Edge safety: the fixture manager adopts ONLY the database tier
 //! (`adopt_dbs`) — never the edge/nginx — so `is_running()` stays false and the
@@ -435,6 +437,66 @@ async fn main() -> std::process::ExitCode {
         }
         if site.served_root() != project.join("web") {
             failures.push(format!("Bedrock: served_root = {:?}", site.served_root()));
+        }
+        // ── #35 as a committed leg: which mu-plugins does WordPress LOAD? ──
+        // Two identical probes: one in the content dir rexenv recorded (`web/app`), one where a
+        // hardcoded `wp-content` would have put it (`web/wp-content`). Asked of WordPress itself
+        // (`wp_get_mu_plugins()` lists WPMU_PLUGIN_DIR, the only place it loads them from). The app
+        // probe is the CONTROL: without it loading, the stray's absence proves nothing (the 24 Aug
+        // run's first attempt read a failed request as the premise holding).
+        let app_mu = project.join("web/app/mu-plugins");
+        let stray_mu = project.join("web/wp-content/mu-plugins");
+        let _ = std::fs::create_dir_all(&app_mu);
+        let _ = std::fs::create_dir_all(&stray_mu);
+        let probe = "<?php // rexenv #35 probe\n";
+        let _ = std::fs::write(app_mu.join("rexenv-probe-app.php"), probe);
+        let _ = std::fs::write(stray_mu.join("rexenv-probe-stray.php"), probe);
+        let state = handle.state::<AppState>();
+        let plat = state.platform.as_ref();
+        let pins = rexenv_lib::core::binaries::pins();
+        let php = rexenv_lib::core::binaries::resolve_program(plat, "php", pins.php).await;
+        let phar = rexenv_lib::core::binaries::resolve_file(plat, "wp-cli", pins.wp_cli).await;
+        match (php, phar) {
+            (Ok(php), Ok(phar)) => {
+                let eval = r#"echo implode("\n", array_map("basename", wp_get_mu_plugins()));"#;
+                let out = rexenv_lib::core::wordpress::wp_cli(&php, &phar, &["eval", eval], Some(project));
+                let loaded: Vec<String> = out
+                    .as_ref()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(|l| l.trim().to_string()).collect())
+                    .unwrap_or_default();
+                println!("  mu-plugins WordPress loads: {loaded:?}");
+                if !loaded.iter().any(|m| m == "rexenv-probe-app.php") {
+                    failures.push(format!(
+                        "Bedrock #35: the probe in web/app/mu-plugins did not load — the check proves nothing ({:?})",
+                        out.as_ref().map(|o| String::from_utf8_lossy(&o.stderr).into_owned())
+                    ));
+                }
+                if loaded.iter().any(|m| m == "rexenv-probe-stray.php") {
+                    failures.push("Bedrock #35: a mu-plugin in web/wp-content loaded — the content dir is not app".into());
+                }
+                // rexenv's OWN mu-plugins: written to the recorded dir, none to the stray, each loaded.
+                let ours = |dir: &Path| -> Vec<String> {
+                    std::fs::read_dir(dir)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .filter(|n| n.starts_with("rexenv-") && !n.starts_with("rexenv-probe-"))
+                        .collect()
+                };
+                let in_app = ours(&app_mu);
+                let in_stray = ours(&stray_mu);
+                println!("  rexenv's own mu-plugins: web/app {in_app:?}, web/wp-content {in_stray:?}");
+                if !in_stray.is_empty() {
+                    failures.push(format!("Bedrock #35: rexenv wrote {in_stray:?} into web/wp-content, which never loads"));
+                }
+                for m in &in_app {
+                    if !loaded.contains(m) {
+                        failures.push(format!("Bedrock #35: rexenv's {m} sits in web/app/mu-plugins but WordPress did not load it"));
+                    }
+                }
+            }
+            (php, phar) => failures.push(format!("Bedrock #35: no PHP/wp-cli to ask WordPress with: {:?} / {:?}", php.err(), phar.err())),
         }
     } else {
         failures.push("Bedrock: no site row".into());

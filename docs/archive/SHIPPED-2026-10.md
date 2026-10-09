@@ -682,3 +682,19 @@
   macOS install deletes its own backup and can run a root `rm -rf` outside
   `PrivilegeManager`, and its relaunch bypasses this app's ONE quit gate.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Ledger-driven proof backlog”
+
+- [x] **Bedrock live provision — the committed example (#35), deliberately not built.**
+  Split out of the compound row below on 30 Aug 2026, because that row's every other item
+  is struck through and its box could never close while this sat inside it. The PREMISE is
+  proven live (24 Aug 2026: a real Bedrock WordPress, two planted mu-plugins, only the
+  recorded content dir's one loaded; ledger #35 carries the method). What is open is a
+  COMMITTED example, and the reason it is open is a cost, not an oversight: it would
+  download core, create a database and install WordPress on every network-tier run.
+  ✓ **9 Oct 2026** (ledger #35): built after all — `git_site_provision_check` case 4 already paid the cost
+  this row named. Live: WordPress loads the probe in `web/app/mu-plugins` and not the one in `web/wp-content`;
+  plant-proven (dirs swapped → both red).
+
