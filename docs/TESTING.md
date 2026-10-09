@@ -438,6 +438,12 @@ it can:
   `NewSite.path` with the resolved docroot before the clone/link rule ran, so every
   cloned site read as also-linked and was refused). **Building the fixture with the
   real tool is what makes a hermetic example an L1 rather than an L0 in disguise.**
+  **`worktree_git_check` (sandbox tier, 9 Oct 2026, W2 of `docs/PLAN-git-worktrees.md`)
+  is the same pattern for `git worktree`.** It builds a real plugin repo, adds two
+  worktrees (an existing branch and a new one) with `core::worktree::add`, and reads them
+  back through `list`. It then points `foreign_checkout_under` at a folder holding the
+  `.git` FILE git itself wrote. The unit tests feed that guard hand-written `gitdir:`
+  lines; only this leg proves it reads the real thing.
   **`wp_packages_check` (sandbox tier) is the pattern taken one step further: it plants
   the thing the check is about.** The obvious version — ask for a package command,
   expect it missing — is green on every machine that never installed one, which is most

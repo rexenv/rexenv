@@ -1105,7 +1105,7 @@ pub fn validate_ref(r: &str) -> Result<String> {
 }
 
 #[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (clone_repo precedent)
-fn run_git_op(
+pub(crate) fn run_git_op(
     supervisor: &dyn ProcessSupervisor,
     git: &Path,
     env: &[(String, String)],

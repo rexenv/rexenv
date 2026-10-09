@@ -93,10 +93,8 @@ served files.
      nginx and silently shadow the network sub-site of that name, current or future.
   2. **The name is already taken.** That means a site domain, an alias (`site_domains`), a
      parent alias that carries a wildcard, or a sub-site domain in the parent's network.
-  3. **The name breaks a DNS limit.** A label over 63 bytes or a name over 253; the fallback
-     trims the slug.
-  4. **The parent's own domain is already nested** (e.g. `a.shop.rex`). Each worktree would
-     otherwise add a level. Kept flat on purpose.
+  3. **The parent's own domain is already nested** (e.g. `a.shop.rex` → `a-fix.shop.rex`).
+     Each worktree would otherwise add a level. Kept flat on purpose.
 - If the fallback is also taken, `-2`, `-3`… are appended.
 - `branch-slug`: the branch name lowercased, with `/` and anything outside `[a-z0-9-]`
   turned into `-`, then trimmed. It is a pure function with tests. `feature/checkout-v2` →
@@ -289,7 +287,7 @@ for Linux); the ledger rows say which OS the proof came from.
 |---|---|---|
 | W0 | Owner answers §9; plan updated | ✓ 9 Oct 2026 (Q1, Q4 answered; Q2, Q3, Q5 take the recommendation unless the owner says otherwise) |
 | W1 | Migration v45 `site_worktrees`; `SiteWorktree` model + store; delete-parent-with-children refusal; the `.git`-file teardown guard | ✓ 9 Oct 2026 — `core/worktree.rs` (`foreign_checkout_under`), `sites::delete_preflight` (called at `delete_site_owned` step 0) + teardown's keep; 6 lib tests, 5 plants each caught; ledger #814, #815 (◐ macOS only, the other OSes' run is W11) |
-| W2 | `core/worktree.rs`: `list` (porcelain parse), `add` (existing/new branch), slug + domain derivation with the four fallback rules, git version floor in `git_preflight` + `words.rs` ×3. Measure two-level `.rex` names: DNS agent, Caddy SNI, leaf cert | L0 tests on every parser + each fallback rule; the two-level name answers on macOS / Windows / Linux; ledger #7 |
+| W2 | `core/worktree.rs`: `list` (porcelain parse), `add` (existing/new branch), slug + domain derivation with the fallback rules, a git version floor | ✓ 9 Oct 2026 — `derive_domain` (three fallback reasons; a fourth, length, was unreachable and was removed), `domain_taken` (the nginx `server_name` set), `parse_porcelain`/`list`/`add`, `require_worktree_git` (≥ 2.17, the hint is `words.git_install`, so no new words). L0 tests + L1 `worktree_git_check` on macOS; ledger #816. Two-level names measured on macOS only (`zz-probe.shop.rex` → 127.0.0.1); Windows/Linux resolution and the per-name leaf are proven in W5's HTTPS leg and W11 |
 | W3 | `core/dbclone.rs` (MySQL/MariaDB, PostgreSQL, SQLite) on top of the `dbrestore` pieces | L0 + L1 copy on a sandbox server; ledger #2, #3 |
 | W4 | **Site copy** (Shape A base): `clone_tree` of the parent docroot minus one asset dir, `wp-config.php` rewrite, DB clone + rehome, as a `site_provision` job | L1: the copy serves HTTP 200 on its domain; the parent is untouched |
 | W5 | **Shape A**: plugin/theme worktree on top of W4 (`worktree add` into the copy, the asset's deps) + the Worktrees list on a plugin/theme in the WordPress tab's asset list | L1 `worktree_site_check` leg A: the plugin file differs between parent and child per branch |
@@ -303,7 +301,7 @@ for Linux); the ledger rows say which OS the proof came from.
 ## 9. Owner's answers (9 Oct 2026) and what is still open
 
 1. **Domain** — ANSWERED: `feature-x.shop.rex` first, `shop-feature-x.rex` when it would
-   cause a problem. §2.2 lists the four rules that decide "a problem".
+   cause a problem. §2.2 lists the three rules that decide "a problem".
 2. **Default DB mode** — not asked yet; the plan goes with **clone**.
 3. **Dependencies (Shape B)** — not asked yet; the plan copies `vendor/`/`node_modules`
    when the lockfiles are byte-identical to the parent's, and installs otherwise. No knob.
