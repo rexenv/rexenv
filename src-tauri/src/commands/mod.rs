@@ -26,4 +26,5 @@ pub mod terminal;
 pub mod tunnels;
 pub mod valet_import;
 pub mod wordpress;
+pub mod worktree;
 pub mod wp_install;

@@ -710,15 +710,24 @@ const MIGRATIONS: &[&str] = &[
     // is the structural backstop for any path that reaches `delete_site` without
     // it (ledger #815). `site_id` cascades: the relation dies with the child.
     //
-    // The BRANCH is not stored — git answers it live (§2.3: `sites.git_ref` is
-    // already "chosen at creation, never kept in sync", and a second copy would
-    // lie the first time anyone runs `git switch` in the worktree).
+    // `branch`/`base`/`skip_uploads`/`asset_*` are the REQUEST, recorded for the
+    // same reason `git_migrate` is: Retry rebuilds the job from the row, possibly
+    // after a restart, and must add the worktree the user asked for. They are
+    // never read as "what is checked out NOW" — git answers that live (§2.3:
+    // `sites.git_ref` is already "chosen at creation, never kept in sync", and a
+    // second source would lie the first time anyone runs `git switch` there).
+    // (The request columns joined v45 before it shipped — W4, same day.)
     "CREATE TABLE site_worktrees (
         site_id       TEXT PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
         parent_id     TEXT NOT NULL REFERENCES sites(id),
         shape         TEXT NOT NULL,
         worktree_path TEXT NOT NULL,
         adopted       INTEGER NOT NULL DEFAULT 0,
+        asset_kind    TEXT,
+        asset_dir     TEXT,
+        branch        TEXT NOT NULL DEFAULT '',
+        base          TEXT,
+        skip_uploads  INTEGER NOT NULL DEFAULT 0,
         created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX idx_site_worktrees_parent ON site_worktrees(parent_id);",

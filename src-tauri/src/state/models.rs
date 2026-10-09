@@ -168,6 +168,16 @@ pub struct SiteWorktree {
     /// only SERVED by rexenv — never `git worktree remove`d without an explicit
     /// user action (§2.7).
     pub adopted: bool,
+    /// Shape A: `plugin` | `theme`, and the folder under the content dir.
+    pub asset_kind: Option<String>,
+    pub asset_dir: Option<String>,
+    /// The branch the user ASKED for — a record of the request, for Retry;
+    /// what is checked out now is git's answer (`core::worktree::list`).
+    pub branch: String,
+    /// `Some` = `branch` was to be made NEW from this ref.
+    pub base: Option<String>,
+    /// `uploads/` was left out of the copy.
+    pub skip_uploads: bool,
     pub created_at: String,
 }
 

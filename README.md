@@ -201,7 +201,7 @@ rexenv/
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)
         │   ├── system.rs       # status, setup, DNS/SSL, autostart, open-external
         │   ├── sites.rs · site_provision.rs · services.rs · database.rs · php.rs
-        │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs
+        │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs · worktree.rs
         │   ├── valet_import.rs · db_import.rs · rewrite.rs · downloads.rs
         │   ├── mail.rs · logs.rs · terminal.rs · tunnels.rs · settings.rs
         │   └── mcp.rs · scratch.rs      # the MCP surface + agent scratch sites

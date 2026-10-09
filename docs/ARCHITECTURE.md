@@ -1462,6 +1462,25 @@ honest footer —
   after the import, and the private (0600) dump file is removed on every path. The dump
   uses the export's flags, so stored routines and events are not copied; WordPress uses
   neither.
+- **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
+  git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
+  command is unregistered until W8. `commands::worktree::start` validates the request
+  against the parent row. A subdomain network or a Bedrock layout is refused for now. It
+  derives the domain and hands a `NewSite` to the ONE provisioning path. The relation
+  (`site_worktrees`) is written by `start_with`'s `AfterInsert` hook, under the same lock
+  as the row. The job then runs its own list:
+  1. `copy` — `copy_site_tree` into a fresh staging dir, renamed over the empty docroot.
+     Links are listed, never followed. The tunnel/login/scratch-mail mu-plugins are
+     stripped.
+  2. `worktree` — `git worktree add` from the parent's checkout, on the system git.
+  3. `deps` — the plugin's own composer.json.
+  4. `db`, then `db_copy` — `core::dbclone`.
+  5. `configure` — `wp config set` for `DB_NAME`, plus only the URL/network constants the
+     file defines.
+  6. `urls` — `rehome_urls_on_copy`, parent → child, through #818's token.
+  7. `serve`.
+
+  Each step is skipped on Retry once its result is on disk.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

@@ -5643,11 +5643,18 @@ mod tests {
         let child = create(&conn, new2).unwrap();
         store::insert_site_worktree(
             &conn,
-            &child.id,
-            &site.id,
-            crate::state::models::WorktreeShape::Site,
-            &child.path,
-            false,
+            &store::NewWorktree {
+                site_id: &child.id,
+                parent_id: &site.id,
+                shape: crate::state::models::WorktreeShape::Site,
+                worktree_path: &child.path,
+                adopted: false,
+                asset_kind: None,
+                asset_dir: None,
+                branch: "fix",
+                base: None,
+                skip_uploads: false,
+            },
         )
         .unwrap();
         let err = delete_preflight(&conn, &*platform, &site).unwrap_err().to_string();

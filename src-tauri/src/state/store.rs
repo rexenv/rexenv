@@ -1328,29 +1328,55 @@ fn row_to_worktree(row: &Row) -> rusqlite::Result<SiteWorktree> {
         shape: WorktreeShape::parse_db(&row.get::<_, String>(2)?),
         worktree_path: row.get(3)?,
         adopted: row.get::<_, i64>(4)? != 0,
-        created_at: row.get(5)?,
+        asset_kind: row.get(5)?,
+        asset_dir: row.get(6)?,
+        branch: row.get(7)?,
+        base: row.get(8)?,
+        skip_uploads: row.get::<_, i64>(9)? != 0,
+        created_at: row.get(10)?,
     })
 }
 
-const WORKTREE_COLUMNS: &str = "site_id, parent_id, shape, worktree_path, adopted, created_at";
+const WORKTREE_COLUMNS: &str = "site_id, parent_id, shape, worktree_path, adopted, asset_kind, \
+     asset_dir, branch, base, skip_uploads, created_at";
+
+/// A worktree relation to record — borrowed fields, written once.
+#[derive(Debug, Clone, Copy)]
+pub struct NewWorktree<'a> {
+    pub site_id: &'a str,
+    pub parent_id: &'a str,
+    pub shape: WorktreeShape,
+    pub worktree_path: &'a str,
+    pub adopted: bool,
+    pub asset_kind: Option<&'a str>,
+    pub asset_dir: Option<&'a str>,
+    pub branch: &'a str,
+    pub base: Option<&'a str>,
+    pub skip_uploads: bool,
+}
 
 /// Record that `w.site_id` is a worktree child of `w.parent_id`. `created_at` is
 /// the database's clock, not the caller's.
-pub fn insert_site_worktree(
-    conn: &Connection,
-    site_id: &str,
-    parent_id: &str,
-    shape: WorktreeShape,
-    worktree_path: &str,
-    adopted: bool,
-) -> Result<()> {
-    if site_id == parent_id {
+pub fn insert_site_worktree(conn: &Connection, w: &NewWorktree) -> Result<()> {
+    if w.site_id == w.parent_id {
         return Err(Error::Other("a site cannot be a worktree of itself".into()));
     }
     conn.execute(
-        "INSERT INTO site_worktrees (site_id, parent_id, shape, worktree_path, adopted) \
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![site_id, parent_id, shape.as_db(), worktree_path, adopted as i64],
+        "INSERT INTO site_worktrees (site_id, parent_id, shape, worktree_path, adopted, \
+         asset_kind, asset_dir, branch, base, skip_uploads) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            w.site_id,
+            w.parent_id,
+            w.shape.as_db(),
+            w.worktree_path,
+            w.adopted as i64,
+            w.asset_kind,
+            w.asset_dir,
+            w.branch,
+            w.base,
+            w.skip_uploads as i64
+        ],
     )?;
     Ok(())
 }
@@ -2488,6 +2514,27 @@ has never heard of cannot pass unread.";
         );
     }
 
+    fn nw<'a>(
+        site_id: &'a str,
+        parent_id: &'a str,
+        shape: WorktreeShape,
+        path: &'a str,
+        adopted: bool,
+    ) -> NewWorktree<'a> {
+        NewWorktree {
+            site_id,
+            parent_id,
+            shape,
+            worktree_path: path,
+            adopted,
+            asset_kind: None,
+            asset_dir: None,
+            branch: "feature/x",
+            base: None,
+            skip_uploads: false,
+        }
+    }
+
     fn site_with(id: &str, domain: &str) -> Site {
         Site { id: id.into(), domain: domain.into(), ..scratch(None) }
     }
@@ -2498,9 +2545,9 @@ has never heard of cannot pass unread.";
         insert_site(&conn, &site_with("p", "shop.rex")).unwrap();
         insert_site(&conn, &site_with("c1", "feature-x.shop.rex")).unwrap();
         insert_site(&conn, &site_with("c2", "fix-y.shop.rex")).unwrap();
-        insert_site_worktree(&conn, "c1", "p", WorktreeShape::Asset, "/s/c1/wp-content/plugins/a", false)
+        insert_site_worktree(&conn, &nw("c1", "p", WorktreeShape::Asset, "/s/c1/wp-content/plugins/a", false))
             .unwrap();
-        insert_site_worktree(&conn, "c2", "p", WorktreeShape::Site, "/s/c2", true).unwrap();
+        insert_site_worktree(&conn, &nw("c2", "p", WorktreeShape::Site, "/s/c2", true)).unwrap();
 
         let w = get_site_worktree(&conn, "c1").unwrap().unwrap();
         assert_eq!(w.parent_id, "p");
@@ -2513,7 +2560,20 @@ has never heard of cannot pass unread.";
             worktree_children(&conn, "p").unwrap().into_iter().map(|w| w.site_id).collect();
         assert_eq!(kids.len(), 2);
         assert!(kids.contains(&"c1".to_string()) && kids.contains(&"c2".to_string()));
-        assert!(insert_site_worktree(&conn, "p", "p", WorktreeShape::Site, "/s/p", false).is_err());
+        assert!(insert_site_worktree(&conn, &nw("p", "p", WorktreeShape::Site, "/s/p", false)).is_err());
+        let mut asked = nw("c3", "p", WorktreeShape::Asset, "/s/c3/wp-content/plugins/a", false);
+        asked.asset_kind = Some("plugin");
+        asked.asset_dir = Some("a");
+        asked.base = Some("main");
+        asked.skip_uploads = true;
+        insert_site(&conn, &site_with("c3", "fix.shop.rex")).unwrap();
+        insert_site_worktree(&conn, &asked).unwrap();
+        let back = get_site_worktree(&conn, "c3").unwrap().unwrap();
+        assert_eq!(back.asset_kind.as_deref(), Some("plugin"));
+        assert_eq!(back.asset_dir.as_deref(), Some("a"));
+        assert_eq!(back.branch, "feature/x");
+        assert_eq!(back.base.as_deref(), Some("main"));
+        assert!(back.skip_uploads);
     }
 
     /// **A parent that still has worktree children cannot be deleted — by the
@@ -2527,7 +2587,7 @@ has never heard of cannot pass unread.";
         let conn = db::open_in_memory().unwrap();
         insert_site(&conn, &site_with("p", "shop.rex")).unwrap();
         insert_site(&conn, &site_with("c", "feature-x.shop.rex")).unwrap();
-        insert_site_worktree(&conn, "c", "p", WorktreeShape::Site, "/s/c", false).unwrap();
+        insert_site_worktree(&conn, &nw("c", "p", WorktreeShape::Site, "/s/c", false)).unwrap();
 
         assert!(delete_site(&conn, "p").is_err(), "the parent must not be deletable");
         assert!(get_site(&conn, "p").unwrap().is_some());

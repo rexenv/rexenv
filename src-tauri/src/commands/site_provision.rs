@@ -28,7 +28,9 @@ use crate::core::db::DbEngine;
 use crate::core::{self, blueprints, downloads, repo, service_manager, sites, wordpress};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
-use crate::state::models::{Blueprint, MultisiteMode, NewSite, Site, SiteType, WebServer};
+use crate::state::models::{
+    Blueprint, MultisiteMode, NewSite, Site, SiteType, SiteWorktree, WebServer, WorktreeShape,
+};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::io::Write;
@@ -256,11 +258,15 @@ struct PhasePlan {
     build_assets: bool,
     /// A Blank-PHP site asked for a starter database (`Site::has_starter_db`).
     starter_db: bool,
+    /// A worktree child of Shape A: its WordPress is a COPY of the parent's,
+    /// with one plugin/theme dir a git worktree (`docs/PLAN-git-worktrees.md`).
+    worktree_copy: bool,
 }
 
 impl PhasePlan {
-    fn of(site: &Site, has_blueprint: bool) -> Self {
+    fn of(site: &Site, has_blueprint: bool, worktree_copy: bool) -> Self {
         Self {
+            worktree_copy,
             site_type: site.site_type,
             has_blueprint,
             linked: site.docroot_managed == Some(false),
@@ -273,9 +279,34 @@ impl PhasePlan {
 }
 
 fn phase_defs(plan: PhasePlan) -> Vec<(&'static str, &'static str)> {
-    let PhasePlan { site_type, has_blueprint, linked, from_git, migrate, build_assets, starter_db } =
-        plan;
+    let PhasePlan {
+        site_type,
+        has_blueprint,
+        linked,
+        from_git,
+        migrate,
+        build_assets,
+        starter_db,
+        worktree_copy,
+    } = plan;
     let mut v = vec![("prepare", "preparing site (domain, certificate)"), ("fetch", "downloading binaries")];
+    // A worktree child is none of the shapes below: its WordPress, content and
+    // database all come from the parent, and the one new thing is the worktree.
+    // A list of its own rather than flags threaded through the WordPress one —
+    // a copy never downloads core, never runs `config create`, never installs.
+    if worktree_copy {
+        v.extend([
+            ("copy", "copying the parent site"),
+            ("worktree", "adding the git worktree"),
+            ("deps", "installing dependencies"),
+            ("db", "starting database"),
+            ("db_copy", "copying the database"),
+            ("configure", "pointing wp-config at this site"),
+            ("urls", "moving URLs to this domain"),
+            ("serve", "starting to serve"),
+        ]);
+        return v;
+    }
     // The code arrives before anything can be done to it. A cloned site's
     // remaining phases are the SAME ones a created one runs — a repo is a third
     // source for the docroot, not a different kind of site.
@@ -384,6 +415,7 @@ fn build_plan(
     minor: &str,
     engine: DbEngine,
     engine_version: &str,
+    worktree_copy: bool,
 ) -> Vec<downloads::PlannedBinary> {
     let mut plan = if matches!(site.web_server, WebServer::Frankenphp) {
         downloads::plan_for_override(state.platform.as_ref(), site.web_server)
@@ -405,7 +437,8 @@ fn build_plan(
         // A cloned one may be Bedrock, whose CORE comes from Composer — and we
         // cannot know which before the clone, so the phar rides along. It is a
         // couple of megabytes beside wp-cli and the database engine.
-        if site.git_url.is_some() {
+        // A worktree child runs the checked-out plugin's own `composer install`.
+        if site.git_url.is_some() || worktree_copy {
             plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
         }
     }
@@ -430,6 +463,30 @@ fn build_plan(
         plan.extend(downloads::plan_for_composer_tooling_with(state.platform.as_ref(), minor, patches));
     }
     plan
+}
+
+/// The relation that makes `site` a Shape A worktree child — a COPY of its
+/// parent — with the parent's row. `None` for every other site. An error is
+/// an error: answering "not a copy" on a failed read would run the stock
+/// WordPress install over a folder meant to hold the parent's copy.
+fn worktree_copy_of(state: &AppState, site: &Site) -> Result<Option<(SiteWorktree, Site)>> {
+    let conn = lock_db(state)?;
+    let Some(w) = crate::state::store::get_site_worktree(&conn, &site.id)? else {
+        return Ok(None);
+    };
+    match w.shape {
+        Some(WorktreeShape::Asset) => {}
+        Some(WorktreeShape::Site) => return Ok(None),
+        None => {
+            return Err(Error::Other(format!(
+                "{} is a worktree of a kind this rexenv does not know — update rexenv.",
+                site.domain
+            )))
+        }
+    }
+    let parent = sites::get(&conn, &w.parent_id)?
+        .ok_or_else(|| Error::Other(format!("{}'s parent site is gone", site.domain)))?;
+    Ok(Some((w, parent)))
 }
 
 fn lock_db(state: &AppState) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>> {
@@ -473,7 +530,8 @@ fn spawn_job<R: tauri::Runtime>(
     let log_key = format!("site-provision-{}-{}.log", site.domain, &id[..8]);
     let log_path = log_dir.join(&log_key);
 
-    let defs = phase_defs(PhasePlan::of(&site, blueprint.is_some()));
+    let copy = worktree_copy_of(state, &site)?.is_some();
+    let defs = phase_defs(PhasePlan::of(&site, blueprint.is_some(), copy));
     let mut phases: Vec<PhaseState> = defs
         .iter()
         .map(|(k, l)| PhaseState { key: (*k).into(), label: (*l).into(), status: "pending".into() })
@@ -552,6 +610,26 @@ pub(crate) fn start<R: tauri::Runtime>(
     blueprint_id: Option<String>,
     ownership: core::sites::Ownership,
 ) -> Result<SiteProvisionState> {
+    start_with(app, state, jobs, site, wp, blueprint_id, ownership, None)
+}
+
+/// What a caller records beside the new row, under the SAME lock as the insert
+/// (a worktree child's relation): a crash can then never leave a copy-shaped
+/// site the job does not know is a copy.
+pub(crate) type AfterInsert<'a> = &'a dyn Fn(&rusqlite::Connection, &Site) -> Result<()>;
+
+/// [`start`], with an [`AfterInsert`] hook.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn start_with<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    jobs: &ProvisionJobs,
+    site: NewSite,
+    wp: Option<wordpress::InstallOptions>,
+    blueprint_id: Option<String>,
+    ownership: core::sites::Ownership,
+    after_insert: Option<AfterInsert>,
+) -> Result<SiteProvisionState> {
     // The mirror of ProvisionJobs::busy_for: a database import mid-run for this
     // domain owns the site's database (it may be mid-DROP on a retry) — a
     // provision alongside it would race that.
@@ -609,8 +687,19 @@ pub(crate) fn start<R: tauri::Runtime>(
 
     let (created, blueprint) = {
         let conn = lock_db(state)?;
-        let created =
+        let mut created =
             sites::provision_with(&conn, state.platform.as_ref(), &state.ca, site, ownership)?;
+        if let Some(record) = after_insert {
+            if let Err(e) = record(&conn, &created) {
+                // The row exists and the relation does not: delete the row, or
+                // Retry would provision a plain WordPress over a folder meant to
+                // be a copy. Its docroot is the empty one prepare just made.
+                let _ = sites::teardown(&conn, state.platform.as_ref(), &created.id);
+                return Err(e);
+            }
+            created = sites::get(&conn, &created.id)?
+                .ok_or_else(|| Error::Other("the new site vanished".into()))?;
+        }
         // The job owns this row's lifecycle from here: 0 until settle-ok. A
         // crash between insert and this write leaves 1 — yesterday's
         // semantics, never a false alarm.
@@ -631,7 +720,8 @@ pub(crate) fn start<R: tauri::Runtime>(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::php::effective_patches(&conn)?
     };
-    let plan = build_plan(&patches, state, &created, &minor, engine, &engine_version);
+    let copy = worktree_copy_of(state, &created)?.is_some();
+    let plan = build_plan(&patches, state, &created, &minor, engine, &engine_version, copy);
     spawn_job(app, state, jobs, created, wp.unwrap_or_default(), blueprint, plan)
 }
 
@@ -759,7 +849,8 @@ pub async fn site_provision_retry<R: tauri::Runtime>(
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::php::effective_patches(&conn)?
     };
-    let plan = build_plan(&patches, &state, &site, &minor, engine, &engine_version);
+    let copy = worktree_copy_of(&state, &site)?.is_some();
+    let plan = build_plan(&patches, &state, &site, &minor, engine, &engine_version, copy);
     // NOTE: the original blueprint id isn't persisted on the site — a retry
     // re-runs the core install path; blueprint items that already installed
     // persist (real installs), missing ones need a manual pass.
@@ -1069,11 +1160,23 @@ async fn drive<R: tauri::Runtime>(
     bail_if_cancelled!();
 
     let state = app.state::<AppState>();
+    // A worktree child (Shape A) runs its own phases and then joins `serve`
+    // below; every other block is skipped for it, in step with `phase_defs`.
+    let copy = match worktree_copy_of(&state, site) {
+        Ok(c) => c,
+        Err(e) => return JobEnd::Failed(e.to_string()),
+    };
+    let copied = copy.is_some();
+    if let Some((wt, parent)) = &copy {
+        if let Some(end) = drive_worktree_copy(app, entry, site, wt, parent, progress).await {
+            return end;
+        }
+    }
     // A linked site is ADOPTED, never installed into — see `phase_defs`. The
     // phase list already omits the WordPress phases; this keeps the driver in
     // step so it can't run a step that has no phase to report into.
     let linked = site.docroot_managed == Some(false);
-    let is_wp = matches!(site.site_type, SiteType::Wordpress) && !linked;
+    let is_wp = matches!(site.site_type, SiteType::Wordpress) && !linked && !copied;
     let is_laravel = matches!(site.site_type, SiteType::Laravel) && !linked;
     let minor = core::php::minor_of(&site.php_version);
     // Read through the validator, not straight off the row — see
@@ -2142,6 +2245,305 @@ fn php_requirement_refused(project: &Path, minor: &str) -> Option<(String, Strin
     Some((requirement, why))
 }
 
+/// The phases of a Shape A worktree child (`docs/PLAN-git-worktrees.md`
+/// §2.1): copy the parent's WordPress (minus the one asset dir), add the
+/// worktree there, install its Composer deps, copy the parent's database, point
+/// `wp-config.php` and the URLs at this site. `None` = done, go on to `serve`.
+///
+/// Every step is Retry-safe from the row: the copy is skipped once
+/// `wp-config.php` is in place (it lands by an atomic rename of a staging dir,
+/// so a half copy is never the docroot); the worktree once its `.git` file
+/// exists; the database copy drops and refills only a database the record says
+/// is ours (`core::dbclone`); `wp config set` and the URL passes converge.
+async fn drive_worktree_copy<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    entry: &Arc<ProvisionEntry>,
+    site: &Site,
+    wt: &SiteWorktree,
+    parent: &Site,
+    progress: &mut sites::ProvisionProgress,
+) -> Option<JobEnd> {
+    use core::worktree;
+    let state = app.state::<AppState>();
+    let fail = |e: &dyn std::fmt::Display| Some(JobEnd::Failed(e.to_string()));
+    let docroot = site.served_root();
+    let parent_root = parent.served_root();
+    let kind = wt.asset_kind.as_deref().and_then(worktree::AssetKind::parse_db);
+    let (Some(kind), Some(dir)) = (kind, wt.asset_dir.as_deref()) else {
+        return fail(&"this worktree's record names no plugin or theme folder");
+    };
+    let rel = match worktree::asset_rel(site.content_dir_rel(), kind, dir) {
+        Ok(r) => r,
+        Err(e) => return fail(&e),
+    };
+    let parent_asset = parent_root.join(&rel);
+    let child_asset = docroot.join(&rel);
+    let minor = core::php::minor_of(&site.php_version);
+
+    // ── copy ─────────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "copy");
+    enter_phase(app, entry, ix);
+    if docroot.join("wp-config.php").exists() {
+        finish_phase(app, entry, progress, ix, "skipped", Some("already copied"));
+    } else {
+        append_line(app, entry, &format!("copying {} → {}", parent_root.display(), docroot.display()));
+        let mut skip = vec![rel.clone()];
+        if wt.skip_uploads {
+            skip.push(PathBuf::from(site.content_dir_rel()).join("uploads"));
+            append_line(app, entry, "leaving uploads/ out, as asked — media will 404 on this copy");
+        }
+        let Some(sites_dir) = docroot.parent().map(Path::to_path_buf) else {
+            return fail(&"the docroot has no parent folder");
+        };
+        let staging = sites_dir.join(format!(
+            ".rexenv-copy-{}-{}",
+            site.domain,
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
+        ));
+        let (src, stg, e2) = (parent_root.clone(), staging.clone(), entry.clone());
+        let copied = tauri::async_runtime::spawn_blocking(move || {
+            worktree::copy_site_tree(&src, &stg, &skip, &|| e2.cancel.is_cancelled())
+        })
+        .await;
+        let stats = match copied {
+            Ok(Ok(s)) => s,
+            other => {
+                // The staging dir carries a fresh random suffix: it is ours.
+                let _ = std::fs::remove_dir_all(&staging);
+                return match other {
+                    Ok(Err(_)) if entry.cancel.is_cancelled() => Some(JobEnd::Cancelled),
+                    Ok(Err(e)) => fail(&format!("copying {} failed: {e}", parent.domain)),
+                    Err(e) => fail(&format!("copy worker died: {e}")),
+                    Ok(Ok(_)) => unreachable!(),
+                };
+            }
+        };
+        // `remove_dir`, never `remove_dir_all`: the OS refuses a non-empty
+        // docroot, so this can only ever remove the empty folder prepare made
+        // (the git-site-clone argument, `sites::clone_into_docroot`).
+        if let Err(e) = std::fs::remove_dir(&docroot).and_then(|_| std::fs::rename(&staging, &docroot)) {
+            let _ = std::fs::remove_dir_all(&staging);
+            return fail(&format!(
+                "{} is not empty — rexenv only copies into a folder it just created ({e})",
+                docroot.display()
+            ));
+        }
+        if let Err(e) = worktree::strip_site_specific_mu_plugins(&docroot) {
+            return fail(&e);
+        }
+        append_line(
+            app,
+            entry,
+            &format!("copied {} files ({} MB)", stats.files, stats.bytes / 1_000_000),
+        );
+        for link in &stats.skipped_links {
+            append_line(app, entry, &format!("! not copied (a link): {}", link.display()));
+        }
+        finish_phase(app, entry, progress, ix, "ok", None);
+    }
+    if entry.cancel.is_cancelled() {
+        return Some(JobEnd::Cancelled);
+    }
+
+    // The developer's own git and shell env — the worktree, and the deps after it.
+    let env = {
+        let a = app.clone();
+        match tauri::async_runtime::spawn_blocking(move || {
+            let st = a.state::<AppState>();
+            shell_env(&st, &a.state::<RepoJobs>(), false)
+        })
+        .await
+        {
+            Ok(Ok(env)) => env,
+            Ok(Err(e)) => return fail(&e),
+            Err(e) => return fail(&format!("env worker died: {e}")),
+        }
+    };
+
+    // ── worktree ─────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "worktree");
+    enter_phase(app, entry, ix);
+    if child_asset.join(".git").exists() {
+        finish_phase(app, entry, progress, ix, "skipped", Some("already checked out"));
+    } else {
+        let spec = match &wt.base {
+            Some(base) => worktree::AddSpec::New { branch: wt.branch.clone(), base: base.clone() },
+            None => worktree::AddSpec::Existing(wt.branch.clone()),
+        };
+        let (a2, e2, env2) = (app.clone(), entry.clone(), env.clone());
+        let (repo_dir, path) = (parent_asset.clone(), child_asset.clone());
+        let added = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+            let st = a2.state::<AppState>();
+            let git = core::devtools::resolve_git(st.platform.as_ref(), &env2)?;
+            worktree::require_worktree_git(git.version.as_deref())?;
+            if let Some(p) = path.parent() {
+                std::fs::create_dir_all(p)?;
+            }
+            let mut on_line = |line: &str| append_line(&a2, &e2, line);
+            worktree::add(
+                st.platform.supervisor(),
+                &git.path,
+                &env2,
+                &repo_dir,
+                &path,
+                &spec,
+                &e2.cancel,
+                &mut on_line,
+            )
+        })
+        .await;
+        match added {
+            Ok(Ok(())) => finish_phase(app, entry, progress, ix, "ok", None),
+            Ok(Err(_)) if entry.cancel.is_cancelled() => return Some(JobEnd::Cancelled),
+            Ok(Err(e)) => return fail(&e),
+            Err(e) => return fail(&format!("git worker died: {e}")),
+        }
+    }
+    if entry.cancel.is_cancelled() {
+        return Some(JobEnd::Cancelled);
+    }
+
+    // ── deps (the checked-out plugin's own composer.json) ────────────────
+    let (composer_php, composer_phar) = match composer_tools(&state, &minor).await {
+        Ok(t) => t,
+        Err(e) => return fail(&e),
+    };
+    if let Some(end) =
+        deps_phase(app, entry, progress, &child_asset, &minor, &composer_php, &composer_phar, &env).await
+    {
+        return Some(end);
+    }
+    if entry.cancel.is_cancelled() {
+        return Some(JobEnd::Cancelled);
+    }
+
+    // ── db ───────────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "db");
+    enter_phase(app, entry, ix);
+    let engine = DbEngine::from_site(site.db_engine);
+    let check = {
+        let mut mgr = state.services.lock().await;
+        match mgr.spawn_db(state.platform.as_ref(), engine).await {
+            Ok(c) => c,
+            Err(e) => return fail(&format!("database start failed: {e}")),
+        }
+    };
+    if let Err(e) = service_manager::await_ready(check.into_iter().collect()).await {
+        return fail(&format!("database not ready: {e}"));
+    }
+    finish_phase(app, entry, progress, ix, "ok", None);
+
+    // ── db_copy ──────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "db_copy");
+    enter_phase(app, entry, ix);
+    let engine_version = match super::database::effective_db_version(&state, engine) {
+        Ok(v) => v,
+        Err(e) => return fail(&e),
+    };
+    let (db_client, db_dump) = match engine.sql_client_bins(state.platform.as_ref(), &engine_version).await {
+        Ok(c) => c,
+        Err(e) => return fail(&e),
+    };
+    let scratch = match state.platform.paths().app_data_dir() {
+        Ok(d) => d.join("worktrees"),
+        Err(e) => return fail(&e),
+    };
+    {
+        let a2 = app.clone();
+        let (client, dump, scr) = (db_client.clone(), db_dump.clone(), scratch.clone());
+        let (source, target, sid) = (parent.db_name.clone(), site.db_name.clone(), site.id.clone());
+        let copied = tauri::async_runtime::spawn_blocking(move || {
+            let st = a2.state::<AppState>();
+            let spec = core::dbclone::CloneSpec {
+                engine,
+                client: &client,
+                dump: &dump,
+                port: engine.port(),
+                source: &source,
+                target: &target,
+                scratch_dir: &scr,
+            };
+            core::dbclone::clone_database(&spec, st.platform.permissions(), &|exists| {
+                let conn = lock_db(&st)?;
+                core::dbrestore::record_provenance(&conn, &sid, exists)
+            })
+        })
+        .await;
+        match copied {
+            Ok(Ok(r)) => append_line(
+                app,
+                entry,
+                &format!("copied {} tables from `{}` into `{}`", r.tables, parent.db_name, site.db_name),
+            ),
+            Ok(Err(e)) => return fail(&e),
+            Err(e) => return fail(&format!("database copy worker died: {e}")),
+        }
+    }
+    finish_phase(app, entry, progress, ix, "ok", None);
+    if entry.cancel.is_cancelled() {
+        return Some(JobEnd::Cancelled);
+    }
+
+    // ── configure ────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "configure");
+    enter_phase(app, entry, ix);
+    let (php_bin, wp_phar) = match wp_tools(&state, &minor).await {
+        Ok(t) => t,
+        Err(e) => return fail(&e),
+    };
+    let config = match std::fs::read_to_string(docroot.join("wp-config.php")) {
+        Ok(t) => t,
+        Err(e) => return fail(&format!("reading the copied wp-config.php failed: {e}")),
+    };
+    for (name, value) in worktree::wp_config_moves(&config, &site.db_name, &site.domain) {
+        let args: Vec<String> =
+            vec!["config".into(), "set".into(), name.into(), value, "--type=constant".into()];
+        match streamed_step(app, entry, &env, &php_bin, &wp_phar, &docroot, args).await {
+            StepEnd::Ok => {}
+            StepEnd::Cancelled => return Some(JobEnd::Cancelled),
+            StepEnd::Failed(e) => return fail(&format!("wp config set {name} failed: {e}")),
+        }
+    }
+    finish_phase(app, entry, progress, ix, "ok", None);
+
+    // ── urls ─────────────────────────────────────────────────────────────
+    let ix = phase_index(entry, "urls");
+    enter_phase(app, entry, ix);
+    {
+        let a2 = app.clone();
+        let (php, wp, root, scr) = (php_bin.clone(), wp_phar.clone(), docroot.clone(), scratch.clone());
+        let (db, from, to) = (site.db_name.clone(), parent.domain.clone(), site.domain.clone());
+        let network = !matches!(parent.multisite, MultisiteMode::None);
+        let moved = tauri::async_runtime::spawn_blocking(move || {
+            let st = a2.state::<AppState>();
+            wordpress::rehome_urls_on_copy(
+                st.platform.as_ref(),
+                &php,
+                &wp,
+                &root,
+                &scr,
+                engine.port(),
+                &db,
+                &from,
+                &to,
+                network,
+            )
+        })
+        .await;
+        match moved {
+            Ok(Ok(n)) => append_line(
+                app,
+                entry,
+                &format!("URLs: https://{} → https://{} ({n} replacements)", parent.domain, site.domain),
+            ),
+            Ok(Err(e)) => return fail(&e),
+            Err(e) => return fail(&format!("URL worker died: {e}")),
+        }
+    }
+    finish_phase(app, entry, progress, ix, "ok", None);
+    None
+}
+
 /// The `deps` phase: `composer install` in a cloned project.
 ///
 /// `vendor/` is gitignored in every PHP project worth cloning, so this is what
@@ -2411,12 +2813,40 @@ mod tests {
                         migrate: true,
                         build_assets: false,
                         starter_db: false,
+                        worktree_copy: false,
                     })
                     .iter()
                     .any(|(k, _)| *k == "blueprint");
                     assert_eq!(admitted, has_phase, "{ty:?} linked={linked} git={from_git}");
                 }
             }
+        }
+    }
+
+    /// A worktree child's list is its own: the parent supplies WordPress, content
+    /// and database, so no core download, no `config create`, no install — and
+    /// the same list whatever the other flags say (a copy is never also a clone
+    /// or a blueprint target).
+    #[test]
+    fn a_worktree_copy_runs_its_own_phases_and_never_installs() {
+        for (from_git, has_blueprint) in [(false, false), (true, true)] {
+            let keys: Vec<&str> = phase_defs(PhasePlan {
+                site_type: SiteType::Wordpress,
+                has_blueprint,
+                linked: false,
+                from_git,
+                migrate: false,
+                build_assets: true,
+                starter_db: false,
+                worktree_copy: true,
+            })
+            .iter()
+            .map(|(k, _)| *k)
+            .collect();
+            assert_eq!(
+                keys,
+                ["prepare", "fetch", "copy", "worktree", "deps", "db", "db_copy", "configure", "urls", "serve"]
+            );
         }
     }
 
@@ -2430,6 +2860,7 @@ mod tests {
             migrate,
             build_assets: false,
             starter_db: false,
+            worktree_copy: false,
         }
     }
 
@@ -2504,11 +2935,11 @@ mod tests {
         // a package manager never did. Opposite defaults, both facts.
         assert!(site.runs_migrations());
         assert!(!site.builds_assets());
-        let plan = PhasePlan::of(&site, false);
+        let plan = PhasePlan::of(&site, false, false);
         assert!(plan.migrate && !plan.build_assets);
 
         site.git_build_assets = Some(true);
-        assert!(PhasePlan::of(&site, false).build_assets, "a recorded yes survives a retry");
+        assert!(PhasePlan::of(&site, false, false).build_assets, "a recorded yes survives a retry");
     }
 
     /// The cloned Laravel path's phase list, in order — the card renders these
@@ -2545,6 +2976,7 @@ mod tests {
                 migrate: true,
                 build_assets: false,
                 starter_db: false,
+                worktree_copy: false,
             })
             .iter()
             .map(|(k, _)| *k)
@@ -2596,14 +3028,14 @@ mod tests {
         site.git_url = Some("https://github.com/acme/shop.git".into());
         site.git_migrate = Some(false);
 
-        let plan = PhasePlan::of(&site, false);
+        let plan = PhasePlan::of(&site, false, false);
         assert!(plan.from_git);
         assert!(!plan.migrate, "the declined answer survives into a fresh job");
         assert!(phase_defs(plan).iter().any(|(_, l)| *l == "generating app key"));
 
         // NULL is the unconditional yes every pre-v34 row provably had.
         site.git_migrate = None;
-        assert!(PhasePlan::of(&site, false).migrate);
+        assert!(PhasePlan::of(&site, false, false).migrate);
     }
 
     use crate::platform::traits::{DnsManager, Paths, PrivilegeManager};

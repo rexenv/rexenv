@@ -436,6 +436,154 @@ pub fn add(
     repo::run_git_op(supervisor, git, env, repo_dir, "worktree add", &add_args(path, spec), cancel, on_line)
 }
 
+// ── Shape A: a WordPress copy with one plugin/theme dir as a worktree (W4/W5) ──
+
+/// Which kind of `wp-content` checkout a Shape A worktree replaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AssetKind {
+    Plugin,
+    Theme,
+}
+
+impl AssetKind {
+    pub fn as_db(self) -> &'static str {
+        match self {
+            AssetKind::Plugin => "plugin",
+            AssetKind::Theme => "theme",
+        }
+    }
+    pub fn parse_db(s: &str) -> Option<Self> {
+        match s {
+            "plugin" => Some(AssetKind::Plugin),
+            "theme" => Some(AssetKind::Theme),
+            _ => None,
+        }
+    }
+    fn folder(self) -> &'static str {
+        match self {
+            AssetKind::Plugin => "plugins",
+            AssetKind::Theme => "themes",
+        }
+    }
+}
+
+/// `<content dir>/plugins/<dir>` (or `themes/`), relative to a WordPress
+/// docroot. Refuses a `dir` that is not ONE plain folder name — it comes over
+/// IPC, and it is joined onto two docroots, one of which is about to be filled.
+pub fn asset_rel(content_dir_rel: &str, kind: AssetKind, dir: &str) -> Result<PathBuf> {
+    let ok = !dir.is_empty()
+        && dir != "."
+        && dir != ".."
+        && !dir.starts_with('.')
+        && !dir.contains(['/', '\\', '\0', ':']);
+    if !ok {
+        return Err(Error::Other(format!("\"{dir}\" is not a plugin or theme folder name")));
+    }
+    Ok(Path::new(content_dir_rel).join(kind.folder()).join(dir))
+}
+
+/// What [`copy_site_tree`] did.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CopyStats {
+    pub files: u64,
+    pub bytes: u64,
+    /// Links found and NOT copied (relative to the source). A link is neither
+    /// followed — a symlinked plugin points at somebody's checkout, and copying
+    /// THROUGH it would duplicate that checkout as an unrelated folder — nor
+    /// recreated (Windows needs Developer Mode or admin for that). The job log
+    /// names each one.
+    pub skipped_links: Vec<PathBuf>,
+}
+
+/// Copy a WordPress docroot into `dest` for a worktree child: every directory
+/// and regular file, except the relative paths in `skip` (the asset dir the
+/// worktree will occupy; `uploads` when asked). `dest` must NOT exist — the
+/// caller copies into a staging dir it then renames into place (the
+/// git-site-clone pattern), so a half copy is never the docroot.
+///
+/// `std::fs::copy` is copy-on-write on APFS (`core::scratch::clone_tree`'s
+/// measurement), so the copy costs time per file, not disk per byte, there.
+/// `cancelled` is polled per entry.
+pub fn copy_site_tree(
+    source: &Path,
+    dest: &Path,
+    skip: &[PathBuf],
+    cancelled: &dyn Fn() -> bool,
+) -> Result<CopyStats> {
+    if dest.exists() {
+        return Err(Error::Other(format!("{} already exists — not copying over it", dest.display())));
+    }
+    let mut stats = CopyStats::default();
+    let mut stack: Vec<PathBuf> = vec![PathBuf::new()];
+    while let Some(rel) = stack.pop() {
+        std::fs::create_dir_all(dest.join(&rel))?;
+        for entry in std::fs::read_dir(source.join(&rel))? {
+            if cancelled() {
+                return Err(Error::Other("copy cancelled".into()));
+            }
+            let entry = entry?;
+            let child = rel.join(entry.file_name());
+            if skip.iter().any(|s| s == &child) {
+                continue;
+            }
+            let ft = entry.file_type()?; // does not follow links
+            if ft.is_symlink() {
+                stats.skipped_links.push(child);
+            } else if ft.is_dir() {
+                stack.push(child);
+            } else if ft.is_file() {
+                stats.bytes += std::fs::copy(entry.path(), dest.join(&child))?;
+                stats.files += 1;
+            }
+        }
+    }
+    Ok(stats)
+}
+
+/// The rexenv mu-plugins that name ONE site and must not ride along in a copy:
+/// the tunnel rewrite, the login link, the scratch-mail stamp. The loopback-DNS
+/// and mail-catch files are domain-agnostic and stay (the copy is served by
+/// the same stack). Each remover is a no-op when its file is absent.
+pub fn strip_site_specific_mu_plugins(docroot: &Path) -> Result<()> {
+    crate::core::wp_tunnel::disable(docroot)?;
+    crate::core::wp_login::remove(docroot)?;
+    crate::core::wp_mailtag::disable(docroot)?;
+    Ok(())
+}
+
+/// The `wp-config.php` constants a copy must re-point, in the order they are
+/// set: the database, and the URL / network constants when the file defines
+/// them. `DB_NAME` always; the rest only if present — `wp config set` would
+/// otherwise ADD a `WP_HOME` the parent never had, pinning the copy's URL in a
+/// second place.
+pub fn wp_config_moves(wp_config: &str, db_name: &str, domain: &str) -> Vec<(&'static str, String)> {
+    let mut out = vec![("DB_NAME", db_name.to_string())];
+    for (name, value) in [
+        ("WP_HOME", format!("https://{domain}")),
+        ("WP_SITEURL", format!("https://{domain}")),
+        ("DOMAIN_CURRENT_SITE", domain.to_string()),
+    ] {
+        if defines_constant(wp_config, name) {
+            out.push((name, value));
+        }
+    }
+    out
+}
+
+/// Does PHP source `define()` the constant `name` (either quote style, any
+/// spacing)? Commented-out lines (`//`, `#`) do not count.
+pub fn defines_constant(php: &str, name: &str) -> bool {
+    php.lines().any(|l| {
+        let t = l.trim_start();
+        if t.starts_with("//") || t.starts_with('#') || t.starts_with('*') {
+            return false;
+        }
+        let compact: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+        compact.contains(&format!("define('{name}'")) || compact.contains(&format!("define(\"{name}\""))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -666,5 +814,76 @@ mod tests {
         assert!(domain_taken(&conn, "x.net-alias.rex").unwrap(), "…and its aliases' wildcards");
         assert!(!domain_taken(&conn, "xnet.rex").unwrap(), "a suffix without the dot is not under it");
         assert!(!domain_taken(&conn, "free.rex").unwrap());
+    }
+
+    #[test]
+    fn asset_paths_take_one_plain_folder_name() {
+        assert_eq!(
+            asset_rel("wp-content", AssetKind::Plugin, "my-plugin").unwrap(),
+            Path::new("wp-content").join("plugins").join("my-plugin")
+        );
+        assert_eq!(
+            asset_rel("wp-content", AssetKind::Theme, "twentyx").unwrap(),
+            Path::new("wp-content").join("themes").join("twentyx")
+        );
+        for bad in ["", ".", "..", "../x", "a/b", "a\\b", ".hidden", "c:x"] {
+            assert!(asset_rel("wp-content", AssetKind::Plugin, bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_site_copy_skips_what_it_is_told_and_never_follows_a_link() {
+        let src = tmp("copysrc");
+        let dst_parent = tmp("copydst");
+        let dst = dst_parent.join("child");
+        let plugin = src.join("wp-content/plugins/mine");
+        let other = src.join("wp-content/plugins/other");
+        std::fs::create_dir_all(plugin.join("src")).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::create_dir_all(src.join("wp-content/uploads/2026")).unwrap();
+        std::fs::write(src.join("wp-config.php"), "<?php").unwrap();
+        std::fs::write(plugin.join("src/a.php"), "x").unwrap();
+        std::fs::write(other.join("o.php"), "12345").unwrap();
+        std::fs::write(src.join("wp-content/uploads/2026/p.jpg"), "jpg").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&other, src.join("wp-content/plugins/linked")).unwrap();
+
+        let skip = [PathBuf::from("wp-content/plugins/mine"), PathBuf::from("wp-content/uploads")];
+        let stats = copy_site_tree(&src, &dst, &skip, &|| false).unwrap();
+        assert!(dst.join("wp-config.php").exists());
+        assert!(dst.join("wp-content/plugins/other/o.php").exists());
+        assert!(!dst.join("wp-content/plugins/mine").exists(), "the asset dir is the worktree's");
+        assert!(!dst.join("wp-content/uploads").exists(), "uploads skipped when asked");
+        assert_eq!(stats.files, 2);
+        assert_eq!(stats.bytes, 5 + 5);
+        #[cfg(unix)]
+        {
+            assert!(!dst.join("wp-content/plugins/linked").exists(), "a link is not followed");
+            assert_eq!(stats.skipped_links, vec![PathBuf::from("wp-content/plugins/linked")]);
+        }
+        // Never over an existing destination; a cancel stops it.
+        assert!(copy_site_tree(&src, &dst, &[], &|| false).is_err());
+        let dst2 = dst_parent.join("child2");
+        assert!(copy_site_tree(&src, &dst2, &[], &|| true).is_err());
+        std::fs::remove_dir_all(&src).unwrap();
+        std::fs::remove_dir_all(&dst_parent).unwrap();
+    }
+
+    #[test]
+    fn wp_config_moves_only_what_the_file_defines() {
+        let cfg = "<?php\ndefine( 'DB_NAME', 'wp_shop' );\ndefine(\"WP_HOME\", 'https://shop.rex');\n\
+                   // define('WP_SITEURL', 'x');\n";
+        let m = wp_config_moves(cfg, "wp_fix_shop", "fix.shop.rex");
+        assert_eq!(
+            m,
+            vec![
+                ("DB_NAME", "wp_fix_shop".to_string()),
+                ("WP_HOME", "https://fix.shop.rex".to_string()),
+            ],
+            "a commented define is not a define"
+        );
+        assert!(defines_constant("define ( 'X' , 1 );", "X"));
+        assert!(!defines_constant("# define('X', 1);", "X"));
+        assert!(!defines_constant("define('XY', 1);", "X"), "a longer name is a different constant");
     }
 }
