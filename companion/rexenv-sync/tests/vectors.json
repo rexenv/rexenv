@@ -7,21 +7,30 @@
   "requests": [
     {
       "method": "POST",
-      "path": "/wp-json/rexenv-sync/v1/db/export",
-      "query": [["table", "wp_options"], ["a", "1"]],
+      "path": "/rexenv-sync/v1/db/export",
+      "query": [
+        [
+          "table",
+          "wp_options"
+        ],
+        [
+          "a",
+          "1"
+        ]
+      ],
       "body": "{\"tables\":[\"wp_options\"]}",
       "body_sha256": "d1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131",
-      "canonical": "rexsync1\nPOST\n/wp-json/rexenv-sync/v1/db/export\na=1&table=wp_options\n1760054400\nAAECAwQFBgcICQoLDA0ODw\nd1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131",
-      "sig": "JX8A3PW2MeskG4FNSVjY6-PY8mJpanuQYn_dI5JQAyg"
+      "canonical": "rexsync1\nPOST\n/rexenv-sync/v1/db/export\na=1&table=wp_options\n1760054400\nAAECAwQFBgcICQoLDA0ODw\nd1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131",
+      "sig": "1oPUhSd7v7deM03Jj2-_5ORu1fLgdaRXALmKOBSua4Q"
     },
     {
       "method": "GET",
-      "path": "/wp-json/rexenv-sync/v1/manifest",
+      "path": "/rexenv-sync/v1/manifest",
       "query": [],
       "body": "",
       "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "canonical": "rexsync1\nGET\n/wp-json/rexenv-sync/v1/manifest\n\n1760054400\nAAECAwQFBgcICQoLDA0ODw\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "sig": "oMvLYflG-gH5D-6C4AOTqQRIPeFpBS0YTe9Bl4aB9TA"
+      "canonical": "rexsync1\nGET\n/rexenv-sync/v1/manifest\n\n1760054400\nAAECAwQFBgcICQoLDA0ODw\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "sig": "pnuq626SMBcdRGwnku6QoUQuj-s9Ev18HY1nklVLNJE"
     }
   ],
   "key": {

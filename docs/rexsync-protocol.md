@@ -63,9 +63,10 @@ The **canonical string** is these seven lines, joined by `\n`, with no trailing 
 ```
 rexsync1
 <METHOD>                      upper case
-<path>                        the REST route as sent, e.g. /wp-json/rexenv-sync/v1/manifest
-<query>                       key=value pairs sorted by key, joined by &, values percent-encoded
-                              as RFC 3986 unreserved-only; "" when there is none
+<route>                       the REST ROUTE, e.g. /rexenv-sync/v1/manifest — never the URL path
+<query>                       key=value pairs sorted by key (then value), joined by &, keys and
+                              values percent-encoded RFC 3986 unreserved-only; `rest_route`
+                              is never part of it; "" when there is none
 <ts>                          the X-Rexsync-Ts value
 <nonce>                       the X-Rexsync-Nonce value
 <hex(sha256(body))>           of the raw request body; of "" for a GET
@@ -84,11 +85,12 @@ The plugin's check, **in this order and before it reads any argument** (plan inv
 Each route's `permission_callback` IS this check. No route uses `__return_true`, and a route
 added without it fails the plugin's own test that enumerates the routes.
 
-**Why the path and not the URL.** A site behind a proxy sees its own host in every
-spelling. The path plus the sorted query is what both sides can agree on without knowing the
-deployment. When pretty permalinks are off, the client sends `?rest_route=/rexenv-sync/v1/…`.
-The canonical `<path>` is then `/` and `rest_route` is part of `<query>`. One rule, no special
-case.
+**Why the route and not the URL path** (changed 10 Oct 2026, while the plugin was being
+written, before anything shipped). A site behind a proxy, a site with a custom REST prefix
+(`rest_url_prefix`) and a site with pretty permalinks off (`?rest_route=/rexenv-sync/v1/…`) each
+spell the URL differently. The ROUTE is the one thing WordPress hands the plugin the same way
+every time (`WP_REST_Request::get_route()`), and the one thing rexenv knows without knowing the
+deployment. The first draft signed the URL path, which would have broken on exactly those sites.
 
 ## 4. Endpoints (`/wp-json/rexenv-sync/v1/…`)
 
@@ -170,7 +172,7 @@ Two lists. rexenv owns one and the plugin owns the other, and neither can widen 
 
 ## 7. Test vectors
 
-A shared file, `companion/rexenv-sync/tests/vectors.json`, holds these vectors. The Rust tests
+`companion/rexenv-sync/tests/vectors.json` holds these vectors (it is in the tree since 10 Oct 2026). The Rust tests
 and the PHPUnit suite BOTH read it, so a canonicalisation bug fails on both sides. Computed
 10 Oct 2026 with Python's `hmac`, from the same definitions as §2–§3:
 
@@ -180,15 +182,15 @@ key_id                       k_0123abcd
 nonce                        AAECAwQFBgcICQoLDA0ODw
 ts                           1760054400
 
-1. POST /wp-json/rexenv-sync/v1/db/export?table=wp_options&a=1
+1. POST /rexenv-sync/v1/db/export?table=wp_options&a=1
    body {"tables":["wp_options"]}
    body sha256  d1c59913317b23140a0b33494b3e1901215d9d48394df796d43b918642a83131
-   canonical    "rexsync1\nPOST\n/wp-json/rexenv-sync/v1/db/export\na=1&table=wp_options\n
+   canonical    "rexsync1\nPOST\n/rexenv-sync/v1/db/export\na=1&table=wp_options\n
                  1760054400\nAAECAwQFBgcICQoLDA0ODw\nd1c599…3131"      (query SORTED: a before table)
-   sig          JX8A3PW2MeskG4FNSVjY6-PY8mJpanuQYn_dI5JQAyg
+   sig          1oPUhSd7v7deM03Jj2-_5ORu1fLgdaRXALmKOBSua4Q
 
-2. GET /wp-json/rexenv-sync/v1/manifest      (no query, empty body)
-   sig          oMvLYflG-gH5D-6C4AOTqQRIPeFpBS0YTe9Bl4aB9TA
+2. GET /rexenv-sync/v1/manifest      (no query, empty body)
+   sig          pnuq626SMBcdRGwnku6QoUQuj-s9Ev18HY1nklVLNJE
 
 3. The pairing key for https://example.com with the secret above:
    rexsync1:eyJ1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImsiOiJrXzAxMjNhYmNkIiwicyI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHhBUkVoTVVGUllYR0JrYUd4d2RIaDgifQ

@@ -84,6 +84,10 @@ async fn main() -> std::process::ExitCode {
     let db_file = std::env::temp_dir().join("rexenv-worktree-site-check.db");
     let _ = std::fs::remove_file(&db_file);
     let conn = rexenv_lib::state::db::open(&db_file).unwrap();
+    // A fixture sites folder, never the user's ~/rexenv/Sites (the `wp_plugins_check`
+    // lesson: a check's leftovers there survive into the next run). `Worktrees/`
+    // then lands beside THIS folder too.
+    let _sites_dir = common::pin_fixture_sites_dir(&conn, "worktree");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let (mysql, _) = rexenv_lib::core::db::DbEngine::Mysql
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
