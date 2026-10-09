@@ -40,6 +40,20 @@ pub struct DbImportJobs {
     jobs: Mutex<HashMap<String, Arc<Entry>>>,
 }
 
+impl DbImportJobs {
+    /// Drop `site_id`'s SETTLED jobs (a running one is left alone). Called when the site's
+    /// database record changes outside an import — a connect or a revert — because the card
+    /// shows the latest job beside the record, and a job from before the change describes a
+    /// state that is gone: after a revert the card kept "already reads and writes … that IS the
+    /// rexenv copy" above "Imported — not yet connected" (the 15.8 VM, §K, 9 Oct 2026, #812).
+    pub fn forget_settled(&self, site_id: &str) {
+        let mut map = self.jobs.lock().expect("db import jobs lock");
+        map.retain(|_, e| {
+            e.running.load(Ordering::SeqCst) || snapshot(e).site_id != site_id
+        });
+    }
+}
+
 struct Entry {
     id: String,
     cancel: AtomicBool,
@@ -76,6 +90,10 @@ pub struct DbImportJobState {
     pub kept_artifact: Option<String>,
     /// On success: the settled record the UI renders §9 from.
     pub result: Option<DbImportRecord>,
+    /// The job ended because there was nothing to import — the site already reads this very
+    /// database on rexenv's engine (`SelfImport::ThisSite`). A correct answer, not a failure: the
+    /// card says it without the error styling and without Retry (#812).
+    pub nothing_to_do: bool,
 }
 
 const PHASES: [(&str, &str, u8); 6] = [
@@ -255,6 +273,7 @@ pub async fn db_import_start<R: tauri::Runtime>(
             log_key,
             kept_artifact: None,
             result: None,
+            nothing_to_do: false,
         }),
     });
     {
@@ -430,6 +449,9 @@ async fn run<R: tauri::Runtime>(
         return Err(Error::Other(v.explain()));
     }
     let cleared = dbdump::gate(self_import, &verdict, false).map_err(|r| {
+        if matches!(r, dbdump::GateRefusal::SelfImport { kind: dbdump::SelfImport::ThisSite, .. }) {
+            entry.state.lock().expect("db import state lock").nothing_to_do = true;
+        }
         let mut m = r.message();
         // The server's own words, when it sent some in place of a greeting. The
         // generic refusal says the server "didn't identify itself"; the Local
@@ -951,6 +973,62 @@ mod local_source_wiring {
 #[cfg(test)]
 mod target_name_tests {
     use super::*;
+
+    fn entry(site: &str, running: bool) -> Arc<Entry> {
+        Arc::new(Entry {
+            id: format!("{site}-{running}"),
+            cancel: AtomicBool::new(false),
+            running: AtomicBool::new(running),
+            log_path: PathBuf::new(),
+            state: Mutex::new(DbImportJobState {
+                id: format!("{site}-{running}"),
+                site_id: site.into(),
+                domain: format!("{site}.test"),
+                phases: Vec::new(),
+                phase_cursor: 0,
+                pct: 0,
+                status: if running { "running" } else { "failed" }.into(),
+                error: None,
+                log_key: String::new(),
+                kept_artifact: None,
+                result: None,
+                nothing_to_do: false,
+            }),
+        })
+    }
+
+    /// #812 — a connect or revert forgets THAT site's settled jobs only: a running job (its own
+    /// or another site's) and another site's settled job stay.
+    #[test]
+    fn a_record_change_forgets_only_that_sites_settled_jobs() {
+        let jobs = DbImportJobs::default();
+        for e in [entry("a", false), entry("a", true), entry("b", false)] {
+            jobs.jobs.lock().unwrap().insert(e.id.clone(), e);
+        }
+        jobs.forget_settled("a");
+        let mut left: Vec<String> = jobs.jobs.lock().unwrap().keys().cloned().collect();
+        left.sort();
+        assert_eq!(left, vec!["a-true".to_string(), "b-false".to_string()]);
+    }
+
+    /// #812 — TEXT: both rewrite success paths forget the settled job before they answer, and the
+    /// gate marks a ThisSite refusal `nothing_to_do` (the card's neutral, Retry-less state).
+    #[test]
+    fn the_record_changes_and_the_self_refusal_are_wired() {
+        let rw = crate::core::copy_scan::production_source(include_str!("rewrite.rs"));
+        let apply = &rw[rw.find("pub async fn rewrite_apply(").expect("apply")..];
+        let applied = apply.find("Ok(RewriteApplied::Applied {").expect("the success return");
+        assert!(apply[..applied].contains("db_jobs.forget_settled(&site_id);"), "apply forgets the settled job");
+        let revert = &rw[rw.find("pub async fn rewrite_revert(").expect("revert")..];
+        assert!(
+            revert.contains("if matches!(outcome, Ok(RevertOutcome::Reverted { .. })) {\n        db_jobs.forget_settled(&site_id);"),
+            "revert forgets the settled job on every Reverted"
+        );
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        let gate = &src[src.find("dbdump::gate(self_import").expect("the gate")..];
+        let gate = &gate[..gate.find("})?;").expect("its end")];
+        assert!(gate.contains("SelfImport::ThisSite") && gate.contains("nothing_to_do = true"), "ThisSite is marked");
+    }
 
     #[test]
     fn the_target_name_is_engine_safe_and_capped() {

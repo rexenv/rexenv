@@ -765,3 +765,19 @@
   left behind. Fixed in the tap — `zap launchctl:` both labels + the two folders — proven on the VM
   with that caskfile, merged as `rexenv/homebrew-tap#4` (`430cf38f`).
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **The local CA stays in the login keychain after Remove system changes** — trust was removed
+  but the `rexenv Local CA` item was not, and `--zap` cannot reach a keychain. ✓ 9 Oct 2026, ledger
+  #813: macOS `untrust` now deletes every copy of the current CA after removing its trust, as
+  Windows and Linux removal already does. L0 + TEXT, plant-proven.
+
+- [x] **Database card: a stale refusal beside a newer state** — after Revert (or Apply) the card
+  kept the earlier job's ThisSite refusal above "Imported — not yet connected", and that refusal
+  rendered as a red failure with Retry. ✓ 9 Oct 2026, ledger #812: a successful Apply/Revert forgets
+  the site's settled import job and the card re-reads; a ThisSite refusal is `nothingToDo`, shown
+  neutral without Retry. L0 + TEXT + WebKit `card-thissite`, all plant-proven.
+

@@ -113,6 +113,9 @@ const RECORD_BASE = {
   importedAt: "2026-07-27 10:00:00",
 };
 
+const THIS_SITE =
+  "This site already reads and writes `kprimary_db` on rexenv's own database engine — that IS the rexenv copy. There's nothing to import.";
+
 /** A database-import job, for `dbjob=instantfail` (#810). */
 function dbJob(status: "running" | "failed") {
   (window as unknown as { __rexStarted?: boolean }).__rexStarted = true;
@@ -128,6 +131,7 @@ function dbJob(status: "running" | "failed") {
     logKey: "db-import-larafix.test-810",
     keptArtifact: null,
     result: null,
+    nothingToDo: false,
   };
 }
 
@@ -1159,6 +1163,8 @@ export function DevUiReview() {
         case "db_import_start":
           return dbJob("running");
         case "db_import_state":
+          // `dbjob=thissite` (#812): the site's latest job is the "nothing to import" answer.
+          if (params.get("dbjob") === "thissite") return { ...dbJob("failed"), nothingToDo: true, error: THIS_SITE };
           return params.get("dbjob") === "instantfail" && (window as unknown as { __rexStarted?: boolean }).__rexStarted
             ? dbJob("failed")
             : null;

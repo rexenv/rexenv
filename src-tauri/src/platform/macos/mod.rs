@@ -184,7 +184,7 @@ impl CertTrustManager for MacosCertTrust {
         keychain_trust::trust(ca_cert_path, &Self::login_keychain())
     }
     fn untrust_ca(&self, ca_cert_path: &Path) -> Result<()> {
-        keychain_trust::untrust(ca_cert_path)
+        keychain_trust::untrust(ca_cert_path, &Self::login_keychain())
     }
     fn untrust_stale(&self, current_ca: &Path) -> Result<usize> {
         keychain_trust::untrust_stale(current_ca, &Self::login_keychain())

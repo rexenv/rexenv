@@ -1553,11 +1553,6 @@ SMOKE-TEST on the built installers, then PUBLISH-TESTING §A0/§A before publish
 this note exists for: silence in a gate list reads as "this is the set", and a gate
 nobody can see from the list is indistinguishable from a gate nobody ran.
 
-- [ ] **The local CA stays in the login keychain after Remove system changes** — trust is removed
-  (`SecTrustSettingsRemoveTrustSettings`) but the `rexenv Local CA` item is not deleted, and the
-  cask's `--zap` cannot reach a keychain. Inert, but a leftover a "remove everything" user finds.
-  Seen on the 15.8 VM, §D, 9 Oct 2026. Decide: delete the item in `untrust` (macOS), or say in the
-  notice that the certificate is kept untrusted.
 - [ ] **The in-app update's remaining human rows (macOS)** — was "the swap probe (T0) and the
   first real in-app update (T11)", `docs/archive/PLAN-self-update.md` §6.5 and §13. **Both RAN:**
   T0 measured the swap on the dev Mac; T11 ran 0.6.0 → 0.6.1 there (7 Sep 2026, twice), on the
@@ -1567,12 +1562,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   copy, and which permissions come back per macOS major. None can be run by any tier.
   (Added 9 Oct 2026, also open in that section: the relauncher's record, ledger #768, and Start all
   over a running edge adding no "Background Items Added" card, ledger #772.)
-- [ ] **Database card: a stale refusal beside a newer state** — after Revert (or Apply) the card
-  keeps the earlier job's ThisSite refusal ("already reads and writes … that IS the rexenv copy")
-  above "Imported — not yet connected", two cards contradicting each other until the next import;
-  and that refusal — a correct answer — renders as a red failure with Retry. The job store
-  (`DbImportJobs`) outlives the record change; the rewrite commands would have to clear a settled
-  job (they are also MCP tools). Seen on the 15.8 VM, §K K14, 9 Oct 2026.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): cold runs on a clean
   macOS 15.6.1 VM (18 Sep 2026) and a clean 15.8 VM (23 Sep, 0.8.7) since the 10 Jul first
   pass. Open for the file's own **"Still open on macOS"** list (reconciled 28 Sep 2026) —

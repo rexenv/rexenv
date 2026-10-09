@@ -175,6 +175,11 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   itself: the packaged `rexenv.app` gets its name and logo, a bundle-less `cargo run` its
   executable name. A dismissed dialog returns -60006 and reads as a cancel. Cancel still
   leaves the CA imported, untrusted — as `security` did.
+  **Untrust also deletes the item** (#813): "Remove system changes" removes the trust and
+  then `security delete-certificate -Z` every copy of the current CA from the login keychain —
+  until 9 Oct 2026 it removed only the trust and left an inert `rexenv Local CA` item that the
+  cask's `--zap` cannot reach (found by the first `--zap`, 15.8 VM). Windows and Linux already
+  take the certificate out of their stores in the same call.
 - **Firefox keeps its own trust store** (`core/firefox.rs`, #154): rexenv forces
   `security.enterprise_roots.enabled` in each profile's `user.js` so Firefox imports the OS roots
   (default on only from Firefox 120). Only the profiles ROOT is per-OS

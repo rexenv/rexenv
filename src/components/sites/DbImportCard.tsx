@@ -12,7 +12,7 @@
 import { useEffect, useState } from "react";
 import { engineFacts, engineLabel, enginePort } from "@/lib/dbEngines";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Database, Loader2, Undo2, XCircle } from "lucide-react";
+import { AlertCircle, Database, Info, Loader2, Undo2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/dialog";
@@ -131,6 +131,8 @@ export function DbImportCard({ site }: { site: Site }) {
       void qc.invalidateQueries({ queryKey: ["rewrite-preview", site.id] });
       if (out.status === "applied") {
         toast.success(out.message);
+        // The backend forgot this site's settled import job with the record change (#812).
+        void dbImportState(site.id).then(setJob);
         void qc.invalidateQueries({ queryKey: ["db-import-record", site.id] });
         void qc.invalidateQueries({ queryKey: ["db-import-records"] });
         void qc.invalidateQueries({ queryKey: ["sites"] });
@@ -148,7 +150,10 @@ export function DbImportCard({ site }: { site: Site }) {
       void qc.invalidateQueries({ queryKey: ["db-import-record", site.id] });
       void qc.invalidateQueries({ queryKey: ["db-import-records"] });
       void qc.invalidateQueries({ queryKey: ["sites"] });
-      if (out.status === "reverted") toast.success(out.message);
+      if (out.status === "reverted") {
+        toast.success(out.message);
+        void dbImportState(site.id).then(setJob);
+      }
     },
     onError: toastBackendError,
   });
@@ -209,7 +214,9 @@ export function DbImportCard({ site }: { site: Site }) {
   });
 
   const running = job?.status === "running";
-  const failed = job?.status === "failed";
+  // "Nothing to import" settles as a failed job on the wire, but it is the right answer (#812).
+  const nothingToDo = job?.status === "failed" && job.nothingToDo;
+  const failed = job?.status === "failed" && !job.nothingToDo;
   const needsTypedConfirm = failed && (job?.error ?? "").includes("type the database name");
 
   return (
@@ -243,6 +250,16 @@ export function DbImportCard({ site }: { site: Site }) {
             <Loader2 className="h-3 w-3 animate-spin" />
             {job.phases[job.phaseCursor]?.label ?? "working"} · {job.pct}%
           </div>
+        </div>
+      )}
+
+      {nothingToDo && job && (
+        <div
+          data-probe="db-nothing-to-do"
+          className="mt-3 flex items-start gap-2 rounded-lg border border-rex-border bg-rex-surface-2 p-3 text-sm"
+        >
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-rex-text-muted" />
+          <span className="min-w-0 whitespace-pre-wrap break-words">{job.error}</span>
         </div>
       )}
 

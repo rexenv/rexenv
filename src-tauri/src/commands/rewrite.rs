@@ -314,6 +314,7 @@ pub async fn rewrite_apply(
     state: State<'_, AppState>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
     tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    db_jobs: State<'_, crate::commands::db_import::DbImportJobs>,
     site_id: String,
     fingerprint: String,
 ) -> Result<RewriteApplied> {
@@ -492,6 +493,8 @@ pub async fn rewrite_apply(
         store::get_db_import(&conn, &site_id)?
             .ok_or_else(|| Error::Other("db_imports row vanished mid-apply".into()))?
     };
+    // The record just changed: an import job from before it describes a state that is gone (#812).
+    db_jobs.forget_settled(&site_id);
     Ok(RewriteApplied::Applied {
         record,
         message: format!(
@@ -530,6 +533,7 @@ pub async fn rewrite_revert(
     state: State<'_, AppState>,
     provision: State<'_, crate::commands::site_provision::ProvisionJobs>,
     tunnels: State<'_, crate::commands::tunnels::Tunnels>,
+    db_jobs: State<'_, crate::commands::db_import::DbImportJobs>,
     site_id: String,
     force: bool,
 ) -> Result<RevertOutcome> {
@@ -589,7 +593,7 @@ pub async fn rewrite_revert(
     let check =
         confrewrite::classify_revert(current.as_deref(), backup.as_deref(), row.written_digest.as_deref());
 
-    match check {
+    let outcome = match check {
         RevertCheck::BackupMissing => {
             // D-b: their file is untouched; `connected` stays — the config
             // still signs into our copy, and clearing it would be the
@@ -667,7 +671,12 @@ pub async fn rewrite_revert(
                 ),
             })
         }
+    };
+    // The record just changed: an import job from before it describes a state that is gone (#812).
+    if matches!(outcome, Ok(RevertOutcome::Reverted { .. })) {
+        db_jobs.forget_settled(&site_id);
     }
+    outcome
 }
 
 

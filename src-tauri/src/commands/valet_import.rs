@@ -1208,6 +1208,9 @@ async fn connect_one<R: tauri::Runtime>(
     let Some(tunnels) = app.try_state::<crate::commands::tunnels::Tunnels>() else {
         return "failed: tunnel registry not ready".into();
     };
+    let Some(db_jobs) = app.try_state::<crate::commands::db_import::DbImportJobs>() else {
+        return "failed: import jobs not ready".into();
+    };
     let fingerprint =
         match crate::commands::rewrite::rewrite_preview(state.clone(), site_id.to_string()).await {
             Ok(RewritePreview::Ready { fingerprint, .. }) => fingerprint,
@@ -1218,6 +1221,7 @@ async fn connect_one<R: tauri::Runtime>(
         state.clone(),
         provision.clone(),
         tunnels,
+        db_jobs,
         site_id.to_string(),
         fingerprint,
     )

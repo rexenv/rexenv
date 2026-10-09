@@ -19,6 +19,8 @@ const SCENARIOS = [
   ["card-consent-root", "view=card&rec=imported&preview=ready&root=1", []],
   // #810: a job that settles before the card subscribes must still show its end.
   ["card-instantfail", "view=card&dbjob=instantfail", []],
+  // #812: "nothing to import" is an answer — neutral, no Retry.
+  ["card-thissite", "view=card&rec=connected&preview=noop&dbjob=thissite", []],
   [
     "card-consent-cache-mariadb-backup",
     "view=card&rec=imported&preview=ready&root=1&cache=1&engine=mariadb&backup=1",
@@ -977,6 +979,19 @@ const PROBES = {
     }
     return /rexenv answers this/.test(t) ? [] : [`the borrowed row lost its sentence: ${JSON.stringify(t)}`];
   },
+  thisSite: async (page) => {
+    const p = await page.evaluate(() => {
+      const box = document.querySelector('[data-probe="db-nothing-to-do"]');
+      if (!box) return ["the nothing-to-import answer did not render as its own state (#812)"];
+      const out = [];
+      if (!/nothing to import/.test(box.textContent || "")) out.push("the neutral box lost the sentence");
+      const retry = [...document.querySelectorAll("button")].some((b) => (b.textContent || "").trim() === "Retry");
+      if (retry) out.push("a correct refusal still offers Retry (#812)");
+      if (box.className.includes("status-error")) out.push("a correct refusal is styled as an error (#812)");
+      return out;
+    });
+    return p;
+  },
   instantFail: async (page) => {
     const start = page.getByRole("button", { name: "Import database" });
     if (!(await start.count())) return ["CONTROL BROKEN: no Import database button"];
@@ -1116,6 +1131,7 @@ function probeFor(name) {
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name === "card-instantfail") return PROBES.instantFail;
+  if (name === "card-thissite") return PROBES.thisSite;
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached

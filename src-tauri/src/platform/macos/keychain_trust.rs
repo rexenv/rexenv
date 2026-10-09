@@ -160,15 +160,52 @@ pub(super) fn trust(ca_cert_path: &Path, login_keychain: &str) -> Result<()> {
     Ok(())
 }
 
-/// Remove this user's trust setting for the CA (the dialog).
-pub(super) fn untrust(ca_cert_path: &Path) -> Result<()> {
+/// Remove this user's trust setting for the CA (the dialog), then delete the CA from the login
+/// keychain. Removing the trust alone left an inert `rexenv Local CA` item behind after "Remove
+/// system changes", and the cask's `--zap` cannot reach a keychain (the 15.8 VM, 9 Oct 2026,
+/// #813) — on Windows and Linux the same call already takes the certificate out of the store.
+pub(super) fn untrust(ca_cert_path: &Path, login_keychain: &str) -> Result<()> {
     let cert = certificate(ca_cert_path)?;
     // SAFETY: `cert.0` is live for the call.
     let removed = unsafe { SecTrustSettingsRemoveTrustSettings(cert.0, TRUST_DOMAIN_USER) };
-    if removed != 0 {
+    // `errSecItemNotFound`: no trust to remove — the item an older rexenv's untrust left behind.
+    // Still ours to delete.
+    if removed != 0 && removed != ERR_SEC_ITEM_NOT_FOUND {
         return Err(trust_error("remove the trust of", removed, &status_message(removed)));
     }
+    let current = der_from_pem(&std::fs::read_to_string(ca_cert_path)?)?;
+    for sha1 in current_in_listing(&ca_listing(login_keychain)?, &current) {
+        // Enumeration and deletion raise no dialog (as in `untrust_stale`).
+        let out = std::process::Command::new("security")
+            .args(["delete-certificate", "-Z", &sha1])
+            .arg(login_keychain)
+            .output()?;
+        if !out.status.success() {
+            return Err(Error::Other(format!(
+                "rexenv removed the trust of its local certificate authority but could not delete it \
+                 from your login keychain ({}). Delete \"{}\" in Keychain Access.",
+                String::from_utf8_lossy(&out.stderr).trim(),
+                crate::core::ssl::CA_COMMON_NAME
+            )));
+        }
+    }
     Ok(())
+}
+
+/// Every rexenv CA in the login keychain, as `security find-certificate -a -c <cn> -Z -p` lists
+/// them. No match exits non-zero with an empty listing — nothing to delete, not an error.
+fn ca_listing(login_keychain: &str) -> Result<String> {
+    let out = std::process::Command::new("security")
+        .args(["find-certificate", "-a", "-c", crate::core::ssl::CA_COMMON_NAME, "-Z", "-p"])
+        .arg(login_keychain)
+        .output()?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The SHA-1 of every copy of `current_der` in a listing — what `untrust` deletes. Pure, like
+/// [`stale_in_listing`], so the shape of the listing is tested without a keychain.
+pub(super) fn current_in_listing(listing: &str, current_der: &[u8]) -> Vec<String> {
+    listed_certs(listing).into_iter().filter(|c| c.der == current_der).map(|c| c.sha1).collect()
 }
 
 /// One certificate as `security find-certificate -a -Z -p` lists it: its SHA-1
@@ -183,6 +220,11 @@ pub(super) struct ListedCert {
 /// NOT `current_der` — the stale ones. Pure, so the shape of the listing is
 /// tested without a keychain.
 pub(super) fn stale_in_listing(listing: &str, current_der: &[u8]) -> Vec<ListedCert> {
+    listed_certs(listing).into_iter().filter(|c| c.der != current_der).collect()
+}
+
+/// Every certificate in a `find-certificate -a -Z -p` listing, paired with its SHA-1.
+fn listed_certs(listing: &str) -> Vec<ListedCert> {
     let mut out = Vec::new();
     let mut sha1: Option<String> = None;
     let mut pem = String::new();
@@ -202,9 +244,7 @@ pub(super) fn stale_in_listing(listing: &str, current_der: &[u8]) -> Vec<ListedC
         if line.starts_with("-----END CERTIFICATE-----") {
             in_pem = false;
             if let (Some(h), Ok(der)) = (sha1.take(), der_from_pem(&pem)) {
-                if der != current_der {
-                    out.push(ListedCert { sha1: h, der });
-                }
+                out.push(ListedCert { sha1: h, der });
             }
         }
     }
@@ -222,12 +262,7 @@ pub(super) fn stale_in_listing(listing: &str, current_der: &[u8]) -> Vec<ListedC
 /// `trust` is: the dialog is titled after the caller.
 pub(super) fn untrust_stale(current_ca: &Path, login_keychain: &str) -> Result<usize> {
     let current = der_from_pem(&std::fs::read_to_string(current_ca)?)?;
-    let out = std::process::Command::new("security")
-        .args(["find-certificate", "-a", "-c", crate::core::ssl::CA_COMMON_NAME, "-Z", "-p"])
-        .arg(login_keychain)
-        .output()?;
-    // No match exits non-zero with nothing to sweep — not an error.
-    let listing = String::from_utf8_lossy(&out.stdout);
+    let listing = ca_listing(login_keychain)?;
     let mut swept = 0;
     for stale in stale_in_listing(&listing, &current) {
         let cert = certificate_from_der(&stale.der)?;
@@ -270,6 +305,24 @@ mod tests {
         assert!(stale.iter().all(|s| s.der != b_der), "the current CA is never stale");
         assert!(stale_in_listing("", &b_der).is_empty(), "no match, nothing to sweep");
         assert!(stale_in_listing(&format!("SHA-1 hash: 2222\n{b_pem}"), &b_der).is_empty());
+    }
+
+    /// #813 — `untrust` deletes exactly the current CA's copies (every one), never another CA.
+    #[test]
+    fn untrust_deletes_every_copy_of_the_current_ca_and_nothing_else() {
+        let (a_pem, _) = ca_pem();
+        let (b_pem, b_der) = ca_pem();
+        let listing = format!("SHA-1 hash: 1111\n{a_pem}SHA-1 hash: 2222\n{b_pem}SHA-1 hash: 4444\n{b_pem}");
+        assert_eq!(current_in_listing(&listing, &b_der), vec!["2222".to_string(), "4444".to_string()]);
+        assert!(current_in_listing(&format!("SHA-1 hash: 1111\n{a_pem}"), &b_der).is_empty());
+        assert!(current_in_listing("", &b_der).is_empty(), "no match, nothing to delete");
+        // TEXT: the deletion runs for that list, and a never-trusted leftover is not an error.
+        let src = crate::core::copy_scan::production_source(include_str!("keychain_trust.rs"));
+        let body = &src[src.find("pub(super) fn untrust(").expect("untrust")..];
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        assert!(body.contains("current_in_listing(&ca_listing(login_keychain)?, &current)"), "untrust lists the current CA");
+        assert!(body.contains("\"delete-certificate\", \"-Z\", &sha1"), "and deletes each copy");
+        assert!(body.contains("removed != ERR_SEC_ITEM_NOT_FOUND"), "an already-untrusted item is still deleted");
     }
 
     fn ca_pem() -> (String, Vec<u8>) {

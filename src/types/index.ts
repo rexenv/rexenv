@@ -500,6 +500,9 @@ export interface DbImportJobState {
    *  is named rather than left for someone to find. */
   keptArtifact: string | null;
   result: DbImportRecord | null;
+  /** Ended because the site already reads this very database on rexenv's engine — a correct
+   *  answer, rendered without the error styling or Retry (#812). */
+  nothingToDo: boolean;
 }
 
 /** A leftover dump kept by a failed import — their data, so it is visible and

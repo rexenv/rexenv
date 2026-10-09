@@ -904,6 +904,11 @@ impl<Rt: tauri::Runtime> AppSiteCreator<Rt> {
             )
         })
     }
+    fn db_jobs(&self) -> crate::error::Result<tauri::State<'_, crate::commands::db_import::DbImportJobs>> {
+        use tauri::Manager;
+        self.app.try_state::<crate::commands::db_import::DbImportJobs>()
+            .ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))
+    }
     fn jobs(&self) -> crate::error::Result<tauri::State<'_, crate::commands::site_provision::ProvisionJobs>> {
         use tauri::Manager;
         self.app.try_state::<crate::commands::site_provision::ProvisionJobs>().ok_or_else(|| {
@@ -1717,10 +1722,10 @@ impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
         Box::pin(async move { crate::commands::rewrite::rewrite_preview(self.state()?, site_id).await })
     }
     fn rewrite_apply<'a>(&'a self, site_id: String, fingerprint: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RewriteApplied>> {
-        Box::pin(async move { crate::commands::rewrite::rewrite_apply(self.state()?, self.jobs()?, self.tunnels()?, site_id, fingerprint).await })
+        Box::pin(async move { crate::commands::rewrite::rewrite_apply(self.state()?, self.jobs()?, self.tunnels()?, self.db_jobs()?, site_id, fingerprint).await })
     }
     fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RevertOutcome>> {
-        Box::pin(async move { crate::commands::rewrite::rewrite_revert(self.state()?, self.jobs()?, self.tunnels()?, site_id, force).await })
+        Box::pin(async move { crate::commands::rewrite::rewrite_revert(self.state()?, self.jobs()?, self.tunnels()?, self.db_jobs()?, site_id, force).await })
     }
     fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::db_import::DbImportJobState>> {
         Box::pin(async move {

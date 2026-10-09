@@ -4254,7 +4254,7 @@ pub(crate) mod tests {
         }
         fn db_import_start<'a>(&'a self, site_id: String, confirm: Option<String>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>> {
             self.calls.lock().unwrap().push(format!("dbimport start {site_id} {confirm:?}"));
-            Box::pin(async { Ok(crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 100, status: "ok".into(), error: None, log_key: "x".into(), kept_artifact: Some("/Users/somebody/Library/Application Support/rexenv/imports/mine.sql".into()), result: None }) })
+            Box::pin(async { Ok(crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 100, status: "ok".into(), error: None, log_key: "x".into(), kept_artifact: Some("/Users/somebody/Library/Application Support/rexenv/imports/mine.sql".into()), result: None, nothing_to_do: false }) })
         }
         fn db_import_state<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Option<crate::commands::db_import::DbImportJobState>>> { Box::pin(async { Ok(None) }) }
         fn db_import_cancel<'a>(&'a self, _j: String) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }
