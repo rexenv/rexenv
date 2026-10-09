@@ -135,6 +135,7 @@ git_site_clone_check           sandbox all
 git_site_provision_check       network all
 worktree_git_check             sandbox all
 worktree_site_check            network all
+worktree_laravel_check         network all
 health_watchdog_check          service macos
 laravel_postgres_check         network all
 linked_site_check              sandbox all
