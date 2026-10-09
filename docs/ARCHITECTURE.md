@@ -1488,6 +1488,17 @@ honest footer —
   ordinary delete (tunnel, database, row, docroot). git refuses a dirty worktree itself
   too, so the pre-check exists to name the files, and git is the second wall. The branch
   is never deleted. An adopted worktree (§2.7) is never git-removed.
+- **The worktree UI** (W8, 10 Oct 2026) sits under a git plugin's or theme's repo panel
+  (`components/wordpress/AssetWorktrees.tsx`). It lists that checkout's worktree sites
+  with git's LIVE branch and change count (`worktree_children`), and holds the
+  New-worktree dialog. The dialog previews the domain and every refusal through
+  `worktree_preview`, which runs the same `plan_child` the create runs. Create hands off to
+  the Sites page, whose card adopts the running job. A child's page header says what it is
+  a worktree of (`WorktreeOfLine`, `worktree_of`). The Sites list's branch chip reads the
+  recorded request (`worktree_relations`) and no git, so a list render never waits on N
+  git processes. Every worktree query sits under the `["sites", …]` key, so one invalidation
+  refreshes them all. A refused (dirty) remove is never forced without a second, explicit
+  yes that quotes the files (#821).
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

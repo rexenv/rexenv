@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -489,6 +489,43 @@ export async function siteProvisionJob(
   blueprintId?: string,
 ): Promise<SiteProvisionState> {
   return invoke<SiteProvisionState>("site_provision_job", { site: input, wp, blueprintId });
+}
+
+/** Make a plugin/theme WORKTREE site: the parent's WordPress copied, with the
+ *  asset's folder a `git worktree` on `branch`. Streams like `siteProvisionJob`
+ *  — the returned snapshot drives the same card. */
+export async function worktreeCreate(request: WorktreeRequest): Promise<SiteProvisionState> {
+  return invoke<SiteProvisionState>("worktree_create", { request });
+}
+
+/** The domain (and any fallback reason) `worktreeCreate` would use — every
+ *  refusal it would give, without creating anything. */
+export async function worktreePreview(request: WorktreeRequest): Promise<WorktreePreview> {
+  return invoke<WorktreePreview>("worktree_preview", { request });
+}
+
+/** Delete a worktree child: its checkout through git, then the site. Refused
+ *  while it holds uncommitted work unless `force`. The branch is kept. */
+export async function worktreeRemove(id: string, force: boolean): Promise<boolean> {
+  return invoke<boolean>("worktree_remove", { id, force });
+}
+
+/** A site's worktree children, with git's live branch and change count. */
+export async function worktreeChildren(parentId: string): Promise<WorktreeView[]> {
+  if (!isTauri()) return [];
+  return invoke<WorktreeView[]>("worktree_children", { parentId });
+}
+
+/** The worktree record of one site (the child page's banner), or null. */
+export async function worktreeOf(siteId: string): Promise<WorktreeView | null> {
+  if (!isTauri()) return null;
+  return invoke<WorktreeView | null>("worktree_of", { siteId });
+}
+
+/** Every child → parent row (the Sites list's branch chips). */
+export async function worktreeRelations(): Promise<WorktreeRelation[]> {
+  if (!isTauri()) return [];
+  return invoke<WorktreeRelation[]>("worktree_relations");
 }
 
 /** Re-enter provisioning for a "setup incomplete" site (provisioned=false):

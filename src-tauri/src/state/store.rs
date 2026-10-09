@@ -1381,6 +1381,14 @@ pub fn insert_site_worktree(conn: &Connection, w: &NewWorktree) -> Result<()> {
     Ok(())
 }
 
+/// Every worktree relation, oldest first.
+pub fn all_site_worktrees(conn: &Connection) -> Result<Vec<SiteWorktree>> {
+    let sql = format!("SELECT {WORKTREE_COLUMNS} FROM site_worktrees ORDER BY created_at, site_id");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_to_worktree)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 /// The worktree record of one child site, or `None` when it is not a worktree.
 pub fn get_site_worktree(conn: &Connection, site_id: &str) -> Result<Option<SiteWorktree>> {
     let sql = format!("SELECT {WORKTREE_COLUMNS} FROM site_worktrees WHERE site_id = ?1");

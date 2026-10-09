@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown, GitBranch } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -16,7 +16,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity } from "@/lib/ipc";
+import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity, worktreeRelations } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
@@ -237,6 +237,7 @@ export function SiteRow({
   extraDomains,
   stoppedByUser,
   togglePending,
+  worktreeBranch,
 }: {
   site: Site;
   status: Site["status"];
@@ -247,6 +248,10 @@ export function SiteRow({
   /** The site's EXTRA domains (v42). Undefined/empty = it answers on its own
    *  domain only, which is most sites. */
   extraDomains?: string[];
+  /** Set when this site is a git WORKTREE of another site: the branch it was
+   *  made for (the recorded request — the row reads no git; the site's own
+   *  page shows git's live answer). */
+  worktreeBranch?: string;
   onOpen: () => void;
   onDelete: () => void;
   onOpenDatabase: () => void;
@@ -434,6 +439,14 @@ export function SiteRow({
       </span>
       <Badge>{site.phpVersion}</Badge>
       <Badge className="w-[84px] text-center">{site.webServer}</Badge>
+      {worktreeBranch && (
+        <span
+          className="flex max-w-[160px] flex-none items-center gap-1 truncate whitespace-nowrap rounded-full border border-rex-accent-blue-border bg-rex-accent-blue-bg px-2 py-1 font-mono text-[0.625rem] text-rex-accent-blue"
+          title={`A git worktree site, made for the branch ${worktreeBranch}`}
+        >
+          <GitBranch className="h-3 w-3 flex-none" /> {worktreeBranch}
+        </span>
+      )}
       {site.docrootManaged === false && (
         /* The folder is the user's own — served in place and never deleted with
            the site. True for a linked folder and for one moved out of the sites
@@ -682,6 +695,8 @@ export function Sites() {
   const [filter, setFilter] = useState<Filter>("all");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sort, setSort] = useState<Sort>("name");
+  const { data: worktreeRows = [] } = useQuery({ queryKey: ["sites", "worktree-relations"], queryFn: worktreeRelations });
+  const worktreeBranchOf = new Map(worktreeRows.map((w) => [w.siteId, w.askedBranch]));
   const { data: sites = [], isLoading } = useQuery({
     queryKey: ["sites"],
     queryFn: listSites,
@@ -1126,6 +1141,7 @@ export function Sites() {
                 resources={resourcesMap.get(site.id)}
                 dbState={dbStates.get(site.id)}
                 extraDomains={extraDomains[site.id]}
+                worktreeBranch={worktreeBranchOf.get(site.id)}
                 packages={packagesBySite.get(site.id)}
                 reapFailure={reapFailures.get(site.id) || undefined}
                 provisioning={site.provisioned ? false : provisioningOf.get(site.domain)}

@@ -293,7 +293,7 @@ for Linux); the ledger rows say which OS the proof came from.
 | W5 | **Shape A**: plugin/theme worktree on top of W4 (`worktree add` into the copy, the asset's deps) | ✓ 9 Oct 2026 (job half) — the `worktree` + `deps` phases; `commands::worktree::{plan_child, start}`. L1 `worktree_site_check` ALL PASS on macOS: the child on `feature/probe`, the parent on `main`, own DB, URLs moved, both delete preflights refuse. The UI entry (the plugin/theme row) moved to W8 with the rest of the UI |
 | W6 | Remove flow (§2.6), both shapes: dirty-file confirmation, git-first then the ordinary delete | ✓ 9 Oct 2026 — `release_for_delete` at `delete_site_owned` step 0 (so the Sites list's own Delete does it), `worktree_remove(id, force)` for "remove anyway"; the order became git FIRST (a refusal leaves everything intact), not the §2.6 draft's serve-off → DB → git. L1 legs 6–8 ALL PASS, plant caught; ledger #820. Windows' file-lock wording waits for a Windows run (W11) |
 | W7 | Adopt / Serve existing worktrees + prune (§2.7) | L1 leg: a worktree made by plain `git worktree add` gets served; its removal leaves the folder; ledger #5 |
-| W8 | UI: Worktrees section (asset row for Shape A, Repository tab for Shape B), child banner, Sites-list grouping, Re-clone DB | Playwright WebKit pass; DESIGN.md rules kept |
+| W8 | UI: Worktrees section (asset row for Shape A, Repository tab for Shape B), child banner, Sites-list grouping, Re-clone DB | ✓ 10 Oct 2026 (Shape A) — `AssetWorktrees` under a git plugin/theme's repo panel (list, New-worktree dialog with live preview, Remove with a second yes for dirty), `WorktreeOfLine` on the child's header, a branch chip on the Sites row; six commands registered (parity: five `Gap` → W9, `worktree_relations` `Never`). `wk-checks/worktree.js` green, plant caught; ledger #821; SMOKE § Git worktree sites. **Not built**: Re-clone DB from parent (§9 question), Sites-list GROUPING under the parent (a chip only), Shape B's Repository-tab entry (W10) |
 | W9 | CLI `rex worktree …` + MCP `repo` `worktree` action + dial levels | `cli` tests; CLI-ROADMAP.md; MCP parity test |
 | W10 | **Shape B**: whole-site repo as a linked child (§2.5 ignored files, lockfile-identical vendor copy) | L1 leg B on a Laravel fixture repo |
 | W11 | Per-OS proof: L1 on macOS, Windows (Dell), Linux (UTM VM); SMOKE sections ×3; ARCHITECTURE/MAP/TESTING updated | ledger rows name the OS of each proof |
@@ -309,3 +309,19 @@ for Linux); the ledger rows say which OS the proof came from.
    whole-site repo is W10.
 5. **Placement** — not asked yet. Shape A's entry point is the plugin/theme row in the
    WordPress tab, where the repo lives. Shape B's is the Repository tab.
+
+
+6. **W7 — serving a plugin worktree another tool made** (asked 10 Oct 2026, blocks W7). A
+   Shape A child needs the plugin folder INSIDE the copied site, but a worktree Claude Code or
+   the user made lives wherever they put it. The three ways:
+   - (a) a symlink from the copy's `plugins/<dir>` to that folder. WordPress follows it, but
+     Windows needs Developer Mode or admin to create one, and `plugins_url()` can resolve
+     through the link oddly.
+   - (b) offer `git worktree move` into the copy. This moves the other tool's folder out from
+     under it.
+   - (c) do not adopt Shape A at all, and only offer adopt for Shape B (a whole-site repo,
+     where the worktree IS the docroot, so a linked site serves it in place).
+
+   Recommendation: (c) now, and (a) behind a per-OS check later if asked for.
+7. **"Re-clone DB from parent"** on a child (W8 left it out): wanted? It overwrites the
+   child's database with a fresh copy of the parent's (a confirm, plus the URLs rehomed again).

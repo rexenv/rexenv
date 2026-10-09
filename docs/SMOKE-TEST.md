@@ -949,6 +949,31 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   database** round-trips it (make a post → export → delete the post → import → post is back).
   ✓ 18 Sep 2026 (same VM and build).
 
+## Git worktree sites (`docs/PLAN-git-worktrees.md`, built 9–10 Oct 2026)
+
+On a WordPress site with a plugin that is a git checkout (its row shows **git**), and a second
+branch in that repository:
+- [ ] Click **git** → under the repo panel, **Worktree sites** reads "None yet". **New worktree…**
+      → Create is disabled until a branch is picked; pick the second branch → the box shows
+      `https://<branch>.<site>` (a subdomain-multisite parent is refused, naming why).
+- [ ] **Create** → the Sites page shows the provision card with `copying the parent site`,
+      `adding the git worktree`, `installing dependencies`, `copying the database`, `pointing
+      wp-config at this site`, `moving URLs to this domain`; it settles serving. The new row has a
+      branch chip.
+- [ ] Open the worktree site: the page is the parent's content at the NEW domain (links and
+      images point at the new domain — never `branch.branch.site`), wp-admin logs in, the plugin
+      file shows the branch's code; the parent site still shows its own branch. The child's page
+      header reads "plugin worktree of <parent> · <branch>".
+- [ ] Edit a file in the worktree's plugin folder → the Worktree sites row shows "1 uncommitted".
+      Delete the worktree site from the Sites list → refused, naming the file; the site still
+      serves. Remove it from the Worktree sites row → the "Remove anyway?" question quotes the
+      file; Cancel leaves everything; Remove anyway deletes it. `git branch` in the plugin still
+      lists the branch.
+- [ ] Delete the PARENT while a worktree site exists → refused, naming the child.
+- **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:
+  an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
+  "Access is denied", and the site stays — close the editor, Delete again.
+
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
 **Link folder** to one of your own. Everything below is on that asset's repo

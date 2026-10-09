@@ -14,8 +14,8 @@ use crate::state::app::AppState;
 use crate::state::models::{MultisiteMode, NewSite, Site, SiteType, WorktreeShape};
 use std::path::PathBuf;
 use crate::state::store;
-use serde::Deserialize;
-use tauri::{AppHandle, State};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
 
 /// What the New-worktree dialog (and `rex worktree add`, and the MCP action)
 /// asks for. Shape A only for now — a plugin or theme checkout inside a
@@ -249,4 +249,138 @@ pub async fn worktree_remove(
     let Some(site) = site else { return Ok(false) };
     release_for_delete(&state, &site, force)?;
     crate::commands::sites::delete_site_owned(&state, &tunnels, id).await
+}
+
+/// The New-worktree dialog's live preview: the domain this request would get,
+/// and — when it is the fallback shape — the one sentence saying why.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreePreview {
+    pub domain: String,
+    pub fallback: Option<String>,
+}
+
+/// `worktree_preview` — every refusal `worktree_create` would give, without
+/// creating anything.
+#[tauri::command]
+pub async fn worktree_preview(state: State<'_, AppState>, request: WorktreeRequest) -> Result<WorktreePreview> {
+    let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+    let (_, child, _) = plan_child(&conn, &request)?;
+    Ok(WorktreePreview { domain: child.domain, fallback: child.fallback.map(|f| f.sentence().to_string()) })
+}
+
+/// One worktree child as the UI shows it. `branch` and `uncommitted` are
+/// git's answers, read NOW — never the recorded request (`asked_branch`),
+/// which is what the user asked for when it was made.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeView {
+    pub site_id: String,
+    pub domain: String,
+    pub parent_id: String,
+    pub parent_domain: String,
+    pub asset_kind: Option<String>,
+    pub asset_dir: Option<String>,
+    pub asked_branch: String,
+    /// `None` = detached, or the worktree is not there (yet, or any more).
+    pub branch: Option<String>,
+    /// Changed + untracked files; `None` when git could not be asked.
+    pub uncommitted: Option<u32>,
+    pub present: bool,
+    pub provisioned: bool,
+    pub adopted: bool,
+}
+
+fn view_of<R: tauri::Runtime>(app: &AppHandle<R>, w: &crate::state::models::SiteWorktree) -> Result<Option<WorktreeView>> {
+    let state = app.state::<AppState>();
+    let (site, parent) = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        (store::get_site(&conn, &w.site_id)?, store::get_site(&conn, &w.parent_id)?)
+    };
+    let (Some(site), Some(parent)) = (site, parent) else { return Ok(None) };
+    let path = PathBuf::from(&w.worktree_path);
+    let present = path.join(".git").is_file();
+    let status = if present {
+        crate::commands::repo::shell_env(&state, &app.state::<crate::commands::repo::RepoJobs>(), false)
+            .and_then(|env| {
+                let git = core::devtools::resolve_git(state.platform.as_ref(), &env)?;
+                core::repo::read_git_status(state.platform.supervisor(), &git.path, &env, &path)
+            })
+            .ok()
+    } else {
+        None
+    };
+    Ok(Some(WorktreeView {
+        site_id: site.id,
+        domain: site.domain,
+        parent_id: parent.id,
+        parent_domain: parent.domain,
+        asset_kind: w.asset_kind.clone(),
+        asset_dir: w.asset_dir.clone(),
+        asked_branch: w.branch.clone(),
+        branch: status.as_ref().and_then(|s| s.branch.clone()),
+        uncommitted: status.as_ref().map(|s| s.changed + s.untracked),
+        present,
+        provisioned: site.provisioned,
+        adopted: w.adopted,
+    }))
+}
+
+/// `worktree_children` — every worktree child of a site, with git's live answers.
+#[tauri::command]
+pub async fn worktree_children<R: tauri::Runtime>(app: AppHandle<R>, parent_id: String) -> Result<Vec<WorktreeView>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let rows = {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            store::worktree_children(&conn, &parent_id)?
+        };
+        let mut out = Vec::new();
+        for w in &rows {
+            if let Some(v) = view_of(&app, w)? {
+                out.push(v);
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("worktree worker died: {e}")))?
+}
+
+/// `worktree_of` — the banner on a child's page: which site, which branch.
+#[tauri::command]
+pub async fn worktree_of<R: tauri::Runtime>(app: AppHandle<R>, site_id: String) -> Result<Option<WorktreeView>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let row = {
+            let state = app.state::<AppState>();
+            let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            store::get_site_worktree(&conn, &site_id)?
+        };
+        match row {
+            Some(w) => view_of(&app, &w),
+            None => Ok(None),
+        }
+    })
+    .await
+    .map_err(|e| Error::Other(format!("worktree worker died: {e}")))?
+}
+
+/// `worktree_relations` — child id → (parent id, asked branch) for every child,
+/// for the Sites list's grouping. Rows only: no git, so a list render never
+/// waits on N git processes.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeRelation {
+    pub site_id: String,
+    pub parent_id: String,
+    pub asked_branch: String,
+}
+
+#[tauri::command]
+pub async fn worktree_relations(state: State<'_, AppState>) -> Result<Vec<WorktreeRelation>> {
+    let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+    Ok(store::all_site_worktrees(&conn)?
+        .into_iter()
+        .map(|w| WorktreeRelation { site_id: w.site_id, parent_id: w.parent_id, asked_branch: w.branch })
+        .collect())
 }

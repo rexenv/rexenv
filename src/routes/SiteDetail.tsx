@@ -44,6 +44,7 @@ import { DatabaseTab } from "@/components/sites/DatabaseTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { CoreFilesBanner } from "@/components/wordpress/CoreFilesBanner";
+import { WorktreeOfLine } from "@/components/sites/WorktreeOfLine";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
 import { ResolverConsentFor } from "@/routes/Import";
@@ -454,6 +455,7 @@ function SiteHeader({
               </span>
               <span className="flex-none text-[0.6875rem] text-rex-text-muted">· :443</span>
             </div>
+            <WorktreeOfLine siteId={site.id} />
           </div>
         </div>
         <div className="flex flex-none items-center gap-[9px]">

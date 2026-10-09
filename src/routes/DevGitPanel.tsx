@@ -881,6 +881,50 @@ export function DevGitPanel() {
           return null;
         case "wp_org_plugin_icons":
           return {};
+        // `?wt=1` (wk-checks/worktree.js): the git plugin has one worktree SITE,
+        // on a branch with uncommitted work, so the list, the branch chip and the
+        // dirty count all render. The create/remove calls are RECORDED, because
+        // what the dialog SENDS is the assertion (`?dirty=1`: the first, unforced
+        // remove is refused the way the backend refuses it).
+        case "worktree_children":
+          return params.get("wt") === "1"
+            ? [
+                {
+                  siteId: "wt-1",
+                  domain: "feature-x.dev.rex",
+                  parentId: "dev",
+                  parentDomain: "dev.rex",
+                  assetKind: "plugin",
+                  assetDir: "akismet",
+                  askedBranch: "feature/x",
+                  branch: "feature/x",
+                  uncommitted: 2,
+                  present: true,
+                  provisioned: true,
+                  adopted: false,
+                },
+              ]
+            : [];
+        case "worktree_preview": {
+          const req = (args as { request: { branch: string } }).request;
+          if (req.branch === "taken") return { domain: "dev-taken.rex", fallback: "That name under the parent is already taken." };
+          if (req.branch.startsWith("-")) throw new Error(`"${req.branch}" is not a valid branch or tag name`);
+          const slug = req.branch.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          return { domain: `${slug}.dev.rex`, fallback: null };
+        }
+        case "worktree_create": {
+          ((window as unknown as { __worktreeCreates?: unknown[] }).__worktreeCreates ??= []).push(
+            (args as { request: unknown }).request,
+          );
+          return { id: "job-wt", domain: "x", siteId: "wt-2", phases: [], phaseCursor: 0, pct: 0, status: "running", summary: null, error: null, logKey: "k", downloadIds: [] };
+        }
+        case "worktree_remove": {
+          const { force } = args as { force: boolean };
+          ((window as unknown as { __worktreeRemoves?: boolean[] }).__worktreeRemoves ??= []).push(force);
+          if (params.get("dirty") === "1" && !force)
+            throw new Error("/s/feature-x.dev.rex/wp-content/plugins/akismet has 2 uncommitted changes — removing it would lose them:\n  ?? notes.php\n   M akismet.php\nCommit or stash them (the branch itself is kept either way), or remove it anyway.");
+          return true;
+        }
         // `?git=1` makes one listed plugin a git checkout and another LOOK like
         // one, so the two chips on a plugin row render at all. Without it both
         // are `[]` and the chips have never appeared in any harness — which is

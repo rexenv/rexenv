@@ -36,6 +36,7 @@ const CHECKS = [
   "maillink.js",
   "appupdaterestart.js",
   "agentlog.js",
+  "worktree.js",
   // The UI-review sweep asserts now (overflow fatal, pageerror listeners,
   // dbtab height probe, pill metrics) — it belongs in the bar.
   "uireview.js",

@@ -95,6 +95,7 @@ import {
 import type { WpDebugFlag } from "@/lib/ipc";
 import { GitAddPanel } from "./GitAddPanel";
 import { RepoPanel } from "./RepoPanel";
+import { AssetWorktrees } from "./AssetWorktrees";
 import { LinkFolderPanel } from "./LinkFolderPanel";
 import { ZipAddPanel } from "./ZipAddPanel";
 import type { MultisiteMode, WpChecksumReport, WpCoreSwitch, WpInstallState, WpOptionRow, WpOrgPlugin, WpOrgTheme, WpPlugin, WpSkippedNoiseFile, WpTheme, WpUpdateProgress, WpUser } from "@/types";
@@ -3017,6 +3018,7 @@ export function ThemesPanel({ siteId }: { siteId: string }) {
             {openRepo === t.name && assetFor(t.name) && (
               <div className="col-span-full">
                 <RepoPanel siteId={siteId} kind="theme" asset={assetFor(t.name)!} />
+                <AssetWorktrees siteId={siteId} kind="theme" dirName={assetFor(t.name)!.dirName} />
               </div>
             )}
             </Fragment>
@@ -3770,7 +3772,10 @@ export function PluginsPanel({ siteId }: { siteId: string }) {
               }}
             />
             {openRepo === p.name && assetFor(p.name) && (
-              <RepoPanel siteId={siteId} kind="plugin" asset={assetFor(p.name)!} />
+              <>
+                <RepoPanel siteId={siteId} kind="plugin" asset={assetFor(p.name)!} />
+                <AssetWorktrees siteId={siteId} kind="plugin" dirName={assetFor(p.name)!.dirName} />
+              </>
             )}
             </Fragment>
           ))}

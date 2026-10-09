@@ -1559,6 +1559,49 @@ export interface SiteProvisionState {
   assetsWarning?: string | null;
 }
 
+/** A plugin/theme worktree site to make (`docs/PLAN-git-worktrees.md`):
+ *  `branch` is checked out, or made NEW from `base` when that is set. */
+export interface WorktreeRequest {
+  parentId: string;
+  assetKind: "plugin" | "theme";
+  assetDir: string;
+  branch: string;
+  base?: string | null;
+  domain?: string | null;
+  skipUploads?: boolean;
+}
+
+/** The domain a worktree request would get; `fallback` is the sentence saying
+ *  why it is the `shop-feature-x.rex` shape rather than `feature-x.shop.rex`. */
+export interface WorktreePreview {
+  domain: string;
+  fallback: string | null;
+}
+
+/** One worktree child. `branch`/`uncommitted` are git's answers NOW;
+ *  `askedBranch` is what was asked for when it was made. */
+export interface WorktreeView {
+  siteId: string;
+  domain: string;
+  parentId: string;
+  parentDomain: string;
+  assetKind: "plugin" | "theme" | null;
+  assetDir: string | null;
+  askedBranch: string;
+  branch: string | null;
+  uncommitted: number | null;
+  present: boolean;
+  provisioned: boolean;
+  adopted: boolean;
+}
+
+/** Child → parent rows for the Sites list's chips (no git reads). */
+export interface WorktreeRelation {
+  siteId: string;
+  parentId: string;
+  askedBranch: string;
+}
+
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */
 /** What a repo panel/IPC call targets. `"site"` is the SITE's own checkout —
  *  a cloned site's project root — which carries no folder name of its own: the
