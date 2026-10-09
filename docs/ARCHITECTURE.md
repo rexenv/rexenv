@@ -1334,7 +1334,7 @@ honest footer —
   sharing a data folder with a newer one — a hand-installed older dmg, or a dev build next
   to a release — would read and write tables whose shape it does not know. Builds up to
   0.7.1 predate the check and never refuse.
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 44:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 45:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -1387,7 +1387,12 @@ honest footer —
   database, not the ServiceManager, because services outlive the app and a stopped site
   that came back on after a relaunch would be the user's decision quietly reversed.
   DEFAULT 1 with no backfill, and that is exact rather than safe: before the column,
-  stopping one site was impossible — `docs/archive/PLAN-per-site-lifecycle.md`).
+  stopping one site was impossible — `docs/archive/PLAN-per-site-lifecycle.md`). · v45
+  `site_worktrees` (a site that is a git WORKTREE of another site's checkout —
+  `docs/PLAN-git-worktrees.md` §2.3: `parent_id`, `shape` asset|site, the worktree path,
+  `adopted`; the branch is NOT stored, git answers it live. `parent_id` has no
+  `ON DELETE`, so with `foreign_keys=ON` the database itself refuses deleting a parent
+  that still has children, #815)
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it
@@ -1437,6 +1442,17 @@ honest footer —
   `sites_dir` setting — pointing the Sites folder at `~/code` silently made an
   unrelated project deletable. `teardown` returns `{ existed, docroot_removed }`
   so "your folder is still there" is never ambiguous.
+- **A folder holding a git worktree is never `remove_dir_all`ed — even one rexenv owns**
+  (#814, 9 Oct 2026, W1 of `docs/PLAN-git-worktrees.md`). A worktree's `.git` is a FILE
+  pointing at a repository that lives elsewhere; deleting the folder destroys
+  uncommitted work that repository will never miss. `core::worktree::
+  foreign_checkout_under` finds any `.git` file under the docroot whose gitdir resolves
+  OUTSIDE it (a submodule of a repo inside the tree is not foreign; an unreadable
+  pointer counts as foreign). Two defences: `sites::delete_preflight` refuses the delete
+  BEFORE the tunnel stop and the database drop with a `$ git worktree remove "<dir>"`
+  fix line (git itself refuses a dirty worktree), and `teardown` keeps such a docroot
+  even if reached without the preflight. The same preflight refuses deleting a site that
+  still has worktree children (#815), naming them.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

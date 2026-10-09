@@ -1683,7 +1683,13 @@ pub(crate) async fn delete_site_owned(
 ) -> Result<bool> {
     let site = {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
-        core::sites::get(&conn, &id)?
+        let site = core::sites::get(&conn, &id)?;
+        // 0) Refusals come BEFORE the first destructive step — a parent with
+        //    worktree children, a docroot holding a worktree (ledger #814, #815).
+        if let Some(site) = &site {
+            core::sites::delete_preflight(&conn, state.platform.as_ref(), site)?;
+        }
+        site
     };
     let Some(site) = site else { return Ok(false) };
 

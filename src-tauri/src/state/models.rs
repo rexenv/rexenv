@@ -119,6 +119,58 @@ impl SiteOrigin {
     }
 }
 
+/// Which of the two worktree shapes a child site is (`docs/PLAN-git-worktrees.md`
+/// §2.1). Recorded at creation because the two are torn down differently: an
+/// `Asset` child's docroot is a COPY rexenv made (managed) with ONE plugin/theme
+/// dir replaced by a worktree, a `Site` child's docroot IS the worktree (linked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WorktreeShape {
+    Asset,
+    Site,
+}
+
+impl WorktreeShape {
+    /// The canonical string used for both JSON and the SQLite TEXT column.
+    pub fn as_db(&self) -> &'static str {
+        match self {
+            WorktreeShape::Asset => "asset",
+            WorktreeShape::Site => "site",
+        }
+    }
+
+    /// Read a stored value; `None` for anything this build does not know (a row
+    /// written by a newer rexenv), so a caller can refuse rather than guess how
+    /// to tear down a shape it has never seen.
+    pub fn parse_db(s: &str) -> Option<Self> {
+        match s {
+            "asset" => Some(WorktreeShape::Asset),
+            "site" => Some(WorktreeShape::Site),
+            _ => None,
+        }
+    }
+}
+
+/// A site that is a git worktree of another site's checkout (v45).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SiteWorktree {
+    /// The child site.
+    pub site_id: String,
+    /// The site whose checkout the worktree belongs to.
+    pub parent_id: String,
+    /// `None` = a shape this build does not know (see [`WorktreeShape::parse_db`]).
+    pub shape: Option<WorktreeShape>,
+    /// The worktree folder: the plugin/theme dir inside the child for `Asset`,
+    /// the child's docroot for `Site`.
+    pub worktree_path: String,
+    /// Made by another tool (an agent, the user's own `git worktree add`) and
+    /// only SERVED by rexenv — never `git worktree remove`d without an explicit
+    /// user action (§2.7).
+    pub adopted: bool,
+    pub created_at: String,
+}
+
 /// A plugin or theme an agent CLONED into a scratch site (v29, S1).
 ///
 /// The clone is why this is recorded rather than derived: the scratch site runs

@@ -88,3 +88,4 @@ pub mod wp_mailtag;
 pub mod wp_packages;
 pub mod wp_tunnel;
 pub mod wordpress;
+pub mod worktree;

@@ -696,6 +696,32 @@ const MIGRATIONS: &[&str] = &[
     // column was served, because stopping one site was not possible. That is a
     // fact about the past, not the usual "assume the safe thing" guess.
     "ALTER TABLE sites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;",
+    // v45 — a site that is a git WORKTREE of another site's checkout
+    // (`docs/PLAN-git-worktrees.md` §2.3). One row per child; the parent has none.
+    //
+    // A table of its own rather than columns on `sites`: the relation is a fact
+    // about two rows, and a `sites` column would have to be threaded through
+    // every one of the ~40 `Site { … }` literals for a field almost no site has.
+    //
+    // `parent_id` has NO `ON DELETE` clause on purpose. With `foreign_keys=ON`
+    // (set at every open) that is SQLite's NO ACTION: deleting a parent that
+    // still has worktree children FAILS at the database. `core::sites::
+    // delete_preflight` refuses first with a sentence naming the children; this
+    // is the structural backstop for any path that reaches `delete_site` without
+    // it (ledger #815). `site_id` cascades: the relation dies with the child.
+    //
+    // The BRANCH is not stored — git answers it live (§2.3: `sites.git_ref` is
+    // already "chosen at creation, never kept in sync", and a second copy would
+    // lie the first time anyone runs `git switch` in the worktree).
+    "CREATE TABLE site_worktrees (
+        site_id       TEXT PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+        parent_id     TEXT NOT NULL REFERENCES sites(id),
+        shape         TEXT NOT NULL,
+        worktree_path TEXT NOT NULL,
+        adopted       INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX idx_site_worktrees_parent ON site_worktrees(parent_id);",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.

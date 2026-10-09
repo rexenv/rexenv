@@ -19,7 +19,7 @@
 use crate::error::{Error, Result};
 use crate::state::models::{
     Blueprint, BlueprintSpec, GitAsset, MultisiteMode, PhpVersion, ServiceStatus, Site,
-    ScratchPackage, SiteDbEngine, SiteOrigin, SiteType, WebServer,
+    ScratchPackage, SiteDbEngine, SiteOrigin, SiteType, SiteWorktree, WebServer, WorktreeShape,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -1319,6 +1319,61 @@ pub fn replace_site_env(
     Ok(())
 }
 
+// ── Worktree children (v45) ───────────────────────────────────────────────────
+
+fn row_to_worktree(row: &Row) -> rusqlite::Result<SiteWorktree> {
+    Ok(SiteWorktree {
+        site_id: row.get(0)?,
+        parent_id: row.get(1)?,
+        shape: WorktreeShape::parse_db(&row.get::<_, String>(2)?),
+        worktree_path: row.get(3)?,
+        adopted: row.get::<_, i64>(4)? != 0,
+        created_at: row.get(5)?,
+    })
+}
+
+const WORKTREE_COLUMNS: &str = "site_id, parent_id, shape, worktree_path, adopted, created_at";
+
+/// Record that `w.site_id` is a worktree child of `w.parent_id`. `created_at` is
+/// the database's clock, not the caller's.
+pub fn insert_site_worktree(
+    conn: &Connection,
+    site_id: &str,
+    parent_id: &str,
+    shape: WorktreeShape,
+    worktree_path: &str,
+    adopted: bool,
+) -> Result<()> {
+    if site_id == parent_id {
+        return Err(Error::Other("a site cannot be a worktree of itself".into()));
+    }
+    conn.execute(
+        "INSERT INTO site_worktrees (site_id, parent_id, shape, worktree_path, adopted) \
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![site_id, parent_id, shape.as_db(), worktree_path, adopted as i64],
+    )?;
+    Ok(())
+}
+
+/// The worktree record of one child site, or `None` when it is not a worktree.
+pub fn get_site_worktree(conn: &Connection, site_id: &str) -> Result<Option<SiteWorktree>> {
+    let sql = format!("SELECT {WORKTREE_COLUMNS} FROM site_worktrees WHERE site_id = ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query_map([site_id], row_to_worktree)?;
+    Ok(rows.next().transpose()?)
+}
+
+/// Every worktree child of `parent_id`, oldest first.
+pub fn worktree_children(conn: &Connection, parent_id: &str) -> Result<Vec<SiteWorktree>> {
+    let sql = format!(
+        "SELECT {WORKTREE_COLUMNS} FROM site_worktrees WHERE parent_id = ?1 \
+         ORDER BY created_at, site_id"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([parent_id], row_to_worktree)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
 // ── Extra domains a site answers on (v42) ─────────────────────────────────────
 
 /// One site's alias domains, sorted (deterministic config emission, like
@@ -2431,5 +2486,55 @@ has never heard of cannot pass unread.";
              writer is how a schema change breaks a caller nobody re-tested (#167).",
             violations.join("\n  ")
         );
+    }
+
+    fn site_with(id: &str, domain: &str) -> Site {
+        Site { id: id.into(), domain: domain.into(), ..scratch(None) }
+    }
+
+    #[test]
+    fn a_worktree_record_round_trips_and_lists_under_its_parent() {
+        let conn = db::open_in_memory().unwrap();
+        insert_site(&conn, &site_with("p", "shop.rex")).unwrap();
+        insert_site(&conn, &site_with("c1", "feature-x.shop.rex")).unwrap();
+        insert_site(&conn, &site_with("c2", "fix-y.shop.rex")).unwrap();
+        insert_site_worktree(&conn, "c1", "p", WorktreeShape::Asset, "/s/c1/wp-content/plugins/a", false)
+            .unwrap();
+        insert_site_worktree(&conn, "c2", "p", WorktreeShape::Site, "/s/c2", true).unwrap();
+
+        let w = get_site_worktree(&conn, "c1").unwrap().unwrap();
+        assert_eq!(w.parent_id, "p");
+        assert_eq!(w.shape, Some(WorktreeShape::Asset));
+        assert_eq!(w.worktree_path, "/s/c1/wp-content/plugins/a");
+        assert!(!w.adopted);
+        assert!(get_site_worktree(&conn, "c2").unwrap().unwrap().adopted);
+        assert!(get_site_worktree(&conn, "p").unwrap().is_none(), "a parent is not a worktree");
+        let kids: Vec<String> =
+            worktree_children(&conn, "p").unwrap().into_iter().map(|w| w.site_id).collect();
+        assert_eq!(kids.len(), 2);
+        assert!(kids.contains(&"c1".to_string()) && kids.contains(&"c2".to_string()));
+        assert!(insert_site_worktree(&conn, "p", "p", WorktreeShape::Site, "/s/p", false).is_err());
+    }
+
+    /// **A parent that still has worktree children cannot be deleted — by the
+    /// database itself** (ledger #815). `core::sites::delete_preflight` refuses
+    /// first with a sentence; this is the backstop for any path that reaches
+    /// `delete_site` without it. Plant: give `parent_id` `ON DELETE CASCADE` in
+    /// v45 and the first assert fails (the parent goes, its children's relation
+    /// silently with it).
+    #[test]
+    fn deleting_a_parent_with_worktree_children_fails_at_the_database() {
+        let conn = db::open_in_memory().unwrap();
+        insert_site(&conn, &site_with("p", "shop.rex")).unwrap();
+        insert_site(&conn, &site_with("c", "feature-x.shop.rex")).unwrap();
+        insert_site_worktree(&conn, "c", "p", WorktreeShape::Site, "/s/c", false).unwrap();
+
+        assert!(delete_site(&conn, "p").is_err(), "the parent must not be deletable");
+        assert!(get_site(&conn, "p").unwrap().is_some());
+
+        // The child's delete takes its relation with it, and then the parent goes.
+        assert!(delete_site(&conn, "c").unwrap());
+        assert!(get_site_worktree(&conn, "c").unwrap().is_none());
+        assert!(delete_site(&conn, "p").unwrap());
     }
 }

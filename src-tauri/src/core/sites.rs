@@ -1821,25 +1821,99 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
         crate::core::logs::remove_run_logs(platform, &site.domain, &others);
     }
 
-    // Remove the docroot, but only if it's under a managed sites dir — the
-    // configured one, the current default, OR the legacy app-data default (so
-    // neither changing the setting nor the default-change to ~/rexenv/Sites
-    // strands teardown of pre-existing sites).
-    let owned = match site.docroot_managed {
+    // Remove the docroot, but only if it's ours — and never while a git
+    // worktree whose repository lives elsewhere sits inside it (ledger #814).
+    // `delete_preflight` refuses that delete before anything destructive runs;
+    // this is the second defence, for any caller that reached teardown without
+    // it, and it fails toward KEEPING the folder: the row is already gone, so
+    // erroring here would strand nothing, while deleting would destroy work no
+    // repository has a copy of.
+    let owned = docroot_owned(conn, platform, &site)?;
+    let foreign = if owned && !site.path.is_empty() {
+        super::worktree::foreign_checkout_under(Path::new(&site.path))
+    } else {
+        None
+    };
+    if let Some(dir) = &foreign {
+        log::warn!(
+            "sites: kept {} — it holds a git worktree ({}) whose repository lives elsewhere",
+            site.path,
+            dir.display()
+        );
+    }
+    let docroot_removed = owned
+        && foreign.is_none()
+        && !site.path.is_empty()
+        && std::fs::remove_dir_all(&site.path).is_ok();
+
+    Ok(Teardown { existed: true, docroot_removed })
+}
+
+/// Does rexenv own this site's docroot — may teardown remove it? The recorded
+/// answer (v17); only a pre-v17 row the startup backfill hasn't reached yet
+/// falls back to the legacy test: under a managed sites dir — the configured
+/// one, the current default, OR the legacy app-data default (so neither
+/// changing the setting nor the default-change to ~/rexenv/Sites strands
+/// teardown of pre-existing sites).
+fn docroot_owned(conn: &Connection, platform: &dyn Platform, site: &Site) -> Result<bool> {
+    Ok(match site.docroot_managed {
         Some(owned) => owned,
-        // Pre-v17 row, backfill hasn't run: the legacy answer, which is what
-        // the backfill records anyway.
         None => docroot_under_managed_root(
             &site.path,
             &sites_dir(conn, platform)?,
             &default_sites_dir()?,
             &legacy_sites_dir(platform)?,
         ),
-    };
-    let docroot_removed =
-        owned && !site.path.is_empty() && std::fs::remove_dir_all(&site.path).is_ok();
+    })
+}
 
-    Ok(Teardown { existed: true, docroot_removed })
+/// Every rule that must hold before a site delete takes its FIRST destructive
+/// step (the tunnel stop, the database drop — `commands::sites::
+/// delete_site_owned` runs those before [`teardown`]), so a refusal leaves the
+/// site exactly as it was:
+///
+/// - **A parent with worktree children is refused** (ledger #815) — a worktree
+///   whose main repository is gone is a broken checkout. The database refuses
+///   the row delete too (v45's `parent_id` has no `ON DELETE`); this is the
+///   check that says so in a sentence, and says it before the database drop.
+/// - **A docroot we own that holds a git worktree is refused** (ledger #814) —
+///   `remove_dir_all` would destroy uncommitted work in a checkout whose
+///   repository lives elsewhere and will not notice. `git worktree remove`
+///   refuses a dirty worktree on its own, so the fix line sends the user there.
+pub fn delete_preflight(conn: &Connection, platform: &dyn Platform, site: &Site) -> Result<()> {
+    let children = store::worktree_children(conn, &site.id)?;
+    if !children.is_empty() {
+        let mut names = Vec::new();
+        for w in &children {
+            names.push(match store::get_site(conn, &w.site_id)? {
+                Some(c) => c.domain,
+                None => w.site_id.clone(),
+            });
+        }
+        return Err(Error::Other(format!(
+            "{} has {} worktree site{} ({}) — delete {} first: a worktree whose main \
+             repository is gone is a broken checkout.",
+            site.domain,
+            names.len(),
+            if names.len() == 1 { "" } else { "s" },
+            names.join(", "),
+            if names.len() == 1 { "it" } else { "them" },
+        )));
+    }
+    if docroot_owned(conn, platform, site)? && !site.path.is_empty() {
+        if let Some(dir) = super::worktree::foreign_checkout_under(Path::new(&site.path)) {
+            return Err(Error::Other(format!(
+                "{} is a git worktree — its repository lives outside this site's folder, \
+                 so it may hold work that exists nowhere else, and rexenv never deletes \
+                 one itself. Commit or stash what you want to keep, then remove it with git \
+                 (it refuses if anything is uncommitted) and delete the site again:\n  \
+                 $ git worktree remove \"{}\"",
+                dir.display(),
+                dir.display()
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Whether a site type needs a database provisioned (Blank PHP: none;
@@ -5512,6 +5586,76 @@ mod tests {
         assert!(out.existed);
         assert!(out.docroot_removed, "an owned docroot must be removed");
         assert!(!dir.exists(), "the folder should be gone");
+    }
+
+    /// A worktree under `dir` whose repository is somewhere else entirely.
+    fn plant_worktree(dir: &Path) -> PathBuf {
+        let plugin = dir.join("wp-content/plugins/my-plugin");
+        std::fs::create_dir_all(&plugin).unwrap();
+        std::fs::write(plugin.join(".git"), "gitdir: /elsewhere/repo/.git/worktrees/my-plugin\n")
+            .unwrap();
+        std::fs::write(plugin.join("work.php"), "<?php // uncommitted").unwrap();
+        plugin
+    }
+
+    /// **Teardown never `remove_dir_all`s a docroot that holds a git worktree,
+    /// even one it owns** (ledger #814, second defence). Plant: drop
+    /// `foreign.is_none() &&` from teardown's `docroot_removed` and the folder
+    /// — with the worktree's uncommitted file — is gone.
+    #[test]
+    fn teardown_keeps_an_owned_docroot_that_holds_a_worktree() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let (dir, new) = docroot_fixture("ownedwt");
+        let site = create(&conn, new).unwrap();
+        assert_eq!(site.docroot_managed, Some(true));
+        let plugin = plant_worktree(&dir);
+
+        let out = teardown(&conn, &*platform, &site.id).unwrap();
+        assert!(out.existed);
+        assert!(!out.docroot_removed, "a docroot holding a worktree must be kept");
+        assert!(plugin.join("work.php").exists(), "the worktree's work must survive");
+        assert!(get(&conn, &site.id).unwrap().is_none(), "the row still goes away");
+        let _ = std::fs::remove_dir_all(&dir); // fixture cleanup, ours to remove
+    }
+
+    /// **A delete is refused BEFORE its first destructive step when the site is
+    /// a worktree parent, or its owned docroot holds a worktree** (ledger #814,
+    /// #815). Plants: comment out either `return Err` in `delete_preflight` and
+    /// its assert below fails.
+    #[test]
+    fn delete_preflight_refuses_worktree_parents_and_docroots_holding_a_worktree() {
+        let conn = db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+
+        let (dir, new) = docroot_fixture("prefl");
+        let site = create(&conn, new).unwrap();
+        assert!(delete_preflight(&conn, &*platform, &site).is_ok(), "a plain site deletes");
+
+        let plugin = plant_worktree(&dir);
+        let err = delete_preflight(&conn, &*platform, &site).unwrap_err().to_string();
+        assert!(err.contains("git worktree remove"), "names the fix: {err}");
+        assert!(err.contains(&plugin.display().to_string()), "names the folder: {err}");
+        std::fs::remove_dir_all(&plugin).unwrap();
+        assert!(delete_preflight(&conn, &*platform, &site).is_ok());
+
+        let (dir2, new2) = docroot_fixture("preflchild");
+        let child = create(&conn, new2).unwrap();
+        store::insert_site_worktree(
+            &conn,
+            &child.id,
+            &site.id,
+            crate::state::models::WorktreeShape::Site,
+            &child.path,
+            false,
+        )
+        .unwrap();
+        let err = delete_preflight(&conn, &*platform, &site).unwrap_err().to_string();
+        assert!(err.contains(&child.domain), "names the child: {err}");
+        assert!(delete_preflight(&conn, &*platform, &child).is_ok(), "the child itself may go");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&dir2);
     }
 
     #[test]

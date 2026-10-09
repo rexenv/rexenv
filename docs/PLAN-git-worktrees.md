@@ -110,8 +110,12 @@ served files.
 
 ### 2.3 The row: a site that knows its parent
 
-Migration: `sites.worktree_of INTEGER NULL REFERENCES sites(id)` and
-`sites.worktree_path TEXT NULL`. In Shape A that path is the asset dir inside the child; in
+Migration v45 (as built in W1): a table of its own, `site_worktrees (site_id PK → sites
+ON DELETE CASCADE, parent_id → sites with NO on-delete, shape asset|site, worktree_path,
+adopted, created_at)`. It is not two columns on `sites`, because the relation is a fact
+about two rows. Columns would also have to be threaded through ~40 `Site { … }` literals
+for a field almost no site has. `parent_id`'s missing `ON DELETE` makes SQLite itself
+refuse deleting a parent that has children. In Shape A that path is the asset dir inside the child; in
 Shape B it is the docroot. The **branch is read live from git**
 (`git -C <worktree_path> branch --show-current`) and never stored. `sites.git_ref` is
 already documented as "chosen at creation, never kept in sync" (`records_asset_ref`,
@@ -284,7 +288,7 @@ for Linux); the ledger rows say which OS the proof came from.
 | # | Task | Done when |
 |---|---|---|
 | W0 | Owner answers §9; plan updated | ✓ 9 Oct 2026 (Q1, Q4 answered; Q2, Q3, Q5 take the recommendation unless the owner says otherwise) |
-| W1 | Migration `worktree_of` + `worktree_path`; `Site` model; delete-parent-with-children refusal; the `.git`-file teardown guard | L0 tests incl. a plant (guard removed → test red); ledger #1, #6 |
+| W1 | Migration v45 `site_worktrees`; `SiteWorktree` model + store; delete-parent-with-children refusal; the `.git`-file teardown guard | ✓ 9 Oct 2026 — `core/worktree.rs` (`foreign_checkout_under`), `sites::delete_preflight` (called at `delete_site_owned` step 0) + teardown's keep; 6 lib tests, 5 plants each caught; ledger #814, #815 (◐ macOS only, the other OSes' run is W11) |
 | W2 | `core/worktree.rs`: `list` (porcelain parse), `add` (existing/new branch), slug + domain derivation with the four fallback rules, git version floor in `git_preflight` + `words.rs` ×3. Measure two-level `.rex` names: DNS agent, Caddy SNI, leaf cert | L0 tests on every parser + each fallback rule; the two-level name answers on macOS / Windows / Linux; ledger #7 |
 | W3 | `core/dbclone.rs` (MySQL/MariaDB, PostgreSQL, SQLite) on top of the `dbrestore` pieces | L0 + L1 copy on a sandbox server; ledger #2, #3 |
 | W4 | **Site copy** (Shape A base): `clone_tree` of the parent docroot minus one asset dir, `wp-config.php` rewrite, DB clone + rehome, as a `site_provision` job | L1: the copy serves HTTP 200 on its domain; the parent is untouched |

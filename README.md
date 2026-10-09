@@ -227,6 +227,7 @@ rexenv/
         │   │                   # database import (Stage 2): identify → gate → dump → restore → mirror
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
         │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
+        │   ├── worktree.rs     # git worktrees as sites — the never-rm-a-worktree guard (docs/PLAN-git-worktrees.md)
         │   ├── laravel.rs · dotenv.rs                     # Laravel create/install, `.env` read+write
         │   ├── starter.rs      # Blank-PHP starter page + seeded table (templates/starter/)
         │   ├── scratch.rs · wp_mailtag.rs                 # agent scratch sites (TTL, cap, reaper) + their mail stamp
@@ -252,7 +253,7 @@ rexenv/
         │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host
         │
         └── state/              # app state
-            ├── db.rs           # SQLite + migrations (v1–v44)
+            ├── db.rs           # SQLite + migrations (v1–v45)
             ├── models.rs · store.rs
             └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
 ```
