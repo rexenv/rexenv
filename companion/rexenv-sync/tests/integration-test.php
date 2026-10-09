@@ -93,6 +93,25 @@ $after = $send( 'GET', '/rexenv-sync/v1/files/list', array( 'cursor' => $own ) )
 $paths = array_column( $after['files'], 'path' );
 $check( ! in_array( $own, $paths, true ) && ( empty( $paths ) || strcmp( $paths[0], $own ) > 0 ), 'a cursor resumes strictly after itself' );
 
+// 4b. The same list in SMALL pages (a 4 KB budget): every path exactly once, in the
+//     same order, the walk stopping at each budget instead of walking everything.
+add_filter( 'rexsync_max_list_bytes', function () { return 4096; } );
+$paged  = array();
+$pages  = 0;
+$cursor = null;
+do {
+	$q = null === $cursor ? array() : array( 'cursor' => $cursor );
+	$d = $send( 'GET', '/rexenv-sync/v1/files/list', $q )->get_data();
+	foreach ( $d['files'] as $f ) {
+		$paged[] = $f['path'];
+	}
+	$cursor = $d['cursor'];
+	$pages++;
+} while ( null !== $cursor && $pages < 10000 );
+remove_all_filters( 'rexsync_max_list_bytes' );
+$check( $pages > 3, "small pages: $pages of them" );
+$check( $paged === $all, 'small pages list exactly the one-page list, in the same order' );
+
 // 5. The file frame: the real file, and refusals for every path outside the rules.
 $asked = array( $own, '../wp-config.php', '/etc/passwd', 'plugins/../../wp-config.php', 'uploads/rexsync-0000/x' );
 $frame = Rexenv_Sync_Reader::file_frame( $asked, array() );

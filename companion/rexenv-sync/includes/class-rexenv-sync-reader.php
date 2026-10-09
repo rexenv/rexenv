@@ -95,64 +95,81 @@ final class Rexenv_Sync_Reader {
 
 	/**
 	 * Files under wp-content in a stable order, resuming AFTER `cursor` (the last path
-	 * the previous call returned). Directories are walked sorted, so the order is the
-	 * same every call and a cursor is just a path.
+	 * the previous call returned), and STOPPING at the budget.
+	 *
+	 * The order is a depth-first walk with each directory's entries sorted by name —
+	 * which is the lexicographic order of the paths' SEGMENT lists, so the cursor
+	 * alone says where to resume: a directory the cursor is inside is descended, one
+	 * that sorts before it is skipped whole, a file is listed only after it. The walk
+	 * itself is bounded; the first version walked all of wp-content on every page
+	 * and could pass `max_execution_time` on a big site (review, 10 Oct 2026).
 	 */
 	public static function list_files( $cursor, array $client_globs ) {
-		$root  = WP_CONTENT_DIR;
-		$out   = array();
-		$start = microtime( true );
-		$bytes = 0;
-		$stack = array( '' );
-		$all   = array();
-		while ( $stack ) {
-			$dir     = array_pop( $stack );
-			$entries = @scandir( '' === $dir ? $root : $root . '/' . $dir ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
-			if ( false === $entries ) {
+		$state = array(
+			'out'    => array(),
+			'bytes'  => 0,
+			'start'  => microtime( true ),
+			'cursor' => ( null === $cursor || '' === $cursor ) ? null : explode( '/', (string) $cursor ),
+			'budget' => (int) apply_filters( 'rexsync_max_list_bytes', self::MAX_BYTES ),
+			'last'   => null,
+			'full'   => false,
+		);
+		self::walk( WP_CONTENT_DIR, array(), $client_globs, $state );
+		return array( 'files' => $state['out'], 'cursor' => $state['full'] ? $state['last'] : null );
+	}
+
+	/** -1 / 0 / 1: segment-wise comparison of two paths. */
+	private static function cmp_segments( array $a, array $b ) {
+		$n = min( count( $a ), count( $b ) );
+		for ( $i = 0; $i < $n; $i++ ) {
+			$c = strcmp( $a[ $i ], $b[ $i ] );
+			if ( 0 !== $c ) {
+				return $c < 0 ? -1 : 1;
+			}
+		}
+		return count( $a ) <=> count( $b );
+	}
+
+	private static function walk( $root, array $segs, array $globs, array &$state ) {
+		$dir     = $root . ( $segs ? '/' . implode( '/', $segs ) : '' );
+		$entries = @scandir( $dir ); // phpcs:ignore WordPress.PHP.NoSilencedErrors
+		if ( false === $entries ) {
+			return;
+		}
+		sort( $entries, SORT_STRING );
+		foreach ( $entries as $e ) {
+			if ( $state['full'] ) {
+				return;
+			}
+			if ( '.' === $e || '..' === $e ) {
 				continue;
 			}
-			$subdirs = array();
-			foreach ( $entries as $e ) {
-				if ( '.' === $e || '..' === $e ) {
-					continue;
-				}
-				$rel  = '' === $dir ? $e : $dir . '/' . $e;
-				$full = $root . '/' . $rel;
-				if ( is_link( $full ) || self::excluded( $rel, $client_globs ) ) {
-					continue;
-				}
-				if ( is_dir( $full ) ) {
-					$subdirs[] = $rel;
-				} elseif ( is_file( $full ) ) {
-					$all[] = $rel;
-				}
+			$here = array_merge( $segs, array( $e ) );
+			$rel  = implode( '/', $here );
+			$full = $root . '/' . $rel;
+			if ( is_link( $full ) || self::excluded( $rel, $globs ) ) {
+				continue;
 			}
-			rsort( $subdirs ); // popped in ascending order
-			foreach ( $subdirs as $s ) {
-				$stack[] = $s;
+			$c = $state['cursor'];
+			if ( is_dir( $full ) ) {
+				// Skip a directory that sorts wholly before the cursor; descend into one the
+				// cursor is inside or that comes after it.
+				$inside = null !== $c && count( $c ) > count( $here ) && array_slice( $c, 0, count( $here ) ) === $here;
+				if ( null === $c || $inside || self::cmp_segments( $here, $c ) > 0 ) {
+					self::walk( $root, $here, $globs, $state );
+				}
+				continue;
+			}
+			if ( ! is_file( $full ) || ( null !== $c && self::cmp_segments( $here, $c ) <= 0 ) ) {
+				continue;
+			}
+			$state['out'][]  = array( 'path' => $rel, 'size' => (int) filesize( $full ), 'mtime' => (int) filemtime( $full ) );
+			$state['last']   = $rel;
+			$state['bytes'] += 64 + strlen( $rel );
+			if ( $state['bytes'] > $state['budget'] || ( microtime( true ) - $state['start'] ) > self::MAX_SECONDS ) {
+				$state['full'] = true;
 			}
 		}
-		sort( $all, SORT_STRING );
-		$i = 0;
-		if ( null !== $cursor && '' !== $cursor ) {
-			while ( $i < count( $all ) && strcmp( $all[ $i ], $cursor ) <= 0 ) {
-				$i++;
-			}
-		}
-		for ( ; $i < count( $all ); $i++ ) {
-			$rel   = $all[ $i ];
-			$full  = $root . '/' . $rel;
-			$out[] = array(
-				'path'  => $rel,
-				'size'  => (int) filesize( $full ),
-				'mtime' => (int) filemtime( $full ),
-			);
-			$bytes += 64 + strlen( $rel );
-			if ( $bytes > self::MAX_BYTES || ( microtime( true ) - $start ) > self::MAX_SECONDS ) {
-				return array( 'files' => $out, 'cursor' => $rel );
-			}
-		}
-		return array( 'files' => $out, 'cursor' => null );
 	}
 
 	/** The §4.3 frame for `paths` (≤ 200), as one string, terminator included. */

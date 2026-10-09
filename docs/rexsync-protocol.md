@@ -105,7 +105,7 @@ back unchanged. `null` means done.
 | Route | In | Out |
 |---|---|---|
 | `GET /manifest` | — | `{protocol: "rexsync1", plugin: "1.0.0", site_url, wp, php, mysql, prefix, multisite, charset, tables: [{name, rows, bytes, checksum}], free_bytes: n\|null}` |
-| `GET /files/list?cursor=` | `root` = `wp-content` (v1: the only root) | `{files: [{path, size, mtime}], cursor}`. `path` is relative to `root` and always `/`-separated. Excluded paths are never listed (§5) |
+| `GET /files/list?cursor=` | `root` = `wp-content` (v1: the only root) | `{files: [{path, size, mtime}], cursor}`. `path` is relative to `root` and always `/`-separated, in SEGMENT-wise lexicographic order (a sorted depth-first walk), so the cursor is just the last path returned. Excluded paths are never listed (§5) |
 | `POST /files/read` | `{paths: [..]}` (≤ 200) | **framed binary** (§4.3) |
 | `GET /db/export?table=&cursor=` | one table | `{table, sql, sha256, rows, cursor}`. The first chunk starts with `DROP TABLE IF EXISTS` + `CREATE TABLE`; later chunks are `INSERT` batches. `sha256` is of this chunk's `sql` |
 

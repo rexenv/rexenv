@@ -250,7 +250,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   only; on Windows its children are not in a process group with it. Fix in `examples/common` (kill the tree,
   or ask `pg_ctl stop`), then re-run `starter_seed_check` and `db_clone_check` on the Dell twice in a row.
 
-- [ ] **Live sync: `/files/list` walks ALL of `wp-content` on every page** (code review, 10 Oct 2026). The
+- [x] **Live sync: `/files/list` walks ALL of `wp-content` on every page** ✓ 10 Oct 2026 — a bounded sorted walk (`Rexenv_Sync_Reader::walk`): skips what sorts before the cursor, stops at the budget; 14 small pages = the one-page list, plant caught (#825) (code review, 10 Oct 2026). The
   walk is sorted so a cursor can be a path, but nothing bounds the walk itself. A site with 100k
   uploads could pass `max_execution_time` before the first page returns. Fix: walk in sorted order
   and STOP at the budget (resume by descending into the cursor's directories), or cache the sorted
