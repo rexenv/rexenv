@@ -1587,15 +1587,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   and that refusal — a correct answer — renders as a red failure with Retry. The job store
   (`DbImportJobs`) outlives the record change; the rewrite commands would have to clear a settled
   job (they are also MCP tools). Seen on the 15.8 VM, §K K14, 9 Oct 2026.
-- [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass. **Steps 1–3, 5–8 ✅ on the 15.8 VM,
-  9 Oct 2026** (record in §G; found #809, fixed); open: 8's delete + the databases-on pass, 9's
-  multi-GB case, 10 on a build with #809, 11–13. Was: only ever
-  type-checked; Stage 1's status line now says so. **Grew step 9 on 8 Aug**: the
-  batch progress card (`valet-import://progress`) — its arithmetic is L0-proven, but
-  that `detail` really is the child job's own label and that the bar FREEZES rather
-  than rolls back on a mid-batch failure are ✅ L2 since 2 Sep 2026 (ledger #243,
-  `scripts/wk-checks/importbar.js`; corrected 9 Oct — this row said 🔨). What only this pass covers
-  is the PACKAGED app emitting those events from a real import.
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): cold runs on a clean
   macOS 15.6.1 VM (18 Sep 2026) and a clean 15.8 VM (23 Sep, 0.8.7) since the 10 Jul first
   pass. Open for the file's own **"Still open on macOS"** list (reconciled 28 Sep 2026) —

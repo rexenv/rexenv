@@ -1237,7 +1237,7 @@ Byte-identical bodies mean you are looking at the fallback, not your site. The
 same applies to the UI: a green row is only meaningful once the site's own
 content comes back.
 
-## G) 🚧 `/import` screen — packaged-app GUI pass
+## G) ✅ `/import` screen — packaged-app GUI pass (15.8 VM, 9 Oct 2026; 4 and 9's multi-GB case not covered)
 
 The most complex screen we've built (per-row honest statuses, selection, the
 resolver consent panel) and it has only ever been type-checked. Everything below
@@ -1350,8 +1350,15 @@ Scan: 10 rows, 4 ready.
   `importing…`. 10 **❌→fixed (#809):** a folder moved after the scan — the card read "site 1 · 1 of
   2 done" over a row still `waiting`, and afterwards the row fell back to the rescan's "leftover
   config" with no word that it was skipped. The rejection was counted but never emitted.
-- Open: 8's delete-leaves-the-folder, the databases-on pass, 9's multi-GB case, 10's re-run on a
-  build with #809, 11 cancel, 12, 13.
+- **Finished the same day on release builds of `1f1a1a01` / `cc6c338c`:** 8 ✅ delete leaves the
+  folder (§K K16: `kprimary`, `ksecond` deleted, folders intact) and the databases-ON pass (three
+  picked, both WordPress rows `DB copied` + `imported`) · 10 ✅ **#809 live**: a folder moved after
+  the scan → "1 of 2 done" with "0 imported · 1 skipped" under it · 11 ✅ Cancel after current
+  during the batch → `pin84` "skipped — cancelled before this site was started", no half-created
+  site · 12 ✅ DNS & SSL holds only the `.test` hand-back row · 13 ✅ the Sites import banner
+  stays dismissed across a relaunch.
+- Not covered on this VM: 4 (no Herd — dedupe), 9's multi-GB database inside an IMPORT batch (a
+  1 GB copy ran from the Database tab in §K, not in a batch), the CLEAN-VM empty state.
 
 **CLEAN-VM only** (cannot be exercised here):
 - The **empty state** (no Valet or Herd at all) — the "No Valet or Herd sites
@@ -1872,7 +1879,7 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
 | K | The whole migration as ONE journey (seams + reversibility) | ✅ 9 Oct 2026, 15.8 VM (found and fixed #810, #811) |
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026 on the 15.8 VM — found and fixed #806–#808) | ✅ **publish-blocking, and it was missing from this table until 21 Aug 2026** |
-| G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
+| G | `/import` screen — packaged-app GUI pass | ✅ 9 Oct 2026, 15.8 VM (4 and 9's multi-GB case → SMOKE) — was publish-blocking, missing from this table until 21 Aug 2026 |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |
 | N10–N14 | Local import of a multisite NETWORK: the row, adopt + reload serving `*.<name>.rex`, the connect moving `DOMAIN_CURRENT_SITE`, a browser login across subsites, revert | ✅ passed 13 Sep 2026 (owner-run, `multisite.local`) |
 | L | Offline/timeout behaviour of the update check | 🟢 nice-to-have (no row here before 21 Aug 2026) |

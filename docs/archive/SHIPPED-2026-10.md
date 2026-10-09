@@ -744,3 +744,13 @@
   announced as a foreign proxy, with a command that kills rexenv's own edge). K8's stale
   expectation corrected. Record: PUBLISH-TESTING §K Verdict.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass. ✓ 9 Oct 2026 on the 15.8 VM
+  (release builds of `ac92ff52` → `cc6c338c`, real Valet 4, production-shaped fixtures): steps 1–3,
+  5–8 and 10–13; found and fixed #809. Not covered there: 4 (needs Herd) and 9's multi-GB database
+  inside an import batch — both now in SMOKE-TEST's "Still open on macOS". Record: §G.
+
