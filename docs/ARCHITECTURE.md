@@ -435,6 +435,13 @@ Live-proven end to end by `site_stop_start_check`.
   fall through to a fresh start, never a silent skip (regression-tested:
   `prepare_edge_restarts_over_a_stale_daemon_handle`,
   `watchdog_bounds_edge_restarting_and_diagnoses_the_giveup`).
+- **A slow edge is not a foreign proxy (#811).** The watchdog's wire probe is read finer than
+  `edge_wire` (`proxy::WireReading`): only a response WITHOUT our marker (or nothing listening)
+  counts toward "blocked"; a poll that completes no exchange in time feeds its own one-minute
+  debounce and an own-edge sentence. And no copy-paste command is offered for a holder it could
+  not name — our own edge is always one of the listeners there, and on macOS the unnamed-holder
+  fallback is a blanket `sudo kill` that took rexenv's root caddy with it (seen on the 15.8 VM
+  under a 1 GB database copy, 9 Oct 2026).
 - **Explicit stop costs one prompt, and lowers the switch FIRST.** With `KeepAlive` a graceful
   `caddy stop` is instantly relaunched, so Stop-all goes through the supervisor's own switch:
   `stop_services` runs `proxy::stop_edge_daemon` whenever the handle says Daemon OR the daemon is

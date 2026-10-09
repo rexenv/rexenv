@@ -1518,7 +1518,7 @@ and `shasum the site's wp-config.php` noted BEFORE anything below.
 
 ---
 
-## K) 🚧 The whole migration as ONE journey — scan → serve → copy → connect → revert → delete
+## K) ✅ The whole migration as ONE journey — scan → serve → copy → connect → revert → delete
 
 Not a re-run of §G/§I/§J: one unbroken arc on one site, exercising the SEAMS
 between stages, ending not with "it worked" but with **"everything of theirs
@@ -1560,6 +1560,10 @@ About must show it).
    passes if present — that deletion is outside §K's scope).
 
 ### K0 — the BEFORE capture (the reversibility baseline)
+
+**Visit each site once on THEIR stack first** (9 Oct 2026): a block theme (twentytwentyfive)
+inserts a `wp_navigation` post on its first front-end render, so a K0 taken on a never-visited
+site makes K17's `wp_posts` checksum differ for a write WordPress made, not rexenv.
 
 ```sh
 B=~/rexenv-k-before; mkdir -p "$B"
@@ -1604,9 +1608,10 @@ PATH, use DBngin's bundled one.)
    §C2 fix) shows the copy.
 7. **Seam: the card and badge agree at every point from here on** — any
    disagreement is a finding.
-8. **Re-run: copy again.** Import database again: expect the
-   **typed-name confirm** (the name now exists on OUR engine); type it;
-   converges — same settled state, no duplicates. (This is the legitimate
+8. **Re-run: copy again.** Import database again: it **converges silently** — same settled
+   state, no duplicates, no prompt. (Corrected 9 Oct 2026: this said "expect the typed-name
+   confirm". The typed confirm guards an UNCLAIMED database of the same name; a copy THIS site
+   already owns is its own to replace — `db_import.rs`, `site_now.db_created`.) (This is the legitimate
    re-copy; after K10 the same button must behave DIFFERENTLY — K11.)
 9. **Failure paths, deliberately:**
    a. Databases → stop MySQL. Consent card → tick → Apply → honest
@@ -1686,9 +1691,39 @@ PATH, use DBngin's bundled one.)
 
 ### Verdict
 
-- §K run on: ____ · app commit: ____ · result: **PASS / FAIL** ____
-- Deviations (step → what differed):
-  - ____
+- §K run on: **the 15.8 macOS VM, 9 Oct 2026** · app commit: **release build of `1f1a1a01`** · result:
+  **PASS** for reversibility (wp-config byte-identical, Valet's tree untouched, `/etc/resolver`
+  identical, their content untouched by rexenv) — **with two bugs found and fixed (#810, #811)**.
+- Machine: Valet 4 + Homebrew `mysql@8.4` on :3306 (root, no password — the shape a Homebrew
+  install ships), two WordPress 7.1.3 fixtures `kprimary`/`ksecond` (twentytwentyfive) in
+  `~/ValetSites`; `.test` taken over first (so K0's resolver capture is taken after it).
+- K1 ✅ both importable, `noconsent.test` etc. already here · K2 ✅ one prompt-free import, external
+  badge · K3 ✅ "Hello from kprimary" from THEIR DB · K4 ✅ already-here row + `rex site create
+  kprimary.test` refused ("already reaches the site") · K5 ✅ · K6 ✅ "Imported — not yet connected",
+  still-reads-old sentence, DB-imported badge, diff of exactly two pairs, no password line ·
+  K8 ⚠ **no typed-name confirm**: the re-copy over a copy THIS site owns (`db_created` set) converges
+  silently — by design (`db_import.rs`: the typed confirm guards an UNCLAIMED same-name database);
+  this step's expectation is stale · K9a ✅ "rexenv's own MySQL (127.0.0.1:13306), which isn't
+  running — start it from the Databases page", file unchanged · K9b ✅ fileChanged, "nothing was
+  written", preview refreshed · K10 ✅ "Connected… verified", `rex_kprimary_test` · K11 ✅ ThisSite
+  refusal · K12 ✅ the title edit is in our copy, theirs still reads "Hello from kprimary" ·
+  K13 ✅ "a database import is already running (for ksecond.test) — one at a time" (ksecond padded
+  to 1 GB so the window was catchable), the primary stayed connected · K14 ✅ revert → apply →
+  revert, `8e7e801c…` both times · K15 ✅ `rex_kprimary_test` on localhost + 127.0.0.1 only ·
+  K16 ✅ both deleted: rows gone, folders intact, copies dropped, the dedicated user dropped ·
+  K17: wpconfig / trees / resolver **identical**; db.checksums **differ** for `kprimary_db.wp_posts`
+  + `wp_postmeta` — a `wp_navigation` post WordPress's block theme inserted on the FIRST front-end
+  render (06:25:57 UTC = K3's request, while the site read its own database by design). Not a
+  rexenv write; the same class as the `wp_options` exclusion. **K0 must be taken after one
+  front-end visit of each site** (a block theme writes on first render) — corrected below.
+- Found and fixed: **#810** a Laravel row without `.env` failed its import instantly and the card
+  sat on "checking the source database · 0%" until navigated away (missed terminal event) ·
+  **#811** under the 1 GB copy the watchdog announced "another local proxy answers port 443" with
+  only rexenv's caddy listening, sites flipped to Stopped, and the toast offered `sudo kill $(sudo
+  lsof -t -iTCP:443 …)` — which kills rexenv's own edge.
+- Noted, not fixed (TODO row): after a revert the card still shows the earlier ThisSite refusal
+  above "Imported — not yet connected" (two contradictory cards until the next import), and that
+  correct refusal is styled as a red failure with Retry.
 
 ---
 
@@ -1835,7 +1870,7 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
 | E | Clean-Mac QA + example live-checks + deferred-pass wiring (B28/B29/B7/B20) + (deferred) signing | 🟢 nice-to-have |
 | I | Database import: live DBngin source + packaged GUI pass (user starts DBngin) | ✅ passed 27 Jul 2026 |
 | J | Connection rewrite (Stage 3): packaged GUI pass on <site>.test | ✅ passed 28 Jul 2026 |
-| K | The whole migration as ONE journey (seams + reversibility) | 🚧 rebuild, then run |
+| K | The whole migration as ONE journey (seams + reversibility) | ✅ 9 Oct 2026, 15.8 VM (found and fixed #810, #811) |
 | F | Resolver TAKEOVER + RESTORE — clean-VM only (live-run 9 Oct 2026 on the 15.8 VM — found and fixed #806–#808) | ✅ **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | G | `/import` screen — packaged-app GUI pass | 🚧 **publish-blocking, and it was missing from this table until 21 Aug 2026** |
 | N | Local import: live pass on a STARTED Local site + the packaged screen's Local rows | ✅ passed 12 Sep 2026 (owner-run, `ab12.local`) |

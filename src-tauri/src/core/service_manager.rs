@@ -150,6 +150,10 @@ pub const EDGE_SUPERVISOR_GRACE_POLLS: u32 = 3;
 /// were all one poll long, and every extra poll is another ~10 s a real blocker goes unnamed.
 pub const EDGE_WIRE_MISS_POLLS: u32 = 2;
 
+/// Unreadable wire polls (a minute at the 10 s cadence) before a slow edge is reported — as
+/// rexenv's own edge not answering, never as someone else's proxy (#811).
+pub const EDGE_WIRE_SLOW_POLLS: u32 = 6;
+
 /// The wire-probe debounce, pure: the miss count after this poll's answer.
 pub fn wire_misses_after(misses: u32, ours: bool) -> u32 {
     if ours {
@@ -226,6 +230,10 @@ pub struct ServiceManager {
     /// what a launch still adopting a boot-started edge produces — each raised a false
     /// "another local proxy answers port 443" that cleared a poll later (23 and 29 Sep 2026).
     edge_wire_misses: u32,
+    /// Consecutive polls whose wire probe was UNREADABLE (listening, no exchange in time). Kept
+    /// apart from `edge_wire_misses`: it is no evidence of another proxy, so it only blocks at
+    /// `EDGE_WIRE_SLOW_POLLS` and never with the foreign-proxy sentence (#811).
+    edge_wire_slow: u32,
     /// Per-minor PHP ini settings (whitelisted keys, pre-validated values) from
     /// the SQLite `php_settings` table — loaded by the start command, updated by
     /// the settings command. Source for both the pool configs (`php_value` lines)
@@ -443,6 +451,7 @@ impl ServiceManager {
             edge_blocked: false,
             edge_dead_polls: 0,
             edge_wire_misses: 0,
+            edge_wire_slow: 0,
             php_settings: HashMap::new(),
             site_env: HashMap::new(),
             site_aliases: HashMap::new(),
@@ -988,6 +997,7 @@ impl ServiceManager {
         self.edge_dead_polls = 0;
         self.edge_blocked = false;
         self.edge_wire_misses = 0;
+        self.edge_wire_slow = 0;
     }
 
     /// Record the edge as a child Caddy we own (unprivileged high port).
@@ -1807,6 +1817,7 @@ impl ServiceManager {
         self.edge_dead_polls = 0;
         self.edge_blocked = false;
         self.edge_wire_misses = 0;
+        self.edge_wire_slow = 0;
         // A tracked unprivileged child is killed by pid. For a root/privileged edge
         // — or a stray Caddy still on the admin port that we never tracked (common
         // after crashes/restarts) — drive Caddy's admin API to stop it and confirm
@@ -2621,13 +2632,22 @@ impl ServiceManager {
             // itself (positive identity via the config's marker header) and flip
             // `edge_blocked`, which `status()` folds into Caddy's running state.
             // Events fire on TRANSITIONS only — no per-poll spam.
-            let wire = proxy::edge_wire(adminer::ADMINER_HOST, self.ports.https).await;
+            let reading = proxy::edge_wire_reading(adminer::ADMINER_HOST, self.ports.https).await;
+            let wire = reading.wire();
             let ours = wire == proxy::EdgeWire::Ours;
+            // An UNREADABLE poll (listening, no exchange in time) is no evidence of another
+            // proxy: it leaves the foreign count where it was and feeds its own, slower one
+            // (#811 — a busy machine's slow edge was announced as a proxy in front of it).
+            let unreadable = reading == proxy::WireReading::Unreadable;
+            self.edge_wire_slow = wire_misses_after(self.edge_wire_slow, !unreadable);
             // Debounced (`EDGE_WIRE_MISS_POLLS`): the app's own reload and a launch still
             // adopting a boot-started edge each miss ONE poll, and naming a proxy that is
             // not there is worse than a poll's delay on one that is.
-            self.edge_wire_misses = wire_misses_after(self.edge_wire_misses, ours);
-            if !ours && !self.edge_blocked && wire_blocked_after(self.edge_wire_misses) {
+            if !unreadable {
+                self.edge_wire_misses = wire_misses_after(self.edge_wire_misses, ours);
+            }
+            let slow = self.edge_wire_slow >= EDGE_WIRE_SLOW_POLLS;
+            if !ours && !self.edge_blocked && (wire_blocked_after(self.edge_wire_misses) || slow) {
                 self.edge_blocked = true;
                 // NOTHING listening while our edge process is ALIVE is a
                 // different fault from a foreign proxy: the master is up and is
@@ -2635,7 +2655,15 @@ impl ServiceManager {
                 // which the old message did whenever the holder lookup found
                 // nobody — describes a program that is not there and hides the
                 // one that is.
-                let detail = if wire == proxy::EdgeWire::NoAnswer {
+                let detail = if unreadable {
+                    format!(
+                        "rexenv's edge is running but has not answered on port {} for a minute — \
+                         no site loads while this lasts. A very busy machine (a large database \
+                         copy) can cause it; if it does not clear by itself, Stop all then Start \
+                         all rebuilds the edge.",
+                        self.ports.https
+                    )
+                } else if wire == proxy::EdgeWire::NoAnswer {
                     format!(
                         "the edge process is running but nothing is answering port {} — no \
                          other app is holding it, so this is rexenv's own edge failing to \
@@ -2644,13 +2672,18 @@ impl ServiceManager {
                     )
                 } else {
                     let help = platform.supervisor().port_conflict_help(self.ports.https, false);
+                    // Our own edge is ALWAYS one of the listeners here, so a command for an
+                    // unnamed holder is a blanket one that kills rexenv's edge with the rest
+                    // (macOS: a root caddy is invisible to unprivileged lsof, and the fallback
+                    // is `sudo kill $(sudo lsof -t …)`). Only a NAMED holder gets a command (#811).
+                    let named = help.holder.is_some();
                     let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
                     // Name the APP to quit when identifiable ("quit Herd"), never a
                     // bare process title the user can't act on. The trailing "\n$ <cmd>"
                     // becomes a copyable command block in the toast (supervisor-aware:
                     // quits the managing app, never kills a respawning worker).
                     let quit = help.app.unwrap_or_else(|| "that app".into());
-                    let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
+                    let fix = help.free_command.filter(|_| named).map(|c| format!("\n$ {c}")).unwrap_or_default();
                     format!(
                         "the edge is running, but {holder} answers port {} in front \
                          of it — no site will load until you quit {quit}{fix}",
@@ -3033,7 +3066,9 @@ mod tests {
         mgr.edge_dead_polls = 2;
         mgr.edge_blocked = true;
         mgr.edge_wire_misses = 1;
+        mgr.edge_wire_slow = 3;
         mgr.edge_removed_by_user();
+        assert_eq!(mgr.edge_wire_slow, 0, "the slow count goes with the others");
         assert!(matches!(mgr.caddy, CaddyHandle::Stopped), "no daemon to wait for");
         assert_eq!((mgr.edge_dead_polls, mgr.edge_blocked, mgr.edge_wire_misses), (0, false, 0));
         assert!(!mgr.edge_blocked());
@@ -3062,12 +3097,28 @@ mod tests {
         // TEXT: the watchdog's transition is gated by the rule, fed by the count, and Stop all
         // resets the count with the other give-up counters.
         let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
-        let wd = src.split("let wire = proxy::edge_wire(adminer::ADMINER_HOST").nth(1).expect("the watchdog's probe");
+        let wd = src.split("let reading = proxy::edge_wire_reading(adminer::ADMINER_HOST").nth(1).expect("the watchdog's probe");
         let wd = &wd[..wd.find("action: \"edge-blocked\"").expect("the event")];
         assert!(wd.contains("self.edge_wire_misses = wire_misses_after(self.edge_wire_misses, ours);"), "the count feeds from the rule");
-        assert!(wd.contains("&& wire_blocked_after(self.edge_wire_misses) {"), "the transition is gated by it");
+        assert!(wd.contains("&& (wire_blocked_after(self.edge_wire_misses) || slow) {"), "the transition is gated by it");
         let stop = src.split("pub fn stop_all(").nth(1).expect("stop_all");
         assert!(stop[..stop.find("fn ").unwrap_or(stop.len())].contains("self.edge_wire_misses = 0;"), "Stop all resets it");
+    }
+
+    /// #811 — TEXT: the watchdog never names a foreign proxy on an UNREADABLE poll, and never
+    /// offers a command for a holder it could not name (that command kills our own edge).
+    #[test]
+    fn a_slow_edge_is_never_called_a_foreign_proxy() {
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let wd = src.split("let reading = proxy::edge_wire_reading(adminer::ADMINER_HOST").nth(1).expect("the watchdog's probe");
+        let wd = &wd[..wd.find("action: \"edge-blocked\"").expect("the event")];
+        let gate = wd.find("if !unreadable {").expect("an unreadable poll is kept out of the foreign count");
+        let feed = wd.find("self.edge_wire_misses = wire_misses_after(").expect("the foreign count");
+        assert!(gate < feed, "the foreign count is fed inside the unreadable gate");
+        let slow_branch = wd.find("let detail = if unreadable {").expect("a slow edge gets its own sentence first");
+        let foreign = wd.find("answers port {} in front").expect("the foreign sentence");
+        assert!(slow_branch < foreign, "the slow sentence is chosen before the foreign one");
+        assert!(wd.contains("help.free_command.filter(|_| named)"), "no command for an unnamed holder");
     }
 
     /// Ledger #635 — **a cached program is found through the binary cache's own naming, never a hand-joined file

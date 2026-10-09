@@ -113,6 +113,24 @@ const RECORD_BASE = {
   importedAt: "2026-07-27 10:00:00",
 };
 
+/** A database-import job, for `dbjob=instantfail` (#810). */
+function dbJob(status: "running" | "failed") {
+  (window as unknown as { __rexStarted?: boolean }).__rexStarted = true;
+  return {
+    id: "job-810",
+    siteId: "s1",
+    domain: "larafix.test",
+    phases: [{ key: "check", label: "checking the source database", status }],
+    phaseCursor: 0,
+    pct: 0,
+    status,
+    error: status === "failed" ? "rexenv couldn't find a wp-config.php or .env to read the database settings from." : null,
+    logKey: "db-import-larafix.test-810",
+    keptArtifact: null,
+    result: null,
+  };
+}
+
 function record(): DbImportRecord | null {
   switch (params.get("rec")) {
     case "imported":
@@ -1134,8 +1152,16 @@ export function DevUiReview() {
           };
         case "db_import_record":
           return record();
+        // `dbjob=instantfail` (#810): the job refuses in its first phase, so by the time the
+        // card subscribes it has already settled — the start replies `running`, the state
+        // reads `failed`, and no event ever arrives. Only a card that re-reads after
+        // subscribing shows the refusal.
+        case "db_import_start":
+          return dbJob("running");
         case "db_import_state":
-          return null;
+          return params.get("dbjob") === "instantfail" && (window as unknown as { __rexStarted?: boolean }).__rexStarted
+            ? dbJob("failed")
+            : null;
         case "rewrite_preview":
           return preview();
         case "rewrite_apply":

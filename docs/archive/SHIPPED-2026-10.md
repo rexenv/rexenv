@@ -731,3 +731,16 @@
   Import hid the next loss's banner), #808 (Settings called a reclaimed `.test` "rexenv answers
   this"). Record: PUBLISH-TESTING §F.
 
+
+## Reconcile of 9 Oct 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first). ✓ 9 Oct 2026 on
+  the 15.8 VM (release build of `1f1a1a01`, Valet 4 + Homebrew MySQL, two WordPress fixtures): every
+  step; wp-config byte-identical twice, Valet's tree and `/etc/resolver` identical, their content
+  untouched by rexenv (one `wp_navigation` post WordPress wrote on first render — K0 now says to
+  visit first). Found and fixed #810 (instant-fail import card stuck at 0%) and #811 (a slow edge
+  announced as a foreign proxy, with a command that kills rexenv's own edge). K8's stale
+  expectation corrected. Record: PUBLISH-TESTING §K Verdict.
+

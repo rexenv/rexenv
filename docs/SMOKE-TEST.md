@@ -50,6 +50,9 @@ recorded" where nothing was found).
 - *Tunnels:* the stopped-share strip and stop page, sharing a stopped site, the live filter
   (#371), an override site's content through the tunnel (◐), the refusals (stopped server, no
   recorded backend port, "never busy"), the orphan WARN.
+- *Under load:* a large database copy (1 GB) must not raise "another local proxy answers port
+  443" while only rexenv listens, nor offer a kill command (#811, fixed, not yet re-run); a
+  Laravel row with no `.env` → Import database shows the refusal at once (#810).
 - *Menu bar / links / Settings / terminal:* the dock tile going away (◐), the 30 s hold (#437),
   routes from a closed window, services up after a real login, the agent after a real login
   (◐), a login launch with setup

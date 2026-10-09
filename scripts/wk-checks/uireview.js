@@ -17,6 +17,8 @@ const WIDTHS = [
 /** [name, query, actions] — actions run before the shot. */
 const SCENARIOS = [
   ["card-consent-root", "view=card&rec=imported&preview=ready&root=1", []],
+  // #810: a job that settles before the card subscribes must still show its end.
+  ["card-instantfail", "view=card&dbjob=instantfail", []],
   [
     "card-consent-cache-mariadb-backup",
     "view=card&rec=imported&preview=ready&root=1&cache=1&engine=mariadb&backup=1",
@@ -975,6 +977,23 @@ const PROBES = {
     }
     return /rexenv answers this/.test(t) ? [] : [`the borrowed row lost its sentence: ${JSON.stringify(t)}`];
   },
+  instantFail: async (page) => {
+    const start = page.getByRole("button", { name: "Import database" });
+    if (!(await start.count())) return ["CONTROL BROKEN: no Import database button"];
+    await start.click();
+    try {
+      await page.waitForFunction(
+        () => /couldn't find a wp-config\.php or \.env/.test(document.body.innerText),
+        null,
+        { timeout: 5000 },
+      );
+    } catch {
+      return ["a job that failed before the card subscribed still reads as running (#810)"];
+    }
+    return /checking the source database · 0%/.test(await page.evaluate(() => document.body.innerText))
+      ? ["the refusal shows, but the running line is still there beside it"]
+      : [];
+  },
   deleteGate: async (page) => {
     const problems = await page.evaluate(() => {
       const out = [];
@@ -1096,6 +1115,7 @@ function probeFor(name) {
   if (name.startsWith("provision")) return PROBES.provisionRow;
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
+  if (name === "card-instantfail") return PROBES.instantFail;
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached

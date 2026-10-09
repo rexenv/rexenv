@@ -161,13 +161,17 @@ export function DbImportCard({ site }: { site: Site }) {
       if (!live || !s) return;
       setJob(s);
       if (s.status === "running") {
-        un = await onDbImportState(s.id, (next) => {
+        const settle = (next: DbImportJobState) => {
           setJob(next);
           if (next.status === "ok") {
             void qc.invalidateQueries({ queryKey: ["db-import-record", site.id] });
             void qc.invalidateQueries({ queryKey: ["sites"] });
           }
-        });
+        };
+        un = await onDbImportState(s.id, settle);
+        // The same gap as `start` below (#810): it may have settled while we subscribed.
+        const now = await dbImportState(site.id);
+        if (live && now && now.id === s.id && now.status !== "running") settle(now);
       }
     });
     return () => {
@@ -180,14 +184,26 @@ export function DbImportCard({ site }: { site: Site }) {
     mutationFn: async (confirmOverwrite?: string) => {
       const snap = await dbImportStart(site.id, confirmOverwrite);
       setJob(snap);
-      const un = await onDbImportState(snap.id, (next) => {
+      const settle = (next: DbImportJobState) => {
         setJob(next);
-        if (next.status !== "running") un();
         if (next.status === "ok") {
           void qc.invalidateQueries({ queryKey: ["db-import-record", site.id] });
           void qc.invalidateQueries({ queryKey: ["sites"] });
         }
+      };
+      const un = await onDbImportState(snap.id, (next) => {
+        settle(next);
+        if (next.status !== "running") un();
       });
+      // Subscribe, THEN re-read: a job that settled between the start's reply and the listener
+      // (a refusal in its first phase — "no wp-config.php or .env", a self-source) emitted its
+      // terminal state to nobody, and the card sat on "checking the source database · 0%"
+      // until the user navigated away and back (the 15.8 VM's §K run, 9 Oct 2026, ledger #810).
+      const now = await dbImportState(site.id);
+      if (now && now.id === snap.id && now.status !== "running") {
+        un();
+        settle(now);
+      }
     },
     onError: toastBackendError,
   });

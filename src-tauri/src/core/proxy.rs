@@ -172,15 +172,48 @@ pub const LISTEN_PROBE_WAIT: std::time::Duration =
 /// that hides something, which is why the mapping was measured before it was
 /// trusted and why the check that measured it is permanent.
 pub async fn edge_wire(host: &str, https_port: u16) -> EdgeWire {
+    edge_wire_reading(host, https_port).await.wire()
+}
+
+/// The same probe, read finer — for the health watchdog only. [`EdgeWire::Foreign`] folds two
+/// different facts: something ANSWERED without our marker (a proxy in front of us — evidence),
+/// and nothing completed an exchange in time (no evidence of anyone else at all). Every other
+/// caller wants the fold (the ambiguity rule above); the watchdog cannot use it: on the 15.8 VM,
+/// 9 Oct 2026, a 1 GB database copy slowed our own edge past the 3 s probe for two polls, the
+/// watchdog announced "another local proxy answers port 443" with ONLY rexenv's caddy listening —
+/// and offered `sudo kill $(sudo lsof -t -iTCP:443 …)`, which kills rexenv's own edge (ledger #811).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireReading {
+    Ours,
+    /// A response came back without the marker — someone else is in front of us.
+    AnsweredNotOurs,
+    /// Listening, but no exchange completed in time (a connect or request timeout, a TLS or
+    /// protocol failure). Says nothing about WHO is listening.
+    Unreadable,
+    NoAnswer,
+}
+
+impl WireReading {
+    /// The three-state answer every other caller gets.
+    pub fn wire(self) -> EdgeWire {
+        match self {
+            WireReading::Ours => EdgeWire::Ours,
+            WireReading::AnsweredNotOurs | WireReading::Unreadable => EdgeWire::Foreign,
+            WireReading::NoAnswer => EdgeWire::NoAnswer,
+        }
+    }
+}
+
+pub async fn edge_wire_reading(host: &str, https_port: u16) -> WireReading {
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], https_port));
     // A REFUSED connect is the only proof that nothing is listening. A timeout
     // proves nothing, so it resolves toward `Foreign` with every other
     // ambiguous case — which is why the wait must outlast how long THIS OS
     // takes to refuse (`LISTEN_PROBE_WAIT`).
     match tokio::time::timeout(LISTEN_PROBE_WAIT, tokio::net::TcpStream::connect(addr)).await {
-        Ok(Err(_)) => return EdgeWire::NoAnswer,
+        Ok(Err(_)) => return WireReading::NoAnswer,
         Ok(Ok(_)) => {}
-        Err(_elapsed) => return EdgeWire::Foreign,
+        Err(_elapsed) => return WireReading::Unreadable,
     }
 
     // Something is listening. The only question left is whether it is ours, and
@@ -194,13 +227,14 @@ pub async fn edge_wire(host: &str, https_port: u16) -> EdgeWire {
         .timeout(std::time::Duration::from_secs(3))
         .build()
     else {
-        return EdgeWire::Foreign;
+        return WireReading::Unreadable;
     };
     match client.get(&url).send().await {
-        Ok(resp) if probe_response_is_ours(resp.headers()) => EdgeWire::Ours,
-        // Answered without the marker, or would not complete an exchange at all
-        // — either way something holds the port and it is not us.
-        _ => EdgeWire::Foreign,
+        Ok(resp) if probe_response_is_ours(resp.headers()) => WireReading::Ours,
+        // Answered without the marker — someone else holds the port.
+        Ok(_) => WireReading::AnsweredNotOurs,
+        // Would not complete an exchange: listening, identity unknown.
+        Err(_) => WireReading::Unreadable,
     }
 }
 

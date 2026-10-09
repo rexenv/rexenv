@@ -1581,7 +1581,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   copy, and which permissions come back per macOS major. None can be run by any tier.
   (Added 9 Oct 2026, also open in that section: the relauncher's record, ledger #768, and Start all
   over a running edge adding no "Background Items Added" card, ledger #772.)
-- [ ] **PUBLISH-TESTING §K** — the whole migration as ONE journey (rebuild first).
+- [ ] **Database card: a stale refusal beside a newer state** — after Revert (or Apply) the card
+  keeps the earlier job's ThisSite refusal ("already reads and writes … that IS the rexenv copy")
+  above "Imported — not yet connected", two cards contradicting each other until the next import;
+  and that refusal — a correct answer — renders as a red failure with Retry. The job store
+  (`DbImportJobs`) outlives the record change; the rewrite commands would have to clear a settled
+  job (they are also MCP tools). Seen on the 15.8 VM, §K K14, 9 Oct 2026.
 - [ ] **PUBLISH-TESTING §G** — `/import` screen packaged GUI pass. **Steps 1–3, 5–8 ✅ on the 15.8 VM,
   9 Oct 2026** (record in §G; found #809, fixed); open: 8's delete + the databases-on pass, 9's
   multi-GB case, 10 on a build with #809, 11–13. Was: only ever
