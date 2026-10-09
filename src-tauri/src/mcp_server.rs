@@ -1161,7 +1161,9 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
         Box::pin(async move {
             let (state, jobs) = (self.state()?, self.jobs()?);
-            let started = crate::commands::worktree::start(&self.app, state.inner(), jobs.inner(), req)?;
+            let started = crate::commands::worktree::off_the_runtime(|| {
+                crate::commands::worktree::start(&self.app, state.inner(), jobs.inner(), req)
+            })?;
             // The OUTCOME, as `retry` answers (the first snapshot says `running`).
             crate::commands::site_provision::settle(&jobs, &started.id, None).await
         })

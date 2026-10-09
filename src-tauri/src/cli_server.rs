@@ -1547,7 +1547,9 @@ where
                 skip_uploads: args["skipUploads"].as_bool().unwrap_or(false),
             };
             let jobs = provision_jobs_state(app)?;
-            let started = commands::worktree::start(app.app_handle(), state.inner(), jobs.inner(), req)?;
+            let started = commands::worktree::off_the_runtime(|| {
+                commands::worktree::start(app.app_handle(), state.inner(), jobs.inner(), req)
+            })?;
             // Progress from the job's own published state, as `site.create` does.
             let mut sent_phase = usize::MAX;
             loop {

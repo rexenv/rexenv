@@ -255,7 +255,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   uploads could pass `max_execution_time` before the first page returns. Fix: walk in sorted order
   and STOP at the budget (resume by descending into the cursor's directories), or cache the sorted
   list per pull in a transient. `companion/rexenv-sync/includes/class-rexenv-sync-reader.php`.
-- [ ] **Worktree git runs block an async worker** (code review, 10 Oct 2026): `commands::worktree::start`
+- [x] **Worktree git runs block an async worker** ✓ 10 Oct 2026 — `commands::worktree::off_the_runtime` (`block_in_place` on the multi-threaded runtime, a plain call on a current-thread one) wraps the IPC create/remove, the delete path's release, the CLI arm and the MCP op; `worktree_site_check` green through it (code review, 10 Oct 2026): `commands::worktree::start`
   (Shape B's `git worktree add`) and `release_for_delete` (`git worktree remove`) run git synchronously
   inside async commands, the delete path included. A big checkout holds a tokio worker for its whole
   length, with no cancel. Move both into `spawn_blocking`.

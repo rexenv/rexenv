@@ -1702,7 +1702,9 @@ pub(crate) async fn delete_site_owned(
     //    database lock NOT held across the git run. Then the preflight: a
     //    parent with worktree children, a docroot still holding a worktree
     //    (ledger #814, #815).
-    crate::commands::worktree::release_for_delete(state, &site, false)?;
+    crate::commands::worktree::off_the_runtime(|| {
+        crate::commands::worktree::release_for_delete(state, &site, false)
+    })?;
     {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::sites::delete_preflight(&conn, state.platform.as_ref(), &site)?;

@@ -279,7 +279,20 @@ pub async fn worktree_create<R: tauri::Runtime>(
     jobs: State<'_, ProvisionJobs>,
     request: WorktreeRequest,
 ) -> Result<SiteProvisionState> {
-    start(&app, &state, &jobs, request)
+    off_the_runtime(|| start(&app, &state, &jobs, request))
+}
+
+/// Run `f` — which runs git and may take a while — without holding an async
+/// worker: on the multi-threaded runtime the app runs, `block_in_place` hands the
+/// worker's other tasks elsewhere for the duration (review, 10 Oct 2026: a big
+/// checkout or removal held a tokio worker for its whole length). On a
+/// current-thread runtime (`#[tokio::test]`), where `block_in_place` would panic,
+/// `f` just runs.
+pub(crate) fn off_the_runtime<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(f),
+        _ => f(),
+    }
 }
 
 /// Release a worktree child's checkout through git, before its site is
@@ -346,7 +359,7 @@ pub async fn worktree_remove(
         store::get_site(&conn, &id)?
     };
     let Some(site) = site else { return Ok(false) };
-    release_for_delete(&state, &site, force)?;
+    off_the_runtime(|| release_for_delete(&state, &site, force))?;
     crate::commands::sites::delete_site_owned(&state, &tunnels, id).await
 }
 
