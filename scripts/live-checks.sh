@@ -107,6 +107,7 @@ cli_socket_check               stack   macos
 cli_wp_install_check           network all
 config_rewrite_check           sandbox all
 create_site_serve              service macos
+db_clone_check                 sandbox all
 db_compat_matrix               sandbox all
 db_drop_check                  service all
 db_dump_check                  sandbox all

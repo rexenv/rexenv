@@ -343,7 +343,7 @@ pub(crate) fn psql_exec(
 }
 
 /// Whether database `name` exists in the cluster.
-fn database_exists(client: &SqlClient, port: u16, name: &str) -> Result<bool> {
+pub(crate) fn database_exists(client: &SqlClient, port: u16, name: &str) -> Result<bool> {
     let sql = format!("SELECT 1 FROM pg_database WHERE datname = '{name}'");
     let out = psql_run(
         client,
@@ -423,8 +423,15 @@ pub fn import_from_file(client: &SqlClient, port: u16, name: &str, file: &Path) 
 /// cluster rather than only one that has this cluster's roles. Requires the
 /// server to be running. `dump` is the dump BINARY.
 pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
-    validate_db_name(name)?;
     let dest = dump_dest(domain)?;
+    dump_to_file(dump, port, name, &dest)?;
+    Ok(dest)
+}
+
+/// Dump database `name` into `dest` with the export's flags (`core::dbclone`
+/// writes to its private scratch file). A failed dump removes what it wrote.
+pub(crate) fn dump_to_file(dump: &Path, port: u16, name: &str, dest: &Path) -> Result<()> {
+    validate_db_name(name)?;
     let (k, v) = connect_timeout_env();
     let out = crate::platform::command(dump)
         .args([
@@ -442,14 +449,27 @@ pub fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> 
     if !out.status.success() {
         // A failed dump can leave a partial file — never leave it for the user
         // to mistake for a good backup.
-        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(dest);
         return Err(Error::Other(format!(
             "exporting database `{name}` failed (exit {}): {}",
             crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    Ok(dest)
+    Ok(())
+}
+
+/// Every table in database `name`'s `public` schema, sorted.
+pub(crate) fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<Vec<String>> {
+    validate_db_name(name)?;
+    let out = psql_run(
+        client,
+        port,
+        name,
+        &["-tA", "--command", "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY 1"],
+        &format!("listing the tables of `{name}`"),
+    )?;
+    Ok(out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
 }
 
 /// Disk size of every database in the cluster, in bytes — the same

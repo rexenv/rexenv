@@ -155,8 +155,19 @@ pub(crate) fn mysql_exec(client: &SqlClient, port: u16, sql: &str, what: &str) -
 /// #329 lesson (a type sees every caller; a grep sees its pattern) applied to
 /// the module boundary.
 pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &str) -> Result<PathBuf> {
-    validate_db_name(name)?;
     let dest = dump_dest(domain)?;
+    dump_to_file(dump, port, name, &dest)?;
+    Ok(dest)
+}
+
+/// Dump database `name` into `dest` — the export's dump, to a path the caller
+/// chose (`core::dbclone`'s private scratch file). The flags are the export's,
+/// unchanged, so both paths copy exactly the same things: tables, views and
+/// triggers; NOT stored routines or events (`--routines`/`--events` are off by
+/// default in the dump tools, and WordPress uses neither). A failed dump
+/// removes what it wrote.
+pub(crate) fn dump_to_file(dump: &Path, port: u16, name: &str, dest: &Path) -> Result<()> {
+    validate_db_name(name)?;
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
     // Deliberately NOT client_base_args, because the dump tools don't honor
@@ -179,14 +190,14 @@ pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &s
     if !out.status.success() {
         // A failed dump can leave a partial file — never leave it for the user
         // to mistake for a good backup.
-        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(dest);
         return Err(Error::Other(format!(
             "exporting database `{name}` failed (exit {}): {}",
             crate::core::proc::exit_text(out.status.code()),
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    Ok(dest)
+    Ok(())
 }
 
 /// The Downloads path an export writes to: `<domain>-db.sql`, numbered on
@@ -280,6 +291,51 @@ pub(crate) fn drop_database(client: &SqlClient, port: u16, name: &str) -> Result
         &format!("DROP DATABASE IF EXISTS `{name}`"),
         &format!("dropping database `{name}`"),
     )
+}
+
+/// One query through the bundled client, rows back as bare tab-separated
+/// lines (`-N -B`).
+fn mysql_query(client: &SqlClient, port: u16, sql: &str, what: &str) -> Result<String> {
+    let out = crate::platform::command(client.path())
+        .args(client_base_args(port))
+        .args(["-N", "-B", "-e", sql])
+        .output()?;
+    if !out.status.success() {
+        return Err(Error::Other(format!(
+            "{what} failed (exit {}): {}",
+            crate::core::proc::exit_text(out.status.code()),
+            String::from_utf8_lossy(&out.stderr).trim()
+        )));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Does database `name` exist? Asked of the server, never inferred from a
+/// table list — an EMPTY database has no rows in `information_schema.tables`.
+pub(crate) fn database_exists(client: &SqlClient, port: u16, name: &str) -> Result<bool> {
+    validate_db_name(name)?;
+    let out = mysql_query(
+        client,
+        port,
+        &format!("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{name}'"),
+        &format!("looking up database `{name}`"),
+    )?;
+    Ok(out.lines().any(|l| l.trim() == name))
+}
+
+/// Every table and view in database `name`, sorted.
+pub(crate) fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<Vec<String>> {
+    validate_db_name(name)?;
+    let out = mysql_query(
+        client,
+        port,
+        &format!(
+            "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{name}' \
+             ORDER BY TABLE_NAME"
+        ),
+        &format!("listing the tables of `{name}`"),
+    )?;
+    Ok(out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
 }
 
 /// Disk size (data + indexes) of every database, in bytes, via one

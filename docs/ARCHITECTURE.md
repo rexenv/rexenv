@@ -1453,6 +1453,15 @@ honest footer —
   fix line (git itself refuses a dirty worktree), and `teardown` keeps such a docroot
   even if reached without the preflight. The same preflight refuses deleting a site that
   still has worktree children (#815), naming them.
+- **A worktree child's database is a COPY made on the same server** (`core::dbclone`, #817,
+  W3). It is not the import pipeline: `dbdump::gate` refuses rexenv's own server on
+  purpose, and that refusal stays. The copy is built from the import's witnessed pieces.
+  `record_provenance` writes the child's `db_created` before `CREATE DATABASE`.
+  `prepare_target` drops and recreates only a target the record says is OURS. A target
+  that exists and is not ours is refused. Membership of every source table is checked
+  after the import, and the private (0600) dump file is removed on every path. The dump
+  uses the export's flags, so stored routines and events are not copied; WordPress uses
+  neither.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

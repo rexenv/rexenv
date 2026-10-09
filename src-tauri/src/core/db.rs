@@ -577,6 +577,37 @@ impl DbEngine {
         }
     }
 
+    /// Does database `name` exist on this engine's server?
+    pub fn database_exists(&self, client: &SqlClient, port: u16, name: &str) -> Result<bool> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::database_exists(client, port, name),
+            DbEngine::Postgres => postgres::database_exists(client, port, name),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Every table in database `name`, sorted (MySQL: tables and views;
+    /// PostgreSQL: the `public` schema).
+    pub fn list_tables(&self, client: &SqlClient, port: u16, name: &str) -> Result<Vec<String>> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::list_tables(client, port, name),
+            DbEngine::Postgres => postgres::list_tables(client, port, name),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
+    /// Dump database `name` into `dest` with the export's flags. `dump` is the
+    /// dump BINARY from [`sql_client_bins`](Self::sql_client_bins).
+    pub fn dump_to_file(&self, dump: &Path, port: u16, name: &str, dest: &Path) -> Result<()> {
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::dump_to_file(dump, port, name, dest),
+            DbEngine::Postgres => postgres::dump_to_file(dump, port, name, dest),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
     /// Run one SQL script INSIDE `database` — the starter seed's one need, and
     /// the one place the two engines differ in a way a caller should not know
     /// about: MySQL selects the database with a `USE` statement prepended to the

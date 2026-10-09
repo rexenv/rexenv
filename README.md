@@ -222,6 +222,7 @@ rexenv/
         │   ├── valet.rs        # read-only Valet/Herd discovery (import Stage 1)
         │   ├── localwp.rs      # read-only Local (WP Engine) discovery — the registry, re-homing .local
         │   ├── dbsource.rs · dbcompat.rs · dbdump.rs · dbrestore.rs · dbmirror.rs · dbimport.rs
+        │   ├── dbclone.rs      # same-server copy of a site's database (a worktree child's start)
         │   ├── agent_db.rs      # MCP agent DB principals (names + provisioning SQL)
         │   ├── agent_query.rs   # MCP agent DB reads — native driver, never the bundled client
         │   │                   # database import (Stage 2): identify → gate → dump → restore → mirror

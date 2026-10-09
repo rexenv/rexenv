@@ -25,6 +25,7 @@ pub mod confrewrite;
 pub mod confverify;
 pub mod database;
 pub mod db;
+pub mod dbclone;
 pub mod dbcompat;
 pub mod dbdump;
 pub mod dbimport;
