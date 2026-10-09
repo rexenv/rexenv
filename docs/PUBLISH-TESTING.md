@@ -103,6 +103,46 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.8.13 — DRAFTED on `rexenv/rexenv` by CI (9 Oct 2026) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM, the setup.exe on the Dell and the Win11 VM green; Defender clean
+
+**Run 37907730103, source `75f7b3ed` (tag `v0.8.13`, pushed), every lane green, 16 assets, the body the
+tag's verbatim.** dmg `19b8d65c…`, `.app.tar.gz` `666f33c3…`, arm64 deb `4f197810…`, setup.exe
+`af0ff2eb…`, zip `0e646925…`; `shasum -c` against every attached `.sha256`: all OK.
+**Defender (RELEASING step 3) ✅ on the Dell, signatures `1.459.636.0` updated the same day:**
+`MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`.
+**§A0 ✅ by hand:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update key
+×2 in each `rexenv` slice; `minos 13.0`; codesign valid; Info.plist `0.8.13` — on the dmg's app AND the
+archive's; one top-level `rexenv.app/`, no AppleDouble; dmg app == archive app (`diff -rq`).
+**§A ✅ on the 15.8 VM, over the published 0.8.12:** the dmg `scp`'d (hash re-checked), app quit, agent
+booted out, app replaced from the mounted dmg, a synthetic `0083` quarantine → **"rexenv" Not Opened**;
+Done → no rexenv process; `xattr -rd` → `rex 0.8.13 (75f7b3e) · app rexenv 0.8.13 (75f7b3e)`, no crash
+report (0 → 0), the DNS agent back by itself (`agent`, launcher program). Stop all → stopped; Start all →
+the branded prompt → `smoke1.rex` 200 23 s after `rex start`, 8 running, no "Bootstrap failed". This
+release's macOS rows (#806–#808, #812, #813) were proven on the release-candidate builds the same day.
+**Linux ✅ on the 22.04 arm64 VM (`apt-get install ./…arm64.deb` over the published 0.8.12):** `dpkg -s`
+0.8.13; the 0.8.12 app closed, 0.8.13 started from the launcher (`gtk-launch`) → `0.8.13 (75f7b3e)`,
+the seven running services adopted, the agent `agent, udp 15353`, `/var/crash` empty; P1: a fresh `.rex`
+name → 127.0.0.1, `~rex` on link 3 (`rexenv0`) only, `example.com` via `enp0s1`; `rexenv-dns-route` and
+`rexenv-edge` active; PHP 8.3's `curl_init("https://lv.rex/")` resolved and connected (404 — the VM's
+docroot fact recorded at 0.8.11, no curl error).
+**Windows ✅ on the Dell (Windows 10 22H2 x64):** `setup.exe /S` over the published 0.8.12 with the agent
+running → exit 0, `rexenv.exe` 0.8.12 → 0.8.13 (`70d3190d…`), Apps & Features 0.8.13, the agent back
+(a new pid on `udp 53`), `rex 0.8.13`; launched through the interactive task; `w7check.rex` 200 over
+HTTPS (curl `--ssl-no-revoke` — schannel cannot revocation-check a local CA — and PowerShell 200 in
+~300 ms); `rex php install 8.4` → the 8.4 tree carries `ext\php_imap.dll` (#801); doctor ✓ Services/
+Ports/CLI. Two observations, neither reproduced: right after the install one `rex start` left Caddy
+idle with no log line (a second `rex start` brought it up; three exact re-runs — stack running, stack
+stopped, 0.8.12-running → `/S` 0.8.13 — all came up); and the first HTTPS request timed out at 20 s
+while the PHP group was cold.
+**Windows ✅ on the Win11 ARM VM:** 0.8.13 over the VM's 0.8.12 → Apps & Features 0.8.13, the Run key's
+`--hidden` kept, the agent task `Running` on `udp 53`; Start all → **every PHP minor 7.4–8.5 running at
+once** (#603 amended — the per-version extension fix), IMAP loaded on 8.4 (`php -m`), 12/12 services,
+`lm.rex` / `lv.rex` 200. **A finding:** `setup.exe /S` with the app AND the agent running exited **2**
+(an abort — nothing replaced, the old version intact, the agent back) in **2 of 16** rounds on this VM,
+0 of 5 on the Dell; a file-lock race was measured and excluded (`rexenv.exe` writable within ~50 ms of
+the kill). Tracked in TODO. The in-app updater does not run `setup.exe`.
+**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows.
+
 ## A) ✅ 0.8.12 — DRAFTED on `rexenv/rexenv` by CI (8 Oct 2026) — §A0 by hand, §A on the 15.8 VM, the deb on the 22.04 VM and the setup.exe on the Win11 VM green
 
 **Run 37722475279, source `282f9459` (tag `v0.8.12`, pushed — not a dispatch, so #765's trap
