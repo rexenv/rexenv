@@ -323,9 +323,11 @@ COMMANDS:
   repo tools [--refresh]               Detected git/node (login-shell resolution)
   worktree <domain> list               Worktree sites of the site's git plugins/themes
                                        (git's live branch + uncommitted count)
-  worktree <domain> add <dir> <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]
-                A copy of the site at its own domain, with <dir> a git worktree on
-                <branch> (made NEW from --from) and its own copy of the database
+  worktree <domain> add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]
+                With <dir>: a copy of the site at its own domain, with that plugin
+                (or --theme) a git worktree on <branch>. Without: a worktree of the
+                site's own repository, served at its own domain. Either way <branch>
+                is made NEW from --from when given, and the database is copied
   worktree <worktree-domain> remove [--force]
                 Delete a worktree site: the worktree through git first (refused
                 while it has uncommitted work, unless --force), then the site.
@@ -1762,7 +1764,7 @@ fn follow_watch_log(w: &Value, dir: &str) {
 }
 
 const WORKTREE_USAGE: &str =
-    "rex worktree <domain> list | add <dir> <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | <worktree-domain> remove [--force]";
+    "rex worktree <domain> list | add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | <worktree-domain> remove [--force]";
 
 /// Worktree sites (`docs/PLAN-git-worktrees.md`) — the same commands the app's
 /// Worktree sites panel calls, through `worktree.*` on the socket.
@@ -1819,9 +1821,15 @@ fn cmd_worktree(words: &[String], json_output: bool) {
             }
         }
         Some("add") => {
-            let (Some(dir), Some(branch)) = (rest.first(), rest.get(1)) else {
-                errln!("rex: usage: {WORKTREE_USAGE}");
-                exit(1);
+            // Two words: <dir> <branch>, a plugin/theme worktree. One word: <branch>,
+            // a worktree of the site's OWN repository.
+            let (dir, branch) = match (rest.first(), rest.get(1)) {
+                (Some(d), Some(b)) => (Some(*d), *b),
+                (Some(b), None) => (None, *b),
+                _ => {
+                    errln!("rex: usage: {WORKTREE_USAGE}");
+                    exit(1);
+                }
             };
             let data = request(
                 "worktree.add",

@@ -476,7 +476,7 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   `shop-feature-x.rex`), with its own DB cloned from the parent and removal only through `git worktree
   remove`. It also serves worktrees that agents (Claude Code, Cursor…) made outside rexenv. The WP
   plugin/theme-repo shape comes first (owner, 9 Oct 2026). Plan + tasks W0–W11:
-  `docs/PLAN-git-worktrees.md`; W0 answered, W1 done (v45 relation + the delete guards, #814/#815), W2 done (domain rule + git plumbing, #816), W3 done (same-server DB copy, #817), W4+W5 done (the plugin worktree child job, #819; L1 ALL PASS), W6 done (delete through git, #820), W8 done (UI, #821; WebKit check green), **W7 waits on a decision** (adopting an outside worktree, see the plan's §9), W9 done (`rex worktree` + the MCP tool, #822), **W10 next** (the whole-site repo shape).
+  `docs/PLAN-git-worktrees.md`; W0 answered, W1 done (v45 relation + the delete guards, #814/#815), W2 done (domain rule + git plumbing, #816), W3 done (same-server DB copy, #817), W4+W5 done (the plugin worktree child job, #819; L1 ALL PASS), W6 done (delete through git, #820), W8 done (UI, #821; WebKit check green), **W7 waits on a decision** (adopting an outside worktree, see the plan's §9), W9 done (`rex worktree` + the MCP tool, #822), W10 done (the whole-site repo shape, #823), **W11 remaining runs next** (Windows lib tests + `worktree_site_check`; Linux on the VM).
 - [ ] **WordPress live ↔ local sync** — a companion plugin on the live site + signed HTTPS from rexenv:
   clone a live site locally, Pull, Push with backup + Roll back, per-table conflict choice. Needs a new
   `SecretStore` platform trait (all three OSes). Plan + tasks L0–L15: `docs/PLAN-wp-live-sync.md`.

@@ -541,6 +541,38 @@ pub fn copy_site_tree(
     Ok(stats)
 }
 
+/// Where Shape B worktree folders live: `Worktrees/` BESIDE the sites folder
+/// (`~/rexenv/Sites` → `~/rexenv/Worktrees/<domain>`), not inside it. A Shape B
+/// child is a LINKED site — its folder is git's, removed only by `git worktree
+/// remove` (ledger #814) — and the linked-folder rule refuses anything inside
+/// the managed sites folder, on purpose: there, linking would only opt a folder
+/// out of cleanup. For a worktree that opt-out is the point, but the rule is
+/// right for every other link, so the worktrees get their own place instead of
+/// an exception to it.
+pub fn site_worktrees_dir(sites_dir: &Path) -> Result<PathBuf> {
+    let parent = sites_dir
+        .parent()
+        .ok_or_else(|| Error::Other(format!("{} has no parent folder", sites_dir.display())))?;
+    Ok(parent.join("Worktrees"))
+}
+
+/// The ignored config files a Shape B worktree copies from its parent's
+/// project root when it lacks them (§2.5) — a FIXED list, never "every ignored
+/// file": `vendor/` is rebuilt or copied by rule, uploads are content, and an
+/// ignored file nobody listed is something the user keeps out of git on purpose.
+/// `wp-config.php` is added by the caller at the SERVED root.
+pub const CONFIG_FILES: [&str; 3] = [".env", ".env.local", "auth.json"];
+
+/// Byte-identical files — both must exist. A cheap length check first.
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) if x.is_file() && y.is_file() && x.len() == y.len() => {
+            matches!((std::fs::read(a), std::fs::read(b)), (Ok(p), Ok(q)) if p == q)
+        }
+        _ => false,
+    }
+}
+
 /// The rexenv mu-plugins that name ONE site and must not ride along in a copy:
 /// the tunnel rewrite, the login link, the scratch-mail stamp. The loopback-DNS
 /// and mail-catch files are domain-agnostic and stay (the copy is served by
@@ -960,5 +992,18 @@ mod tests {
         assert!(m.contains("branch itself is kept"), "{m}");
         let one = dirty_refusal(Path::new("/w"), &[" M a.php".to_string()]);
         assert!(one.contains("1 uncommitted change ") && one.contains("lose it"), "{one}");
+    }
+
+    #[test]
+    fn same_file_is_byte_equality_of_two_existing_files() {
+        let d = tmp("same");
+        std::fs::write(d.join("a"), "lock-1").unwrap();
+        std::fs::write(d.join("b"), "lock-1").unwrap();
+        std::fs::write(d.join("c"), "lock-2").unwrap();
+        assert!(same_file(&d.join("a"), &d.join("b")));
+        assert!(!same_file(&d.join("a"), &d.join("c")), "same length, other bytes");
+        assert!(!same_file(&d.join("a"), &d.join("missing")));
+        assert!(!same_file(&d.join("missing"), &d.join("missing2")), "two absent files are not 'the same lock'");
+        std::fs::remove_dir_all(&d).unwrap();
     }
 }

@@ -1528,15 +1528,19 @@ where
             let state = app_state(app)?;
             // An `if`, not a match: `scripts/doc-counts.sh` counts every quoted
             // match arm in this file as a command (CLI-ROADMAP's count note).
-            let kind = if args["kind"].as_str() == Some("theme") {
-                crate::core::worktree::AssetKind::Theme
-            } else {
-                crate::core::worktree::AssetKind::Plugin
-            };
+            // No `dir` = a worktree of the site's OWN repository (Shape B).
+            let dir = args["dir"].as_str().map(str::to_string);
+            let kind = dir.as_ref().map(|_| {
+                if args["kind"].as_str() == Some("theme") {
+                    crate::core::worktree::AssetKind::Theme
+                } else {
+                    crate::core::worktree::AssetKind::Plugin
+                }
+            });
             let req = commands::worktree::WorktreeRequest {
                 parent_id: need_str(&args, "id", cmd)?,
                 asset_kind: kind,
-                asset_dir: need_str(&args, "dir", cmd)?,
+                asset_dir: dir,
                 branch: need_str(&args, "branch", cmd)?,
                 base: args["base"].as_str().map(str::to_string),
                 domain: args["domain"].as_str().map(str::to_string),

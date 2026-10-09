@@ -202,7 +202,7 @@ file — carried in the watcher snapshot as `logKey`, never rebuilt by the calle
 | Command | Backing IPC | Notes |
 |---|---|---|
 | `rex worktree <domain> list` | `worktree_children` (arm `worktree.list`) | git's live branch + uncommitted count per worktree site of the site's git plugins/themes |
-| `rex worktree <domain> add <dir> <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]` | `commands::worktree::start` + the job's own state (arm `worktree.add`) | blocks until the job settles, streaming phase progress like `site create`; `--from` makes `<branch>` NEW; positional parsing skips `--from`/`--domain` values |
+| `rex worktree <domain> add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]` — two words: a plugin/theme worktree; one word: the site's OWN repository (W10) | `commands::worktree::start` + the job's own state (arm `worktree.add`) | blocks until the job settles, streaming phase progress like `site create`; `--from` makes `<branch>` NEW; positional parsing skips `--from`/`--domain` values |
 | `rex worktree <worktree-domain> remove [--force]` | `worktree_remove` (arm `worktree.remove`) | the worktree goes through git first (refused with the files named while uncommitted, unless `--force`), then the ordinary delete; the branch is kept |
 
 ## Infrastructure (enables the above, not user commands)

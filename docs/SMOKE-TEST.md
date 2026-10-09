@@ -973,6 +973,12 @@ branch in that repository:
 - [ ] `rex worktree <site> add <plugin-dir> <branch>` prints the phases and ends `… — created`;
       `rex worktree <site> list` shows it with its branch; `rex worktree <child> remove` refuses
       while a file is uncommitted and `--force` removes it.
+- [ ] **A worktree of the whole site** — on a site whose OWN folder is a git checkout (a Laravel
+      site from git): Repository tab → **Worktree sites** → New worktree… on a second branch →
+      the card shows `copying the parent's config`, `installing dependencies` (or "vendor/ copied
+      … the same composer.lock"), `copying the database`; the folder is
+      `~/rexenv/Worktrees/<domain>`; the site serves the branch with its own `.env`
+      (`APP_URL`, `DB_DATABASE`). Delete it → the folder goes, the branch stays.
 - [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
 - **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:

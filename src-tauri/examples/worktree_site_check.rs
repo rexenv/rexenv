@@ -26,7 +26,14 @@
 //!      site, database and file untouched (W6);
 //!   7. Delete on a clean child: git removes the worktree, the folder and the
 //!      child's database go, and the BRANCH is kept;
-//!   8. the parent then deletes.
+//!   8. the parent then deletes;
+//!   9. (W10, Shape B, run before 6–8) the parent's whole docroot made a git
+//!      repository; a worktree of it on `feature/site` settles with the
+//!      config/deps/db/urls phases;
+//!  10. it is a LINKED site whose folder is the worktree;
+//!  11. its `wp-config.php` is copied and pointed at its own database, and its
+//!      URLs are moved;
+//!  12. a dirty one refuses Delete, a clean one goes through git.
 //!
 //! Edge safety: the fixture manager adopts the database tier only, so the
 //! serve phase is SKIPPED and the real edge is never touched (the
@@ -182,8 +189,8 @@ async fn main() -> std::process::ExitCode {
     // ── the child ───────────────────────────────────────────────────────────
     let req = commands::worktree::WorktreeRequest {
         parent_id: parent.id.clone(),
-        asset_kind: worktree::AssetKind::Plugin,
-        asset_dir: "rexwt-probe".into(),
+        asset_kind: Some(worktree::AssetKind::Plugin),
+        asset_dir: Some("rexwt-probe".into()),
         branch: "feature/probe".into(),
         base: None,
         domain: None,
@@ -286,6 +293,117 @@ async fn main() -> std::process::ExitCode {
                 println!("5 ok — parent refused (has a child), child refused (holds a worktree)")
             }
             (p, c) => failures.push(format!("5: parent {p:?} / child {c:?}")),
+        }
+    }
+
+    // ── 9–11. Shape B: a worktree of the site's OWN repository (W10) ──────────
+    let root = Path::new(&parent.path).to_path_buf();
+    std::fs::write(
+        root.join(".gitignore"),
+        "wp-config.php\nwp-content/uploads/\nwp-content/plugins/rexwt-probe/\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("rexwt-branch.txt"), "main\n").unwrap();
+    git_in(&root, &["init", "-q", "-b", "main"]);
+    git_in(&root, &["add", "."]);
+    git_in(&root, &["commit", "-q", "-m", "site"]);
+    git_in(&root, &["checkout", "-q", "-b", "feature/site"]);
+    std::fs::write(root.join("rexwt-branch.txt"), "site-feature\n").unwrap();
+    git_in(&root, &["commit", "-q", "-am", "feature"]);
+    git_in(&root, &["checkout", "-q", "main"]);
+    let req_b = commands::worktree::WorktreeRequest {
+        parent_id: parent.id.clone(),
+        asset_kind: None,
+        asset_dir: None,
+        branch: "feature/site".into(),
+        base: None,
+        domain: None,
+        skip_uploads: false,
+    };
+    let want_b = format!("feature-site.{parent_domain}");
+    println!("\n=== site worktree {want_b} ===");
+    let started_b = {
+        let state = handle.state::<AppState>();
+        let jobs = handle.state::<site_provision::ProvisionJobs>();
+        commands::worktree::start(&handle, &state, &jobs, req_b)
+    };
+    let child_b = match started_b {
+        Ok(snap) => {
+            created.extend(snap.site_id.clone());
+            let fin = wait_settled(snap.id.clone()).await;
+            println!("  site worktree settled {} — {:?}", fin.status, fin.summary.as_deref().or(fin.error.as_deref()));
+            let keys: Vec<&str> = fin.phases.iter().map(|p| p.key.as_str()).collect();
+            let want_keys = ["prepare", "fetch", "config", "deps", "db", "db_copy", "urls", "serve"];
+            if fin.status == "ok" && keys == want_keys {
+                println!("9 ok — the site worktree's own phases, in order");
+            } else {
+                failures.push(format!("9: settled {} ({:?}), phases {keys:?}", fin.status, fin.error));
+            }
+            fin.site_id.as_deref().and_then(site_of)
+        }
+        Err(e) => {
+            failures.push(format!("9: the site worktree would not start: {e}"));
+            None
+        }
+    };
+    if let Some(b) = &child_b {
+        let folder = Path::new(&b.path);
+        let rel = {
+            let state = handle.state::<AppState>();
+            let conn = state.db.lock().unwrap();
+            rexenv_lib::state::store::get_site_worktree(&conn, &b.id).unwrap()
+        };
+        let branch_file = std::fs::read_to_string(folder.join("rexwt-branch.txt")).unwrap_or_default();
+        let parent_file = std::fs::read_to_string(root.join("rexwt-branch.txt")).unwrap_or_default();
+        if b.domain == want_b
+            && b.docroot_managed == Some(false)
+            && rel.as_ref().is_some_and(|w| w.shape == Some(rexenv_lib::state::models::WorktreeShape::Site))
+            && folder.join(".git").is_file()
+            && branch_file.contains("site-feature")
+            && parent_file.contains("main")
+        {
+            println!("10 ok — a LINKED site whose folder is a worktree on feature/site; the parent still on main");
+        } else {
+            failures.push(format!(
+                "10: domain {} managed {:?} rel {rel:?} .git-file {} branch {branch_file:?} parent {parent_file:?}",
+                b.domain,
+                b.docroot_managed,
+                folder.join(".git").is_file()
+            ));
+        }
+        let config = std::fs::read_to_string(folder.join("wp-config.php")).unwrap_or_default();
+        let siteurl = query(&mysql, &b.db_name, "SELECT option_value FROM wp_options WHERE option_name='siteurl'");
+        if config.contains(&b.db_name) && siteurl == format!("https://{want_b}") {
+            println!("11 ok — wp-config.php copied and pointed at its own database; siteurl {siteurl}");
+        } else {
+            failures.push(format!("11: config names its db={} siteurl={siteurl:?}", config.contains(&b.db_name)));
+        }
+        // Its removal: dirty refused, clean through git.
+        let stray = folder.join("wip.txt");
+        std::fs::write(&stray, "work").unwrap();
+        let dirty = commands::sites::delete_site(
+            handle.state::<AppState>(),
+            handle.state::<commands::tunnels::Tunnels>(),
+            b.id.clone(),
+        )
+        .await;
+        std::fs::remove_file(&stray).ok();
+        let clean = commands::sites::delete_site(
+            handle.state::<AppState>(),
+            handle.state::<commands::tunnels::Tunnels>(),
+            b.id.clone(),
+        )
+        .await;
+        match (dirty, clean) {
+            (Err(e), Ok(true)) if e.to_string().contains("wip.txt") && !folder.exists() && site_of(&b.id).is_none() => {
+                println!("12 ok — a dirty site worktree refuses Delete; a clean one goes through git, folder and all");
+                // `Worktrees/` beside the sites folder, if this run made it: `remove_dir`
+                // refuses a non-empty folder, so another worktree there is never touched.
+                if let Some(dir) = folder.parent() {
+                    let _ = std::fs::remove_dir(dir);
+                }
+            }
+            (d, c) => failures.push(format!("12: dirty {d:?} / clean {c:?} / folder exists {}", folder.exists())),
         }
     }
 

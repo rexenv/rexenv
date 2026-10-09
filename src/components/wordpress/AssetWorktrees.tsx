@@ -19,7 +19,7 @@ import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import type { WorktreeRequest } from "@/types";
 import { RefPicker } from "./RefPicker";
 
-type Kind = "plugin" | "theme";
+type Kind = "plugin" | "theme" | "site";
 
 const INPUT =
   "h-8 w-full rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand";
@@ -29,7 +29,10 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const children = useQuery({ queryKey: ["sites", "worktrees", siteId], queryFn: () => worktreeChildren(siteId) });
-  const mine = (children.data ?? []).filter((w) => w.assetKind === kind && w.assetDir === dirName);
+  // A site worktree (Shape B) has no asset; a plugin/theme one names its folder.
+  const mine = (children.data ?? []).filter((w) =>
+    kind === "site" ? w.assetKind == null : w.assetKind === kind && w.assetDir === dirName,
+  );
 
   const remove = useMutation({
     mutationFn: async ({ id, domain }: { id: string; domain: string }) => {
@@ -72,8 +75,9 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
         </div>
       ) : mine.length === 0 ? (
         <div className="mt-1.5 text-[0.71875rem] text-rex-text-muted">
-          None yet. A worktree site runs another branch of this {kind} beside this one — its own domain, a copy
-          of this site and its database.
+          {kind === "site"
+            ? "None yet. A worktree site runs another branch of this site's repository beside it — its own folder, domain and copy of the database."
+            : `None yet. A worktree site runs another branch of this ${kind} beside this one — its own domain, a copy of this site and its database.`}
         </div>
       ) : (
         <div className="mt-2 flex flex-col gap-1">
@@ -173,13 +177,14 @@ function NewWorktreeDialog({
     { label: "Remote", items: options.remote.map((b) => ({ value: b })) },
   ];
   const baseValue = base || branches.data?.current || "";
+  const asset = kind === "site" ? {} : { assetKind: kind, assetDir: dirName };
   const request: WorktreeRequest | null =
     mode === "existing"
       ? existing
-        ? { parentId: siteId, assetKind: kind, assetDir: dirName, branch: existing, skipUploads }
+        ? { parentId: siteId, ...asset, branch: existing, skipUploads }
         : null
       : newName.trim() && baseValue
-        ? { parentId: siteId, assetKind: kind, assetDir: dirName, branch: newName.trim(), base: baseValue, skipUploads }
+        ? { parentId: siteId, ...asset, branch: newName.trim(), base: baseValue, skipUploads }
         : null;
   const preview = useQuery({
     queryKey: ["worktree-preview", request],
@@ -198,8 +203,17 @@ function NewWorktreeDialog({
     <Overlay onClose={busy ? () => {} : onClose} cardClassName="w-[480px]">
       <div className="text-[0.9375rem] font-semibold text-rex-text">New worktree site</div>
       <div className="mt-1.5 text-[0.78125rem] leading-[1.55] text-rex-text-muted">
-        A copy of this site with <span className="font-mono text-rex-text">{dirName}</span> checked out on another
-        branch, at its own domain, with its own copy of the database. This site is not changed.
+        {kind === "site" ? (
+          <>
+            Another branch of this site's repository, checked out in its own folder and served at its own domain,
+            with its own copy of the database. This site is not changed.
+          </>
+        ) : (
+          <>
+            A copy of this site with <span className="font-mono text-rex-text">{dirName}</span> checked out on
+            another branch, at its own domain, with its own copy of the database. This site is not changed.
+          </>
+        )}
       </div>
 
       <div className="mt-4 flex gap-4 text-[0.78125rem] text-rex-text">
@@ -246,6 +260,7 @@ function NewWorktreeDialog({
             </div>
           </>
         )}
+        {kind !== "site" && (
         <label className="flex cursor-pointer items-center gap-2 text-[0.75rem] text-rex-text">
           <input
             type="checkbox"
@@ -256,6 +271,7 @@ function NewWorktreeDialog({
           />
           Leave uploads out of the copy (faster; media will not load on the worktree site)
         </label>
+        )}
       </div>
 
       <div className="mt-3 min-h-[2.5rem] rounded-md border border-rex-border-subtle bg-rex-well px-2.5 py-2 text-[0.75rem]">

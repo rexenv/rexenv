@@ -13,8 +13,9 @@
  *  site target is the one kind with no user-supplied path segment at all. */
 import { useQuery } from "@tanstack/react-query";
 import { GitBranch } from "lucide-react";
-import { repoSiteInfo } from "@/lib/ipc";
+import { repoSiteInfo, worktreeOf } from "@/lib/ipc";
 import { RepoPanel } from "@/components/wordpress/RepoPanel";
+import { AssetWorktrees } from "@/components/wordpress/AssetWorktrees";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Site } from "@/types";
 
@@ -29,6 +30,7 @@ export function SiteRepoTab({ site }: { site: Site }) {
     refetchOnWindowFocus: true,
   });
 
+  const isWorktree = useQuery({ queryKey: ["sites", "worktree-of", site.id], queryFn: () => worktreeOf(site.id) });
   if (!info.data) return null;
   if (!info.data.present) {
     return (
@@ -53,6 +55,7 @@ export function SiteRepoTab({ site }: { site: Site }) {
   }
 
   return (
+    <>
     <RepoPanel
       siteId={site.id}
       kind="site"
@@ -66,5 +69,11 @@ export function SiteRepoTab({ site }: { site: Site }) {
         source: info.data.clonedFrom ? "cloned" : "adopted",
       }}
     />
+    {/* Worktree sites of this checkout (W10). Not on a site that is itself a
+        worktree: the backend refuses worktrees of worktrees. */}
+    {isWorktree.isSuccess && isWorktree.data == null && (
+      <AssetWorktrees siteId={site.id} kind="site" dirName={site.domain} />
+    )}
+    </>
   );
 }

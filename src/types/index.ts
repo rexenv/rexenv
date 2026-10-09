@@ -1563,8 +1563,9 @@ export interface SiteProvisionState {
  *  `branch` is checked out, or made NEW from `base` when that is set. */
 export interface WorktreeRequest {
   parentId: string;
-  assetKind: "plugin" | "theme";
-  assetDir: string;
+  /** Both set: a plugin/theme worktree. Both absent: the site's OWN repository. */
+  assetKind?: "plugin" | "theme" | null;
+  assetDir?: string | null;
   branch: string;
   base?: string | null;
   domain?: string | null;

@@ -829,8 +829,9 @@ static REGISTRY: &[UserTool] = &[
                       the user's site, at its own domain, with that plugin's folder a `git worktree` \
                       on another branch and its own copy of the database. Takes `action`: \
                       `list` {site_id} — the parent's worktree sites with git's live branch and \
-                      uncommitted count (`read`); `preview` {site_id, kind, dir, branch, base?, \
-                      domain?} — the domain it would get, or the refusal (`read`); `create` (same \
+                      uncommitted count (`read`); `preview` {site_id, kind (plugin|theme, with \
+                      dir; or `site` for a worktree of the site's OWN repository), dir?, branch, \
+                      base?, domain?} — the domain it would get, or the refusal (`read`); `create` (same \
                       fields, plus skip_uploads?) — makes it and blocks until its setup settles \
                       (`manage` on the parent: the parent is only read); `remove` {site_id: the \
                       WORKTREE site, force?} — removes the worktree through git and deletes that \
@@ -842,7 +843,7 @@ static REGISTRY: &[UserTool] = &[
             "properties": {
                 "action": { "type": "string", "enum": ["list", "preview", "create", "remove"] },
                 "site_id": { "type": "string" },
-                "kind": { "type": "string", "enum": ["plugin", "theme"] },
+                "kind": { "type": "string", "enum": ["plugin", "theme", "site"] },
                 "dir": { "type": "string" },
                 "branch": { "type": "string" },
                 "base": { "type": "string" },
@@ -1850,15 +1851,16 @@ fn worktree<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
                 .ok_or_else(|| Error::Other(format!("worktree `{action}` needs `{k}`.")))
         };
         let request = |parent_id: String| -> Result<crate::commands::worktree::WorktreeRequest> {
-            let kind = match args.get("kind").and_then(Value::as_str).unwrap_or("plugin") {
-                "plugin" => crate::core::worktree::AssetKind::Plugin,
-                "theme" => crate::core::worktree::AssetKind::Theme,
-                other => return Err(Error::Other(format!("`{other}` is not a worktree kind — use plugin or theme."))),
+            let (kind, dir) = match args.get("kind").and_then(Value::as_str).unwrap_or("plugin") {
+                "plugin" => (Some(crate::core::worktree::AssetKind::Plugin), Some(field("dir")?)),
+                "theme" => (Some(crate::core::worktree::AssetKind::Theme), Some(field("dir")?)),
+                "site" => (None, None),
+                other => return Err(Error::Other(format!("`{other}` is not a worktree kind — use plugin, theme or site."))),
             };
             Ok(crate::commands::worktree::WorktreeRequest {
                 parent_id,
                 asset_kind: kind,
-                asset_dir: field("dir")?,
+                asset_dir: dir,
                 branch: field("branch")?,
                 base: field("base").ok(),
                 domain: field("domain").ok(),
@@ -1867,8 +1869,8 @@ fn worktree<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acted
         };
         let wanted = match action {
             "list" => "list its worktree sites".to_string(),
-            "preview" => format!("preview a worktree site of `{}` on `{}`", field("dir")?, field("branch")?),
-            "create" => format!("make a worktree site of `{}` on `{}` (a copy of this site and its database)", field("dir")?, field("branch")?),
+            "preview" => format!("preview a worktree site of `{}` on `{}`", field("dir").unwrap_or_else(|_| "the site".into()), field("branch")?),
+            "create" => format!("make a worktree site of `{}` on `{}` (with a copy of this site's database)", field("dir").unwrap_or_else(|_| "the site".into()), field("branch")?),
             _ => format!(
                 "delete this worktree site — its worktree through git, its files and its database{}",
                 if args.get("force").and_then(Value::as_bool).unwrap_or(false) { ", even with uncommitted work" } else { "" }
@@ -3864,7 +3866,7 @@ pub(crate) mod tests {
             Box::pin(async { Ok(crate::commands::worktree::WorktreePreview { domain: "fix.mine.rex".into(), fallback: None }) })
         }
         fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>> {
-            self.calls.lock().unwrap().push(format!("worktree create {} {}", req.asset_dir, req.branch));
+            self.calls.lock().unwrap().push(format!("worktree create {} {}", req.asset_dir.as_deref().unwrap_or("<site>"), req.branch));
             self.retry("child".into())
         }
         fn worktree_remove<'a>(&'a self, id: String, force: bool) -> OpFuture<'a, Result<bool>> {

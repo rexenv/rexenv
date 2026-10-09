@@ -1503,6 +1503,15 @@ honest footer —
   `commands::worktree` functions as the panel. The MCP levels: list/preview are Read,
   create is Changes (`manage` on the parent, which is only read), remove is Full
   (`destroy` on the worktree site). `remove` refuses a site that is not a worktree.
+- **A worktree of a site's OWN repository (Shape B, W10, #823)** is a LINKED site whose
+  folder git made, at `Worktrees/<domain>` BESIDE the sites folder. It cannot sit inside
+  the sites folder, because the linked-folder rule refuses that, and the rule stays. The
+  worktree is added before the row (a linked row needs its folder). Its job copies a fixed
+  list of ignored config files and points them at itself. It copies `vendor/` when the
+  `composer.lock` files are byte-identical, or installs otherwise. It copies the database
+  (WordPress, Laravel) and moves the URLs (WordPress). Delete goes through git, as for
+  Shape A. The UI is under the Repository tab's panel; `rex worktree <domain> add
+  <branch>` (one word) and the MCP `kind: "site"` reach it too.
 - **Delete and rename sweep every file named after the site — including its
   job logs.** Fixed-name files (override configs/logs, the tunnel log) have a
   `log_path(domain)` owner; the per-RUN logs (`site-provision-`, `wp-install-`,

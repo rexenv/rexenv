@@ -75,7 +75,8 @@ Shape A needs **site copy** (files + DB). Shape B reuses most of it.
 **Shape B (second): a site whose own root is a git checkout** (`repo_site_info.present`).
 That covers Laravel, Bedrock, Radicle, Blank PHP, Symfony… and a WordPress site whose whole
 docroot is a repo. Here the worktree IS the docroot: a linked child (`docroot_managed = 0`)
-at `<sites_dir>/<child-domain>/`, made by `git -C <parent-root> worktree add`. The ignored
+at `Worktrees/<child-domain>/` BESIDE the sites folder (as built, W10 — §9 Q8), made by
+`git -C <parent-root> worktree add`. The ignored
 files it needs are copied or rebuilt as §2.5 says.
 
 In both shapes the worktree folder is **never inside the parent's own tree**. A worktree
@@ -295,7 +296,7 @@ for Linux); the ledger rows say which OS the proof came from.
 | W7 | Adopt / Serve existing worktrees + prune (§2.7) | L1 leg: a worktree made by plain `git worktree add` gets served; its removal leaves the folder; ledger #5 |
 | W8 | UI: Worktrees section (asset row for Shape A, Repository tab for Shape B), child banner, Sites-list grouping, Re-clone DB | ✓ 10 Oct 2026 (Shape A) — `AssetWorktrees` under a git plugin/theme's repo panel (list, New-worktree dialog with live preview, Remove with a second yes for dirty), `WorktreeOfLine` on the child's header, a branch chip on the Sites row; six commands registered (parity: five `Gap` → W9, `worktree_relations` `Never`). `wk-checks/worktree.js` green, plant caught; ledger #821; SMOKE § Git worktree sites. **Not built**: Re-clone DB from parent (§9 question), Sites-list GROUPING under the parent (a chip only), Shape B's Repository-tab entry (W10) |
 | W9 | CLI `rex worktree …` + MCP `worktree` tool + dial levels | ✓ 10 Oct 2026 — `rex worktree <domain> list \| add <dir> <branch> [--theme --from --domain --skip-uploads] \| remove [--force]` (arms `worktree.list/add/remove`); the MCP tool is its OWN tool `worktree` (not an action on `repo`, whose whole surface is `run`): list/preview Read, create Changes, remove Full and worktree-only. L0 + a plant; ledger #822; parity: three called by name, `worktree_create`/`worktree_of` → `Tool("worktree")`. A live `rex` / real-MCP-client run is a SMOKE row |
-| W10 | **Shape B**: whole-site repo as a linked child (§2.5 ignored files, lockfile-identical vendor copy) | L1 leg B on a Laravel fixture repo |
+| W10 | **Shape B**: whole-site repo as a linked child (§2.5 ignored files, lockfile-identical vendor copy) | ✓ 10 Oct 2026 — `start` adds the worktree BEFORE the row at `Worktrees/<domain>` BESIDE the sites folder (the linked-folder rule refuses inside it — found by the first L1 run; §9 Q8); `drive_worktree_site` (config → deps → db → db_copy → urls); the request's asset became optional (CLI `add <branch>`, MCP `kind: "site"`, the Repository tab's panel). L1 `worktree_site_check` legs 9–12 ALL PASS (WordPress parent); ledger #823. The Laravel and Composer-WordPress `.env` legs and the vendor copy are unproven live |
 | W11 | Per-OS proof: L1 on macOS, Windows (Dell), Linux (UTM VM); SMOKE sections ×3; ARCHITECTURE/MAP/TESTING updated | ◐ 10 Oct 2026 — **Windows (Dell)**: `worktree_git_check` + `db_clone_check` green (cross-built with cargo-xwin; the fixture needed `commit.gpgsign=false` — the Dell signs every commit). **Linux (22.04 container)**: worktree/teardown/preflight/rehome/site_provision lib tests + `worktree_git_check` green. **Still owed**: Windows lib tests and `worktree_site_check` (a WordPress stack on the Dell); Linux `db_clone_check` + `worktree_site_check` on the UTM VM (the container's mysqld would not run as root); the GUI rows in SMOKE on both |
 
 ## 9. Owner's answers (9 Oct 2026) and what is still open
@@ -325,3 +326,8 @@ for Linux); the ledger rows say which OS the proof came from.
    Recommendation: (c) now, and (a) behind a per-OS check later if asked for.
 7. **"Re-clone DB from parent"** on a child (W8 left it out): wanted? It overwrites the
    child's database with a fresh copy of the parent's (a confirm, plus the URLs rehomed again).
+8. **Where Shape B worktree folders live** (decided by the agent 10 Oct 2026, reversible). They are
+   at `Worktrees/<domain>` BESIDE the sites folder (`~/rexenv/Worktrees/…`), because the
+   linked-folder rule refuses anything inside the sites folder. The alternative is an exception
+   to that rule for worktree children, which keeps them in `Sites/` but makes the rule
+   conditional. Fine as is?
