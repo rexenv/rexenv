@@ -243,7 +243,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
 
-- [ ] **On Windows, an example's `Reaped` PostgreSQL leaves `--forkchild` workers alive** (found 10 Oct 2026 on
+- [x] **On Windows, an example's `Reaped` PostgreSQL leaves `--forkchild` workers alive** ✓ 10 Oct 2026 — `Reaped::reap` runs `taskkill /PID <pid> /T /F` on Windows BEFORE terminating, while the parent link still names the children; `db_clone_check` then ran twice in a row on the Dell, both all green, the second not refused (found 10 Oct 2026 on
   the Dell running `db_clone_check`): the run passed, but an `io_worker` child of the sandbox postmaster kept
   listening on :13393 and holding the example's stdout. The ssh call hung, and the next run refused the port.
   `taskkill /T` on the postmaster pid after the fact took all but one. `Reaped::from_proc` kills the postmaster

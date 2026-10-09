@@ -1205,6 +1205,18 @@ impl Reaped {
     /// Stop the service and free its port. Idempotent.
     pub fn reap(&mut self) {
         if let Some(mut proc) = self.proc.take() {
+            // Windows has no process group that takes a master's children with it,
+            // and `sweep_port` below is lsof/ps/kill — a no-op there. PostgreSQL's
+            // `--forkchild` workers outlived a terminated postmaster on the Dell
+            // (10 Oct 2026), one still listening on the fixture port and holding
+            // the example's stdout open. So kill the TREE first, while the parent
+            // link still names the children (`taskkill /T` walks it).
+            #[cfg(windows)]
+            {
+                let _ = Command::new("taskkill")
+                    .args(["/PID", &self.pid.to_string(), "/T", "/F"])
+                    .output();
+            }
             proc.terminate();
             sweep_port(self.port, &self.marker);
         }

@@ -208,7 +208,7 @@ async fn main() -> std::process::ExitCode {
         Err(e) => {
             println!("FAIL: the child would not start: {e}");
             failures.push(format!("child start: {e}"));
-            return finish(&handle, &mysql, &plugin, &created, &db_file, failures);
+            return finish(&handle, &mysql, &plugin, &parent_root_of(&handle, &created), &created, &db_file, failures);
         }
     };
     created.extend(snap.site_id.clone());
@@ -232,7 +232,7 @@ async fn main() -> std::process::ExitCode {
 
     let Some(child) = fin.site_id.as_deref().and_then(site_of) else {
         failures.push("2: no child row".into());
-        return finish(&handle, &mysql, &plugin, &created, &db_file, failures);
+        return finish(&handle, &mysql, &plugin, &parent_root_of(&handle, &created), &created, &db_file, failures);
     };
     let rel = {
         let state = handle.state::<AppState>();
@@ -306,6 +306,10 @@ async fn main() -> std::process::ExitCode {
     std::fs::write(root.join("rexwt-branch.txt"), "main\n").unwrap();
     git_in(&root, &["init", "-q", "-b", "main"]);
     git_in(&root, &["add", "."]);
+    // rexenv's own mu-plugins stay UNTRACKED — nobody commits them — so the child
+    // gets them only from its own job, and they show as `??` there. That is the
+    // shape that made a clean site worktree refuse Delete (found on Windows).
+    git_in(&root, &["reset", "-q", "--", "wp-content/mu-plugins"]);
     git_in(&root, &["commit", "-q", "-m", "site"]);
     git_in(&root, &["checkout", "-q", "-b", "feature/site"]);
     std::fs::write(root.join("rexwt-branch.txt"), "site-feature\n").unwrap();
@@ -471,7 +475,19 @@ async fn main() -> std::process::ExitCode {
         other => failures.push(format!("8: parent delete gave {other:?}")),
     }
 
-    finish(&handle, &mysql, &plugin, &created, &db_file, failures)
+    finish(&handle, &mysql, &plugin, &parent_root_of(&handle, &created), &created, &db_file, failures)
+}
+
+/// The parent's folder (the first site this run created) — the repository a
+/// leftover SITE worktree is removed from.
+fn parent_root_of(handle: &tauri::AppHandle<tauri::test::MockRuntime>, created: &[String]) -> std::path::PathBuf {
+    let state = handle.state::<AppState>();
+    let conn = state.db.lock().unwrap();
+    created
+        .first()
+        .and_then(|id| sites::get(&conn, id).ok().flatten())
+        .map(|s| std::path::PathBuf::from(s.path))
+        .unwrap_or_default()
 }
 
 /// Tear down ONLY this run's records: the child's worktree through git (run in
@@ -480,6 +496,7 @@ fn finish(
     handle: &tauri::AppHandle<tauri::test::MockRuntime>,
     mysql: &SqlClient,
     plugin_repo: &Path,
+    site_repo: &Path,
     created: &[String],
     db_file: &Path,
     failures: Vec<String>,
@@ -492,9 +509,12 @@ fn finish(
         let Ok(Some(site)) = sites::get(&conn, id) else { continue };
         let wt = rexenv_lib::state::store::get_site_worktree(&conn, id).ok().flatten();
         if let Some(w) = &wt {
+            // From the repository the worktree belongs to: the plugin's for Shape A,
+            // the parent site's own for Shape B.
+            let repo = if w.shape == Some(rexenv_lib::state::models::WorktreeShape::Site) { site_repo } else { plugin_repo };
             let out = Command::new("git")
                 .args(["worktree", "remove", "--force", &w.worktree_path])
-                .current_dir(plugin_repo)
+                .current_dir(repo)
                 .output();
             println!("git worktree remove {} -> {:?}", w.worktree_path, out.map(|o| o.status));
         }

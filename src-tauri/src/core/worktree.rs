@@ -648,12 +648,38 @@ pub fn dirty_refusal(worktree: &Path, files: &[String]) -> String {
     )
 }
 
+/// The path in one `git status --porcelain` line (`XY path`, or `XY old -> new`
+/// for a rename — the new side), unquoted. Pure.
+fn porcelain_path(line: &str) -> &str {
+    let rest = line.get(3..).unwrap_or("").trim();
+    let rest = rest.rsplit(" -> ").next().unwrap_or(rest);
+    rest.trim_matches('"')
+}
+
+/// Is this porcelain line one of rexenv's OWN files — a `rexenv-*.php` it
+/// writes into a site's `mu-plugins/` (login, mail catch, scratch mail, DNS,
+/// tunnel)? rexenv regenerates those; they are never the user's work. Pure.
+///
+/// Found on Windows, 10 Oct 2026: a site worktree whose checkout carried them
+/// had them re-written by the job and read as uncommitted work, so even a CLEAN
+/// worktree site refused Delete. In the common case, where the repository does
+/// not track them, they show as `??` on every OS — the same refusal everywhere.
+pub fn is_rexenv_owned(porcelain_line: &str) -> bool {
+    let p = Path::new(porcelain_path(porcelain_line));
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let in_mu = p.parent().and_then(|d| d.file_name()).and_then(|n| n.to_str()) == Some("mu-plugins");
+    in_mu && name.starts_with("rexenv-") && name.ends_with(".php")
+}
+
 /// `git worktree remove` — git deletes the folder. Run from the REPOSITORY the
 /// worktree belongs to (`repo_dir`), never from inside the worktree itself.
-/// Without `force`, git refuses a worktree with changes; this checks first and
-/// refuses with [`dirty_refusal`]'s list, so the user sees the files, not
-/// git's one-line refusal. `force` is the user's "remove anyway" — and still
-/// only ever removes the worktree, never the branch.
+/// Without `force`, a worktree with uncommitted work is refused with
+/// [`dirty_refusal`]'s list, so the user sees the files, not git's one-line
+/// refusal. rexenv's own regenerable files ([`is_rexenv_owned`]) are not the
+/// user's work: they never make it refuse, and when they are the ONLY changes,
+/// git is told `--force` so its own check does not refuse on their account.
+/// `force` is the user's "remove anyway" — and still only ever removes the
+/// worktree, never the branch.
 #[allow(clippy::too_many_arguments)] // flat mirror of the step's inputs (clone_repo precedent)
 pub fn remove(
     supervisor: &dyn ProcessSupervisor,
@@ -665,15 +691,18 @@ pub fn remove(
     cancel: &CancelToken,
     on_line: &mut dyn FnMut(&str),
 ) -> Result<()> {
+    let mut force_git = force;
     if !force {
         let dirty = uncommitted(supervisor, git, env, worktree)?;
-        if !dirty.is_empty() {
-            return Err(Error::Other(dirty_refusal(worktree, &dirty)));
+        let theirs: Vec<String> = dirty.iter().filter(|l| !is_rexenv_owned(l)).cloned().collect();
+        if !theirs.is_empty() {
+            return Err(Error::Other(dirty_refusal(worktree, &theirs)));
         }
+        force_git = !dirty.is_empty();
     }
     let path = worktree.to_string_lossy().into_owned();
     let mut args: Vec<String> = vec!["worktree".into(), "remove".into()];
-    if force {
+    if force_git {
         args.push("--force".into());
     }
     args.push(path);
@@ -1005,5 +1034,30 @@ mod tests {
         assert!(!same_file(&d.join("a"), &d.join("missing")));
         assert!(!same_file(&d.join("missing"), &d.join("missing2")), "two absent files are not 'the same lock'");
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    /// **rexenv's own regenerable mu-plugins are never the user's uncommitted
+    /// work** (ledger #820's refinement, found on Windows). Plant: make
+    /// `is_rexenv_owned` return false and the Shape B Delete in
+    /// `worktree_site_check` refuses a clean site again.
+    #[test]
+    fn rexenv_owned_files_are_told_apart_from_the_users_work() {
+        for owned in [
+            "?? wp-content/mu-plugins/rexenv-dns.php",
+            " M wp-content/mu-plugins/rexenv-mail.php",
+            "?? web/app/mu-plugins/rexenv-login.php",
+            "?? \"site dir/wp-content/mu-plugins/rexenv-tunnel.php\"",
+        ] {
+            assert!(is_rexenv_owned(owned), "{owned}");
+        }
+        for theirs in [
+            "?? wip.txt",
+            " M wp-content/mu-plugins/my-loader.php",
+            "?? wp-content/plugins/rexenv-dns.php",
+            " M wp-content/mu-plugins/rexenv-notes.txt",
+            "R  wp-content/mu-plugins/rexenv-dns.php -> wp-content/mu-plugins/mine.php",
+        ] {
+            assert!(!is_rexenv_owned(theirs), "{theirs}");
+        }
     }
 }
