@@ -1171,6 +1171,12 @@ route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu
    is a row in `SMOKE-TEST.md`'s Linux section; a ledger row resting on one says `◐ (Docker
    only)` until the VM run flips it.
 
+**An ssh session from the Mac carries `LC_CTYPE=UTF-8`, which is no locale on Linux** (10 Oct
+2026). PostgreSQL's `initdb` refuses it ("invalid locale settings"), so `db_clone_check` and every
+example that initdb's died on the VM over ssh. The binary was never the cause. Run those
+with `LC_ALL=C.UTF-8`, or drop `SendEnv LC_*` for the VM host. A desktop session has a real
+locale and never sees this.
+
 **The trap every Linux host here shares, measured 28 Sep 2026: its DNS upstream is a machine
 running rexenv.** The UTM VM resolves through the Mac (whose `/etc/resolver/rex` answers
 loopback) and WSL through Windows (NRPT), so `*.rex → 127.0.0.1` is true on them with NO route
