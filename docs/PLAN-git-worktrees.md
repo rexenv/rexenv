@@ -323,11 +323,14 @@ for Linux); the ledger rows say which OS the proof came from.
    - (c) do not adopt Shape A at all, and only offer adopt for Shape B (a whole-site repo,
      where the worktree IS the docroot, so a linked site serves it in place).
 
-   Recommendation: (c) now, and (a) behind a per-OS check later if asked for.
-7. **"Re-clone DB from parent"** on a child (W8 left it out): wanted? It overwrites the
-   child's database with a fresh copy of the parent's (a confirm, plus the URLs rehomed again).
+   **DECIDED 10 Oct 2026 (owner: "suggest"; agent chose c):** adopt Shape B only — the whole-site
+   worktree another tool made (Claude Code's `.claude/worktrees/<name>`, a plain `git worktree
+   add`) is served as a linked child; a plugin worktree made elsewhere is not adopted.
+7. **"Re-clone DB from parent"** — **DECIDED 10 Oct 2026 (owner: build it if there is a use):**
+   there is (a child whose data drifted, wanted fresh from the parent): a button on the child,
+   confirm, then `dbclone` + rehome again.
 8. **Where Shape B worktree folders live** (decided by the agent 10 Oct 2026, reversible). They are
    at `Worktrees/<domain>` BESIDE the sites folder (`~/rexenv/Worktrees/…`), because the
    linked-folder rule refuses anything inside the sites folder. The alternative is an exception
    to that rule for worktree children, which keeps them in `Sites/` but makes the rule
-   conditional. Fine as is?
+   conditional. **DECIDED 10 Oct 2026 (owner): fine as is.**

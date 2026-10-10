@@ -300,16 +300,22 @@ Stages, each shippable on its own:
 1. **Plugin distribution** — ANSWERED 9 Oct 2026: **in-app zip only for v1**. wordpress.org
    is a later decision. The plugin is still written to its guidelines (GPL, no
    phoning home, nonce/capability checks), so that door stays open.
-2. **Name** — "rexenv Sync" for the plugin / "Live" for the tab — fine?
-3. **Huge uploads** — offer "skip uploads older than N months" / "uploads on demand"
-   (fetch a missing image from live the first time it is requested locally, via a local
-   nginx fallback rule)? The second is how several hosts' staging tools stay fast.
-4. **Linux with no Secret Service** — refuse with a sentence, or a 0600 file under
-   app-data?
-5. **Basic-auth / IP-allowlisted live sites** — support in v1 or later?
-6. **Anonymise on pull** — wanted (privacy for agencies handling client data), or later?
-7. **Push scope default** — whole DB minus live-owned tables (recommended), or files-only
-   by default with DB as an explicit opt-in (safer, less useful)?
+2. **Name** — DECIDED 10 Oct 2026 (owner: "do them all" — the agent's defaults stand): "rexenv Sync" / the "Live" tab.
+3. **Huge uploads** — DECIDED 10 Oct 2026: "skip uploads older than N months" ships with the
+   pull (an `exclude`-style filter the plugin applies by mtime); uploads-on-demand (a local
+   nginx fallback that fetches a missing file from live) is S3 work, after push.
+4. **Linux with no Secret Service** — DECIDED 10 Oct 2026 (owner): a 0600 file. And, asked the
+   same morning, **macOS too**: rexenv is ad-hoc signed, so every update changes the code
+   identity a keychain item is bound to and would prompt after each update; the owner chose
+   the 0600 file. So `SecretStore` is ONE implementation on every OS: an owner-only file under
+   app data through `PermissionManager::write_private` (0600 on macOS/Linux, the owner-only
+   ACL on Windows, #597) — no keychain, no Credential Manager, no Secret Service.
+5. **Basic-auth / IP-allowlisted live sites** — DECIDED 10 Oct 2026: HTTP basic auth is an
+   optional user:password stored beside the key and sent as `Authorization`; IP allowlists are
+   the host's business (the pull says "a firewall refused").
+6. **Anonymise on pull** — DECIDED 10 Oct 2026: later (S3), after push — it is its own feature
+   (which columns, which tables, per plugin).
+7. **Push scope default** — DECIDED 10 Oct 2026: whole DB minus the live-owned tables.
 8. **MCP push** — ANSWERED 9 Oct 2026: **a push needs a human click.** Push and Roll back
    are never MCP actions, at any dial level (invariant #7). That holds even after v1; it
    is not a v1 limit.
