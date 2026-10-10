@@ -3294,7 +3294,16 @@ IPC surface — which is how a reader ends up designing against a system with on
   LaunchDaemon brought caddy up 70 s after login-start had already told the user to press Start
   all. When the supervisor is installed and enabled (macOS LaunchDaemon, Linux systemd unit) it
   now polls the admin socket for up to 120 s and adopts the edge; Windows' edge has no boot
-  supervisor and does not wait. **A login that finds rexenv already running still starts the stack:** the
+  supervisor and does not wait. **A manual Start all waits for it too** (#851): within minutes of
+  a macOS boot the LaunchDaemon's caddy is spawned but silent — Background Task Management holds it
+  ~160 s for its first-run launch constraint, then Gatekeeper/XProtect scan the ad-hoc binary (the
+  15.8 VM: socket 224 s after the spawn). A `rex start` in that window used to reinstall the daemon
+  (an admin prompt, a bootout of the half-started job), wait 5 s and say "its admin socket never came
+  up". Start all now asks the supervisor how old its edge process is
+  (`EdgeSupervisor::supervised_process_age`: launchd's pid / systemd's `MainPID`, aged by `ps`);
+  younger than `EDGE_BOOT_START_GRACE` (6 min) and switched on → it polls the socket and adopts the
+  edge when it answers. Older and silent is wedged — the reinstall stands. Login-start waits by the
+  same clock, never less than its 120 s. **A login that finds rexenv already running still starts the stack:** the
   `--hidden` launch hands off with `{"cmd":"app.open","args":{"login":true}}`
   (`cli_server::handoff_request`, the same line over the unix socket and Windows' pipe), and the
   running instance runs login-start instead of raising its window — once per process, held

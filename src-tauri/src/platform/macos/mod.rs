@@ -1464,6 +1464,19 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         }
     }
 
+    /// launchd's pid for the label (`launchctl print system/<label>`, readable without privilege —
+    /// present from the spawn on, while launchd still holds the job in `xpcproxy`), aged by `ps`.
+    fn supervised_process_age(&self) -> Option<std::time::Duration> {
+        let print = std::process::Command::new("launchctl")
+            .args(["print", &format!("system/{EDGE_DAEMON_LABEL}")])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())?;
+        let pid = crate::platform::edge_age_rules::launchctl_pid(&String::from_utf8_lossy(&print.stdout))?;
+        let ps = std::process::Command::new("/bin/ps").args(["-o", "etime=", "-p", &pid.to_string()]).output().ok()?;
+        crate::platform::edge_age_rules::ps_etime(&String::from_utf8_lossy(&ps.stdout))
+    }
+
     /// The plist. `KeepAlive = {PathState: {<flag>: true}}` — up now, after every death and
     /// after every boot WHILE the flag exists, and left alone once Stop all removes it (no
     /// `RunAtLoad`: the path condition starts the job at load, measured; `RunAtLoad` would

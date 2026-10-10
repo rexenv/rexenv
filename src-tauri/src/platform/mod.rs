@@ -3,6 +3,10 @@
 //! is chosen at compile time via `#[cfg(target_os = "...")]`.
 
 pub mod traits;
+// The pid/etime text rules behind `EdgeSupervisor::supervised_process_age` (#851). Windows has no
+// edge supervisor, so nothing there reads them.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
+pub(crate) mod edge_age_rules;
 
 // Resolver files: the macOS route, and the fixture classification the core's test platforms share (#617).
 pub(crate) mod resolver_files;

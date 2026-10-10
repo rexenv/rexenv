@@ -860,6 +860,18 @@ impl EdgeSupervisor for LinuxEdge {
             Err(_) => true,
         }
     }
+
+    /// The unit's `MainPID` (`systemctl show`, no privilege; `0` = no process), aged by `ps`.
+    fn supervised_process_age(&self) -> Option<std::time::Duration> {
+        let show = crate::platform::command("systemctl")
+            .args(["show", "-p", "MainPID", "--value", units::EDGE_UNIT])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())?;
+        let pid = crate::platform::edge_age_rules::systemd_main_pid(&String::from_utf8_lossy(&show.stdout))?;
+        let ps = crate::platform::command("ps").args(["-o", "etime=", "-p", &pid.to_string()]).output().ok()?;
+        crate::platform::edge_age_rules::ps_etime(&String::from_utf8_lossy(&ps.stdout))
+    }
     fn plist_contents(&self, wrapper: &Path, start_log: &Path) -> String {
         units::edge_unit_contents(wrapper, start_log)
     }

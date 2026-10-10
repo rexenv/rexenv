@@ -111,6 +111,27 @@ pub fn login_edge_waits_for_boot(action: &LoginEdgeAction, supervisor_installed:
     matches!(action, LoginEdgeAction::SkipNeedsPrompt) && supervisor_installed && supervisor_enabled
 }
 
+/// How long after its OS supervisor spawned the edge a silent admin socket still means STARTING,
+/// not wedged. Measured on the 15.8 VM after a boot (10 Oct 2026): launchd spawned the daemon 39 s
+/// after boot, Background Task Management's first-run constraint held it in `xpcproxy` for 160 s,
+/// Gatekeeper/XProtect scanned the ad-hoc caddy for another ~60 s, and the socket answered 224 s
+/// after the spawn. Six minutes leaves room for a slower machine; past it the old answer stands —
+/// reinstall, which is what heals a wedged daemon.
+pub const EDGE_BOOT_START_GRACE: Duration = Duration::from_secs(360);
+
+/// How much longer a Start all should wait for an edge its OS supervisor is still starting, instead
+/// of reinstalling it (ledger #851). `None` = nothing is starting: the socket answers, there is no
+/// supervisor or it is switched off (an explicit Stop all), it runs no process, or that process is
+/// older than [`EDGE_BOOT_START_GRACE`] (wedged, not starting). Before this, a `rex start` within
+/// minutes of a macOS boot bootout-ed the half-started daemon through an admin prompt, waited 5 s,
+/// and said "its admin socket never came up" — while launchd brought it up a minute later anyway.
+pub fn edge_start_wait(alive: bool, installed: bool, enabled: bool, age: Option<Duration>) -> Option<Duration> {
+    if alive || !installed || !enabled {
+        return None;
+    }
+    EDGE_BOOT_START_GRACE.checked_sub(age?).filter(|left| !left.is_zero())
+}
+
 pub fn login_edge_action(plan: &Option<EdgePlan>) -> LoginEdgeAction {
     match plan {
         None => LoginEdgeAction::AlreadyServing,
@@ -3233,6 +3254,28 @@ mod tests {
             login_edge_action(&Some(high_port)),
             LoginEdgeAction::StartUnprivileged
         ));
+    }
+
+    /// Ledger #851 — a Start all waits for an edge only while its supervisor is still starting it.
+    #[test]
+    fn start_all_waits_only_for_an_edge_its_supervisor_is_still_starting() {
+        let young = Some(Duration::from_secs(60));
+        assert_eq!(edge_start_wait(false, true, true, young), Some(EDGE_BOOT_START_GRACE - Duration::from_secs(60)));
+        assert_eq!(edge_start_wait(true, true, true, young), None, "an answering edge is adopted, not waited on");
+        assert_eq!(edge_start_wait(false, false, true, young), None, "no supervisor: nothing is coming");
+        assert_eq!(edge_start_wait(false, true, false, young), None, "switched off: an explicit Stop all");
+        assert_eq!(edge_start_wait(false, true, true, None), None, "no process: nothing is starting");
+        assert_eq!(edge_start_wait(false, true, true, Some(EDGE_BOOT_START_GRACE)), None, "old and silent = wedged");
+        assert!(EDGE_BOOT_START_GRACE >= Duration::from_secs(224 + 60), "the 15.8 VM's socket came 224 s after the spawn");
+        // TEXT: the manual Start all asks before it reinstalls, and login-start's wait honours it too.
+        let cmd = crate::core::copy_scan::production_source(include_str!("../commands/services.rs"));
+        let start = &cmd[cmd.find("pub async fn start_stack").expect("Start all")..];
+        let start = &start[..start.find("\n}\n").expect("its end")];
+        let wait = start.find("wait_for_starting_edge(").expect("Start all no longer waits for a starting edge");
+        let reinstall = start.find("start_edge_daemon(").expect("the reinstall");
+        assert!(wait < reinstall, "the wait comes after the reinstall it was meant to prevent");
+        let login = &cmd[cmd.find("async fn auto_start_inner").expect("login-start")..];
+        assert!(login.contains("wait_for_starting_edge("), "login-start waits by its own clock again");
     }
 
     /// Ledger #743 — login-start waits for the boot supervisor only when it is coming: installed

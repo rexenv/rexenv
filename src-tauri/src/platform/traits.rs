@@ -1041,6 +1041,16 @@ pub trait EdgeSupervisor: Send + Sync {
     /// supervised edge stays down; readable without privilege. Return `true` when the state
     /// can't be determined (avoid a false "disabled" diagnosis).
     fn is_enabled(&self) -> bool;
+    /// How long the edge process the OS supervisor runs RIGHT NOW has existed — `None` when it runs
+    /// none, or there is no supervisor (Windows). Read without privilege (macOS: launchd's pid for the
+    /// label, Linux: the unit's `MainPID`, then `ps`). It tells an edge that is still STARTING from one
+    /// that is wedged: after a boot macOS holds the LaunchDaemon's caddy ~4 minutes before its admin
+    /// socket answers (Background Task Management's first-run constraint, then Gatekeeper/XProtect on
+    /// an ad-hoc binary — the 15.8 VM, 10 Oct 2026), and a Start all in that window used to reinstall
+    /// it and report "never came up" (ledger #851).
+    fn supervised_process_age(&self) -> Option<std::time::Duration> {
+        None
+    }
     /// Path of the OS supervisor definition (macOS: the root LaunchDaemon plist).
     fn plist_path(&self) -> PathBuf;
     /// Path of the root-owned launcher the supervisor runs.

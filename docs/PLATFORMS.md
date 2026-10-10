@@ -153,6 +153,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   → ad-hoc codesign **LAST** (a relink after the signature invalidates it).
 - **Privileged prompts run in the foreground.** A backgrounded osascript cannot show the
   auth dialog; it just hangs.
+- **A LaunchDaemon is not running just because launchd spawned it.** After a boot the edge's
+  job sits in `xpcproxy` ~160 s ("Requesting first run LWCR update" — Background Task Management's
+  launch constraint), then Gatekeeper/XProtect scan the ad-hoc caddy ~60 s more: the admin socket
+  answered 224 s after the spawn on the 15.8 VM (10 Oct 2026, read from `log show`). launchd prints
+  a `pid` the whole time. Judge a supervised service by its socket AND the age of that pid — a
+  young silent one is starting, not dead (#851).
 - **CA trust is a USER op into the login keychain.** The System keychain is unreachable from
   a detached-root osascript.
 - **TLS leaves ≤ 398 days** — Safari/WebKit rejects longer leaves even with the CA trusted

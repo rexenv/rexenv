@@ -2346,6 +2346,12 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   ✓ **30 Sep 2026 (15.8 VM, this tree's build, a power-cut reboot):** the app at login 02:10:40,
   caddy answering 200 by 02:13, the app log with NO "needs Start all"; the agent handed back 100 s
   after login. (The Stop-all half was not re-run.)
+- [x] **`rex start` within minutes of a reboot waits for the edge** (ledger #851): stack up, reboot,
+  run `rex start` as soon as the app answers → no admin prompt, it may take a few minutes, then
+  "✓ start done" with Caddy running; the app log says "its OS supervisor is still starting it —
+  waiting up to N s". **Tell:** an admin prompt, or "its admin socket never came up".
+  ✓ 11 Oct 2026, 15.8 VM, this tree's release build: `rex start` at +27 s, exit 0 ~2.5 min later.
+  Linux: its edge unit starts in seconds; the row matters only on a machine where it does not.
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The

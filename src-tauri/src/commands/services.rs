@@ -183,10 +183,16 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
     // comes up still fails HERE naming itself + its log (M3).
     core::service_manager::await_ready(checks).await?;
     // Phase 3 (locked briefly): gate the edge start now that backends are ready.
-    let plan = {
+    let mut plan = {
         let mut mgr = state.services.lock().await;
-        mgr.prepare_edge(state.platform.as_ref(), caddyfile)?
+        mgr.prepare_edge(state.platform.as_ref(), caddyfile.clone())?
     };
+    // An edge its OS supervisor is still STARTING (minutes after a macOS boot) is coming, not
+    // wedged: wait for it and adopt it, instead of a privileged reinstall that boots it out and then
+    // calls it dead after 5 s (ledger #851). Only a plan that would reinstall is worth the wait.
+    if plan.as_ref().is_some_and(|p| p.privileged) && wait_for_starting_edge(state, std::time::Duration::ZERO).await {
+        plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;
+    }
     // Phase 4 (UNLOCKED): the privileged edge start blocks on the admin-password
     // prompt — with the services lock free, status polls keep working meanwhile.
     if let Some(plan) = plan {
@@ -209,6 +215,34 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
     // passes while all traffic lands on the other tool. Fail Start-all honestly,
     // naming the interceptor, instead of reporting a stack that can't serve.
     verify_edge_wire(state).await
+}
+
+/// Wait, bounded, for an edge its OS supervisor is still starting; `true` once its admin socket
+/// answers. It only polls — no privilege, no services lock held (ledger #851). The bound is what
+/// `edge_start_wait` leaves of the start-up grace, and never less than `floor` (login-start keeps
+/// its #743 minimum). Nothing starting and no floor → it returns at once.
+async fn wait_for_starting_edge(state: &AppState, floor: std::time::Duration) -> bool {
+    let platform = state.platform.as_ref();
+    let edge = platform.edge();
+    let starting = core::service_manager::edge_start_wait(
+        core::proxy::admin_alive(platform),
+        edge.is_installed(),
+        edge.is_enabled(),
+        edge.supervised_process_age(),
+    );
+    let wait = starting.unwrap_or_default().max(floor);
+    if let Some(left) = starting {
+        log::info!(
+            "edge: its OS supervisor is still starting it — waiting up to {} s for its admin socket \
+             instead of reinstalling it",
+            left.max(floor).as_secs()
+        );
+    }
+    let deadline = tokio::time::Instant::now() + wait;
+    while !core::proxy::admin_alive(platform) && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    core::proxy::admin_alive(platform)
 }
 
 /// Positive wire-identity gate shared by Start-all and login auto-start: OUR edge
@@ -375,16 +409,14 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
     // admin socket, then adopt it — rather than tell the user to press Start all for an edge the
     // OS starts by itself (ledger #743). The socket poll touches nothing; `prepare_edge` runs once
     // more only when there is something to adopt.
+    // The wait is at least `LOGIN_EDGE_BOOT_WAIT`, and longer while the supervisor's process is still
+    // inside its start-up grace (#851: the 15.8 VM's socket came 224 s after the spawn).
     let edge = state.platform.edge();
     let action = core::service_manager::login_edge_action(&plan);
-    if core::service_manager::login_edge_waits_for_boot(&action, edge.is_installed(), edge.is_enabled()) {
-        let deadline = tokio::time::Instant::now() + core::service_manager::LOGIN_EDGE_BOOT_WAIT;
-        while !core::proxy::admin_alive(state.platform.as_ref()) && tokio::time::Instant::now() < deadline {
-            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-        }
-        if core::proxy::admin_alive(state.platform.as_ref()) {
-            plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;
-        }
+    if core::service_manager::login_edge_waits_for_boot(&action, edge.is_installed(), edge.is_enabled())
+        && wait_for_starting_edge(state, core::service_manager::LOGIN_EDGE_BOOT_WAIT).await
+    {
+        plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;
     }
     // Guard 2 is the pure `login_edge_action` decision (tested in core): a
     // privileged plan would show an auth prompt at login — skipped, surfaced.

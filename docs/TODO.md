@@ -177,7 +177,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (Windows launch row) and again on the Dell right after the 0.8.13 `/S` install (PUBLISH-TESTING §A
   0.8.13): `rex start` returned done, Caddy stayed idle, no log line; a second `rex start` brought it
   up and three exact re-runs did not reproduce it. Not #806 (that edge was live). Next: log the
-  reason whenever `prepare_edge` plans no start, then catch it.
+  reason whenever `prepare_edge` plans no start, then catch it. **Third sighting, the Dell, 10 Oct
+  2026 23:27:** `rex stop`, the app relaunched (a new build swapped in), `rex start` 10 s later →
+  "done", Caddy idle; the app log's only edge line is health's `[edge-down] … stopped answering`
+  at 23:27:31 — five seconds after that start — so the manager DID hold an edge handle that died
+  (not "never spawned"). A second `rex start` brought it up. caddy-stdout.log for that minute was
+  not read (the Dell then dropped off the network).
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).
@@ -226,13 +231,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
-- [ ] **`rex start` right after a macOS boot fails on the edge instead of waiting for it** — seen on
+- [x] **`rex start` right after a macOS boot fails on the edge instead of waiting for it** — seen on
   the macOS 15.8 VM, 10 Oct 2026: within ~2 minutes of login, `rex start` answered "the Caddy edge
   daemon was installed but its admin socket never came up — check logs/caddy-start.log", and a
   `rex site create` in the same window failed the same way (Retry worked). The root LaunchDaemon's
   Caddy comes up ~3 min after boot (memory of the 30 Sep run); a minute later the health log said
   "re-adopted (sites were being served the whole time)". The start should wait for (or adopt) a
   daemon that is still starting, or say that it is starting, not that it never came up.
+  ✓ 11 Oct 2026 (#851): Start all waits for an edge whose supervisor process is under 6 min old and
+  adopts it; on the 15.8 VM a `rex start` 27 s after boot waited out the edge's `xpcproxy` hold and
+  exited 0 with no prompt. The cause was macOS: Background Task Management + XProtect, ~224 s.
 
 ### Open work that was living inside ticked rows
 
