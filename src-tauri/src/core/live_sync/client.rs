@@ -114,6 +114,11 @@ pub fn safe_rel(rel: &str) -> bool {
 /// asked for: a missing terminator (a cut-off transfer looks just like a short
 /// one), anything after it, a path not in `asked` or not [`safe_rel`], a size that
 /// runs past the end, or bytes whose sha256 is not the header's. Pure.
+/// The largest single file a pull takes (1 GiB): a frame header claiming more
+/// is refused BEFORE anything is allocated for it (#837). A site that wants to
+/// fill the disk with one "file" gets this sentence instead.
+pub const MAX_FILE_BYTES: u64 = 1 << 30;
+
 pub fn parse_frame(frame: &[u8], asked: &HashSet<String>) -> Result<Vec<FrameRecord>> {
     let bad = |why: &str| Error::Other(format!("the site's file transfer was not intact: {why}"));
     let mut at = 0usize;
@@ -133,6 +138,9 @@ pub fn parse_frame(frame: &[u8], asked: &HashSet<String>) -> Result<Vec<FrameRec
         let h: FrameHeader = serde_json::from_slice(header).map_err(|_| bad("a header is not JSON"))?;
         if !safe_rel(&h.path) || !asked.contains(&h.path) {
             return Err(bad(&format!("a file nobody asked for ({})", h.path)));
+        }
+        if h.size > MAX_FILE_BYTES {
+            return Err(bad(&format!("{} is {} MB — larger than a pull takes", h.path, h.size >> 20)));
         }
         let size = usize::try_from(h.size).map_err(|_| bad("a size too large"))?;
         let bytes = frame.get(at..at + size).ok_or_else(|| bad("a file runs past the end"))?.to_vec();
@@ -488,6 +496,14 @@ mod tests {
         lie[at] = b'X';
         lie.extend(0u32.to_be_bytes());
         assert!(parse_frame(&lie, &asked(&["a.txt"])).unwrap_err().to_string().contains("checksum"));
+        // A header claiming more than the ceiling is refused before its bytes are
+        // looked at — let alone allocated (#837). Plant: drop the ceiling and this
+        // reads "runs past the end" instead.
+        let h = serde_json::to_vec(&serde_json::json!({ "path": "big.bin", "size": MAX_FILE_BYTES + 1, "mtime": 1, "sha256": "00" })).unwrap();
+        let mut huge = (h.len() as u32).to_be_bytes().to_vec();
+        huge.extend(h);
+        huge.extend_from_slice(b"xx");
+        assert!(parse_frame(&huge, &asked(&["big.bin"])).unwrap_err().to_string().contains("larger than a pull takes"));
     }
 
     /// **Nothing a site sends can be written outside the pull folder** (ledger

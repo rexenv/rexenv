@@ -21,7 +21,10 @@
 //!   7. the backup holds live's previous posts;
 //!   8. rollback removes both;
 //!   9. a table live changed since the base STOPS the push with nothing sent;
-//!  10. overriding it pushes.
+//!  10. overriding it pushes;
+//!  11. (#837) an export stream that reaches for another database, the `mysql`
+//!      schema or a new user fails under the scoped import user — nothing it
+//!      named exists afterwards — while a plain table import under it succeeds.
 //!
 //! Does NOT prove: HTTPS, a real host, a table prefix that differs (both fixtures
 //! use `wp_`), files deleted on live (never deleted locally in v1).
@@ -276,6 +279,40 @@ async fn main() -> std::process::ExitCode {
     let over = push::push_from(&client, &target, Some(&stale_base), &opts2, &mut sink).await;
     let over_why = match &over { Ok(_) => "ok".to_string(), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
     check(over.is_ok() && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-CHANGED-SINCE'") == "0", &format!("10. overriding the conflict pushes that table (live's newer post is gone, as warned) — {over_why}"));
+
+    // 11. The scoped import: a hostile stream cannot leave the staging database.
+    {
+        let stage = format!("{db}_hostile_probe_stage");
+        let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &stage);
+        DbEngine::Mysql.create_database(&mysql, database::MYSQL_PORT, &stage).unwrap();
+        std::fs::create_dir_all(&scratch).unwrap();
+        let hostile = scratch.join("hostile.sql");
+        let mut outcomes = Vec::new();
+        for (what, sql) in [
+            ("another database", format!("CREATE DATABASE `{db}_hostile_probe`;")),
+            ("the mysql schema", "SELECT user FROM mysql.user;".to_string()),
+            ("a new user", "CREATE USER 'rexhostile'@'127.0.0.1' IDENTIFIED BY 'x';".to_string()),
+            ("a sibling site's table", format!("DROP TABLE `{}`.wp_options;", local.db_name)),
+        ] {
+            std::fs::write(&hostile, sql).unwrap();
+            outcomes.push((what, DbEngine::Mysql.import_from_file_scoped(&mysql, database::MYSQL_PORT, &stage, &hostile).is_err()));
+        }
+        std::fs::write(&hostile, "CREATE TABLE probe (id INT); INSERT INTO probe VALUES (1);").unwrap();
+        let plain_ok = DbEngine::Mysql.import_from_file_scoped(&mysql, database::MYSQL_PORT, &stage, &hostile).is_ok();
+        let probe_db = query(&mysql, "mysql", &format!("SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='{db}_hostile_probe'"));
+        let probe_user = query(&mysql, "mysql", "SELECT COUNT(*) FROM mysql.user WHERE user='rexhostile'");
+        let sibling = query(&mysql, &local.db_name, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='wp_options'");
+        let leftover_users = query(&mysql, "mysql", "SELECT COUNT(*) FROM mysql.user WHERE user LIKE 'rexpull_%'");
+        check(
+            outcomes.iter().all(|(_, refused)| *refused) && plain_ok && probe_db == "0" && probe_user == "0" && sibling == "1" && leftover_users == "0",
+            &format!("11. the scoped import refuses {:?}; a plain table imports; no probe db/user, the sibling table intact, no import user left behind (db={probe_db} user={probe_user} sibling={sibling} leftover={leftover_users})", outcomes),
+        );
+        let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &stage);
+        let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &format!("{db}_hostile_probe"));
+        // A PLANTED run (the grant widened) lets the probes through: clean what they would make.
+        let _ = query(&mysql, "mysql", "DROP USER IF EXISTS 'rexhostile'@'127.0.0.1'");
+        let _ = std::fs::remove_file(&hostile);
+    }
 
     // Teardown: both sites' databases and rows, the backup, the scratch dir.
     {

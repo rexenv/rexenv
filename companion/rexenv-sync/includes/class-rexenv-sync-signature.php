@@ -94,13 +94,18 @@ final class Rexenv_Sync_Signature {
 		if ( empty( $pairing['key_id'] ) || ! hash_equals( (string) $pairing['key_id'], (string) $headers['x-rexsync-key'] ) ) {
 			return 'unknown_key';
 		}
-		$ts = $headers['x-rexsync-ts'];
-		if ( ! ctype_digit( $ts ) || abs( (int) $now - (int) $ts ) > self::MAX_SKEW ) {
-			return 'clock_skew';
-		}
+		// The signature BEFORE the clock (10 Oct 2026, the security review): the
+		// skew refusal carries this site's exact time, and the key id's validity
+		// with it. Both are for a caller who holds the secret, not for anyone who
+		// guessed a key id. A stale ts still fails here when the caller cannot
+		// sign; a signed-but-stale one is told the time below.
+		$ts       = (string) $headers['x-rexsync-ts'];
 		$expected = self::sign( $pairing['secret'], self::canonical( $method, $path, $query, $ts, $headers['x-rexsync-nonce'], $body ) );
 		if ( ! hash_equals( $expected, (string) $headers['x-rexsync-sig'] ) ) {
 			return 'bad_signature';
+		}
+		if ( ! ctype_digit( $ts ) || abs( (int) $now - (int) $ts ) > self::MAX_SKEW ) {
+			return 'clock_skew';
 		}
 		if ( call_user_func( $seen, hash( 'sha256', $pairing['key_id'] . '|' . $headers['x-rexsync-nonce'] ) ) ) {
 			return 'replayed';

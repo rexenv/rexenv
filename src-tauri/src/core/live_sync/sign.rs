@@ -106,6 +106,12 @@ pub fn parse_key(text: &str) -> Result<PairingKey> {
              connection. Turn on HTTPS for the live site first."
         )));
     }
+    // The host is what `search-replace` and every "from" sentence carry (#837):
+    // a hostname's characters, nothing a shell, a regex or a path would read.
+    let host = url["https://".len()..].split('/').next().unwrap_or("");
+    if host.is_empty() || !host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-' || b == b':') {
+        return Err(bad());
+    }
     Ok(PairingKey { site_url: url.trim_end_matches('/').to_string(), key_id: key_id.to_string(), secret })
 }
 

@@ -75,9 +75,11 @@ rexsync1
 The plugin's check, **in this order and before it reads any argument** (plan invariant #4):
 1. All four headers are present, and `key_id` names the current pairing. Otherwise `401
    unknown_key`.
-2. `|now − ts| ≤ 300`. Otherwise `401 clock_skew`, with the plugin's `now` in the body so rexenv
-   can say "this machine's clock is N minutes off".
-3. Recompute the signature and compare it with `hash_equals`. Otherwise `401 bad_signature`.
+2. Recompute the signature and compare it with `hash_equals`. Otherwise `401 bad_signature`.
+3. `|now − ts| ≤ 300`. Otherwise `401 clock_skew`, with the plugin's `now` in the body so rexenv
+   can say "this machine's clock is N minutes off". AFTER the signature (changed 10 Oct 2026,
+   the security review): the time, and the fact that the key id is current, are for a caller
+   who holds the secret — not for anyone with a guessed key id and three headers.
 4. The nonce has not been seen within 600 s. It is stored as a transient keyed by
    `sha256(key_id|nonce)`. Otherwise `401 replayed`.
 5. Only then is the route's own handler called.

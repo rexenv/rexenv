@@ -172,7 +172,15 @@ pub async fn push_from(
         Ok(Ok(b)) => b,
         Ok(Err(Conflicts(list))) => {
             let _ = local.engine.drop_database(local.client, local.port, &copy);
-            return Err(PushStop::Conflicts(list));
+            // Only names rexenv asked about: the list is the site's to send, and a
+            // site could pad it to nudge an override (#837). Anything else is a
+            // refusal, not a choice to offer.
+            let asked: Vec<&String> = tables.iter().chain(files.iter()).collect();
+            let (ours, theirs): (Vec<String>, Vec<String>) = list.into_iter().partition(|c| asked.contains(&c));
+            if ours.is_empty() {
+                return Err(PushStop::Failed(Error::Other(format!("the site named conflicts rexenv did not ask about ({}) — nothing was sent.", theirs.join(", ")))));
+            }
+            return Err(PushStop::Conflicts(ours));
         }
         Err(e) => {
             let _ = local.engine.drop_database(local.client, local.port, &copy);

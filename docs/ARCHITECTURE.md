@@ -1484,7 +1484,13 @@ honest footer —
   the same `commands::live_sync` functions as the tab: status/diff are Read, pull is Full
   (`destroy` — it overwrites the local site); push and rollback exist on the CLI only with
   `--confirm <live-host>` (the app compares it) and on the MCP server not at all; pairing
-  is neither (the key would land in shell history).
+  is neither (the key would land in shell history). **The live site is not trusted** (#837,
+  the security review of 10 Oct 2026): its export stream is imported under a throwaway MySQL
+  user granted on the staging database only (as root it could have reached every other local
+  database), a file is at most 1 GiB and the list must fit the disk before the first byte, the
+  conflict list is kept to what rexenv asked about, and the plugin reveals its clock only to
+  a caller who signed. What a pull cannot make safe: the files ARE the site's code and run
+  locally under its PHP — pulling a site means running it.
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request

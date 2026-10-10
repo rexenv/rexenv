@@ -125,7 +125,9 @@ pub async fn pull_into(
         for t in &m.tables {
             let file = local.scratch.join(format!("pull-{}.sql", t.name));
             let rows = client.export_table(&t.name, &file).await?;
-            let imported = local.engine.import_from_file(local.client, local.port, &stage, &file);
+            // Data from a machine rexenv does not control: under a user that can
+            // reach the staging database and nothing else (#837).
+            let imported = local.engine.import_from_file_scoped(local.client, local.port, &stage, &file);
             let _ = std::fs::remove_file(&file);
             imported?;
             report.rows += rows;
@@ -185,12 +187,32 @@ pub async fn pull_into(
     // ── 4. files ────────────────────────────────────────────────────────
     let mut excludes: Vec<&str> = DEFAULT_EXCLUDES.to_vec();
     excludes.extend(options.excludes.iter().map(String::as_str));
-    let files = client.list_files(&excludes, options.uploads_since).await?;
+    let mut files = client.list_files(&excludes, options.uploads_since).await?;
     report.base.files = files.iter().map(|f| (f.path.clone(), format!("{}:{}", f.size, f.mtime))).collect();
+    // Ceilings (#837): a file the frame parser would refuse anyway is left on
+    // live and reported, not fetched; the whole list must fit the disk with
+    // room to spare, measured BEFORE the first byte lands.
+    let too_big: Vec<String> = files.iter().filter(|f| f.size > super::client::MAX_FILE_BYTES).map(|f| f.path.clone()).collect();
+    if !too_big.is_empty() {
+        on_line(&format!("{} file(s) over {} GiB left on live: {}", too_big.len(), super::client::MAX_FILE_BYTES >> 30, too_big.join(", ")));
+        files.retain(|f| f.size <= super::client::MAX_FILE_BYTES);
+    }
+    let total: u64 = files.iter().map(|f| f.size).sum();
+    let content = local.docroot.join("wp-content");
+    std::fs::create_dir_all(&content)?;
+    if let Some(free) = crate::core::dbdump::free_space(&content) {
+        const HEADROOM: u64 = 512 << 20;
+        if total.saturating_add(HEADROOM) > free {
+            return Err(Error::Other(format!(
+                "the live site's files are {} MB and this disk has {} MB free — make room (or pull with recent uploads only) first.",
+                total >> 20,
+                free >> 20
+            )));
+        }
+    }
     if let Some(since) = options.uploads_since {
         on_line(&format!("uploads older than {since} (Unix time) left on live"));
     }
-    let content = local.docroot.join("wp-content");
     let incoming_dir: PathBuf = content.join(format!(".rexsync-incoming-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
     let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
     let fetched = client.read_files(&paths, &incoming_dir, &excludes).await;
@@ -201,7 +223,7 @@ pub async fn pull_into(
             return Err(e);
         }
     };
-    report.refused_files = refused.iter().map(|r| r.path.clone()).collect();
+    report.refused_files = refused.iter().map(|r| r.path.clone()).chain(too_big).collect();
     for rel in &paths {
         if report.refused_files.contains(rel) {
             continue;

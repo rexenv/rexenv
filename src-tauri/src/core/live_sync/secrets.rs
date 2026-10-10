@@ -12,6 +12,12 @@
 //!
 //! Never in SQLite (`sites` carries the site_id → nothing), never logged, never
 //! sent to the webview after the paste (the UI gets `Pairing` without the secret).
+//!
+//! What plaintext-at-rest costs (the security review, 10 Oct 2026): the file is
+//! exactly as private as the file ACL. A backup tool or any process running as
+//! this user can read it, and with it the live site's full sync credentials —
+//! the same as the key on the plugin's page. That is the accepted posture; the
+//! alternative (the keychain) prompts after every update of an ad-hoc-signed app.
 
 use super::sign::PairingKey;
 use crate::error::{Error, Result};

@@ -263,6 +263,56 @@ pub(crate) fn import_from_file(client: &SqlClient, port: u16, name: &str, file: 
     Ok(())
 }
 
+/// Import `file` into `name` as a THROWAWAY user whose only grant is `name`.*
+/// (ledger #837, the security review's critical finding). The stream a live
+/// site's plugin answers is data from a machine rexenv does not control; piped
+/// into `mysql` as root it could reach every other local database, the `mysql`
+/// schema, `CREATE USER`, `GRANT` — anything. Under this user every such
+/// statement fails at the server with "access denied", whatever the text says;
+/// `--local-infile=0` closes `LOAD DATA LOCAL`. The user is created for the one
+/// import and dropped after it, success or not; its password travels in the
+/// environment, never on the argv (`ps` would show it).
+///
+/// Not an allow-list of statements: parsing SQL to decide what it touches is
+/// how allow-lists get bypassed. The wall is the server's own privilege check.
+pub(crate) fn import_from_file_scoped(client: &SqlClient, port: u16, name: &str, file: &Path) -> Result<()> {
+    validate_db_name(name)?;
+    let user = format!("rexpull_{}", &uuid::Uuid::new_v4().simple().to_string()[..10]);
+    let pass = uuid::Uuid::new_v4().simple().to_string();
+    let host = "127.0.0.1"; // what the server sees of a TCP loopback client
+    mysql_exec(
+        client,
+        port,
+        &format!("CREATE USER '{user}'@'{host}' IDENTIFIED BY '{pass}'; GRANT ALL PRIVILEGES ON `{name}`.* TO '{user}'@'{host}'; FLUSH PRIVILEGES;"),
+        "creating the import user",
+    )?;
+    let result = (|| {
+        let f = std::fs::File::open(file).map_err(|e| Error::Other(format!("open {}: {e}", file.display())))?;
+        if f.metadata()?.len() == 0 {
+            return Err(Error::Other(format!("{} is empty — not importing", file.display())));
+        }
+        let args: Vec<String> = client_base_args(port).into_iter().filter(|a| a != "--user=root").collect();
+        let out = crate::platform::command(client.path())
+            .args(args)
+            .arg(format!("--user={user}"))
+            .arg("--local-infile=0")
+            .env("MYSQL_PWD", &pass)
+            .arg(name)
+            .stdin(std::process::Stdio::from(f))
+            .output()?;
+        if !out.status.success() {
+            return Err(Error::Other(format!(
+                "importing into `{name}` failed (exit {}): {}",
+                crate::core::proc::exit_text(out.status.code()),
+                String::from_utf8_lossy(&out.stderr).trim()
+            )));
+        }
+        Ok(())
+    })();
+    let _ = mysql_exec(client, port, &format!("DROP USER IF EXISTS '{user}'@'{host}';"), "dropping the import user");
+    result
+}
+
 /// Create a database if it doesn't exist, via the bundled `mysql` client.
 /// WP-CLI's `wp db create` shells out to whatever `mysql` is on PATH — a
 /// Finder-launched app has the bare launchd PATH (no Homebrew), so rexenv

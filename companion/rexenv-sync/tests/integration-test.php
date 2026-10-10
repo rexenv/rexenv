@@ -71,6 +71,11 @@ $again = $send( 'GET', '/rexenv-sync/v1/manifest', array(), '', $fixed );
 $check( 200 === $first->get_status() && 'replayed' === $code( $again ), 'the same nonce twice: the second is refused' );
 $check( 'clock_skew' === $code( $send( 'GET', '/rexenv-sync/v1/manifest', array(), '', array( 'ts' => (string) ( time() - 400 ) ) ) ), 'a request 400 s old is refused' );
 $check( 'bad_signature' === $code( $send( 'POST', '/rexenv-sync/v1/files/read', array(), '{"paths":[]}', array( 'body_after' => '{"paths":["x"]}' ) ) ), 'a body changed after signing is refused' );
+// The order: a caller who cannot sign learns nothing about the clock (#837) — an
+// unsigned-but-stale request is `bad_signature`, never `clock_skew` with `now`.
+$stale_unsigned = $send( 'POST', '/rexenv-sync/v1/files/read', array(), '{"paths":[]}', array( 'ts' => (string) ( time() - 400 ), 'body_after' => '{"paths":["x"]}' ) );
+$sd = $stale_unsigned->get_data();
+$check( 'bad_signature' === $code( $stale_unsigned ) && ! isset( $sd['data']['now'] ), 'a stale request that is not signed is refused as bad_signature, without the time' );
 $check( 'unknown_key' === $code( $send( 'GET', '/rexenv-sync/v1/manifest', array(), '', array( 'key' => 'k_ffffffff' ) ) ), 'another key id is refused' );
 
 // 4. The file list: our own file is listed; an exclude removes it; the cursor resumes after it.

@@ -557,6 +557,18 @@ impl DbEngine {
         }
     }
 
+    /// Import a `.sql` file that came from a machine rexenv does not control, into
+    /// `name` ONLY: a throwaway user granted on that one database (ledger #837).
+    /// MySQL family only — a pull is.
+    pub fn import_from_file_scoped(&self, client: &SqlClient, port: u16, name: &str, file: &Path) -> Result<()> {
+        self.expect_client(client)?;
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::import_from_file_scoped(client, port, name, file),
+            DbEngine::Postgres => Err(Error::Other("a scoped import is MySQL/MariaDB only".into())),
+            DbEngine::Redis => Err(self.not_a_site_engine()),
+        }
+    }
+
     /// Export database `name` into the user's Downloads folder. `dump` is the
     /// dump BINARY from [`sql_client_bins`](Self::sql_client_bins) — a separate
     /// argument because it is a different executable from the client, in both

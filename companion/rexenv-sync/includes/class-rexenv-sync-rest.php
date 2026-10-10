@@ -82,7 +82,13 @@ final class Rexenv_Sync_Rest {
 			'bad_signature' => 'The request signature does not match this site\'s pairing.',
 			'replayed'      => 'This request was already used.',
 		);
-		return new WP_Error( $code, $messages[ $code ], array( 'status' => 401, 'now' => $now ) );
+		// `now` ONLY on clock_skew — which only a caller who signed can reach (#837).
+		// On every other refusal the body says nothing about this site's clock.
+		$data = array( 'status' => 401 );
+		if ( 'clock_skew' === $code ) {
+			$data['now'] = $now;
+		}
+		return new WP_Error( $code, $messages[ $code ], $data );
 	}
 
 	/** `exclude` globs from rexenv (§5), comma-separated. */
