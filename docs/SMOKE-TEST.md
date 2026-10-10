@@ -1024,14 +1024,33 @@ branch in that repository:
         Remove anyway removed it, branch kept; Re-clone dropped a child-only post; parent Delete refused
         naming the child; made-elsewhere, whole-site and prune rows as written. Found there: the
         child's header line broke "feature-x" in two at 1280 px — fixed (#848, wk-check leg 7).
-  - [ ] **Windows** — the Dell (Win10, debug build of this tree), 10 Oct 2026: rows 1–3 ✓ (git? →
-        Adopt → git, "None yet", `https://feature-x.wtw.rex`; all phases logged, serving with the chip;
-        footer `wtdemo: feature-x`, 30 links on the child domain, parent `main`, wp-login 200; header
-        "plugin worktree of wtw.rex · feature-x", the same line break as Linux). The rest — and the
-        editor-lock row — owed: the Dell dropped off the network mid-run. Two fixture traps met there:
-        a repo made through the ELEVATED ssh session is owned by Administrators, so the app's git
-        refuses it ("dubious ownership") — `takeown /R /F <dir>` first; and `rex wp` runs only its
-        vetted verbs (no `post create`).
+  - [x] **Windows** — the Dell (Win10, debug builds of this tree), 10–11 Oct 2026, every row above
+        but MCP. Rows 1–3 (10 Oct): git? → Adopt → git, "None yet", `https://feature-x.wtw.rex`; all
+        phases logged, serving with the chip; footer `wtdemo: feature-x`, 30 links on the child domain,
+        parent `main`, wp-login 200. 11 Oct, after the Dell came back: the header line now wraps whole;
+        Re-clone dropped a child-only post (parent's "Hello world", 30 child links); parent Delete refused
+        naming the child; "1 uncommitted", the Sites-list Delete refused naming `M wtdemo.php` (child still
+        200), "Remove anyway?" quoting it, Cancel kept everything; made-elsewhere list (Serve on the outside
+        one, the `git worktree move` reason and no Serve on the in-Sites one) → Serve → `try.gitw.rex`
+        "branch: try" → Delete said the folder "is left exactly where it is" and it was; whole-site
+        `other.gitw.rex` → Delete removed `~/rexenv/Worktrees/other.gitw.rex`, branch kept; folder deleted
+        by hand → "folder missing" + Clean up missing (1) → git's record gone; CLI `adoptable` / `prune`
+        ("pruned 1 … no file was deleted") / `serve <path>` / `add` (phases streamed) / `reclone-db` (`n`
+        → aborted, post kept; `--yes` → re-cloned, post gone).
+        **The editor-lock row found a bug (#852):** with a file in the worktree held open (`FileShare.None`,
+        from the desktop session), Remove anyway ran `git worktree remove --force`, which deleted the
+        checkout's `.git` and git's record, then stopped at the held file ("failed to delete …: Invalid
+        argument"); the row read "not checked out", the site kept serving, and a later Remove deleted the
+        site but left the half-copied folder, logged as "not ours to remove". Fixed: removal and Delete
+        first try to rename the folder beside itself and back, which Windows refuses while any handle
+        inside lacks delete sharing (measured: a share-none lock, a read handle, a `cmd` whose cwd is
+        inside). Re-run with the fix: "… is in use — a program has a file or folder in it open … Nothing
+        was removed", `.git`, git's record, 3786 files and the site all intact; after the lock let go,
+        Remove anyway removed it, branch kept. Fixture traps on the Dell: anything git makes through the
+        ELEVATED ssh session (a repo, a `git worktree add` — its record under `.git/worktrees`) is owned by
+        Administrators and the app's git refuses it ("dubious ownership") — `takeown /R /F <dir>` first;
+        `rex wp` runs only its vetted verbs (no `post create`: use the cached PHP + wp-cli phar); an
+        orphan nginx worker kept :18088 after a hard kill of the app (`taskkill` it, then Start all).
 
 ## Live sync — pull a live WordPress site (`docs/PLAN-wp-live-sync.md`, built 10 Oct 2026)
 

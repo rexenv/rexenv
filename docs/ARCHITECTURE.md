@@ -1522,6 +1522,11 @@ honest footer —
   ordinary delete (tunnel, database, row, docroot). git refuses a dirty worktree itself
   too, so the pre-check exists to name the files, and git is the second wall. The branch
   is never deleted. An adopted worktree (§2.7) is never git-removed.
+  **Before git, and before any Delete tears anything down, the folder must not be held** (#852):
+  it is renamed beside itself and back, which Windows refuses while a program has a file in it open
+  without delete sharing (macOS and Linux never refuse). Refused → "… is in use … Nothing was
+  removed". Without it, on the Dell a held file let `git worktree remove --force` delete the
+  checkout's `.git` and git's record and then stop, half-removed, with the site still serving.
 - **The worktree UI** (W8, 10 Oct 2026) sits under a git plugin's or theme's repo panel
   (`components/wordpress/AssetWorktrees.tsx`). It lists that checkout's worktree sites
   with git's LIVE branch and change count (`worktree_children`), and holds the

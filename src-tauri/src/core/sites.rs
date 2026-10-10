@@ -1712,13 +1712,16 @@ pub fn set_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<Option<
 /// What a [`teardown`] actually did. The docroot half is REPORTED rather than
 /// silent: "your folder is still there" and "your folder is gone" are not
 /// details a delete may leave ambiguous.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Teardown {
     /// Whether the site existed at all.
     pub existed: bool,
     /// Whether the docroot was removed. Always false for a folder rexenv does
     /// not own — a linked one, or one moved outside the sites folder.
     pub docroot_removed: bool,
+    /// Why an OWNED docroot is still there after its removal was tried — the OS's refusal (a
+    /// program holding a file, Windows). `None` when it went, or was never ours to remove.
+    pub docroot_error: Option<String>,
 }
 
 /// Full teardown of a site: remove its DB row, cert material, per-site
@@ -1737,7 +1740,7 @@ pub struct Teardown {
 pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<Teardown> {
     let site = match get(conn, id)? {
         Some(s) => s,
-        None => return Ok(Teardown { existed: false, docroot_removed: false }),
+        None => return Ok(Teardown { existed: false, docroot_removed: false, docroot_error: None }),
     };
 
     store::delete_site(conn, id)?;
@@ -1841,12 +1844,19 @@ pub fn teardown(conn: &Connection, platform: &dyn Platform, id: &str) -> Result<
             dir.display()
         );
     }
+    let mut docroot_error = None;
     let docroot_removed = owned
         && foreign.is_none()
         && !site.path.is_empty()
-        && std::fs::remove_dir_all(&site.path).is_ok();
+        && match std::fs::remove_dir_all(&site.path) {
+            Ok(()) => true,
+            Err(e) => {
+                docroot_error = Some(e.to_string());
+                false
+            }
+        };
 
-    Ok(Teardown { existed: true, docroot_removed })
+    Ok(Teardown { existed: true, docroot_removed, docroot_error })
 }
 
 /// Does rexenv own this site's docroot — may teardown remove it? The recorded
@@ -1901,6 +1911,11 @@ pub fn delete_preflight(conn: &Connection, platform: &dyn Platform, site: &Site)
         )));
     }
     if docroot_owned(conn, platform, site)? && !site.path.is_empty() {
+        // A program holding a file in the folder (Windows) would stop `remove_dir_all` half-way —
+        // AFTER the row and the database are gone (ledger #852). Ask first; nothing is touched.
+        if let Some(why) = super::worktree::in_use_refusal(Path::new(&site.path), &|a, b| std::fs::rename(a, b)) {
+            return Err(Error::Other(why));
+        }
         if let Some(dir) = super::worktree::foreign_checkout_under(Path::new(&site.path)) {
             return Err(Error::Other(format!(
                 "{} is a git worktree — its repository lives outside this site's folder, \

@@ -1840,7 +1840,16 @@ pub(crate) async fn delete_site_owned(
         let outcome = core::sites::teardown(&conn, state.platform.as_ref(), &id)?;
         (outcome, core::sites::list(&conn)?)
     };
-    if outcome.existed && !outcome.docroot_removed {
+    if let Some(e) = &outcome.docroot_error {
+        // Ours, but the OS refused part of it — say so, never "not ours" (ledger #852: the Dell's
+        // half-deleted copy was logged as a linked folder).
+        log::warn!(
+            "sites: deleted {} — but its folder ({}) could not be removed completely ({e}); \
+             something held a file in it. Delete what is left by hand.",
+            site.domain,
+            site.path
+        );
+    } else if outcome.existed && !outcome.docroot_removed {
         log::info!(
             "sites: deleted {} — its folder ({}) was left in place (not ours to remove)",
             site.domain,

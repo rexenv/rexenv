@@ -12,7 +12,7 @@ use crate::core::{self, worktree};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
 use crate::state::models::{MultisiteMode, NewSite, Site, SiteType, WorktreeShape};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use crate::state::store;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -315,6 +315,12 @@ pub(crate) fn release_for_delete(state: &AppState, site: &Site, force: bool) -> 
     };
     if wt.adopted {
         return Ok(());
+    }
+    // Before git: the site's own folder (it contains the worktree, or is it) must not be held by a
+    // program — git would delete the checkout's `.git` and its own record, then stop at the held
+    // file, and the site delete after it would stop half-way too (the Dell, 11 Oct 2026, #852).
+    if let Some(why) = core::worktree::in_use_refusal(Path::new(&site.path), &|a, b| std::fs::rename(a, b)) {
+        return Err(Error::Other(why));
     }
     let path = PathBuf::from(&wt.worktree_path);
     if !path.join(".git").is_file() {

@@ -241,6 +241,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   and exposes sites to the LAN.
 - **Process-wide state mutation beside a spawn races other threads' spawns** (#600's handle
   sweep broke concurrent children): mutate global state only on one thread at main start.
+- **A folder with an open file in it cannot be removed — and git finds out half-way.** An editor's
+  lock, a read handle without delete sharing, a terminal whose cwd is inside: `git worktree remove
+  --force` then deletes the `.git` file and git's record first and stops at the held file ("Invalid
+  argument"), and `remove_dir_all` stops part-way too. Ask first: renaming the folder beside itself
+  is refused (Access denied) exactly while such a handle exists — `worktree::in_use_refusal`, #852.
 - **Winsock's `socket()` is INHERITABLE, and the boot-time sweep cannot see a socket opened
   later.** `std::process::Command` spawns with inherit-handles on, so every child started while such
   a socket is open keeps a copy — and the port. The app's in-process resolver handed `:53` to

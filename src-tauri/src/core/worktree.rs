@@ -775,6 +775,9 @@ pub fn remove(
         }
         force_git = !dirty.is_empty();
     }
+    if let Some(why) = in_use_refusal(worktree, &|from, to| std::fs::rename(from, to)) {
+        return Err(Error::Other(why));
+    }
     let path = worktree.to_string_lossy().into_owned();
     let mut args: Vec<String> = vec!["worktree".into(), "remove".into()];
     if force_git {
@@ -782,6 +785,40 @@ pub fn remove(
     }
     args.push(path);
     repo::run_git_op(supervisor, git, env, repo_dir, "worktree remove", &args, cancel, on_line)
+}
+
+/// Why the worktree cannot be removed RIGHT NOW because a program holds something in it — or
+/// `None` (ledger #852). Asked before git, because git does not ask: on Windows a file open
+/// without delete sharing (an editor's lock, a terminal whose current folder is inside) made
+/// `git worktree remove --force` delete the worktree's `.git` file and git's own record first and
+/// then stop at that file with "failed to delete …: Invalid argument" — a half-removed checkout,
+/// the site still served, its row reading "not checked out" (the Dell, 11 Oct 2026).
+///
+/// The probe is a rename of the folder beside itself and straight back: Windows refuses a folder
+/// rename while any handle inside lacks delete sharing (measured on the Dell: a share-none lock, a
+/// read handle, a `cmd` whose cwd is inside — each "Access … denied"; with all closed it succeeds),
+/// and macOS and Linux always allow it, so there it never refuses. Only `PermissionDenied` refuses;
+/// any other rename failure lets git speak. `rename` is a parameter so the rule is tested anywhere.
+pub fn in_use_refusal(worktree: &Path, rename: &dyn Fn(&Path, &Path) -> std::io::Result<()>) -> Option<String> {
+    let name = worktree.file_name()?.to_string_lossy().into_owned();
+    let probe = worktree.with_file_name(format!(".{name}.rexenv-remove-probe"));
+    match rename(worktree, &probe) {
+        Ok(()) => match rename(&probe, worktree) {
+            Ok(()) => None,
+            Err(e) => Some(format!(
+                "{} was moved to {} to check that nothing holds it, and could not be moved back ({e}) — \
+                 move it back by hand; nothing else was changed.",
+                worktree.display(),
+                probe.display()
+            )),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => Some(format!(
+            "{} is in use — a program has a file or folder in it open (an editor, a terminal whose \
+             current folder is inside it, a file browser). Close it, then remove again. Nothing was removed.",
+            worktree.display()
+        )),
+        Err(_) => None,
+    }
 }
 
 /// Why rexenv will not serve the existing worktree at `path` as a site, in words
@@ -807,6 +844,46 @@ pub fn serve_refusal(conn: &Connection, platform: &dyn crate::platform::traits::
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
+    /// Ledger #852 — removal asks whether a program holds the worktree before git runs.
+    #[test]
+    fn a_worktree_a_program_holds_is_refused_before_git_touches_it() {
+        let wt = std::path::Path::new("/s/feature-x.shop.rex/wp-content/plugins/wtdemo");
+        let denied = |_: &Path, _: &Path| Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        let why = in_use_refusal(wt, &denied).expect("a held folder is refused");
+        assert!(why.contains("is in use") && why.contains("Nothing was removed") && why.contains("wtdemo"), "{why}");
+        let calls = RefCell::new(Vec::new());
+        let free = |a: &Path, b: &Path| {
+            calls.borrow_mut().push((a.to_path_buf(), b.to_path_buf()));
+            Ok(())
+        };
+        assert_eq!(in_use_refusal(wt, &free), None, "a free folder is not refused");
+        let calls = calls.into_inner();
+        assert_eq!(calls.len(), 2, "moved aside and straight back");
+        assert_eq!((calls[0].0.as_path(), calls[1].1.as_path()), (wt, wt), "it ends where it began");
+        assert_eq!(calls[0].1.parent(), wt.parent(), "the probe stays beside it (same volume)");
+        let other = |_: &Path, _: &Path| Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert_eq!(in_use_refusal(wt, &other), None, "any other failure lets git speak");
+        // TEXT: `remove` asks before it runs git.
+        let src = crate::core::copy_scan::production_source(include_str!("worktree.rs"));
+        let body = &src[src.find("pub fn remove(").expect("remove")..];
+        let ask = body.find("in_use_refusal(").expect("remove no longer asks whether the worktree is held");
+        let git = body.find("run_git_op(").expect("the git call");
+        assert!(ask < git, "the probe runs after git, too late");
+        // ...and so do the two callers that act before `remove` runs: the site delete's preflight
+        // (nothing is torn down yet) and the worktree removal (before git, on the SITE folder).
+        let sites = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let pre = &sites[sites.find("pub fn delete_preflight(").expect("delete_preflight")..];
+        let pre = &pre[..pre.find("\n}\n").expect("its end")];
+        assert!(pre.contains("in_use_refusal("), "Delete no longer asks whether its folder is held");
+        let cmd = crate::core::copy_scan::production_source(include_str!("../commands/worktree.rs"));
+        let rel = &cmd[cmd.find("fn release_for_delete(").expect("release_for_delete")..];
+        let probe = rel.find("in_use_refusal(").expect("the worktree removal no longer asks");
+        let git = rel.find("worktree::remove(").expect("its git call");
+        assert!(probe < git, "the site folder is probed after git ran");
+    }
+
     /// **A worktree inside the sites folder is refused with a way OUT, and one
     /// outside it is servable** (ledger #848). Plant: drop the rewrite and the
     /// sentence says "create a site normally".
