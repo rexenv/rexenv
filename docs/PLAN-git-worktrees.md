@@ -1,6 +1,10 @@
 # Git worktree workflow — one branch, one running site
 
-**Status:** PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); the
+**Status:** BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the
+panel, `rex worktree`, the MCP `worktree` tool; live checks green on macOS, the Dell and the
+Ubuntu VM (#814–#823, #830–#831). Open: the SMOKE GUI rows (unrun on every OS), the prune offer,
+CLI/MCP arms for adopt/serve/re-clone (parity Gap), Windows/Linux reruns of legs 13–15. Was:
+PLANNED 9 Oct 2026. Owner request ("Git worktree workflow"); the
 agent wrote it while the owner was away. **Owner answered 9 Oct 2026** (§9). Domain:
 `feature-x.shop.rex` first, falling back to `shop-feature-x.rex` (§2.2). The WP plugin/theme
 shape comes FIRST (§2.1, task order in §8). Planned against `00bc4dd1` (v0.8.13). Task

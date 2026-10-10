@@ -60,12 +60,12 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 | Plan | Status |
 |---|---|
 | `docs/PLAN-ci-release.md` | (no Status line in the first 20 lines) |
-| `docs/PLAN-git-worktrees.md` | PLANNED 9 Oct 2026 — not started. Owner request ("Git worktree workflow"); the |
+| `docs/PLAN-git-worktrees.md` | BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the |
 | `docs/PLAN-linux-port.md` | IN PROGRESS — started 24 Sep 2026 (overnight, owner asleep; the agent proceeds on |
 | `docs/PLAN-local-multisite.md` | IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan), |
 | `docs/PLAN-macos-13-floor.md` | PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component); |
 | `docs/PLAN-windows-port.md` | IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows, |
-| `docs/PLAN-wp-live-sync.md` | PLANNED 9 Oct 2026 — not started. Owner request ("local staging system"); this |
+| `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)
 

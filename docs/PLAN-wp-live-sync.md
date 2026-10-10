@@ -1,6 +1,10 @@
 # WordPress live ↔ local sync — clone a live site, pull and push
 
-**Status:** PLANNED 9 Oct 2026 — not started. Owner request ("local staging system"); this
+**Status:** BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a
+live site, `rex live`, the MCP `live` tool, the security review's fixes; proven on macOS, the
+Dell's Windows 10 and the Ubuntu VM (fixture L1), and on a REAL host (live-sync.rex.bd) through
+the real app on the macOS VM (#824–#847). Open: real hosts 2–3 (L14), S3 (resume, anonymise,
+uploads on demand, per-item conflict choice), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
 recommendation waiting for the owner's yes (the open questions are §11). **Owner answered
 9 Oct 2026:** the plugin ships as an in-app zip only for v1, and a push always needs a
