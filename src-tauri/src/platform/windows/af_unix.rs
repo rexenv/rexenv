@@ -8,8 +8,8 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 use windows_sys::Win32::Networking::WinSock::{
-    closesocket, connect, recv, setsockopt, socket, WSAGetLastError, WSAStartup, AF_UNIX, INVALID_SOCKET, SOCKADDR,
-    SOCKADDR_UN, SOCKET, SOCK_STREAM, SOL_SOCKET, SO_RCVTIMEO, WSADATA,
+    closesocket, connect, recv, setsockopt, WSAGetLastError, AF_UNIX, SOCKADDR, SOCKADDR_UN, SOCKET, SOCK_STREAM,
+    SOL_SOCKET, SO_RCVTIMEO,
 };
 
 /// A connected AF_UNIX stream, closed on drop.
@@ -56,12 +56,9 @@ pub(crate) fn connect_path(path: &Path, read_timeout: Option<Duration>) -> io::R
     // SAFETY: plain Winsock calls on values owned by this frame; the socket is wrapped in
     // `UnixStream` right after it is created, so every return path closes it.
     unsafe {
-        let mut wsa: WSADATA = std::mem::zeroed();
-        WSAStartup(0x0202, &mut wsa);
-        let raw = socket(AF_UNIX as i32, SOCK_STREAM, 0);
-        if raw == INVALID_SOCKET {
-            return Err(io::Error::from_raw_os_error(WSAGetLastError()));
-        }
+        // Uninheritable, so a spawn during this short life hands no child the edge's admin
+        // connection (ledger #850).
+        let raw = super::winsock::uninheritable_socket(AF_UNIX as i32, SOCK_STREAM, 0)?;
         let stream = UnixStream(raw);
         if let Some(timeout) = read_timeout {
             let ms = timeout.as_millis().clamp(1, u128::from(u32::MAX)) as u32;

@@ -15,25 +15,25 @@
 //! measured need: `windows_dns_agent_check`'s twenty vanishing clients left the agent answering with
 //! the ioctl planted out too (the Dell, 14 Sep 2026) — hickory's receive loop survived the reports, or
 //! none arrived.
+//!
+//! **Uninheritable** — opened through `winsock::uninheritable_socket`, never `socket()`: a child the
+//! app spawned while it served in-process kept `:53` bound after the app let go (ledger #850).
 
 use std::io;
 use std::net::{Ipv4Addr, UdpSocket};
 use std::os::windows::io::FromRawSocket;
 use windows_sys::Win32::Networking::WinSock::{
-    bind, closesocket, htons, setsockopt, socket, WSAGetLastError, WSAIoctl, WSAStartup, AF_INET, INVALID_SOCKET,
-    IPPROTO_UDP, SIO_UDP_CONNRESET, SOCKADDR, SOCKADDR_IN, SOCK_DGRAM, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, WSADATA,
+    bind, closesocket, htons, setsockopt, WSAGetLastError, WSAIoctl, AF_INET, IPPROTO_UDP, SIO_UDP_CONNRESET, SOCKADDR,
+    SOCKADDR_IN, SOCK_DGRAM, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
 };
 
 pub(crate) fn bind_resolver_udp(port: u16) -> io::Result<UdpSocket> {
     // SAFETY: plain Winsock calls on values owned by this frame; the socket is closed on every
     // failure path and handed to std exactly once on success.
     unsafe {
-        let mut wsa: WSADATA = std::mem::zeroed();
-        WSAStartup(0x0202, &mut wsa);
-        let s = socket(AF_INET as i32, SOCK_DGRAM, IPPROTO_UDP);
-        if s == INVALID_SOCKET {
-            return Err(io::Error::from_raw_os_error(WSAGetLastError()));
-        }
+        // Uninheritable: a child spawned while this is open must not keep `:53` bound after the
+        // app closes it (ledger #850).
+        let s = super::winsock::uninheritable_socket(AF_INET as i32, SOCK_DGRAM, IPPROTO_UDP)?;
         let fail = || {
             let code = WSAGetLastError();
             closesocket(s);

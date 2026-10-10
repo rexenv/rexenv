@@ -38,7 +38,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   Windows start — `WindowsPrivileges::port_needs_privilege`, `WindowsEdge::default_bind`, and `LocalIpc`'s
   dial over `windows/af_unix.rs` + `windows/ipc_rules.rs` (its error rule, tested on every host) (ledger #611); the resolver on
   `127.0.0.1:53` — `platform::RESOLVER_PORT` + `platform::bind_resolver_udp` over
-  `windows/resolver_socket.rs` (exclusive, no UDP resets), `DnsService::start_default` naming a refused
+  `windows/resolver_socket.rs` (exclusive, no UDP resets; both it and `af_unix.rs` open their socket through
+  `windows/winsock.rs::uninheritable_socket`, ledger #850), `DnsService::start_default` naming a refused
   bind through `ports::refused_bind` and `ProcessSupervisor::port_conflict_help_on` (loopback rows only,
   `port_table::owners_of_port_where`) (ledger #615); the DNS agent as a logon task —
   `WindowsDnsAgent` over `windows/logon_task.rs` (the task XML, tested on every host) and `schtasks`, its

@@ -2574,6 +2574,15 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [x] **The DNS handoff survives a Start all made while the app served DNS itself** (#850, 10 Oct
+      2026): end the agent (`taskkill /F /IM rexenv.exe /T`), open the app at once → its log says
+      "resolver agent unavailable — running IN-PROCESS"; Start all inside the next ~20 s → within a
+      minute the log says "handed the resolver back to the agent", `rex status` reads `answering
+      (agent, udp 53)` and a `.rex` name resolves. **Tell:** "could not rebind in-process after a
+      handoff attempt … (os error 10048)", the agent log repeating "cannot bind :53" and health
+      "[gave-up] … already in use by rexenv.exe (pid <the app>)" — the children inherited the
+      socket. ✓ the Dell (Win10) 10 Oct 2026: children started 23:27:26–27, handed back 23:27:41,
+      `wtw.rex` → 127.0.0.1 (the build before it: the same steps ended `[gave-up] DNS`).
 - [x] **`rex doctor` with rex on PATH by hand** (#797, 8 Oct 2026): without Settings → Install, add
       the app's install folder (where `rex.exe` sits beside `rexenv.exe`) to the user Path, open a NEW
       terminal → `rex doctor`'s CLI line is ✓ "… → this app (on PATH by hand …)", not "rex not on

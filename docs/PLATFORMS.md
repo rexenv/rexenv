@@ -235,6 +235,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   and exposes sites to the LAN.
 - **Process-wide state mutation beside a spawn races other threads' spawns** (#600's handle
   sweep broke concurrent children): mutate global state only on one thread at main start.
+- **Winsock's `socket()` is INHERITABLE, and the boot-time sweep cannot see a socket opened
+  later.** `std::process::Command` spawns with inherit-handles on, so every child started while such
+  a socket is open keeps a copy — and the port. The app's in-process resolver handed `:53` to
+  php-cgi/nginx/MySQL that way; after the app let go nobody could bind it and `.rex` died until
+  `rex stop` (the Dell, 10 Oct 2026). Open a raw socket only through `winsock::uninheritable_socket`
+  (#850; a guard scans `platform/windows/` for any other `socket(`).
 - **Job objects**: the installer's Finish page and SSH shells start rexenv inside a job; the
   start-up hop out of it is `job_guard` (#692). **Explorer passes no arguments**, so the hop
   carries `--hidden` in a one-shot marker (`hop-hidden`, ≤ 20 s, #742) — any other flag a

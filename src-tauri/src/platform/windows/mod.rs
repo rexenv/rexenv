@@ -48,6 +48,7 @@ mod resolver_socket;
 mod shell_rules;
 mod stop_policy;
 mod user_path;
+mod winsock;
 mod user_path_rules;
 mod vc_runtime;
 mod vc_runtime_rules;

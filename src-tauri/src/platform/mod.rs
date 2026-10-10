@@ -457,6 +457,34 @@ pub fn current() -> Box<dyn Platform> {
 }
 
 #[cfg(test)]
+mod winsock_guard {
+    /// Ledger #850: every Winsock socket rexenv opens by hand goes through
+    /// `windows::winsock::uninheritable_socket`. A raw `socket()` is inheritable, and the
+    /// boot-time handle sweep (#600) cannot see a socket opened later — the Dell's `:53` stayed
+    /// bound by php-cgi/nginx/MySQL after the app closed it (10 Oct 2026). Scanned on every
+    /// host, because verify runs on macOS and the Windows test exe has no source tree.
+    #[test]
+    fn no_windows_file_opens_a_raw_socket() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/platform/windows");
+        let mut scanned = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") || path.ends_with("winsock.rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            scanned += 1;
+            for needle in ["= socket(", "WSASocketW("] {
+                assert!(!text.contains(needle), "{} opens a Winsock socket itself ({needle})", path.display());
+            }
+        }
+        assert!(scanned > 30, "scanned only {scanned} files — wrong directory?");
+        let helper = include_str!("windows/winsock.rs");
+        assert!(helper.contains("WSA_FLAG_OVERLAPPED | WSA_FLAG_NO_HANDLE_INHERIT"), "the helper lost its flag");
+    }
+}
+
+#[cfg(test)]
 mod stub_guard {
     /// Production lines of `text` (tests and comments stripped) that contain any
     /// needle — a guard that reads comments would read its own explanation (#235).
