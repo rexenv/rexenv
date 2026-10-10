@@ -142,6 +142,14 @@ pub async fn live_sync_pair(
     Ok(Paired { pairing, wp: m.wp, php: m.php, tables: m.tables.len(), multisite: m.multisite })
 }
 
+/// `live_sync_plugin_zip` — save the rexenv Sync plugin (the one compiled into
+/// this build) into Downloads as an installable zip; answers the path.
+#[tauri::command]
+pub async fn live_sync_plugin_zip() -> Result<String> {
+    let dest = crate::core::live_sync::plugin_zip::save_in(&crate::core::downloads::user_downloads_dir()?)?;
+    Ok(dest.to_string_lossy().into_owned())
+}
+
 /// `live_sync_pairing` — the site's pairing, without its secret, or null.
 #[tauri::command]
 pub async fn live_sync_pairing(state: State<'_, AppState>, site_id: String) -> Result<Option<Pairing>> {

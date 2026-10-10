@@ -28,6 +28,7 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     await page.waitForTimeout(200);
     await page.getByRole("button", { name: "From a live site" }).click();
     await page.waitForTimeout(200);
+    if (!(await page.getByRole("button", { name: "Download plugin (.zip)" }).count())) fails.push(`${scheme} 1: no Download plugin in the live source`);
     const check = page.getByRole("button", { name: "Check", exact: true });
     if (!(await check.isDisabled())) fails.push(`${scheme} 1: Check enabled with no key`);
     await page.getByLabel("Connection key").fill("not a key");

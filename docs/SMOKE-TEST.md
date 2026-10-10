@@ -992,8 +992,9 @@ branch in that repository:
 
 ## Live sync — pull a live WordPress site (`docs/PLAN-wp-live-sync.md`, built 10 Oct 2026)
 
-Needs a live WordPress over HTTPS you may write a plugin into. Install
-`companion/rexenv-sync` there (zip the folder), activate it, Tools → rexenv Sync →
+Needs a live WordPress over HTTPS you may write a plugin into (the project's own:
+`https://live-sync.rex.bd`). **Live tab → Download plugin (.zip)** → the toast names
+`~/Downloads/rexenv-sync.zip` → upload it there (Plugins → Add New → Upload Plugin), activate it, Tools → rexenv Sync →
 **Connect to rexenv** → copy the key.
 - [ ] A local WordPress site → **Live** tab → paste the key → **Connect** → "Connected to
       https://… — WordPress x, N tables". A wrong key: refused, nothing stored (the form stays).
@@ -1001,7 +1002,8 @@ Needs a live WordPress over HTTPS you may write a plugin into. Install
 - [ ] **Pull from live** → the confirm names both sites → the card streams table lines, then
       "Pulled N tables … files. The previous local tables are in `<db>_prepull`." The local site
       now shows the live content at the LOCAL domain (links and images local); wp-admin logs in
-      with the LIVE site's users; the Plugins list shows rexenv Sync **inactive**.
+      with the LIVE site's users; the Plugins list shows rexenv Sync **inactive**; the local
+      `wp-config.php` has `define( 'DISABLE_WP_CRON', true );` and the log says so.
 - [ ] **New site → WordPress → Files: From a live site** → paste the key → **Check** → the line names
       the live site, its WordPress, PHP and table count, and which PHP this copy runs; name and domain
       prefill from the host; no admin fields. **Create and pull** → the provision card runs, then the

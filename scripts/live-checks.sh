@@ -482,6 +482,8 @@ for name in $names; do
   fi
 done
 
+# Pass or fail, the example binaries go (~8 GB); the logs that matter stay in $logdir.
+bash scripts/disk-guard.sh after
 echo
 if [ -n "$failed" ]; then
   echo "live-checks($cmd): FAILED —$failed"

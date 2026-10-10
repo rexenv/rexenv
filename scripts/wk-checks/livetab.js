@@ -10,7 +10,8 @@
 //      explicit table list (ticked ones only) + files + the typed host;
 //   6. a push stopped by conflicts lists them and offers "Push anyway", which
 //      asks first and sends them as overrides;
-//   7. a settled push shows its backup id, and Roll back asks before it runs.
+//   7. a settled push shows its backup id, and Roll back asks before it runs;
+//   8. Download plugin saves the zip once and the toast names it.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 
@@ -34,6 +35,14 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     const a = sent[0] || {};
     if (!(a.key === "rexsync1:eyJ1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9" && a.basicAuthUser === null)) fails.push(`${scheme} 1: pair sent ${JSON.stringify(sent)}`);
     if ((await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))) fails.push(`${scheme}: overflow (connect)`);
+    // 8. Download plugin: one click saves the zip and says where (plan §11 Q1).
+    await page.goto(`${BASE}/dev/ui-review?view=live`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: "Download plugin (.zip)" }).click();
+    await page.waitForTimeout(400);
+    const zips = await page.evaluate(() => window.__pluginZips ?? 0);
+    const toastText = await page.evaluate(() => document.body.innerText);
+    if (!(zips === 1 && toastText.includes("rexenv-sync.zip") && toastText.includes("Upload Plugin"))) fails.push(`${scheme} 8: Download plugin (calls=${zips}, toast shown=${toastText.includes("rexenv-sync.zip")})`);
 
     await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
     await page.waitForTimeout(400);

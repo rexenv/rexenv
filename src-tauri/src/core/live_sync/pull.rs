@@ -162,6 +162,16 @@ pub async fn pull_into(
             return Err(restore_prefix(&format!("setting the table prefix failed: {e}")));
         }
     }
+    // WP-Cron OFF on every pulled copy (plan §2.8, owner 10 Oct 2026 — Q8b): a pulled
+    // shop whose subscriptions renew on cron would charge real customers through the
+    // real gateways from this machine. Set on EVERY pull, before the swap: a failure
+    // here aborts with nothing replaced. Due events still run on demand
+    // (`wp cron event run --due-now`, the Cron panel, the MCP `cron_run_due`) — the
+    // constant only stops a page view from firing them.
+    if let Err(e) = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "set", "DISABLE_WP_CRON", "true", "--raw", "--type=constant"]) {
+        return Err(restore_prefix(&format!("turning WP-Cron off in wp-config.php failed — not pulling a live site whose cron could run here: {e}")));
+    }
+    on_line("wp-config: DISABLE_WP_CRON true (a pulled copy never fires the live site's scheduled jobs on its own)");
     let from = host_of(&m.site_url);
     match wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &stage, &from, local.domain, false) {
         Ok(n) => {

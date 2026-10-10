@@ -159,8 +159,8 @@ Multisite: **refused in v1** with the reason (domain mapping, per-blog uploads);
 ### 2.8 Safety on the local side
 
 - Mail is caught (existing mu-plugin). Cron: `DISABLE_WP_CRON` is set in the local
-  `wp-config.php` of a synced site by default (a pulled WooCommerce Subscriptions site would
-  otherwise try to renew real subscriptions through real gateways) — a toggle on the site.
+  `wp-config.php` on EVERY pull (a pulled WooCommerce Subscriptions site would otherwise try
+  to renew real subscriptions through real gateways) — built 10 Oct 2026, #839; no toggle.
 - The companion plugin pulled into the local copy is **deactivated** locally (a local
   copy answering as a sync endpoint is meaningless and its admin page would confuse).
 - Pulled files are content, not code rexenv trusts: nothing in them is executed by rexenv
@@ -205,7 +205,9 @@ keychain" / "Windows Credential Manager" / "your keyring").
   `/wp-json/rexenv-sync/v1/…`, each with a `permission_callback` that verifies the HMAC —
   never `__return_true`.
 - rexenv ships the built zip as a resource and offers **Download plugin** in the dialog
-  (zip saved to Downloads). wordpress.org listing is §11 Q1 — needs review time; the
+  (zip saved to Downloads). ✓ 10 Oct 2026: the plugin is compiled INTO the app
+  (`core/live_sync/plugin_zip.rs`, so the zip is always the plugin this build speaks to) and
+  the button sits on the Live tab's connect form and the New Site live source (#838). wordpress.org listing is §11 Q1 — needs review time; the
   in-app zip works from day one.
 - Plugin version and rexenv protocol version (`rexsync1`) are exchanged in `/manifest`; a
   mismatch gives a sentence and the update path, never a half-run.
@@ -285,7 +287,7 @@ Stages, each shippable on its own:
 | L4 | Plugin read endpoints: DB export by cursor, file manifest, file read stream; exclusion of its own options | PHPUnit on the shared-host profile — **built 10 Oct 2026**: `/files/list` (sorted walk, cursor = last path), `/files/read` (the §4.3 frame, traversal-refusing), `/db/export` (DROP+CREATE first, PK-ordered pages, the pairing rows excluded); proven in WordPress, not yet on a shared-host profile |
 | L5 | `core/live_sync/` client: signing, manifest fetch, cursor loop with retry, `.partial` + hash | L0 tests against the vectors — **started 10 Oct 2026**: `core/live_sync/sign.rs` (canonical string, HMAC over `sha2`, `parse_key` with the https refusal) against the same vectors; ledger #824. The HTTP client, cursor loop and `.partial` handling are still to do; **the client built 10 Oct 2026** (`core/live_sync/client.rs`: signed `?rest_route=` requests, §6 sentences, manifest identity check, cursor loops, the frame parser, `.partial` export) — L1 `live_sync_pull_check` ALL PASS over HTTP against the plugin (#826). Retry-from-cursor on a dropped connection is not built |
 | L6 | Pull job: DB → `dbrestore` → rehome → swap DB; files → staging → move; progress phases | L1 `live_sync_check` pull leg; ledger #2, #5, #6 — **core built 10 Oct 2026** (`core/live_sync/pull.rs::pull_into`: staging DB, rehome, one `RENAME TABLE` swap keeping `<db>_prepull`, files via a staging folder, the plugin deactivated locally); L1 `live_sync_pull_into_check` ALL PASS (#827). Not yet: the job card + phases, and its command (needs the stored key, L2); **the job + command built 10 Oct 2026** (`commands/live_sync.rs::live_sync_pull`, one job per site, `live-sync://state/<id>`; the pull's lines stream to the card); #829 |
-| L7 | New Site "From a live site" (provision + pull), DISABLE_WP_CRON default, plugin deactivated locally | L1 creates a serving site from the fixture live — ✓ 10 Oct 2026: the dialog's fourth source (`LiveSourceFields`), `live_sync_preview` + `live_sync_create_from_live` (pairing stored in the insert's transaction, the pull chained; `wk-checks/newsite-live.js`, plants; #835). The plugin is deactivated locally by the pull (#827). NOT done: `DISABLE_WP_CRON` — owner question Q8 below. L1 of the chain itself: SMOKE row |
+| L7 | New Site "From a live site" (provision + pull), DISABLE_WP_CRON default, plugin deactivated locally | L1 creates a serving site from the fixture live — ✓ 10 Oct 2026: the dialog's fourth source (`LiveSourceFields`), `live_sync_preview` + `live_sync_create_from_live` (pairing stored in the insert's transaction, the pull chained; `wk-checks/newsite-live.js`, plants; #835). The plugin is deactivated locally by the pull (#827). `DISABLE_WP_CRON` on every pull: ✓ 10 Oct 2026 (Q8b, #839). L1 of the chain itself: SMOKE row |
 | L8 | Live tab UI: status, Pull, history, Disconnect | Playwright WebKit pass — ✓ 10 Oct 2026 as the **Live** tab (`components/sites/LiveTab.tsx`: connect form with optional HTTP auth, Pull / Pull-recent-uploads-only behind confirms, the job card, Disconnect); `wk-checks/livetab.js` + `uireview.js` `live-*` green; #829. The history list is not built |
 | L9 | Plugin push endpoints: quarantine, shadow import, swap+backup, rollback, maintenance | PHPUnit: swap atomic, rollback restores; ledger #1 — ✓ 10 Oct 2026 (`class-rexenv-sync-pusher.php`; legs 8a–8g in WordPress, two plants; #832). `push/status` is not built: an interrupted push is aborted and started again |
 | L10 | Push job: preflight, local copy + rehome to live, upload, swap, verify, Roll back button; typed-domain confirm | L1 push + rollback legs — ✓ core 10 Oct 2026 (`core/live_sync/push.rs::push_from`; L1 legs 6–10, plant; #833). ✓ job + UI 10 Oct 2026: `live_sync_push_plan/push/rollback`, the picker, the typed host (checked in Rust), Roll back (`wk-checks/livetab.js` legs 5–7, plants; #834) |
@@ -316,7 +318,7 @@ Stages, each shippable on its own:
 6. **Anonymise on pull** — DECIDED 10 Oct 2026: later (S3), after push — it is its own feature
    (which columns, which tables, per plugin).
 7. **Push scope default** — DECIDED 10 Oct 2026: whole DB minus the live-owned tables.
-8b. **`DISABLE_WP_CRON` on a synced site** (§2.8) — OPEN, 10 Oct 2026. Set it on EVERY pull (an existing site's wp-config changes on each pull; no toggle exists yet), only on a from-live site's first pull, or not at all until the toggle is built? The risk it guards: a pulled WooCommerce Subscriptions site renewing real subscriptions through real gateways from the local copy.
+8b. **`DISABLE_WP_CRON` on a synced site** (§2.8) — ANSWERED 10 Oct 2026: **off, on every pull** ("jodi disable korle valo hoi tahole disable kore rakho"). Set before the swap, so a failure aborts with nothing replaced (#839). The risk it guards: a pulled WooCommerce Subscriptions site renewing real subscriptions through real gateways from the local copy. Due events still run on demand (the Cron panel, `wp cron event run --due-now`). No per-site toggle: a person who wants page-view cron removes the line, and the next pull puts it back — said in the log line.
 8. **MCP push** — ANSWERED 9 Oct 2026: **a push needs a human click.** Push and Roll back
    are never MCP actions, at any dial level (invariant #7). That holds even after v1; it
    is not a v1 limit.

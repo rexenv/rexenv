@@ -13,7 +13,8 @@
 //!   2. the previous local tables are kept in `<db>_prepull`, the local-only post
 //!      in them;
 //!   3. the live upload arrived; the pairing row did not;
-//!   4. the plugin that came along is not active locally;
+//!   4. the plugin that came along is not active locally, and WP-Cron is off
+//!      (`DISABLE_WP_CRON`, Q8b — a pulled shop never renews subscriptions here);
 //!   5. a pull that fails before the swap (a key the site no longer knows) leaves
 //!      the local site exactly as it was;
 //!   6. (L10, push) a local post and the one file changed since the base reach
@@ -215,6 +216,8 @@ async fn main() -> std::process::ExitCode {
     );
     let active = wordpress::wp_run(&php, &wp, &local_root, &["plugin", "list", "--status=active", "--field=name", "--skip-plugins"]).unwrap_or_default();
     check(!active.lines().any(|l| l.trim() == "rexenv-sync"), "4. the plugin that came along is not active locally");
+    let cron = wordpress::wp_run(&php, &wp, &local_root, &["config", "get", "DISABLE_WP_CRON", "--type=constant"]).unwrap_or_default();
+    check(cron.trim() == "1" || cron.trim().eq_ignore_ascii_case("true"), &format!("4b. WP-Cron is off in the pulled copy's wp-config.php (DISABLE_WP_CRON = {:?})", cron.trim()));
 
     // ── PUSH (L10): a local change goes to live; rollback; a conflict stops it. ──
     use rexenv_lib::core::live_sync::{base, push};

@@ -518,6 +518,12 @@ export async function liveSyncPull(siteId: string, uploadsSince?: number): Promi
   return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null });
 }
 
+/** Save the rexenv Sync plugin (the one built into this app) to Downloads as an
+ *  installable zip; answers the saved path. */
+export async function liveSyncPluginZip(): Promise<string> {
+  return invoke<string>("live_sync_plugin_zip");
+}
+
 /** Prove a pasted key against its live site and describe it, before any site
  *  exists. Nothing is stored. */
 export async function liveSyncPreview(key: string, basicAuthUser?: string, basicAuthPassword?: string): Promise<LiveSyncPreview> {

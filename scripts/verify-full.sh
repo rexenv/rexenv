@@ -49,7 +49,8 @@ fi
 
 cd "$(dirname "$0")/.."
 
-bash scripts/verify.sh
+# The live-check tier runs the examples verify just built: keep them until it is done.
+REXENV_KEEP_EXAMPLES=1 bash scripts/verify.sh
 bash scripts/live-checks.sh sandbox
 
 # L2 needs the harness deps (a one-time `npm install` + `npx playwright

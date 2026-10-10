@@ -1149,6 +1149,12 @@ it, and resolved's late teardown of the old ifindex reset the new one's config (
 keeping the link across restarts gave 0 of 20. The capture above is still the tool for a NEW
 sighting.
 
+**The disk guard** (`scripts/disk-guard.sh`, #840, 10 Oct 2026). `verify.sh` runs it before the
+build (makes room when the disk is under 15 GB free) and after the last gate (drops the ~8 GB of
+example binaries); `live-checks.sh` drops them after its tier, pass or fail. An ENOSPC mid-link is a
+state of the machine, not a verdict — and on 10 Oct it twice left nothing able to run at all.
+`verify-full.sh` keeps the examples between verify and its live-check tier (`REXENV_KEEP_EXAMPLES=1`).
+
 `verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
 COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a
 route resolves, a unit starts or a certificate is trusted. With Docker Desktop not answering it is

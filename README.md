@@ -231,7 +231,7 @@ rexenv/
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
         │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
         │   ├── worktree.rs     # git worktrees as sites — the never-rm-a-worktree guard (docs/PLAN-git-worktrees.md)
-        │   ├── live_sync/      # WordPress live ↔ local sync: signature, client, pull, push, base, the pairing file (docs/rexsync-protocol.md)
+        │   ├── live_sync/      # WordPress live ↔ local sync: signature, client, pull, push, base, the pairing file, the plugin zip (docs/rexsync-protocol.md)
         │   ├── laravel.rs · dotenv.rs                     # Laravel create/install, `.env` read+write
         │   ├── starter.rs      # Blank-PHP starter page + seeded table (templates/starter/)
         │   ├── scratch.rs · wp_mailtag.rs                 # agent scratch sites (TTL, cap, reaper) + their mail stamp

@@ -90,6 +90,9 @@ if [ "$HOST_OS" = windows ]; then
   WIN_TEST_FLAGS=(--config "target.x86_64-pc-windows-msvc.rustflags=[\"-Clink-arg=/MANIFEST:EMBED\",\"-Clink-arg=/MANIFESTINPUT:$WIN_MANIFEST\"]")
 fi
 
+# Room first: an ENOSPC mid-link is a state of the machine, not a verdict (disk-guard.sh).
+bash scripts/disk-guard.sh selftest
+bash scripts/disk-guard.sh before
 (cd src-tauri && cargo test --lib ${WIN_TEST_FLAGS[@]+"${WIN_TEST_FLAGS[@]}"})
 # The `cli` crate ships its own binary and had NO tests until 12 Aug 2026, so
 # the bar never entered this directory — and the first bug it grew (`rex
@@ -231,4 +234,6 @@ fi
 if [ -n "$LC_SKIPPED" ]; then
   echo "verify: linux-check SKIPPED — ${LC_SKIPPED}"
 fi
+# Every gate has passed; drop the ~8 GB of example binaries the next run relinks.
+bash scripts/disk-guard.sh after
 echo "verify: all green"

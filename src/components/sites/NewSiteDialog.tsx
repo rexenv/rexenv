@@ -11,6 +11,7 @@ import { dbEngineRefusals, defaultTld, inspectLinkedFolder, listBlueprints, list
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
+import { DownloadPluginButton } from "@/components/sites/LiveTab";
 import { useDownloads } from "@/lib/useDownloads";
 import type { LinkedFolderInfo, LiveSyncPreview, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteProvisionState, SiteType, WebServer } from "@/types";
 
@@ -727,6 +728,7 @@ function LiveSourceFields({ p }: { p: LiveSourceProps }) {
         On the live site: install the <span className="font-mono">rexenv Sync</span> plugin, Tools → rexenv Sync → <em>Connect to rexenv</em>, and paste the key here.
         The live site is only read from.
       </p>
+      <DownloadPluginButton />
       <div className="flex items-start gap-[7px]">
         <textarea
           {...TECH_INPUT}

@@ -1490,7 +1490,10 @@ honest footer —
   database), a file is at most 1 GiB and the list must fit the disk before the first byte, the
   conflict list is kept to what rexenv asked about, and the plugin reveals its clock only to
   a caller who signed. What a pull cannot make safe: the files ARE the site's code and run
-  locally under its PHP — pulling a site means running it.
+  locally under its PHP — pulling a site means running it. Every pull also sets
+  `DISABLE_WP_CRON` before the swap (#839): a pulled shop never renews subscriptions from
+  here on a page view. The plugin itself is compiled into the app and saved by **Download
+  plugin** (#838), so the zip is always the one this build speaks to.
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request

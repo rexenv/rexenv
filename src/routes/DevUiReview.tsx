@@ -1207,6 +1207,11 @@ export function DevUiReview() {
           return { id: "j2", siteId: "s1", domain: "example.rex", kind: "pull", status: "running", lines: [], error: null, tables: 0, rows: 0, files: 0, refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: null, askedFiles: false };
         case "live_sync_unpair":
           return true;
+        case "live_sync_plugin_zip":
+          ((window as unknown as { __pluginZips?: number }).__pluginZips = ((window as unknown as { __pluginZips?: number }).__pluginZips ?? 0) + 1);
+          return "/Users/somebody/Downloads/rexenv-sync.zip";
+        case "reveal_path":
+          return undefined;
         case "db_import_record":
           return record();
         // `dbjob=instantfail` (#810): the job refuses in its first phase, so by the time the

@@ -11,7 +11,7 @@
  */
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudDownload, CloudUpload, Link2, Loader2, Undo2, Unlink } from "lucide-react";
+import { CloudDownload, CloudUpload, Download, Link2, Loader2, Undo2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import {
@@ -20,10 +20,12 @@ import {
   liveSyncPairing,
   liveSyncPull,
   liveSyncPush,
+  liveSyncPluginZip,
   liveSyncPushPlan,
   liveSyncRollback,
   liveSyncUnpair,
   onLiveSyncState,
+  revealPath,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn, TECH_INPUT } from "@/lib/utils";
@@ -359,6 +361,21 @@ function JobCard({
   );
 }
 
+/** "Download plugin": the rexenv Sync plugin this build speaks to, saved to
+ *  Downloads as the zip WordPress's uploader takes (plan §11 Q1: in-app only). */
+export function DownloadPluginButton() {
+  const save = useMutation({
+    mutationFn: liveSyncPluginZip,
+    onSuccess: (path) => toast.success(`Saved ${path} — upload it on the live site: Plugins → Add New → Upload Plugin`, { label: "Show", onClick: () => void revealPath(path) }),
+    onError: toastBackendError,
+  });
+  return (
+    <Button size="sm" variant="secondary" disabled={save.isPending} onClick={() => save.mutate()}>
+      {save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <Download className="h-3.5 w-3.5" />} Download plugin (.zip)
+    </Button>
+  );
+}
+
 function ConnectForm({ site, onPaired }: { site: Site; onPaired: () => void }) {
   const [key, setKey] = useState("");
   const [user, setUser] = useState("");
@@ -380,6 +397,9 @@ function ConnectForm({ site, onPaired }: { site: Site; onPaired: () => void }) {
         press <em>Connect to rexenv</em>, and paste the key it shows. rexenv checks the key against the live site before
         keeping it; the live site is never written to by a pull.
       </p>
+      <div className="mt-2">
+        <DownloadPluginButton />
+      </div>
       <textarea
         {...TECH_INPUT}
         value={key}
