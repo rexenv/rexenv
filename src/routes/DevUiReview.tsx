@@ -1166,6 +1166,8 @@ export function DevUiReview() {
         case "live_sync_active": {
           if (params.get("paired") !== "1") return null;
           const job = { id: "j1", siteId: "s1", domain: "example.rex", kind: "pull", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, rows: 1560, files: 457, refusedFiles: [], backupDb: "wp_example_rex_prepull", backupId: null, conflicts: [], askedTables: null, askedFiles: false };
+          // `&longlog=1` (livetab.js leg 9): a pull whose log is taller than its box.
+          if (params.get("longlog") === "1") return { ...job, lines: [...job.lines, ...Array.from({ length: 30 }, (_, i) => `  wp_table_${i} — ${i} rows`), "uploads older than 1775851617 (Unix time) left on live", "files: 457 in place, 0 refused by the site"] };
           if (params.get("push") === "ok") return { ...job, kind: "push", status: "ok", tables: 10, rows: 0, files: 3, backupDb: null, backupId: "rxbak_20261010_1a2b3c", lines: ["push: 10 tables, 3 of 457 files changed since the last sync, to https://example.com"] };
           if (params.get("push") === "conflicts") return { ...job, kind: "push", status: "conflicts", tables: 0, rows: 0, files: 0, backupDb: null, conflicts: ["wp_posts", "themes/shop/style.css"], lines: [], askedTables: ["wp_options", "wp_posts"], askedFiles: true };
           return job;
@@ -1188,6 +1190,8 @@ export function DevUiReview() {
           return mockPlatformWords;
         case "live_sync_preview":
           ((window as unknown as { __livePreviews?: unknown[] }).__livePreviews ??= []).push(args);
+          // `&live=php80`: the live site runs a PHP rexenv ships but this machine has not installed (#855).
+          if (params.get("live") === "php80") return { siteUrl: "https://example.com", liveHost: "example.com", suggestedName: "example", wp: "6.8", php: "8.0.30", phpMinor: "8.0", phpExact: true, tables: 12, multisite: false };
           return { siteUrl: "https://example.com", liveHost: "example.com", suggestedName: "example", wp: "6.8", php: "8.3.1", phpMinor: "8.3", phpExact: true, tables: 12, multisite: params.get("live") === "multisite" };
         case "live_sync_create_from_live":
           ((window as unknown as { __liveCreates?: unknown[] }).__liveCreates ??= []).push(args);

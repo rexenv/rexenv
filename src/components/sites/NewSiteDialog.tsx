@@ -567,6 +567,7 @@ export function NewSiteDialog({
                 preview: livePreview,
                 checking: livePreviewQ.isPending,
                 onCheck: () => livePreviewQ.mutate(),
+                runs: phpVersion,
               }}
               wpTitle={wpTitle}
               setWpTitle={setWpTitle}
@@ -712,6 +713,20 @@ interface LiveSourceProps {
   preview: LiveSyncPreview | null;
   checking: boolean;
   onCheck: () => void;
+  /** The PHP this new site will ACTUALLY run — the form's selection, which can only be an
+   *  installed version. The preview line names it, never the live site's own minor (#855). */
+  runs: string;
+}
+
+/** What the preview says about PHP (ledger #855). It names the version the site WILL run —
+ *  the form's selection — because the old line named the live site's minor whether or not it was
+ *  installed: on the macOS VM (11 Oct 2026) it said "This site will run PHP 8.1" while 8.1 was not
+ *  installed, and the site was created on 8.3. */
+export function livePhpSentence(pv: Pick<LiveSyncPreview, "php" | "phpMinor" | "phpExact">, runs: string): string {
+  const liveMinor = pv.php.split(".").slice(0, 2).join(".");
+  if (!pv.phpExact) return `rexenv does not ship PHP ${liveMinor}; this site will run ${runs}.`;
+  if (runs === pv.phpMinor) return `This site will run PHP ${runs}, as the live one does.`;
+  return `This site will run PHP ${runs}: PHP ${pv.phpMinor}, the live site's, is not installed here — install it (Services → PHP) and switch the site to it to match.`;
 }
 
 /** The "From a live site" source (`docs/PLAN-wp-live-sync.md` §2.7): paste the
@@ -763,9 +778,7 @@ function LiveSourceFields({ p }: { p: LiveSourceProps }) {
           <span className="font-mono text-rex-text">{p.preview.siteUrl}</span> — WordPress {p.preview.wp}, PHP {p.preview.php}, {p.preview.tables} tables.
           {p.preview.multisite
             ? " A multisite network: rexenv cannot copy a network yet."
-            : p.preview.phpExact
-              ? ` This site will run PHP ${p.preview.phpMinor}, as the live one does.`
-              : ` rexenv does not ship PHP ${p.preview.phpMinor === p.preview.php ? p.preview.php : p.preview.php.split(".").slice(0, 2).join(".")}; this site will run ${p.preview.phpMinor}.`}
+            : ` ${livePhpSentence(p.preview, p.runs)}`}
         </div>
       )}
     </div>

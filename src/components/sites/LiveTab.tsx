@@ -9,7 +9,7 @@
  * The secret never reaches this component: pairing answers with the key id and
  * the site URL only, and every later call names the site.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudDownload, CloudUpload, Download, Link2, Loader2, Undo2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -61,8 +61,8 @@ export function LiveTab({ site }: { site: Site }) {
       if (s.status !== "running") {
         off();
         void qc.invalidateQueries({ queryKey: ["sites"] });
-        if (s.status === "ok" && s.kind === "pull") toast.success(`Pulled ${s.tables} tables and ${s.files} files from ${site.domain}'s live site`);
-        if (s.status === "ok" && s.kind === "push") toast.success(`Pushed ${s.tables} tables and ${s.files} files to the live site`);
+        if (s.status === "ok" && s.kind === "pull") toast.success(`Pulled ${plural(s.tables, "table")} and ${plural(s.files, "file")} from ${site.domain}'s live site`);
+        if (s.status === "ok" && s.kind === "push") toast.success(`Pushed ${plural(s.tables, "table")} and ${plural(s.files, "file")} to the live site`);
       }
     });
   };
@@ -95,12 +95,22 @@ export function LiveTab({ site }: { site: Site }) {
   });
   const unpair = useMutation({
     mutationFn: () => liveSyncUnpair(site.id),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["live-sync-pairing", site.id] }),
+    onSuccess: () => {
+      // The last job's card spoke about the pairing that just went (#854).
+      setJob(null);
+      void qc.invalidateQueries({ queryKey: ["live-sync-pairing", site.id] });
+    },
     onError: toastBackendError,
   });
 
   if (pairing.isLoading) return null;
-  if (!pairing.data) return <ConnectForm site={site} onPaired={() => void qc.invalidateQueries({ queryKey: ["live-sync-pairing", site.id] })} />;
+  if (!pairing.data) return <ConnectForm
+        site={site}
+        onPaired={() => {
+          setJob(null);
+          void qc.invalidateQueries({ queryKey: ["live-sync-pairing", site.id] });
+        }}
+      />;
   const p = pairing.data;
   const running = job?.status === "running";
   const busy = running || pull.isPending || push.isPending || plan.isPending || rollback.isPending;
@@ -362,12 +372,34 @@ function JobCard({
           {open ? "Hide log" : "Show log"}
         </button>
       )}
-      {open && (
-        <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-rex-well p-2 font-mono text-[0.6875rem] text-rex-text-muted">
-          {job.lines.join("\n")}
-        </pre>
-      )}
+      {open && <JobLog lines={job.lines} />}
     </div>
+  );
+}
+
+/** The job's log, kept scrolled to its END: the last lines are the verdict ("files: N in place",
+ *  "uploads older than … left on live", "swapped in; … backup …"), and in a box that started at the
+ *  top they sat below the fold — the macOS VM run (11 Oct 2026) read the recent-uploads line as
+ *  missing. Follows new lines unless the reader has scrolled up. */
+function JobLog({ lines }: { lines: string[] }) {
+  const ref = useRef<HTMLPreElement>(null);
+  const pinned = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [lines.length]);
+  return (
+    <pre
+      ref={ref}
+      data-testid="live-job-log"
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+      }}
+      className="mt-2 max-h-64 overflow-auto rounded-md bg-rex-well p-2 font-mono text-[0.6875rem] text-rex-text-muted"
+    >
+      {lines.join("\n")}
+    </pre>
   );
 }
 

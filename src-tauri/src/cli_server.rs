@@ -1656,7 +1656,7 @@ where
         }
         "live.disconnect" => {
             let state = app_state(app)?;
-            Ok(json!({ "disconnected": commands::live_sync::live_sync_unpair(state.clone(), need_str(&args, "id", cmd)?).await? }))
+            Ok(json!({ "disconnected": commands::live_sync::live_sync_unpair(state.clone(), live_jobs_state(app)?, need_str(&args, "id", cmd)?).await? }))
         }
         // The made-elsewhere list, serving one, pruning vanished ones, re-cloning a
         // child's database (#849) — the Repository panel's and the child header's

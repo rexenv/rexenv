@@ -121,6 +121,7 @@ fn client_for(state: &AppState, site_id: &str) -> Result<Client> {
 #[tauri::command]
 pub async fn live_sync_pair(
     state: State<'_, AppState>,
+    jobs: State<'_, LiveSyncJobs>,
     site_id: String,
     key: String,
     basic_auth_user: Option<String>,
@@ -145,6 +146,8 @@ pub async fn live_sync_pair(
         }
     }
     secrets::put(state.platform.as_ref(), &site.id, &key, auth)?;
+    // A finished job's card spoke about the OLD pairing (#854).
+    forget_settled(&jobs, &site.id);
     let pairing = secrets::pairing(state.platform.as_ref(), &site.id)?.expect("just stored");
     Ok(Paired { pairing, wp: m.wp, php: m.php, tables: m.tables.len(), multisite: m.multisite })
 }
@@ -166,12 +169,25 @@ pub async fn live_sync_pairing(state: State<'_, AppState>, site_id: String) -> R
 /// `live_sync_unpair` — forget the site's pairing (the live site's own key stays
 /// valid until Disconnect there).
 #[tauri::command]
-pub async fn live_sync_unpair(state: State<'_, AppState>, site_id: String) -> Result<bool> {
+pub async fn live_sync_unpair(state: State<'_, AppState>, jobs: State<'_, LiveSyncJobs>, site_id: String) -> Result<bool> {
+    forget_settled(&jobs, &site_id);
     // The base goes with the pairing (#847): found on the VM, 10 Oct 2026 — Disconnect
     // left `<site>.base.json`, and a later pairing to another site would have judged
     // its conflicts against the first site's stamps.
     base::delete(state.platform.as_ref(), &site_id)?;
     secrets::delete(state.platform.as_ref(), &site_id)
+}
+
+/// Drop a site's FINISHED jobs — a running one is left alone (ledger #854). Their cards
+/// describe the pairing they ran under: on the macOS VM (11 Oct 2026) a pull refused with
+/// "the site has a different rexenv pairing now — paste its current key" stayed on the
+/// Live tab, and in `rex live … status` as the last job, after that key HAD been pasted.
+/// Answers how many went.
+pub fn forget_settled(jobs: &LiveSyncJobs, site_id: &str) -> usize {
+    let mut map = jobs.jobs.lock().expect("live sync jobs lock");
+    let before = map.len();
+    map.retain(|_, e| e.running.load(Ordering::SeqCst) || snapshot(e).site_id != site_id);
+    before - map.len()
 }
 
 /// Is `a` the same live site as `b`? Host and path, trailing slash and case of the
@@ -448,6 +464,13 @@ pub fn typed_host_matches(typed: &str, live_host: &str) -> bool {
     !t.is_empty() && t.eq_ignore_ascii_case(live_host)
 }
 
+/// The one refusal for a push from a site that was never pulled — the picker's and the push's.
+fn never_pulled(domain: &str, live_host: &str) -> Error {
+    Error::Other(format!(
+        "{domain} has never been pulled from {live_host} — pull once first, so rexenv knows what live looked like and can tell what changed there since."
+    ))
+}
+
 /// `live_sync_push_plan` — the LOCAL site's tables with the live-owned ones
 /// marked, the live host, and whether a base exists. Reaches the live site
 /// (its manifest gives the prefix), so a dead pairing fails here, before a picker.
@@ -456,10 +479,17 @@ pub async fn live_sync_push_plan(state: State<'_, AppState>, site_id: String) ->
     let site = wordpress_site(&state, &site_id)?;
     let client = client_for(&state, &site.id)?;
     let m = client.manifest().await?;
+    // Refused HERE, before a picker (#855): a never-pulled site's tables still carry its own
+    // prefix, so the live-owned marks (read with the LIVE prefix) all came out false — the macOS VM
+    // showed `wp_users` ticked with no badge, and only the Push button then said "pull once first".
+    let base_at = base::get(state.platform.as_ref(), &site.id)?.map(|b| b.at);
+    if base_at.is_none() {
+        return Err(never_pulled(&site.domain, &pull::host_of(&m.site_url)));
+    }
     let tools = LocalTools::for_site(&state, &site).await?;
     let names = tools.engine.list_tables(&tools.db_client, tools.engine.port(), &site.db_name)?;
     let tables = names.into_iter().map(|name| PushTable { live_owned: push::live_owned(&m.prefix, &name), name }).collect();
-    Ok(PushPlan { live_host: pull::host_of(&m.site_url), tables, base_at: base::get(state.platform.as_ref(), &site.id)?.map(|b| b.at) })
+    Ok(PushPlan { live_host: pull::host_of(&m.site_url), tables, base_at })
 }
 
 /// `live_sync_push` — push this site TO live. `confirm_host` must be the live
@@ -488,8 +518,7 @@ pub async fn live_sync_push<R: tauri::Runtime>(
     if !typed_host_matches(&confirm_host, &live_host) {
         return Err(Error::Other(format!("To push, type the live site's host exactly: {live_host}")));
     }
-    let prior = base::get(state.platform.as_ref(), &site.id)?
-        .ok_or_else(|| Error::Other(format!("{} has never been pulled from {live_host} — pull once first, so rexenv knows what live looked like and can tell what changed there since.", site.domain)))?;
+    let prior = base::get(state.platform.as_ref(), &site.id)?.ok_or_else(|| never_pulled(&site.domain, &live_host))?;
     let client = client_for(&state, &site.id)?;
     if tables.as_ref().is_some_and(|t| t.is_empty()) && !files {
         return Err(Error::Other("nothing picked — choose at least one table, or the changed files.".into()));
@@ -791,6 +820,47 @@ mod tests {
                 conflicts: vec![], asked_tables: None, asked_files: true,
             }),
         })
+    }
+
+    /// Ledger #855 — the push picker refuses a never-pulled site before it lists tables, with the
+    /// push's own sentence.
+    #[test]
+    fn the_picker_refuses_a_never_pulled_site_before_listing() {
+        let src = crate::core::copy_scan::production_source(include_str!("live_sync.rs"));
+        let body = &src[src.find("pub async fn live_sync_push_plan(").expect("plan")..];
+        let refuse = body.find("never_pulled(").expect("the picker no longer refuses a never-pulled site");
+        let list = body.find("list_tables(").expect("the listing");
+        assert!(refuse < list, "the picker lists tables before refusing");
+        let push = &src[src.find("pub async fn live_sync_push<").expect("push")..];
+        assert!(push.contains("never_pulled("), "the push lost the shared refusal");
+        assert!(super::never_pulled("a.rex", "b.com").to_string().contains("pull once first"));
+    }
+
+    /// **A new pairing (or Disconnect) forgets that site's finished jobs and nothing else**
+    /// (ledger #854): another site's card stays, and a RUNNING job of the same site stays.
+    #[test]
+    fn pairing_again_forgets_only_that_sites_finished_jobs() {
+        let jobs = LiveSyncJobs::default();
+        let running = job("r", "s1", None);
+        running.running.store(true, std::sync::atomic::Ordering::SeqCst);
+        {
+            let mut m = jobs.jobs.lock().unwrap();
+            m.insert("a".into(), job("a", "s1", None));
+            m.insert("b".into(), job("b", "s1", Some("b0")));
+            m.insert("r".into(), running);
+            m.insert("c".into(), job("c", "s2", None));
+        }
+        assert_eq!(super::forget_settled(&jobs, "s1"), 2);
+        let mut left: Vec<String> = jobs.jobs.lock().unwrap().keys().cloned().collect();
+        left.sort();
+        assert_eq!(left, ["c", "r"]);
+        // TEXT: both ends call it.
+        let src = crate::core::copy_scan::production_source(include_str!("live_sync.rs"));
+        for f in ["pub async fn live_sync_pair(", "pub async fn live_sync_unpair("] {
+            let body = &src[src.find(f).expect(f)..];
+            let body = &body[..body.find("\n}\n").expect("its end")];
+            assert!(body.contains("forget_settled("), "{f} no longer forgets the old pairing's jobs");
+        }
     }
 
     /// **A rolled-back backup is offered by no job afterwards — whoever rolled it

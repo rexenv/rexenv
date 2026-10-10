@@ -6,7 +6,9 @@
 //   3. Create reads "Create and pull", is enabled only after the preview, and
 //      SENDS the key, the domain and the PHP version;
 //   4. a multisite preview says so and keeps Create disabled;
-//   5. no page error, in both themes.
+//   5. no page error, in both themes;
+//   6. (#855) a live PHP that is not installed here: the line names the PHP the site WILL run and
+//      says the live one is not installed — never "will run PHP 8.0".
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 
@@ -65,6 +67,18 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     await page.waitForTimeout(400);
     if (!(await page.evaluate(() => document.body.innerText)).includes("cannot copy a network")) fails.push(`${scheme} 4: the multisite refusal is not shown`);
     if (!(await page.getByRole("button", { name: "Create and pull" }).isDisabled())) fails.push(`${scheme} 4: Create enabled on a network`);
+    // 6. the live site's PHP is not installed here.
+    await page.goto(`${BASE}/dev/ui-review?view=newsite&live=php80`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    await page.getByText("WordPress", { exact: true }).click();
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByRole("button", { name: "From a live site" }).click();
+    await page.getByLabel("Connection key").fill("rexsync1:eyJ1IjoiaHR0cHM6Ly9leGFtcGxlLmNvbSJ9");
+    await page.getByRole("button", { name: "Check", exact: true }).click();
+    await page.waitForTimeout(400);
+    const line6 = await page.getByTestId("live-preview").innerText().catch(() => "");
+    if (line6.includes("will run PHP 8.0") || !line6.includes("PHP 8.0, the live site's, is not installed here"))
+      fails.push(`${scheme} 6: the preview says ${JSON.stringify(line6)}`);
     await page.close();
   }
   await browser.close();

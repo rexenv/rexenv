@@ -11,7 +11,8 @@
 //   6. a push stopped by conflicts lists them and offers "Push anyway", which
 //      asks first and sends them as overrides;
 //   7. a settled push shows its backup id, and Roll back asks before it runs;
-//   8. Download plugin saves the zip once and the toast names it.
+//   8. Download plugin saves the zip once and the toast names it;
+//   9. a log taller than its box opens scrolled to its END — the verdict lines are in view.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 
@@ -116,6 +117,16 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     await page.waitForTimeout(300);
     const rb = await page.evaluate(() => window.__liveRollbacks ?? []);
     if (!(rb[0] && rb[0].backupId === "rxbak_20261010_1a2b3c")) fails.push(`${scheme} 7: rollback sent ${JSON.stringify(rb)}`);
+    // 9. the log opens at its end.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&longlog=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: "Show log" }).click();
+    await page.waitForTimeout(300);
+    const atEnd = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="live-job-log"]');
+      return el ? { tall: el.scrollHeight > el.clientHeight + 20, end: el.scrollHeight - el.scrollTop - el.clientHeight < 8 } : null;
+    });
+    if (!atEnd || !atEnd.tall || !atEnd.end) fails.push(`${scheme} 9: the log did not open at its end ${JSON.stringify(atEnd)}`);
     await page.close();
   }
   await browser.close();
