@@ -253,15 +253,30 @@ impl Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::Other(format!("rexenv Sync: the site did not answer ({e}).")))?;
+            .map_err(|e| Error::Other(Self::dropped(&e.to_string())))?;
         let status = resp.status().as_u16();
-        let bytes = resp.bytes().await.map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?.to_vec();
+        let bytes = resp.bytes().await.map_err(|e| Error::Other(Self::dropped(&e.to_string())))?.to_vec();
         if !(200..300).contains(&status) {
             let text = String::from_utf8_lossy(&bytes);
             *self.last_conflicts.lock().expect("conflicts lock") = conflicts_of(&text);
             return Err(refusal(status, &text));
         }
         Ok(bytes)
+    }
+
+    /// The sentence for a request the site never finished answering — refused, reset or
+    /// cut off mid-body. The first real-host run (live-sync.rex.bd, 10 Oct 2026) showed it
+    /// as "error decoding response body": the host's firewall had begun RESETTING every
+    /// connection from this computer after four full syncs in fifteen minutes (each is
+    /// hundreds of requests), the homepage included. Said plainly, the next step is
+    /// obvious; said as reqwest put it, it read as a protocol bug.
+    pub fn dropped(detail: &str) -> String {
+        format!(
+            "rexenv Sync: the site stopped answering ({detail}). If the site itself is up, a security \
+             firewall on the host (Imunify360, CSF, ModSecurity, Wordfence) may have rate-limited this \
+             computer after many requests — wait a while and try again, or allow this computer's IP \
+             address in the host's firewall."
+        )
     }
 
     fn json<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> Result<T> {
@@ -537,6 +552,9 @@ mod tests {
         let e = refusal(401, r#"{"code":"unknown_key","message":"x"}"#).to_string();
         assert!(e.contains("paste its current key"), "{e}");
         assert!(refusal(403, "<html>blocked</html>").to_string().contains("firewall"));
+        // A connection the host RESET (no status at all) names the firewall too.
+        let d = Client::dropped("error decoding response body");
+        assert!(d.contains("stopped answering") && d.contains("firewall") && d.contains("error decoding response body"), "{d}");
         assert!(refusal(404, "").to_string().contains("plugin installed"));
     }
 }

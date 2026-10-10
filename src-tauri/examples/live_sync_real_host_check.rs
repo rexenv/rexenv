@@ -22,7 +22,8 @@
 //!      (#841: the stamps are stable on a real MySQL, not only the fixture's);
 //!   3. a push of one local post + one new file: only that file goes, the post is
 //!      on live at the LIVE domain (public REST), the file is served over HTTPS;
-//!   4. rollback: both are gone from live.
+//!   4. rollback: both are gone from live — from the site's own signed file list at
+//!      once (4a), and from the public URL once the host's front cache lets go (4b).
 
 use rexenv_lib::commands::{self, site_provision};
 use rexenv_lib::core::db::DbEngine;
@@ -194,10 +195,28 @@ async fn main() -> std::process::ExitCode {
                 // 4. Roll back.
                 match client.push_rollback(&r.backup_id).await {
                     Ok(()) => {
+                        // 4a. The plugin's own view of the disk (signed `/files/list`) is the
+                        // authority: the probe file is gone from it the moment rollback answers.
+                        let listed = client.list_files(&pull::DEFAULT_EXCLUDES, None).await.map(|fs| fs.iter().any(|f| f.path == file_rel)).unwrap_or(true);
                         let found: serde_json::Value = http.get(&search).send().await.unwrap().json().await.unwrap_or_default();
                         let gone = found.as_array().map(|a| a.is_empty()).unwrap_or(false);
-                        let served = http.get(&file_url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
-                        check(gone && served == 404, &format!("4. rollback {}: the post is gone ({gone}), the file answers {served}", r.backup_id));
+                        check(gone && !listed, &format!("4a. rollback {}: the post is gone from live ({gone}) and the file is gone from the site's own file list ({})", r.backup_id, !listed));
+                        // 4b. What the public sees, on a FRESH connection each time. On
+                        // live-sync.rex.bd (10 Oct 2026) a reused keep-alive connection kept getting
+                        // 200 for 2+ minutes after the unlink — one server worker's open-file cache —
+                        // while a new connection got 404 at once; a cache-buster query did not help.
+                        // A visitor opens their own connection, so that is what is asked here.
+                        let fresh = reqwest::Client::builder().timeout(Duration::from_secs(30)).pool_max_idle_per_host(0).build().unwrap();
+                        let started = std::time::Instant::now();
+                        let mut served = 0u16;
+                        while started.elapsed() < Duration::from_secs(120) {
+                            served = fresh.get(&file_url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
+                            if served == 404 {
+                                break;
+                            }
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                        }
+                        check(served == 404, &format!("4b. the public URL answers 404 within 120 s (took {} s, fresh connections)", started.elapsed().as_secs()));
                     }
                     Err(e) => check(false, &format!("4. rollback {}: {e} — ROLL BACK BY HAND on the live site", r.backup_id)),
                 }
