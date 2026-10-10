@@ -848,7 +848,13 @@ Live-proven end to end by `site_stop_start_check`.
   UAC. `PrivilegeManager::port_needs_privilege` answers false there (the desktop user's token bound
   `:443`/`:80`, measured), so `prepare_edge` plans an unprivileged start and `start_services` takes the
   `proxy::start` child branch; `WindowsEdge::is_installed` is false, so adopt and the watchdog treat a
-  survivor as the non-daemon edge and stop it with `stop_edge`. The Caddyfile carries `default_bind
+  survivor as the non-daemon edge and stop it with `stop_edge`. **A child edge is "up" only when its
+  admin socket answers** (#853): every Start-all path awaits it (`proxy::await_child_edge`, up to
+  `EDGE_CHILD_START_GRACE` = 30 s) and a Caddy that exits meanwhile fails the start with its exit status
+  and the log's last lines; the watchdog leaves a child that is still running and younger than that
+  grace alone. Before, Start all returned "done" at the spawn, and the watchdog's next poll could find
+  the socket not up yet and KILL the starting Caddy — the Dell's three "Caddy stayed idle" sightings were
+  exactly its three `[edge-down]` events, each with no Caddy log line. The Caddyfile carries `default_bind
   127.0.0.1` from `EdgeSupervisor::default_bind` — Caddy's all-interfaces bind raised Windows Defender
   Firewall's allow prompt on the desktop, so on Windows sites open from this computer only (owner
   ruling; cloudflared tunnels dial localhost and are unaffected); macOS writes no bind and is unchanged.

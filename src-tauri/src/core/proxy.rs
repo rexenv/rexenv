@@ -448,6 +448,40 @@ pub fn start(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Res
     platform.supervisor().spawn_logged(caddy_bin, &args, &log)
 }
 
+/// Wait, without blocking a thread, for a just-spawned child edge's admin socket to answer
+/// (ledger #853) — so Start all says "done" only for an edge that is up. Returns `Ok` once it
+/// answers, or when `timeout` passes with the process still running (slow, not dead: the
+/// watchdog's start-up grace covers it, and the wait is logged). If the process EXITS first, the
+/// error says so, with its exit status and the end of `logs/caddy-stdout.log` — before this a Caddy
+/// that died at start left Start all reporting success and the edge silently idle.
+pub async fn await_child_edge(platform: &dyn Platform, child: &mut std::process::Child, timeout: std::time::Duration) -> Result<()> {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        if admin_alive(platform) {
+            return Ok(());
+        }
+        if let Ok(Some(status)) = child.try_wait() {
+            let log = platform.paths().log_dir()?.join("caddy-stdout.log");
+            let tail = std::fs::read_to_string(&log)
+                .map(|t| t.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default();
+            return Err(crate::error::Error::Other(format!(
+                "the Caddy edge exited as it started ({status}) — the end of {}:\n{tail}",
+                log.display()
+            )));
+        }
+        if std::time::Instant::now() >= deadline {
+            log::warn!(
+                "edge: Caddy (pid {}) is running but its admin socket has not answered after {} s — leaving it to start",
+                child.id(),
+                timeout.as_secs()
+            );
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+}
+
 /// Stop a running Caddy by pid (for the non-privileged `start`).
 pub fn stop(platform: &dyn Platform, pid: u32) -> Result<()> {
     platform.supervisor().stop(pid)

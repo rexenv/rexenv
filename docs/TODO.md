@@ -173,7 +173,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on 7.4/8.0 although `platform/windows/mod.rs` enables `pdo_pgsql`), and `wp_dns::resolver_for(minor)`
   carries macOS measurements with no OS. Xdebug and the update catalogs are already per-OS. Split
   out of the Windows launch row 9 Oct 2026 (plan §3a Q3).
-- [ ] **Windows: a Start all that never spawns Caddy and says nothing** — seen after a tree-kill
+- [x] **Windows: a Start all that never spawns Caddy and says nothing** — seen after a tree-kill
   (Windows launch row) and again on the Dell right after the 0.8.13 `/S` install (PUBLISH-TESTING §A
   0.8.13): `rex start` returned done, Caddy stayed idle, no log line; a second `rex start` brought it
   up and three exact re-runs did not reproduce it. Not #806 (that edge was live). Next: log the
@@ -183,6 +183,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   at 23:27:31 — five seconds after that start — so the manager DID hold an edge handle that died
   (not "never spawned"). A second `rex start` brought it up. caddy-stdout.log for that minute was
   not read (the Dell then dropped off the network).
+  ✓ 11 Oct 2026 (#853): it DID spawn — the watchdog killed it. The Dell's health log has exactly three
+  `[edge-down]` events (5, 9, 10 Oct), one per sighting, and Caddy's log has no line from any of those
+  starts. Start all returned "done" at the spawn, and the next watchdog poll found the admin socket not
+  up yet and killed the still-starting child. Now every Start-all path waits for the socket (a Caddy
+  that dies at start fails it, with its exit status and log tail), and the watchdog spares a running
+  child for 30 s. Proven on the Dell with :80 held (exit 1 naming Caddy's bind error, then up once freed).
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).

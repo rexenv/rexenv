@@ -205,7 +205,10 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
             })?;
             state.services.lock().await.set_edge_daemon();
         } else {
-            let child = core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            // Up, not just spawned: an edge that dies at start is an error here, never "done" (#853).
+            let mut child = core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            core::proxy::await_child_edge(state.platform.as_ref(), &mut child, core::service_manager::EDGE_CHILD_START_GRACE)
+                .await?;
             state.services.lock().await.set_edge_child(child);
         }
     }
@@ -434,8 +437,10 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         // Unprivileged high-port edge (dev config) — no prompt, just start it.
         core::service_manager::LoginEdgeAction::StartUnprivileged => {
             let plan = plan.expect("StartUnprivileged implies a plan");
-            let child =
+            let mut child =
                 core::proxy::start(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)?;
+            core::proxy::await_child_edge(state.platform.as_ref(), &mut child, core::service_manager::EDGE_CHILD_START_GRACE)
+                .await?;
             state.services.lock().await.set_edge_child(child);
             Ok(None)
         }

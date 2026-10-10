@@ -160,6 +160,34 @@ pub const MAX_RESTART_ATTEMPTS: u32 = 3;
 /// back (booted out, disabled, uninstalled, or `:443` blocked) → declare edge-down.
 pub const EDGE_SUPERVISOR_GRACE_POLLS: u32 = 3;
 
+/// How long a just-spawned `Child` edge (Windows' edge, a dev high-port edge) may run without its
+/// admin socket answering before the watchdog treats it as wedged (ledger #853). Before this, the
+/// watchdog's first poll after a Start all could land while Caddy was still starting — slow on a
+/// Windows whose Defender scans the process — read the silent socket as death, and KILL it: on the
+/// Dell the three "Start all said done and Caddy stayed idle" sightings (5, 9 and 10 Oct 2026) are
+/// exactly the three `[edge-down]` events in its health log, each with no Caddy log line at all.
+pub const EDGE_CHILD_START_GRACE: Duration = Duration::from_secs(30);
+
+/// What the watchdog does with a `Child` edge whose admin socket is silent: `exited` is the
+/// process's exit status if it is gone, `age` how long ago it was spawned (ledger #853).
+#[derive(Debug, PartialEq, Eq)]
+pub enum ChildEdgeVerdict {
+    /// Still running and young — starting, not dead. Leave it alone and say nothing.
+    Starting,
+    /// Still running past the grace with no socket — wedged: stop it and say so.
+    Wedged,
+    /// The process is gone — say so, with how it ended.
+    Exited(String),
+}
+
+pub fn child_edge_verdict(exited: Option<String>, age: Option<Duration>) -> ChildEdgeVerdict {
+    match exited {
+        Some(how) => ChildEdgeVerdict::Exited(how),
+        None if age.is_some_and(|a| a < EDGE_CHILD_START_GRACE) => ChildEdgeVerdict::Starting,
+        None => ChildEdgeVerdict::Wedged,
+    }
+}
+
 /// Consecutive watchdog polls (10 s apart) on which the wire probe must MISS before the edge
 /// is called blocked. One miss is what the app's own Caddy reload produces — the marker
 /// probe times out while the edge re-provisions every site's certificate — and what a
@@ -245,6 +273,9 @@ pub struct ServiceManager {
     /// [`EDGE_SUPERVISOR_GRACE_POLLS`] the watchdog must stop reassuring and
     /// declare the edge down (with a diagnosis) instead of lying every 10s forever.
     edge_dead_polls: u32,
+    /// When the current `Child` edge was spawned — the watchdog leaves a child that is still
+    /// running and younger than [`EDGE_CHILD_START_GRACE`] alone (ledger #853).
+    edge_child_since: Option<std::time::Instant>,
     /// Consecutive watchdog polls on which the wire probe found :443 not ours (a miss —
     /// foreign or no answer). The edge is called blocked only at `EDGE_WIRE_MISS_POLLS`
     /// (`wire_blocked_after`): ONE miss is what the app's own Caddy reload produces, and
@@ -471,6 +502,7 @@ impl ServiceManager {
             adopted_misses: HashMap::new(),
             edge_blocked: false,
             edge_dead_polls: 0,
+            edge_child_since: None,
             edge_wire_misses: 0,
             edge_wire_slow: 0,
             php_settings: HashMap::new(),
@@ -718,7 +750,8 @@ impl ServiceManager {
                 })?;
                 self.set_edge_daemon();
             } else {
-                let child = proxy::start(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                let mut child = proxy::start(platform, &plan.caddy_bin, &plan.caddyfile)?;
+                proxy::await_child_edge(platform, &mut child, EDGE_CHILD_START_GRACE).await?;
                 self.set_edge_child(child);
             }
         }
@@ -1024,6 +1057,7 @@ impl ServiceManager {
     /// Record the edge as a child Caddy we own (unprivileged high port).
     pub fn set_edge_child(&mut self, child: std::process::Child) {
         self.edge_dead_polls = 0;
+        self.edge_child_since = Some(std::time::Instant::now());
         self.caddy = CaddyHandle::Child(child);
     }
 
@@ -2616,20 +2650,34 @@ impl ServiceManager {
             }
             // Polls between first and grace: silent — already announced, still waiting.
         } else if !is_stopped && !alive {
-            // A legacy osascript / child edge died — no OS supervisor to restart it,
-            // so mark it down and alarm (the pre-daemon behavior).
-            if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
-                let _ = c.kill();
-                let _ = c.wait();
+            // A legacy osascript / child edge with no OS supervisor to restart it. A CHILD that is
+            // still running and was spawned moments ago is STARTING — leave it alone (#853: this
+            // branch used to kill a Caddy the Start all had just spawned). Otherwise mark it down
+            // and say how it ended.
+            let verdict = match &mut self.caddy {
+                CaddyHandle::Child(c) => child_edge_verdict(
+                    c.try_wait().ok().flatten().map(|st| st.to_string()),
+                    self.edge_child_since.map(|t| t.elapsed()),
+                ),
+                _ => ChildEdgeVerdict::Wedged,
+            };
+            if verdict != ChildEdgeVerdict::Starting {
+                if let CaddyHandle::Child(mut c) = std::mem::take(&mut self.caddy) {
+                    let _ = c.kill();
+                    let _ = c.wait();
+                }
+                self.caddy = CaddyHandle::Stopped;
+                self.edge_child_since = None;
+                let why = match &verdict {
+                    ChildEdgeVerdict::Exited(how) => format!("edge exited ({how}) — see logs/caddy-stdout.log"),
+                    _ => "edge stopped answering on its admin socket".to_string(),
+                };
+                events.push(HealthEvent {
+                    service: "Caddy".into(),
+                    action: "edge-down",
+                    detail: format!("{why} — every site is unreachable until it is started again (Start all)"),
+                });
             }
-            self.caddy = CaddyHandle::Stopped;
-            events.push(HealthEvent {
-                service: "Caddy".into(),
-                action: "edge-down",
-                detail: "edge stopped answering on its admin socket — every site is \
-                         unreachable until it is started again (Start all)"
-                    .into(),
-            });
         } else if is_stopped && alive {
             // Edge answering while we thought it stopped: re-adopt (as the KeepAlive
             // daemon if installed, else a legacy osascript survivor) — truth, no start.
@@ -3256,6 +3304,29 @@ mod tests {
         ));
     }
 
+    /// Ledger #853 — the watchdog leaves a young, running child edge alone.
+    #[test]
+    fn a_child_edge_that_is_still_starting_is_not_killed() {
+        let young = Some(Duration::from_secs(3));
+        assert_eq!(child_edge_verdict(None, young), ChildEdgeVerdict::Starting);
+        assert_eq!(child_edge_verdict(None, Some(EDGE_CHILD_START_GRACE)), ChildEdgeVerdict::Wedged);
+        assert_eq!(child_edge_verdict(None, None), ChildEdgeVerdict::Wedged, "no spawn time: never assume starting");
+        assert_eq!(child_edge_verdict(Some("exit code: 1".into()), young), ChildEdgeVerdict::Exited("exit code: 1".into()));
+        // TEXT: the watchdog asks for a verdict before it kills a child edge.
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let body = &src[src.find("} else if !is_stopped && !alive {").expect("the child branch")..];
+        let ask = body.find("child_edge_verdict(").expect("the watchdog no longer asks whether the child is starting");
+        let kill = body.find("c.kill()").expect("the kill");
+        assert!(ask < kill, "the child is killed before the question");
+        // ...and every Start-all path that spawns a child edge waits for it before calling it up.
+        for (name, file) in [("commands/services.rs", include_str!("../commands/services.rs")), ("service_manager.rs", include_str!("service_manager.rs"))] {
+            let f = crate::core::copy_scan::production_source(file);
+            let spawns = f.matches("proxy::start(").count();
+            let waits = f.matches("await_child_edge(").count();
+            assert!(spawns > 0 && waits == spawns, "{name}: {spawns} child-edge spawn(s), {waits} wait(s)");
+        }
+    }
+
     /// Ledger #851 — a Start all waits for an edge only while its supervisor is still starting it.
     #[test]
     fn start_all_waits_only_for_an_edge_its_supervisor_is_still_starting() {
@@ -3744,6 +3815,49 @@ mod tests {
     /// grace window escalates to a DIAGNOSED edge-down (here: label disabled =
     /// stopped outside the app) with the handle flipped to Stopped — never an
     /// unbounded "restarting" reassurance for an edge that is not coming back.
+    /// Ledger #853, through the real watchdog: a just-spawned child edge whose socket is not up
+    /// yet survives the poll; once past the grace it is called down; one that exited says how.
+    #[tokio::test]
+    async fn the_watchdog_spares_a_starting_child_edge_and_names_a_dead_one() {
+        let platform = edge_test_platform("watchdog-child", false, false);
+        let dir = std::env::temp_dir().join("rexenv-edge-sm-watchdog-child");
+        let ca = ssl::load_or_create_at(&dir.join("ca.pem"), &dir.join("ca.key"), None).unwrap();
+        let long = || {
+            #[cfg(windows)]
+            let c = std::process::Command::new("cmd").args(["/C", "ping -n 30 127.0.0.1 >NUL"]).spawn();
+            #[cfg(not(windows))]
+            let c = std::process::Command::new("sleep").arg("30").spawn();
+            c.expect("spawn a stand-in edge")
+        };
+        let caddy = |evts: &[HealthEvent]| evts.iter().filter(|e| e.service == "Caddy").cloned().collect::<Vec<_>>();
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        mgr.set_edge_child(long());
+        let (e, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        assert!(caddy(&e).is_empty(), "a starting child edge was reported: {e:?}");
+        assert!(matches!(mgr.caddy, CaddyHandle::Child(_)), "a starting child edge was let go");
+        // Past the grace, still silent: wedged → down.
+        mgr.edge_child_since = Some(std::time::Instant::now() - EDGE_CHILD_START_GRACE);
+        let (e, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        let e = caddy(&e);
+        assert_eq!(e.len(), 1, "{e:?}");
+        assert_eq!(e[0].action, "edge-down");
+        assert!(matches!(mgr.caddy, CaddyHandle::Stopped));
+        // A child that already exited is named as exited, even while young.
+        #[cfg(windows)]
+        let mut quick = std::process::Command::new("cmd").args(["/C", "exit 3"]).spawn().unwrap();
+        #[cfg(not(windows))]
+        let mut quick = std::process::Command::new("sh").args(["-c", "exit 3"]).spawn().unwrap();
+        while quick.try_wait().unwrap().is_none() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        // `try_wait` reaped it above; the manager's own `try_wait` then reports the same status.
+        mgr.set_edge_child(quick);
+        let (e, _) = mgr.reconcile_health(&platform, &ca, &[]).await;
+        let e = caddy(&e);
+        assert_eq!(e.len(), 1, "{e:?}");
+        assert!(e[0].detail.contains("edge exited") && e[0].detail.contains('3'), "{}", e[0].detail);
+    }
+
     #[tokio::test]
     async fn watchdog_bounds_edge_restarting_and_diagnoses_the_giveup() {
         let platform = edge_test_platform("watchdog-giveup", true, false);

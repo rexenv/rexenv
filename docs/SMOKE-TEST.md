@@ -2620,6 +2620,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       **Tell:** Firefox opens a search results page — check `user.js` for the line first.
 
 ### Windows-only rows found on real machines (20–21 Sep 2026)
+- [x] **A Caddy that dies at start fails Start all, by name** (#853, 11 Oct 2026): hold 127.0.0.1:80
+      (`python -c "import socket,time;s=socket.socket();s.bind(('127.0.0.1',80));s.listen();time.sleep(90)"`)
+      → `rex start` exits 1 with "the Caddy edge exited as it started (exit code: 1)" and Caddy's own
+      "listening on 127.0.0.1:80 … bind" line; free it → `rex start` → Caddy running. **Tell:** "start
+      done" with Caddy idle. ✓ the Dell (Win10), this tree's build.
 - [x] **The DNS handoff survives a Start all made while the app served DNS itself** (#850, 10 Oct
       2026): end the agent (`taskkill /F /IM rexenv.exe /T`), open the app at once → its log says
       "resolver agent unavailable — running IN-PROCESS"; Start all inside the next ~20 s → within a
