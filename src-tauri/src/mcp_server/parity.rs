@@ -181,6 +181,8 @@ mod tests {
         ("live_sync_active", Never(JOBS)),
         ("live_sync_push_plan", Never("the picker behind a push; a push is never an agent tool (owner, 9 Oct 2026), so neither is its plan")),
         ("live_sync_push", Never("the only operation in rexenv that can change something OUTSIDE this machine: a human click plus the live host typed, never an agent (owner, 9 Oct 2026; ledger #834)")),
+        ("live_sync_preview", Never("takes the pasted key — the same secret live_sync_pair takes")),
+        ("live_sync_create_from_live", Never("takes the pasted key; an agent that could create a site from any live site it chose holds the same power live_sync_pair denies it")),
         ("live_sync_rollback", Never("changes the live site; the same ruling as the push it undoes (owner, 9 Oct 2026)")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),

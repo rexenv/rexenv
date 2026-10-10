@@ -1598,6 +1598,32 @@ export interface LiveSyncJobState {
   askedFiles: boolean;
 }
 
+/** A live site as its manifest describes it (`live_sync_preview`, stores nothing):
+ *  what New site → From a live site prefills from. `phpMinor` is the PHP this
+ *  copy will run — live's when rexenv ships it (`phpExact`), else the newest. */
+export interface LiveSyncPreview {
+  siteUrl: string;
+  liveHost: string;
+  suggestedName: string;
+  wp: string;
+  php: string;
+  phpMinor: string;
+  phpExact: boolean;
+  tables: number;
+  multisite: boolean;
+}
+
+/** New site → From a live site (`live_sync_create_from_live`). */
+export interface LiveSyncCreateInput {
+  key: string;
+  basicAuthUser?: string;
+  basicAuthPassword?: string;
+  name: string;
+  domain: string;
+  phpVersion?: string;
+  webServer: WebServer;
+}
+
 /** The push picker's rows (`live_sync_push_plan`): the LOCAL site's tables, the
  *  live-owned ones (users, comments, orders, form entries) marked so they start
  *  unticked; the host the person must type; when the site was last synced. */

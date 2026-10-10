@@ -479,9 +479,198 @@ pub async fn live_sync_rollback(state: State<'_, AppState>, site_id: String, bac
     Ok(())
 }
 
+// ── L7: New site → From a live site ──────────────────────────────────────
+
+/// What `live_sync_preview` answers: the live site as its manifest describes
+/// it, for the New Site dialog to prefill from. Nothing is stored.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LivePreview {
+    pub site_url: String,
+    pub live_host: String,
+    /// The domain the dialog offers: the live host's first label (`example.com` → `example`).
+    pub suggested_name: String,
+    pub wp: String,
+    pub php: String,
+    /// The PHP minor rexenv will use: live's when it ships here, else the newest shipped.
+    pub php_minor: String,
+    pub php_exact: bool,
+    pub tables: usize,
+    pub multisite: bool,
+}
+
+/// The PHP minor a from-live site gets (plan §2.7): live's `major.minor` when
+/// rexenv ships it, else the newest it does — and `false` so the dialog can say so.
+pub fn php_minor_for(live_php: &str, shipped: &[String]) -> (String, bool) {
+    let want = core::php::minor_of(live_php);
+    if shipped.contains(&want) {
+        return (want, true);
+    }
+    let mut v: Vec<&String> = shipped.iter().collect();
+    v.sort_by(|a, b| {
+        let p = |s: &str| s.split('.').map(|n| n.parse::<u32>().unwrap_or(0)).collect::<Vec<_>>();
+        p(a).cmp(&p(b))
+    });
+    (v.last().map(|s| s.to_string()).unwrap_or(want), false)
+}
+
+fn preview_of(m: &crate::core::live_sync::client::Manifest) -> LivePreview {
+    let live_host = pull::host_of(&m.site_url);
+    let (php_minor, php_exact) = php_minor_for(&m.php, &core::php::available_minors());
+    LivePreview {
+        site_url: m.site_url.clone(),
+        suggested_name: live_host.split('.').next().unwrap_or("site").trim_start_matches("www").trim_matches('.').to_string(),
+        live_host,
+        wp: m.wp.clone(),
+        php: m.php.clone(),
+        php_minor,
+        php_exact,
+        tables: m.tables.len(),
+        multisite: m.multisite,
+    }
+}
+
+fn client_from(key: &str, user: Option<String>, password: Option<String>) -> Result<(sign::PairingKey, Option<secrets::BasicAuth>, Client)> {
+    let key = sign::parse_key(key)?;
+    let auth = match (user.filter(|u| !u.trim().is_empty()), password) {
+        (Some(u), p) => Some((u, p.unwrap_or_default())),
+        _ => None,
+    };
+    let mut client = Client::new(key.clone())?;
+    if let Some((u, p)) = &auth {
+        client = client.with_basic_auth(u, p);
+    }
+    Ok((key, auth, client))
+}
+
+/// `live_sync_preview` — paste a key before any site exists: prove it against
+/// the live site and describe what a local copy would be. Stores nothing.
+#[tauri::command]
+pub async fn live_sync_preview(key: String, basic_auth_user: Option<String>, basic_auth_password: Option<String>) -> Result<LivePreview> {
+    let (_, _, client) = client_from(&key, basic_auth_user, basic_auth_password)?;
+    Ok(preview_of(&client.manifest().await?))
+}
+
+/// `live_sync_create_from_live` — New site → From a live site (plan §2.7): a
+/// WordPress site is provisioned the normal way (the install's users are
+/// placeholders — the pull replaces them with live's), the pairing is stored
+/// under the new row in the SAME transaction as the insert, and the pull
+/// starts by itself once provisioning settles ok. A multisite is refused (S5).
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn live_sync_create_from_live<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    prov_jobs: State<'_, crate::commands::site_provision::ProvisionJobs>,
+    key: String,
+    basic_auth_user: Option<String>,
+    basic_auth_password: Option<String>,
+    name: String,
+    domain: String,
+    php_version: Option<String>,
+    web_server: crate::state::models::WebServer,
+) -> Result<crate::commands::site_provision::SiteProvisionState> {
+    let (pairing_key, auth, client) = client_from(&key, basic_auth_user, basic_auth_password)?;
+    let m = client.manifest().await?;
+    if m.multisite {
+        return Err(Error::Other(format!("{} is a multisite network — rexenv cannot copy a network yet (domain mapping and per-site uploads need their own design).", m.site_url)));
+    }
+    let preview = preview_of(&m);
+    let php_version = php_version.filter(|v| !v.trim().is_empty()).unwrap_or(preview.php_minor.clone());
+    let new_site = crate::state::models::NewSite {
+        name: if name.trim().is_empty() { preview.suggested_name.clone() } else { name.trim().to_string() },
+        domain: domain.trim().to_lowercase(),
+        site_type: SiteType::Wordpress,
+        php_version,
+        web_server,
+        path: String::new(),
+        db_engine: crate::state::models::SiteDbEngine::Mysql,
+        git_url: String::new(),
+        git_ref: None,
+        git_migrate: false,
+        git_build_assets: false,
+        starter_db: false,
+    };
+    // Placeholder install: the pull replaces every table, users included. The
+    // password is random and never shown — nobody is meant to log in with it.
+    let wp = core::wordpress::InstallOptions {
+        title: preview.live_host.clone(),
+        admin_user: "admin".into(),
+        admin_email: format!("admin@{}", new_site.domain),
+        admin_password: uuid::Uuid::new_v4().simple().to_string(),
+        language: String::new(),
+    };
+    let after_insert = |_conn: &rusqlite::Connection, site: &Site| -> Result<()> { secrets::put(state.platform.as_ref(), &site.id, &pairing_key, auth.clone()) };
+    let snap = crate::commands::site_provision::start_with(&app, &state, &prov_jobs, new_site, Some(wp), None, core::sites::Ownership::User, Some(&after_insert))?;
+    // The pull, once the install settles ok. Polled, not awaited: provisioning
+    // is its own streamed job and this command returns its first snapshot.
+    let job_id = snap.id.clone();
+    let worker = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let st = worker.state::<crate::commands::site_provision::ProvisionJobs>();
+            let Ok(s) = crate::commands::site_provision::state_of(&st, &job_id) else { return };
+            if s.status == "running" {
+                continue;
+            }
+            if s.status != "ok" {
+                return;
+            }
+            let Some(site_id) = s.site_id else { return };
+            let state = worker.state::<AppState>();
+            let jobs = worker.state::<LiveSyncJobs>();
+            let site = match wordpress_site(&state, &site_id) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let client = match client_for(&state, &site.id) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let job_site = site.clone();
+            let w2 = worker.clone();
+            let _ = start_job(&worker, &jobs, &site, "pull", move |w, entry| async move {
+                let outcome = run_pull(&w, &entry, &job_site, client, None).await;
+                let mut st = entry.state.lock().expect("live sync state lock");
+                match outcome {
+                    Ok(r) => {
+                        st.status = "ok".into();
+                        st.tables = r.tables;
+                        st.rows = r.rows;
+                        st.files = r.files;
+                        st.refused_files = r.refused_files;
+                        st.backup_db = Some(r.backup_db);
+                    }
+                    Err(e) => {
+                        st.status = "failed".into();
+                        st.error = Some(e.to_string());
+                    }
+                }
+                let _ = w2.emit("sites://changed", ());
+            });
+            return;
+        }
+    });
+    Ok(snap)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::typed_host_matches;
+    use super::{php_minor_for, typed_host_matches};
+
+    /// **A from-live site runs live's PHP minor when rexenv ships it, else the
+    /// NEWEST shipped — and says which** (plan §2.7). Newest by version, not by
+    /// list order or string order ("8.4" > "8.10" as strings).
+    #[test]
+    fn from_live_php_is_lives_or_the_newest() {
+        let shipped: Vec<String> = ["8.1", "7.4", "8.3", "8.2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(php_minor_for("8.2.17", &shipped), ("8.2".into(), true));
+        assert_eq!(php_minor_for("8.5.0", &shipped), ("8.3".into(), false));
+        assert_eq!(php_minor_for("7.3.33", &shipped), ("8.3".into(), false));
+        let s2: Vec<String> = ["8.9", "8.10"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(php_minor_for("5.6.40", &s2).0, "8.10", "numeric, not lexical");
+    }
 
     /// **The typed host must be the live host, exactly** (ledger #834): a scheme,
     /// a path, a different host or nothing never pass; case and whitespace do.

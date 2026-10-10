@@ -1002,6 +1002,12 @@ Needs a live WordPress over HTTPS you may write a plugin into. Install
       "Pulled N tables … files. The previous local tables are in `<db>_prepull`." The local site
       now shows the live content at the LOCAL domain (links and images local); wp-admin logs in
       with the LIVE site's users; the Plugins list shows rexenv Sync **inactive**.
+- [ ] **New site → WordPress → Files: From a live site** → paste the key → **Check** → the line names
+      the live site, its WordPress, PHP and table count, and which PHP this copy runs; name and domain
+      prefill from the host; no admin fields. **Create and pull** → the provision card runs, then the
+      new site's Live tab shows the pull running by itself; when it settles the site is the live
+      content at the local domain and logs in with the LIVE users. A multisite key: "cannot copy a
+      network", Create stays off.
 - [ ] **Pull, recent uploads only** → old media 404s locally, new media loads; the log says
       "uploads older than … left on live".
 - [ ] On the live site, Tools → rexenv Sync → **Regenerate key** → Pull locally → the card says

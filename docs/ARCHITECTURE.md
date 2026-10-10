@@ -1477,7 +1477,10 @@ honest footer —
   to. The plugin judges conflicts against the base rexenv recorded at the last sync and
   stops the push with nothing sent. The push gates are in Rust (#834): the live host typed
   out, a base that exists; live-owned tables (users, comments, orders, entries) start
-  unticked. Push and rollback are never an agent tool.
+  unticked. Push and rollback are never an agent tool. New site → From a live site (#835)
+  proves the pasted key against the live site before anything exists, stores the pairing in
+  the insert's own transaction, and chains the first pull; the install's admin account is a
+  placeholder the pull replaces.
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request

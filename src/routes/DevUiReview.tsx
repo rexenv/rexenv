@@ -47,7 +47,7 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockServicesView } from "@/lib/mock";
+import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
 import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
 import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressManager";
@@ -75,6 +75,7 @@ import { usePreferredBrowser } from "@/lib/useBrowser";
 import { usePreferredEditor } from "@/lib/useEditor";
 import { Code, ExternalLink, Globe } from "lucide-react";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
+import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { toast } from "@/lib/toast";
 import type { ActivityStatus, AgentAction, BrowserApp, EditorApp, DbImportRecord, McpStatus, ResolverTldStatus, RewriteApplied, RewritePreview, RewriteRevertOutcome, ScratchPackage, Site, SiteProvisionState, AgentAccess, AgentAccessLevel, AgentAccessMode } from "@/types";
 
@@ -1169,6 +1170,28 @@ export function DevUiReview() {
           if (params.get("push") === "conflicts") return { ...job, kind: "push", status: "conflicts", tables: 0, rows: 0, files: 0, backupDb: null, conflicts: ["wp_posts", "themes/shop/style.css"], lines: [], askedTables: ["wp_options", "wp_posts"], askedFiles: true };
           return job;
         }
+        // `view=newsite` (wk-checks/newsite-live.js): the New Site dialog over fixtures
+        // for everything it asks on mount. `live_sync_preview` records what the form
+        // SENT (`window.__livePreviews`) and answers as a live site would (`&live=multisite`
+        // answers a network); `live_sync_create_from_live` records (`window.__liveCreates`).
+        case "default_tld":
+          return "rex";
+        case "offered_web_servers":
+          return ["nginx"];
+        case "offered_db_engines":
+          return ["mysql"];
+        case "db_engine_refusals":
+          return {};
+        case "list_blueprints":
+          return [];
+        case "platform_words":
+          return mockPlatformWords;
+        case "live_sync_preview":
+          ((window as unknown as { __livePreviews?: unknown[] }).__livePreviews ??= []).push(args);
+          return { siteUrl: "https://example.com", liveHost: "example.com", suggestedName: "example", wp: "6.8", php: "8.3.1", phpMinor: "8.3", phpExact: true, tables: 12, multisite: params.get("live") === "multisite" };
+        case "live_sync_create_from_live":
+          ((window as unknown as { __liveCreates?: unknown[] }).__liveCreates ??= []).push(args);
+          return { id: "p1", domain: String((args as { domain?: string } | undefined)?.domain ?? ""), siteId: null, phases: [{ key: "prepare", label: "preparing site (domain, certificate)", status: "running" }], phaseCursor: 0, pct: 5, status: "running", summary: null, error: null, logKey: "site-provision-p1.log", downloadIds: [] };
         case "live_sync_push_plan":
           return { liveHost: "example.com", tables: ["wp_options", "wp_posts", "wp_postmeta", "wp_users", "wp_usermeta", "wp_comments"].map((name) => ({ name, liveOwned: /users|usermeta|comments/.test(name) })), baseAt: 1760000000 };
         case "live_sync_push":
@@ -1416,6 +1439,7 @@ export function DevUiReview() {
         {view === "card" && <DbImportCard site={fixtureSite({ dbEngine: params.get("engine") === "mariadb" ? "mariadb" : "mysql" })} />}
         {view === "dbtab" && <DbTabView />}
         {view === "live" && <div className="w-[720px]"><LiveTab site={fixtureSite()} /></div>}
+        {view === "newsite" && <NewSiteDialog onClose={() => {}} />}
         {view === "appupdate" && (
           // A landmark that renders regardless, so a "no button" leg can tell an
           // empty state from a broken route.

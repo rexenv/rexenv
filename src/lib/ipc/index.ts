@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, LiveSyncPushPlan, AdoptableWorktree } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, LiveSyncPushPlan, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -516,6 +516,19 @@ export async function liveSyncUnpair(siteId: string): Promise<boolean> {
  *  this Unix time. Progress streams on `onLiveSyncState`. */
 export async function liveSyncPull(siteId: string, uploadsSince?: number): Promise<LiveSyncJobState> {
   return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null });
+}
+
+/** Prove a pasted key against its live site and describe it, before any site
+ *  exists. Nothing is stored. */
+export async function liveSyncPreview(key: string, basicAuthUser?: string, basicAuthPassword?: string): Promise<LiveSyncPreview> {
+  return invoke<LiveSyncPreview>("live_sync_preview", { key, basicAuthUser: basicAuthUser || null, basicAuthPassword: basicAuthPassword || null });
+}
+
+/** New site → From a live site: a WordPress site is provisioned, the pairing
+ *  stored under the new row, and the pull starts by itself once the install
+ *  settles. Returns the provision job's first snapshot. */
+export async function liveSyncCreateFromLive(input: LiveSyncCreateInput): Promise<SiteProvisionState> {
+  return invoke<SiteProvisionState>("live_sync_create_from_live", { ...input, basicAuthUser: input.basicAuthUser || null, basicAuthPassword: input.basicAuthPassword || null, phpVersion: input.phpVersion || null });
 }
 
 /** The push picker's facts: tables (live-owned marked), the live host, the last sync. Reaches live. */

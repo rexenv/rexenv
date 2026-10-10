@@ -7,17 +7,17 @@ import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import { Button } from "@/components/ui/button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
-import { dbEngineRefusals, defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, offeredDbEngines, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
+import { dbEngineRefusals, defaultTld, inspectLinkedFolder, listBlueprints, listPhpVersions, listSites, liveSyncCreateFromLive, liveSyncPreview, offeredDbEngines, offeredWebServers, pickFolder, repoProbe, siteProvisionCancel, siteProvisionJob, wpMultisiteConvert } from "@/lib/ipc";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { RefPicker, type RefGroup } from "@/components/wordpress/RefPicker";
 import { useDownloads } from "@/lib/useDownloads";
-import type { LinkedFolderInfo, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteProvisionState, SiteType, WebServer } from "@/types";
+import type { LinkedFolderInfo, LiveSyncPreview, MultisiteMode, RepoProbeResult, SiteDbEngine, SiteProvisionState, SiteType, WebServer } from "@/types";
 
 /** Where a new site's files come from — the three sources a docroot has.
  *  Mutually exclusive by construction, which is also the backend's rule:
  *  `git_url` beside a linked `path` is refused, never ranked. */
-type DocrootSource = "new" | "git" | "existing";
+type DocrootSource = "new" | "git" | "existing" | "live";
 
 function generatePassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%";
@@ -135,6 +135,28 @@ export function NewSiteDialog({
   const [source, setSource] = useState<DocrootSource>("new");
   const useExisting = source === "existing";
   const fromGit = source === "git";
+  // From a live site (docs/PLAN-wp-live-sync.md §2.7): the pasted key is proven
+  // against the live site BEFORE anything is created (`liveSyncPreview` stores
+  // nothing); `livePreview` doubles as "this key reaches its site": Create
+  // stays disabled until it lands. The install's admin fields are not asked —
+  // the pull replaces every table, users included.
+  const fromLive = source === "live";
+  const [liveKey, setLiveKey] = useState("");
+  const [liveUser, setLiveUser] = useState("");
+  const [livePassword, setLivePassword] = useState("");
+  const [livePreview, setLivePreview] = useState<LiveSyncPreview | null>(null);
+  const livePreviewQ = useMutation({
+    mutationFn: () => liveSyncPreview(liveKey.trim(), liveUser.trim() || undefined, livePassword || undefined),
+    onSuccess: (pv) => {
+      setLivePreview(pv);
+      if (!name.trim()) setName(pv.suggestedName);
+      if (installed.some((v) => v.minor === pv.phpMinor)) setPhpVersion(pv.phpMinor);
+    },
+    onError: (e) => {
+      setLivePreview(null);
+      toastBackendError(e);
+    },
+  });
   // Link an existing folder: rexenv serves it in place and never writes to,
   // moves, or deletes it. `link` holds the inspected result; a rejected pick
   // shows its reason inline rather than as a toast, next to the button.
@@ -232,6 +254,8 @@ export function NewSiteDialog({
   // an existing install means we touch nothing inside it — no core download, no
   // wp-config, no database.
   const installingWp = isWordpress && !adopting;
+  // The admin fields are asked only when the install's users will be kept.
+  const asksAdmin = installingWp && !fromLive;
 
   // Streamed provision job: submit STARTS it (prepare runs inline — a bad or
   // duplicate domain rejects here with nothing created), then the card below
@@ -350,7 +374,17 @@ export function NewSiteDialog({
       .join(" ") || undefined;
   const create = useMutation({
     mutationFn: () =>
-      siteProvisionJob(
+      fromLive
+        ? liveSyncCreateFromLive({
+            key: liveKey.trim(),
+            basicAuthUser: liveUser.trim() || undefined,
+            basicAuthPassword: livePassword || undefined,
+            name: name.trim(),
+            domain: effectiveDomain.trim(),
+            phpVersion,
+            webServer,
+          })
+        : siteProvisionJob(
         {
           name: name.trim(),
           domain: effectiveDomain.trim(),
@@ -405,7 +439,9 @@ export function NewSiteDialog({
   const canSubmit =
     name.trim() !== "" &&
     domainOk &&
-    (!installingWp || (adminUser.trim() !== "" && adminPassword !== "")) &&
+    (!asksAdmin || (adminUser.trim() !== "" && adminPassword !== "")) &&
+    // From a live site: the key has reached its site, and it is not a network.
+    (!fromLive || (!!livePreview && !livePreview.multisite)) &&
     // Linking is chosen but no usable folder picked yet.
     (!useExisting || !!link) &&
     // Cloning is chosen but the repository hasn't been reached yet. Gating on
@@ -492,6 +528,7 @@ export function NewSiteDialog({
                 setLinkError(null);
                 setProbed(null);
                 setGitRef("");
+                setLivePreview(null);
               }}
               gitAllowed
               siteType={siteType}
@@ -515,7 +552,21 @@ export function NewSiteDialog({
               linkError={linkError}
               linking={linking}
               pickExisting={() => void pickExisting()}
-              isWordpress={installingWp}
+              isWordpress={asksAdmin}
+              live={{
+                key: liveKey,
+                setKey: (v) => {
+                  setLiveKey(v);
+                  setLivePreview(null);
+                },
+                user: liveUser,
+                setUser: setLiveUser,
+                password: livePassword,
+                setPassword: setLivePassword,
+                preview: livePreview,
+                checking: livePreviewQ.isPending,
+                onCheck: () => livePreviewQ.mutate(),
+              }}
               wpTitle={wpTitle}
               setWpTitle={setWpTitle}
               showPassword={showPassword}
@@ -579,8 +630,10 @@ export function NewSiteDialog({
                 <Button variant="primary" disabled={!canSubmit} onClick={() => create.mutate()}>
                   {create.isPending
                     ? "Starting…"
-                    : installingWp
-                      ? "Install WordPress"
+                    : fromLive
+                      ? "Create and pull"
+                      : installingWp
+                        ? "Install WordPress"
                       : adopting
                         ? "Link site"
                         : "Create site"}
@@ -647,6 +700,75 @@ const FIELD_INPUT =
   "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand";
 const FIELD_SELECT =
   "h-9 w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand";
+
+interface LiveSourceProps {
+  key: string;
+  setKey: (v: string) => void;
+  user: string;
+  setUser: (v: string) => void;
+  password: string;
+  setPassword: (v: string) => void;
+  preview: LiveSyncPreview | null;
+  checking: boolean;
+  onCheck: () => void;
+}
+
+/** The "From a live site" source (`docs/PLAN-wp-live-sync.md` §2.7): paste the
+ *  key from the rexenv Sync plugin → Check (the manifest, signed — proves the
+ *  key AND reaches the site before anything is created) → the live site's
+ *  WordPress, PHP and table count show, the name and PHP version prefill. The
+ *  site is installed, then pulled: its users, content and files are live's. */
+function LiveSourceFields({ p }: { p: LiveSourceProps }) {
+  const [showAuth, setShowAuth] = useState(false);
+  const isKey = p.key.trim().startsWith("rexsync1:");
+  return (
+    <div className="mt-[9px] space-y-[7px]">
+      <p className="text-[0.71875rem] leading-[1.5] text-rex-text-muted">
+        On the live site: install the <span className="font-mono">rexenv Sync</span> plugin, Tools → rexenv Sync → <em>Connect to rexenv</em>, and paste the key here.
+        The live site is only read from.
+      </p>
+      <div className="flex items-start gap-[7px]">
+        <textarea
+          {...TECH_INPUT}
+          value={p.key}
+          onChange={(e) => p.setKey(e.target.value)}
+          placeholder="rexsync1:…"
+          rows={2}
+          aria-label="Connection key"
+          className={cn("min-w-0 flex-1 rounded-[9px] border border-rex-border-strong bg-rex-well px-2.5 py-1.5 font-mono text-[0.71875rem] text-rex-text outline-none focus:border-brand")}
+        />
+        <Button variant="secondary" size="sm" onClick={p.onCheck} disabled={p.checking || !isKey}>
+          {p.checking ? "Checking…" : p.preview ? "Re-check" : "Check"}
+        </Button>
+      </div>
+      <button type="button" className="text-[0.6875rem] text-rex-accent-blue hover:underline" onClick={() => setShowAuth((s) => !s)}>
+        {showAuth ? "No HTTP password" : "The live site is behind an HTTP password…"}
+      </button>
+      {showAuth && (
+        <div className="flex gap-[7px]">
+          <input {...TECH_INPUT} value={p.user} onChange={(e) => p.setUser(e.target.value)} placeholder="user" aria-label="HTTP auth user" className={FIELD_INPUT} />
+          <input {...TECH_INPUT} type="password" value={p.password} onChange={(e) => p.setPassword(e.target.value)} placeholder="password" aria-label="HTTP auth password" className={FIELD_INPUT} />
+        </div>
+      )}
+      {p.preview && (
+        <div
+          className={cn(
+            "rounded-[9px] border px-[11px] py-2 text-[0.71875rem]",
+            p.preview.multisite ? "border-status-error-border bg-status-error-bg/40 text-status-error-bright" : "border-rex-border-subtle bg-rex-surface-1 text-rex-text-muted",
+          )}
+          data-testid="live-preview"
+        >
+          <span className="font-mono text-rex-text">{p.preview.siteUrl}</span> — WordPress {p.preview.wp}, PHP {p.preview.php}, {p.preview.tables} tables.
+          {p.preview.multisite
+            ? " A multisite network: rexenv cannot copy a network yet."
+            : p.preview.phpExact
+              ? ` This site will run PHP ${p.preview.phpMinor}, as the live one does.`
+              : ` rexenv does not ship PHP ${p.preview.phpMinor === p.preview.php ? p.preview.php : p.preview.php.split(".").slice(0, 2).join(".")}; this site will run ${p.preview.phpMinor}.`}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** The "From Git" source: paste a URL → Fetch (`git ls-remote`, which validates
  *  the URL AND your access before anything is created) → pick a branch or tag.
@@ -860,6 +982,7 @@ function Step2(p: {
   linking: boolean;
   pickExisting: () => void;
   isWordpress: boolean;
+  live: LiveSourceProps;
   wpTitle: string;
   setWpTitle: (v: string) => void;
   adminUser: string;
@@ -915,6 +1038,7 @@ function Step2(p: {
             { v: "new" as const, label: "New folder" },
             ...(p.gitAllowed ? [{ v: "git" as const, label: "From Git" }] : []),
             { v: "existing" as const, label: "Existing folder" },
+            ...(p.siteType === "wordpress" ? [{ v: "live" as const, label: "From a live site" }] : []),
           ]).map((o) => (
             <button
               key={o.v}
@@ -932,6 +1056,7 @@ function Step2(p: {
           ))}
         </div>
         {p.source === "git" && <GitSourceFields p={p} />}
+        {p.source === "live" && <LiveSourceFields p={p.live} />}
         {p.source === "existing" && (
           <div className="mt-[9px] space-y-[7px]">
             <div className="flex items-center gap-[7px]">
