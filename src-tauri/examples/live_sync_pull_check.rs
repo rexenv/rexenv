@@ -187,8 +187,9 @@ async fn pull_legs(php: &Path, wp: &Path, docroot: &Path) -> bool {
 
     let dest = std::env::temp_dir().join(format!("rexenv-live-pull-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dest);
-    let asked = vec![own.clone(), "plugins/rexenv-sync/includes/class-rexenv-sync-reader.php".to_string(), "plugins/not-there.php".to_string()];
-    match client.read_files(&asked, &dest, &[]).await {
+    let asked = [own.clone(), "plugins/rexenv-sync/includes/class-rexenv-sync-reader.php".to_string(), "plugins/not-there.php".to_string()];
+    let sized: Vec<(String, u64)> = asked.iter().map(|p| (p.clone(), 0)).collect();
+    match client.read_files(&sized, &dest, &[]).await {
         Ok(refused) => {
             let same = |rel: &str| {
                 std::fs::read(dest.join(rel)).ok() == std::fs::read(docroot.join("wp-content").join(rel)).ok()

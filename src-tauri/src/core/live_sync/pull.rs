@@ -203,7 +203,7 @@ pub async fn pull_into(
     // room to spare, measured BEFORE the first byte lands.
     let too_big: Vec<String> = files.iter().filter(|f| f.size > super::client::MAX_FILE_BYTES).map(|f| f.path.clone()).collect();
     if !too_big.is_empty() {
-        on_line(&format!("{} file(s) over {} GiB left on live: {}", too_big.len(), super::client::MAX_FILE_BYTES >> 30, too_big.join(", ")));
+        on_line(&format!("{} file(s) over {} MB left on live: {}", too_big.len(), super::client::MAX_FILE_BYTES >> 20, too_big.join(", ")));
         files.retain(|f| f.size <= super::client::MAX_FILE_BYTES);
     }
     let total: u64 = files.iter().map(|f| f.size).sum();
@@ -224,7 +224,8 @@ pub async fn pull_into(
     }
     let incoming_dir: PathBuf = content.join(format!(".rexsync-incoming-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
     let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
-    let fetched = client.read_files(&paths, &incoming_dir, &excludes).await;
+    let sized: Vec<(String, u64)> = files.iter().map(|f| (f.path.clone(), f.size)).collect();
+    let fetched = client.read_files(&sized, &incoming_dir, &excludes).await;
     let refused = match fetched {
         Ok(r) => r,
         Err(e) => {

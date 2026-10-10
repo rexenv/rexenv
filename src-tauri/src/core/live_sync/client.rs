@@ -114,10 +114,37 @@ pub fn safe_rel(rel: &str) -> bool {
 /// asked for: a missing terminator (a cut-off transfer looks just like a short
 /// one), anything after it, a path not in `asked` or not [`safe_rel`], a size that
 /// runs past the end, or bytes whose sha256 is not the header's. Pure.
-/// The largest single file a pull takes (1 GiB): a frame header claiming more
-/// is refused BEFORE anything is allocated for it (#837). A site that wants to
-/// fill the disk with one "file" gets this sentence instead.
-pub const MAX_FILE_BYTES: u64 = 1 << 30;
+/// The largest single file a pull takes (64 MiB): a frame header claiming more
+/// is refused BEFORE anything is allocated for it (#837), and the pull leaves such
+/// a file on live and names it. 1 GiB until 10 Oct 2026 — but the plugin builds a
+/// frame in PHP memory, and a shared host's PHP (`memory_limit` 128–256 MB, an
+/// account-wide resource cap) dies on a file that size, which the client then sees
+/// only as a reset connection (#844). Big media is uploads-on-demand's (S3).
+pub const MAX_FILE_BYTES: u64 = 64 << 20;
+
+/// One `/files/read` asks for at most this many files and this many bytes (#844):
+/// the plugin holds the whole frame in memory, so a request is sized for a shared
+/// host, not for the network. A file bigger than the byte budget goes alone.
+pub const READ_BATCH_FILES: usize = 200;
+pub const READ_BATCH_BYTES: u64 = 8 << 20;
+
+/// Group `(path, size)` into `/files/read` requests under both budgets, in order.
+pub fn read_batches(files: &[(String, u64)]) -> Vec<Vec<String>> {
+    let mut out: Vec<Vec<String>> = Vec::new();
+    let (mut cur, mut bytes) = (Vec::new(), 0u64);
+    for (path, size) in files {
+        if !cur.is_empty() && (cur.len() >= READ_BATCH_FILES || bytes + size > READ_BATCH_BYTES) {
+            out.push(std::mem::take(&mut cur));
+            bytes = 0;
+        }
+        cur.push(path.clone());
+        bytes += size;
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
 
 pub fn parse_frame(frame: &[u8], asked: &HashSet<String>) -> Result<Vec<FrameRecord>> {
     let bad = |why: &str| Error::Other(format!("the site's file transfer was not intact: {why}"));
@@ -199,6 +226,31 @@ pub struct Client {
     basic_auth: Option<(String, String)>,
     /// The last 409's conflict list, for `push_begin` to hand back as data.
     last_conflicts: std::sync::Mutex<Option<Vec<String>>>,
+    /// The waits before each RETRY of a read (#843); its length is the retry count.
+    backoff: Vec<Duration>,
+}
+
+/// How one try ended when it did not succeed.
+enum Attempt {
+    /// Dropped, reset, cut off, or 429/502/503/504 — the site may answer next time.
+    Transient(String),
+    /// The site answered and refused: retrying changes nothing.
+    Final(Error),
+}
+
+/// The default waits before retrying a read: 2 s, 5 s, 15 s (#843).
+const BACKOFF: [u64; 3] = [2, 5, 15];
+
+/// May this request be sent again after the site dropped it? Only a READ (#843):
+/// the GETs, and `/files/read` (a POST only for its body). Never a push route — a
+/// `/push/db` chunk sent twice would insert its rows twice into the shadow table.
+pub fn retryable(method: &reqwest::Method, route: &str) -> bool {
+    *method == reqwest::Method::GET || route == "/rexenv-sync/v1/files/read"
+}
+
+/// An answer worth retrying: the site is overloaded or a gateway gave up, not a refusal.
+fn transient_status(status: u16) -> bool {
+    matches!(status, 429 | 502 | 503 | 504)
 }
 
 impl Client {
@@ -213,7 +265,7 @@ impl Client {
             .build()
             .map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?;
         let base = key.site_url.clone();
-        Ok(Self { key, base, http, basic_auth: None, last_conflicts: std::sync::Mutex::new(None) })
+        Ok(Self { key, base, http, basic_auth: None, last_conflicts: std::sync::Mutex::new(None), backoff: BACKOFF.iter().map(|s| Duration::from_secs(*s)).collect() })
     }
 
     /// Send `Authorization: Basic` on every request — a site behind HTTP auth.
@@ -230,7 +282,36 @@ impl Client {
         self
     }
 
+    /// Other waits before the read retries (tests use milliseconds; empty = never retry).
+    pub fn with_backoff(mut self, backoff: Vec<Duration>) -> Self {
+        self.backoff = backoff;
+        self
+    }
+
+    /// One request, signed afresh (a new ts and nonce) — and for a READ, again after
+    /// each backoff wait when the site dropped it or answered 429/502/503/504 (#843).
+    /// The first real host reset every connection for some minutes, then recovered
+    /// (10 Oct 2026); a pull that had read 3 of 12 tables died with it.
     async fn send(&self, method: reqwest::Method, route: &str, query: &[(&str, &str)], body: Vec<u8>) -> Result<Vec<u8>> {
+        let waits: &[Duration] = if retryable(&method, route) { &self.backoff } else { &[] };
+        let mut attempt = 0usize;
+        loop {
+            match self.send_once(method.clone(), route, query, body.clone()).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(Attempt::Final(e)) => return Err(e),
+                Err(Attempt::Transient(why)) => {
+                    let Some(wait) = waits.get(attempt) else {
+                        let tries = attempt + 1;
+                        return Err(Error::Other(if tries > 1 { format!("{} (tried {tries} times)", Self::dropped(&why)) } else { Self::dropped(&why) }));
+                    };
+                    tokio::time::sleep(*wait).await;
+                    attempt += 1;
+                }
+            }
+        }
+    }
+
+    async fn send_once(&self, method: reqwest::Method, route: &str, query: &[(&str, &str)], body: Vec<u8>) -> std::result::Result<Vec<u8>, Attempt> {
         let ts = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs().to_string())
@@ -253,29 +334,33 @@ impl Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| Error::Other(Self::dropped(&e.to_string())))?;
+            .map_err(|e| Attempt::Transient(e.to_string()))?;
         let status = resp.status().as_u16();
-        let bytes = resp.bytes().await.map_err(|e| Error::Other(Self::dropped(&e.to_string())))?.to_vec();
+        let bytes = resp.bytes().await.map_err(|e| Attempt::Transient(e.to_string()))?.to_vec();
+        if transient_status(status) {
+            return Err(Attempt::Transient(format!("HTTP {status}")));
+        }
         if !(200..300).contains(&status) {
             let text = String::from_utf8_lossy(&bytes);
             *self.last_conflicts.lock().expect("conflicts lock") = conflicts_of(&text);
-            return Err(refusal(status, &text));
+            return Err(Attempt::Final(refusal(status, &text)));
         }
         Ok(bytes)
     }
 
     /// The sentence for a request the site never finished answering — refused, reset or
     /// cut off mid-body. The first real-host run (live-sync.rex.bd, 10 Oct 2026) showed it
-    /// as "error decoding response body": the host's firewall had begun RESETTING every
-    /// connection from this computer after four full syncs in fifteen minutes (each is
-    /// hundreds of requests), the homepage included. Said plainly, the next step is
-    /// obvious; said as reqwest put it, it read as a protocol bug.
+    /// as "error decoding response body": for some minutes the host reset EVERY connection
+    /// from this computer, the homepage included, then answered normally again — the cause
+    /// was never established (an overloaded or restarting server, or a short firewall
+    /// throttle; a pull is only ~25 requests). Said as reqwest put it, it read as a
+    /// protocol bug; said plainly, the next step is obvious.
     pub fn dropped(detail: &str) -> String {
         format!(
-            "rexenv Sync: the site stopped answering ({detail}). If the site itself is up, a security \
-             firewall on the host (Imunify360, CSF, ModSecurity, Wordfence) may have rate-limited this \
-             computer after many requests — wait a while and try again, or allow this computer's IP \
-             address in the host's firewall."
+            "rexenv Sync: the site stopped answering ({detail}). The server may be overloaded or \
+             restarting, or a security firewall on the host (Imunify360, CSF, ModSecurity, Wordfence) \
+             may be limiting this computer. Open the site in a browser: if it loads, wait a few \
+             minutes and try again."
         )
     }
 
@@ -333,10 +418,13 @@ impl Client {
     /// Fetch `paths` (≤ 200 per request) and write each under `dest`, which must
     /// not be the destination's final place — the caller moves a whole verified set
     /// into place. Returns the records the plugin refused.
-    pub async fn read_files(&self, paths: &[String], dest: &Path, exclude: &[&str]) -> Result<Vec<FrameRecord>> {
+    /// `files` = `(path, size)` from `/files/list` (size 0 when unknown); requests are
+    /// sized by [`read_batches`].
+    pub async fn read_files(&self, files: &[(String, u64)], dest: &Path, exclude: &[&str]) -> Result<Vec<FrameRecord>> {
         let globs = exclude.join(",");
         let mut refused = Vec::new();
-        for chunk in paths.chunks(200) {
+        for chunk in read_batches(files) {
+            let chunk = chunk.as_slice();
             let asked: HashSet<String> = chunk.iter().cloned().collect();
             let body = serde_json::to_vec(&serde_json::json!({ "paths": chunk })).expect("json");
             let q: Vec<(&str, &str)> = if globs.is_empty() { vec![] } else { vec![("exclude", &globs)] };
@@ -527,6 +615,92 @@ mod tests {
         huge.extend(h);
         huge.extend_from_slice(b"xx");
         assert!(parse_frame(&huge, &asked(&["big.bin"])).unwrap_err().to_string().contains("larger than a pull takes"));
+    }
+
+    /// **A `/files/read` request never asks for more than 200 files or 8 MB, a file
+    /// over the budget goes alone, and order is kept** (ledger #844). Plant: drop the
+    /// byte test in `read_batches` and the 5 MB files share one 25 MB request.
+    #[test]
+    fn file_reads_are_sized_for_a_shared_host() {
+        let mb = 1u64 << 20;
+        let small: Vec<(String, u64)> = (0..450).map(|i| (format!("s{i}"), 10)).collect();
+        let b = read_batches(&small);
+        assert_eq!(b.iter().map(Vec::len).collect::<Vec<_>>(), vec![200, 200, 50]);
+        let big: Vec<(String, u64)> = (0..5).map(|i| (format!("b{i}"), 5 * mb)).collect();
+        let b = read_batches(&big);
+        assert_eq!(b.len(), 5, "8 MB budget: one 5 MB file per request");
+        let mixed = vec![("a".to_string(), 1), ("huge".to_string(), 40 * mb), ("c".to_string(), 1)];
+        assert_eq!(read_batches(&mixed), vec![vec!["a".to_string()], vec!["huge".to_string()], vec!["c".to_string()]]);
+        assert!(MAX_FILE_BYTES <= 64 * mb, "a file a shared host's PHP can hold in memory");
+    }
+
+    /// A one-thread fake site on 127.0.0.1: each accepted connection is answered by
+    /// `reply(n)` (n = 0, 1, …) — `None` closes it unanswered, like a reset host.
+    fn fake_site(reply: impl Fn(usize) -> Option<String> + Send + 'static) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::io::{Read, Write};
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let h = hits.clone();
+        std::thread::spawn(move || {
+            for stream in l.incoming().flatten() {
+                let n = h.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut stream = stream;
+                let mut buf = [0u8; 8192];
+                let _ = stream.read(&mut buf);
+                if let Some(r) = reply(n) {
+                    let _ = stream.write_all(r.as_bytes());
+                }
+            }
+        });
+        (port, hits)
+    }
+
+    fn test_client(port: u16) -> Client {
+        let key = PairingKey { site_url: "https://example.com".into(), key_id: "k_0123abcd".into(), secret: vec![7u8; 32] };
+        Client::new(key).unwrap().with_base_url(&format!("http://127.0.0.1:{port}")).with_backoff(vec![Duration::from_millis(5); 2])
+    }
+
+    /// **A READ the site drops is sent again after each backoff wait, and then named
+    /// plainly; a PUSH route is never sent twice; 429/502/503/504 count as a drop and
+    /// a later 200 is used** (ledger #843). Plant: make `retryable` return true for
+    /// every route and the push leg sees 3 connections, not 1.
+    #[tokio::test]
+    async fn reads_retry_after_a_drop_and_pushes_never_do() {
+        use std::sync::atomic::Ordering::SeqCst;
+        assert!(retryable(&reqwest::Method::GET, "/rexenv-sync/v1/manifest"));
+        assert!(retryable(&reqwest::Method::POST, "/rexenv-sync/v1/files/read"));
+        for r in ["/rexenv-sync/v1/push/begin", "/rexenv-sync/v1/push/db", "/rexenv-sync/v1/push/file", "/rexenv-sync/v1/push/swap", "/rexenv-sync/v1/push/rollback"] {
+            assert!(!retryable(&reqwest::Method::POST, r), "{r} must never be retried");
+        }
+
+        // Every connection dropped: the manifest is tried 1 + 2 times, then named.
+        let (port, hits) = fake_site(|_| None);
+        let c = test_client(port);
+        let e = c.manifest().await.unwrap_err().to_string();
+        assert_eq!(hits.load(SeqCst), 3, "{e}");
+        assert!(e.contains("stopped answering") && e.contains("tried 3 times"), "{e}");
+        // A push route against the same dropping site: exactly ONE try.
+        let before = hits.load(SeqCst);
+        let e = c.push_abort("p1").await.unwrap_err().to_string();
+        assert_eq!(hits.load(SeqCst) - before, 1, "a push route was retried: {e}");
+        assert!(!e.contains("tried"), "{e}");
+
+        // 503 first, then the manifest: the retry is used and nothing is reported.
+        let manifest = serde_json::json!({
+            "protocol": sign::PROTOCOL, "plugin": "0.1.0", "site_url": "https://example.com", "wp": "6.8", "php": "8.3.1",
+            "mysql": "8.0", "prefix": "wp_", "multisite": false, "tables": [], "free_bytes": null
+        })
+        .to_string();
+        let (port, hits) = fake_site(move |n| {
+            Some(if n == 0 {
+                "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+            } else {
+                format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{manifest}", manifest.len())
+            })
+        });
+        let m = test_client(port).manifest().await.unwrap();
+        assert_eq!((m.wp.as_str(), hits.load(SeqCst)), ("6.8", 2));
     }
 
     /// **Nothing a site sends can be written outside the pull folder** (ledger

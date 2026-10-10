@@ -1487,7 +1487,9 @@ honest footer —
   is neither (the key would land in shell history). **The live site is not trusted** (#837,
   the security review of 10 Oct 2026): its export stream is imported under a throwaway MySQL
   user granted on the staging database only (as root it could have reached every other local
-  database), a file is at most 1 GiB and the list must fit the disk before the first byte, the
+  database), a file is at most 64 MiB, a file read is at most 200 files / 8 MB (the plugin holds
+  a frame in PHP memory, #844), a read the site drops is retried after 2/5/15 s but a push route
+  never (#843), and the list must fit the disk before the first byte, the
   conflict list is kept to what rexenv asked about, and the plugin reveals its clock only to
   a caller who signed. What a pull cannot make safe: the files ARE the site's code and run
   locally under its PHP — pulling a site means running it. Every pull also sets
