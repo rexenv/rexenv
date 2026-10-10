@@ -137,6 +137,13 @@ pub async fn live_sync_pair(
         client = client.with_basic_auth(u, p);
     }
     let m = client.manifest().await?;
+    // A key for ANOTHER live site makes the old base meaningless: its stamps would
+    // judge the new site's conflicts (#847). Same site (a regenerated key): kept.
+    if let Some(old) = secrets::pairing(state.platform.as_ref(), &site.id)? {
+        if !same_live_site(&old.site_url, &key.site_url) {
+            base::delete(state.platform.as_ref(), &site.id)?;
+        }
+    }
     secrets::put(state.platform.as_ref(), &site.id, &key, auth)?;
     let pairing = secrets::pairing(state.platform.as_ref(), &site.id)?.expect("just stored");
     Ok(Paired { pairing, wp: m.wp, php: m.php, tables: m.tables.len(), multisite: m.multisite })
@@ -160,7 +167,27 @@ pub async fn live_sync_pairing(state: State<'_, AppState>, site_id: String) -> R
 /// valid until Disconnect there).
 #[tauri::command]
 pub async fn live_sync_unpair(state: State<'_, AppState>, site_id: String) -> Result<bool> {
+    // The base goes with the pairing (#847): found on the VM, 10 Oct 2026 — Disconnect
+    // left `<site>.base.json`, and a later pairing to another site would have judged
+    // its conflicts against the first site's stamps.
+    base::delete(state.platform.as_ref(), &site_id)?;
     secrets::delete(state.platform.as_ref(), &site_id)
+}
+
+/// Is `a` the same live site as `b`? Host and path, trailing slash and case of the
+/// host ignored — a regenerated key for the same site keeps its base.
+pub fn same_live_site(a: &str, b: &str) -> bool {
+    let norm = |u: &str| {
+        let u = u.trim().trim_end_matches('/');
+        match u.split_once("://") {
+            Some((scheme, rest)) => {
+                let (host, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((rest, String::new()));
+                format!("{}://{}{}", scheme.to_ascii_lowercase(), host.to_ascii_lowercase(), path)
+            }
+            None => u.to_ascii_lowercase(),
+        }
+    };
+    norm(a) == norm(b)
 }
 
 /// `live_sync_job` — one job's state.
@@ -739,7 +766,18 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::{forget_backup, php_minor_for, typed_host_matches, Entry, LiveSyncJobState, LiveSyncJobs};
+    use super::{forget_backup, php_minor_for, same_live_site, typed_host_matches, Entry, LiveSyncJobState, LiveSyncJobs};
+
+    /// **A regenerated key for the SAME site keeps the base; a key for another site
+    /// does not** (ledger #847). Plant: make it always true and the other-site legs fail.
+    #[test]
+    fn a_new_site_starts_without_the_old_base() {
+        assert!(same_live_site("https://Shop.example.com", "https://shop.example.com/"));
+        assert!(same_live_site("https://example.com/blog", "https://example.com/blog/"));
+        assert!(!same_live_site("https://example.com", "https://other.com"));
+        assert!(!same_live_site("https://example.com/blog", "https://example.com/shop"));
+        assert!(!same_live_site("https://example.com", "https://www.example.com"));
+    }
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, Mutex};
 

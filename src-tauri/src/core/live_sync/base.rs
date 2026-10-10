@@ -19,8 +19,14 @@ pub struct SyncBase {
 }
 
 fn file(platform: &dyn Platform, site_id: &str) -> Result<PathBuf> {
+    // The same rule as the pairing file's (#847): a site id is a UUID the app made,
+    // and `live_sync_unpair` hands this an id straight from the webview.
+    if site_id.is_empty() || !site_id.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-') {
+        return Err(crate::error::Error::Other("not a site id".into()));
+    }
     Ok(super::secrets::dir(platform)?.join(format!("{site_id}.base.json")))
 }
+
 
 pub fn get(platform: &dyn Platform, site_id: &str) -> Result<Option<SyncBase>> {
     match std::fs::read(file(platform, site_id)?) {
@@ -42,5 +48,19 @@ pub fn put(platform: &dyn Platform, site_id: &str, base: &SyncBase) -> Result<()
 pub fn delete(platform: &dyn Platform, site_id: &str) -> Result<()> {
     match std::fs::remove_file(file(platform, site_id)?) {
         Ok(()) | Err(_) => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// **A base path is built only from a site id** (ledger #847). Plant: drop the
+    /// check and `../x` becomes a path one folder up.
+    #[test]
+    fn a_base_path_is_only_ever_a_site_id() {
+        let plat = crate::platform::current();
+        for bad in ["", "../x", "a/b", "x;y", "..\\x"] {
+            assert!(super::file(plat.as_ref(), bad).is_err(), "{bad:?}");
+        }
+        assert!(super::file(plat.as_ref(), "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee").is_ok());
     }
 }
