@@ -41,6 +41,10 @@ cleanup() {
 trap cleanup EXIT
 [ -e "$SIDECAR" ] || { printf '%s\n' "$MARK" > "$SIDECAR"; staged=1; }
 export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
+# The comctl32 v6 manifest `verify.sh` embeds in the Windows test binary: an example that
+# builds a tauri mock app dies at load with 0xC0000139 without it (TESTING §"Proving a
+# Windows claim"; live_sync_pull_into_check, 10 Oct 2026). A caller's own RUSTFLAGS win.
+export CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS="${CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS:--Clink-arg=/MANIFEST:EMBED -Clink-arg=/MANIFESTINPUT:$repo/src-tauri/windows-test.manifest}"
 log="$(mktemp)"
 if ! (cd "$repo/src-tauri" && XWIN_ACCEPT_LICENSE=1 CARGO_TARGET_DIR=target/xwin cargo xwin build --example "$name" --target "$TARGET") > "$log" 2>&1; then
   echo "BUILD FAILED"; grep -E '^error' -A12 "$log" | head -60; exit 1

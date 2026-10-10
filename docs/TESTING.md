@@ -971,7 +971,8 @@ test --no-run --lib`, plus the `/MANIFESTINPUT` link args above), copy the `.exe
 a filter. The worktree tests ran that way. The first run caught two tests that had asserted the
 Mac's shape: a `/repo/…` path that is not absolute without a drive, and a `contains` on a path
 whose separators differ. A tauri **mock-app example** needs the same manifest, or it dies at load
-with `0xC0000139`.
+with `0xC0000139` — `scripts/probes/windows-example.sh` embeds it by default since 10 Oct 2026
+(`live_sync_pull_into_check` was the one that died first).
 
 **The live-sync signature is proven from both sides by one file** (10 Oct 2026, #824).
 `companion/rexenv-sync/tests/vectors.json` is read by the Rust lib tests (`core::live_sync::sign`,
@@ -1150,7 +1151,10 @@ sighting.
 
 `verify.sh`'s `linux-check` compiles both crates inside an Ubuntu 22.04 container. That is a
 COMPILE gate on the host's arch, never a verdict: it says the code builds there, not that a
-route resolves, a unit starts or a certificate is trusted. The Mac has no Ubuntu VM today
+route resolves, a unit starts or a certificate is trusted. With Docker Desktop not answering it is
+SKIPPED, not RED — and the probe is bounded to 15 s, because a QUIT Docker Desktop does not make
+`docker info` fail: it waits on the stale socket forever (10 Oct 2026: a verify run sat 3.5 hours
+in it, every other gate already green). The Mac has no Ubuntu VM today
 (`docs/PLAN-linux-port.md` D-L9), so a Linux behaviour claim is proven one of two ways:
 
 0b. **The Dell's WSL2 Ubuntu 26.04 (x86_64)**, set up 25 Sep 2026: `wsl -d Ubuntu -u rexenv`, the

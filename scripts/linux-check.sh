@@ -64,7 +64,23 @@ if ! command -v docker >/dev/null 2>&1; then
   echo "linux-check: docker is not installed — install Docker Desktop to run the Linux gate" >&2
   exit 3
 fi
-if ! docker info >/dev/null 2>&1; then
+# Bounded: with Docker Desktop QUIT, `docker info` does not fail — it waits on the stale
+# socket forever. On 10 Oct 2026 that held a verify.sh run for 3.5 hours with every other
+# gate already green and nothing on screen. macOS has no `timeout(1)`, so: background it,
+# give it 15 s, and treat silence as "not running" (SKIPPED, exit 3), never as a hang.
+docker info >/dev/null 2>&1 &
+probe=$!
+for _ in $(seq 1 30); do
+  kill -0 "$probe" 2>/dev/null || break
+  sleep 0.5
+done
+if kill -0 "$probe" 2>/dev/null; then
+  kill "$probe" 2>/dev/null
+  wait "$probe" 2>/dev/null
+  echo "linux-check: the docker daemon did not answer in 15 s (Docker Desktop quit or starting) — start it to run the Linux gate" >&2
+  exit 3
+fi
+if ! wait "$probe"; then
   echo "linux-check: the docker daemon is not running — start Docker Desktop to run the Linux gate" >&2
   exit 3
 fi
