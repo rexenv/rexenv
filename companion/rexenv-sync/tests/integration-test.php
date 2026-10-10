@@ -78,6 +78,26 @@ $sd = $stale_unsigned->get_data();
 $check( 'bad_signature' === $code( $stale_unsigned ) && ! isset( $sd['data']['now'] ), 'a stale request that is not signed is refused as bad_signature, without the time' );
 $check( 'unknown_key' === $code( $send( 'GET', '/rexenv-sync/v1/manifest', array(), '', array( 'key' => 'k_ffffffff' ) ) ), 'another key id is refused' );
 
+// 3b. An empty table's stamp does not move when it is READ (#841): NULL and 1 are the
+// same Auto_increment. Made fresh, so its counter has never been opened.
+global $wpdb;
+$probe = $wpdb->prefix . 'rexsync_stamp_probe';
+$wpdb->query( "DROP TABLE IF EXISTS `$probe`" );
+$wpdb->query( "CREATE TABLE `$probe` ( id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY ) ENGINE=InnoDB" );
+$stamp_of = function () use ( $probe ) {
+	foreach ( Rexenv_Sync_Reader::table_status() as $r ) {
+		if ( $r['Name'] === $probe ) {
+			return Rexenv_Sync_Reader::stamp( $r );
+		}
+	}
+	return null;
+};
+$before = $stamp_of();
+$wpdb->get_results( "SELECT * FROM `$probe`" );
+$after = $stamp_of();
+$wpdb->query( "DROP TABLE IF EXISTS `$probe`" );
+$check( null !== $before && $before === $after, "an empty table's stamp is the same before and after a read ($before / $after)" );
+
 // 4. The file list: our own file is listed; an exclude removes it; the cursor resumes after it.
 $own = 'plugins/rexenv-sync/rexenv-sync.php';
 $all = array();

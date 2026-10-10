@@ -974,6 +974,13 @@ whose separators differ. A tauri **mock-app example** needs the same manifest, o
 with `0xC0000139` — `scripts/probes/windows-example.sh` embeds it by default since 10 Oct 2026
 (`live_sync_pull_into_check` was the one that died first).
 
+**The live-sync REAL-HOST run** (`live_sync_real_host_check`, system tier, L14 — 10 Oct 2026).
+Against `https://live-sync.rex.bd`, the project's own live WordPress, over real HTTPS. The key
+comes from a 0600 FILE (`REXENV_LIVE_KEY_FILE`, default `~/live-sync-key.txt`, made with `pbpaste
+>`), never an argument, so it stays out of shell history; without it the example says SKIPPED
+and exits 2. It WRITES to the live site — one probe post, one probe upload — and rolls both back,
+checking each over public HTTPS. After a run, Regenerate the key on the plugin's page.
+
 **The live-sync signature is proven from both sides by one file** (10 Oct 2026, #824).
 `companion/rexenv-sync/tests/vectors.json` is read by the Rust lib tests (`core::live_sync::sign`,
 in the bar) and by the plugin's plain-PHP test. That one is outside the bar because the bar

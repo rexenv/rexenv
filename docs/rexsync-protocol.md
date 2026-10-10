@@ -118,7 +118,10 @@ back unchanged. `null` means done.
 - The nonce store is the plugin's own table `<prefix>rexsync_nonces` (never listed, exported
   or pushed): a row per signed request in `wp_options` would move that table's stamp on
   every call. The stamp is `ai:<Auto_increment>:upd:<Update_time>:rows:<n>:len:<bytes>`,
-  read with `information_schema_stats_expiry = 0` on MySQL 8.
+  read with `information_schema_stats_expiry = 0` on MySQL 8. `Auto_increment` NULL is
+  written as 1 (10 Oct 2026): an empty table nobody has opened reports NULL until the first
+  SELECT — the pull's own export — makes it 1, so unfolded, every never-used table read as
+  changed on live right after a pull.
 - `/db/export`'s cursor is `"k:<json>"` (keyset: a single-column primary key, `WHERE pk >
   last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
   written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes

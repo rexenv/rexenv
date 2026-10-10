@@ -196,10 +196,19 @@ async fn main() -> std::process::ExitCode {
     check(failed.is_err() && before == "1" && after == "1", "5. a pull refused by the site leaves the local site as it was");
 
     let client = Client::new(key.clone()).unwrap().with_base_url(&format!("http://127.0.0.1:{PORT}"));
-    match pull::pull_into(&client, &target, &pull::PullOptions::default(), &mut sink).await {
-        Ok(r) => println!("pulled: {} tables, {} rows, {} files, {} replacements", r.tables, r.rows, r.files, r.replacements),
-        Err(e) => check(false, &format!("the pull: {e}")),
-    }
+    // The base the pull RECORDS is the one leg 6 pushes against — exactly what the app
+    // keeps (#841). Until 10 Oct 2026 leg 6 built its own base ("a moment ago"), and so
+    // never saw that a real pull's base made every pulled file look edited locally.
+    let pulled_base = match pull::pull_into(&client, &target, &pull::PullOptions::default(), &mut sink).await {
+        Ok(r) => {
+            println!("pulled: {} tables, {} rows, {} files, {} replacements", r.tables, r.rows, r.files, r.replacements);
+            Some(r.base)
+        }
+        Err(e) => {
+            check(false, &format!("the pull: {e}"));
+            None
+        }
+    };
     let db = &local.db_name;
     check(
         query(&mysql, db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-ONLY'") == "1"
@@ -222,19 +231,8 @@ async fn main() -> std::process::ExitCode {
     // ── PUSH (L10): a local change goes to live; rollback; a conflict stops it. ──
     use rexenv_lib::core::live_sync::{base, push};
     let _ = wordpress::wp_run(&php, &wp, &local_root, &["post", "create", "--post_title=PUSHED-FROM-LOCAL", "--post_status=publish"]);
-    let prior = base::SyncBase { tables: Default::default(), files: Default::default(), at: 0 };
-    // The base a real pull records: the client's report carries it; here the pull above
-    // did not keep it, so take a fresh one the same way the command does.
-    let m = client.manifest().await.unwrap();
-    let fresh = base::SyncBase {
-        tables: m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect(),
-        files: client.list_files(&pull::DEFAULT_EXCLUDES, None).await.unwrap().into_iter().map(|f| (f.path, format!("{}:{}", f.size, f.mtime))).collect(),
-        // The time of "the last sync" — a moment ago, so only files written after it
-        // count as changed locally.
-        at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 - 1,
-    };
-    let _ = prior;
-    tokio::time::sleep(Duration::from_millis(1100)).await; // a second later than `at`
+    let fresh: base::SyncBase = pulled_base.clone().unwrap_or_default();
+    tokio::time::sleep(Duration::from_millis(1100)).await; // the edit lands a second after the pull
     std::fs::write(local_root.join("wp-content/uploads/2026/from-local.txt"), "from local").unwrap();
     let opts = push::PushOptions { tables: None, files: true, override_items: vec![] };
     let pushed = push::push_from(&client, &target, Some(&fresh), &opts, &mut sink).await;

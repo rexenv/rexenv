@@ -336,6 +336,14 @@ impl Client {
                     std::fs::create_dir_all(p)?;
                 }
                 std::fs::write(&to, &rec.bytes)?;
+                // LIVE's mtime, not the moment of the pull (#841): a push sends files
+                // changed locally since the last sync (`mtime > base.at`), and a pulled
+                // file stamped "now" read as changed — the first push after a real pull
+                // would have uploaded all of wp-content. A rename keeps the time.
+                if rec.mtime > 0 {
+                    let t = std::time::UNIX_EPOCH + std::time::Duration::from_secs(rec.mtime as u64);
+                    std::fs::File::options().write(true).open(&to)?.set_modified(t)?;
+                }
             }
         }
         Ok(refused)

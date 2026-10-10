@@ -120,7 +120,6 @@ pub async fn pull_into(
     local.engine.create_database(local.client, local.port, &stage)?;
     let mut report = PullReport { backup_db: backup.clone(), ..Default::default() };
     report.base.tables = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
-    report.base.at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let staged: Result<()> = async {
         for t in &m.tables {
             let file = local.scratch.join(format!("pull-{}.sql", t.name));
@@ -252,6 +251,9 @@ pub async fn pull_into(
     }
     let _ = std::fs::remove_dir_all(&incoming_dir);
     on_line(&format!("files: {} in place, {} refused by the site", report.files, report.refused_files.len()));
+    // The sync moment is the END of the pull (#841): every file it wrote is now no
+    // newer than this, so the next push sends only what is edited from here on.
+    report.base.at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
 
     // The plugin came along with the files; a local copy answering as a sync
     // endpoint means nothing (plan §2.8).

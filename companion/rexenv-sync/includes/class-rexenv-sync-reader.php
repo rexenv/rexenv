@@ -91,7 +91,12 @@ final class Rexenv_Sync_Reader {
 		// and `Data_length` is in pages — neither moved for one inserted post, which
 		// is how the first conflict test saw no conflict (10 Oct 2026). A NULL-after-
 		// restart `Update_time` errs toward a conflict, i.e. toward asking.
-		return 'ai:' . ( isset( $status['Auto_increment'] ) ? (int) $status['Auto_increment'] : 0 )
+		// `Auto_increment` NULL and 1 are the same fact ("the next id is 1"): an empty
+		// table nobody has opened since the server started reports NULL, and the first
+		// SELECT — the pull's own export — makes it 1. Unfolded, every never-used table
+		// read as "changed on live" right after a pull (#841, 10 Oct 2026).
+		$ai = isset( $status['Auto_increment'] ) ? max( 1, (int) $status['Auto_increment'] ) : 1;
+		return 'ai:' . $ai
 			. ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' )
 			. ':rows:' . (int) $status['Rows'] . ':len:' . (int) $status['Data_length'];
 	}
