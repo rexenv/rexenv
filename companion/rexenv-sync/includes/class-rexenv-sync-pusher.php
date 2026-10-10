@@ -264,8 +264,10 @@ final class Rexenv_Sync_Pusher {
 		}
 		self::ensure_active();
 		update_option( self::KEEP, array( 'id' => $push_id, 'tables' => $r['tables'], 'files' => $moved, 'at' => time() ), false );
-		$r['state'] = 'swapped';
-		self::save_record( $push_id, $r );
+		// The push's own record is done with: the backup record (KEEP) is what a
+		// rollback reads. Until 10 Oct 2026 it stayed, one `rexsync_push_<id>` row per
+		// push for ever — found on the first real host after three pushes (#845).
+		delete_option( self::OPTION . $push_id );
 		self::remove_dir( self::quarantine( $push_id ) );
 		delete_option( 'rewrite_rules' );
 		self::maintenance( false );

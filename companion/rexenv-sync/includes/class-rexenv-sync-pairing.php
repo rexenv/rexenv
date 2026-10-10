@@ -19,7 +19,9 @@ final class Rexenv_Sync_Pairing {
 
 	/** Every option row this plugin owns — never exported, never overwritten by a push. */
 	public static function owned_option_patterns() {
-		return array( self::OPTION, '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+		// The push's records and the kept backup are the LIVE site's state: a pulled
+		// copy that carried `rexsync_backup` would believe it had a backup (#845).
+		return array( self::OPTION, 'rexsync\_push\_%', 'rexsync_backup', '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
 	}
 
 	/** ['key_id' => ..., 'secret' => raw bytes] or an empty array. */

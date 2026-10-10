@@ -126,6 +126,10 @@ back unchanged. `null` means done.
   last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
   written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes
   and break the chunk's `sha256`.
+- The plugin's own option rows (never exported, restored around a swap): the pairing,
+  `rexsync_backup` (the ONE kept backup, read by rollback), and `rexsync_push_<id>` (a push's
+  record, from `begin` until its swap or abort — dropped at the end of the swap since 10 Oct
+  2026; it used to stay for ever, #845).
 - `/db/export` never emits the plugin's own option rows (§5), by `WHERE option_name NOT IN
   (...)` on the options table and `sitemeta` alike.
 

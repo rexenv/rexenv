@@ -271,6 +271,13 @@ $r = $send( 'POST', '/rexenv-sync/v1/push/swap', array( 'push_id' => $pid ) );
 $d = $r->get_data();
 $check( 200 === $r->get_status() && $d['backup_id'] === $pid && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'local-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxbak_$pt`" ) && 'local version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && is_file( WP_CONTENT_DIR . '/rexsync-backups/' . $pid . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid ) && ! file_exists( ABSPATH . '.maintenance' ), 'push/swap: live is the pushed data and file, the old ones kept in the backup, quarantine gone, maintenance off' );
 $check( get_option( Rexenv_Sync_Pairing::OPTION ) === $pairing_before, 'the plugin\'s own pairing row survives the swap' );
+// #845: the push's record is gone after the swap, and neither it nor the kept backup
+// record would travel in a pull of the options table.
+$check( '0' === $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'rexsync\\_push\\_%'" ), 'no push record is left after the swap' );
+update_option( 'rexsync_push_probe845', array( 'tables' => array() ), false );
+$opt_sql = Rexenv_Sync_Reader::export_table( $wpdb->options, null )['sql'];
+delete_option( 'rexsync_push_probe845' );
+$check( false === strpos( $opt_sql, 'rexsync_push_probe845' ) && false === strpos( $opt_sql, "'rexsync_backup'" ) && false !== strpos( $opt_sql, "'siteurl'" ), 'an options export carries neither a push record nor the backup record' );
 $was_active = get_option( 'active_plugins' );
 update_option( 'active_plugins', array_values( array_diff( (array) $was_active, array( 'rexenv-sync/rexenv-sync.php' ) ) ) );
 Rexenv_Sync_Pusher::ensure_active();
