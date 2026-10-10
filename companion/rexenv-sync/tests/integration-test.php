@@ -200,5 +200,65 @@ $got = $wpdb->get_var( "SELECT SUM(CRC32(CONCAT(id, HEX(ip), note))) FROM `$copy
 $check( (string) $want === (string) $got && (int) $before === (int) $wpdb->get_var( "SELECT COUNT(*) FROM `$copy`" ), 'the import of those chunks is the table, row for row, nothing skipped' );
 $wpdb->query( "DROP TABLE IF EXISTS `$t`, `$copy`" );
 
+// 8. PUSH (§4.2). A table the local side "changed" and a file, through begin → db →
+//    file → swap; then rollback puts both back. Live is written ONLY by swap/rollback.
+$pt   = $wpdb->prefix . 'rexsync_pt';
+$wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
+$wpdb->query( "CREATE TABLE `$pt` (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(32)) ENGINE=InnoDB" );
+$wpdb->query( "INSERT INTO `$pt` (v) VALUES ('live-1'), ('live-2')" );
+$pfile = 'uploads/rexsync-push-probe.txt';
+file_put_contents( WP_CONTENT_DIR . '/' . $pfile, 'live version' );
+$base_now = function () use ( $send, $pt, $pfile ) {
+	$m = $send( 'GET', '/rexenv-sync/v1/manifest' )->get_data();
+	$t = array();
+	foreach ( $m['tables'] as $row ) {
+		$t[ $row['name'] ] = $row['checksum'];
+	}
+	$full = WP_CONTENT_DIR . '/' . $pfile;
+	return array( 'tables' => $t, 'files' => array( $pfile => filesize( $full ) . ':' . filemtime( $full ) ) );
+};
+$base = $base_now();
+// 8a. a conflict: live changes after the base was taken → begin refuses, names it.
+touch( WP_CONTENT_DIR . '/' . $pfile, time() + 5 );
+$r = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array( $pfile ), 'base' => $base ) ) );
+$d = $r->get_data();
+$check( 409 === $r->get_status() && 'conflict' === $d['code'] && in_array( $pfile, $d['data']['conflicts'], true ), 'push/begin refuses a file live changed since the base, naming it' );
+// 8b. overriding it, or a fresh base, opens the push.
+$base = $base_now();
+$r    = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array( $pfile ), 'base' => $base ) ) );
+$d    = $r->get_data();
+$pid  = isset( $d['push_id'] ) ? $d['push_id'] : '';
+$check( 200 === $r->get_status() && preg_match( '/^[0-9a-f]{32}$/', $pid ) && is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid ) && is_file( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid . '/index.php' ), 'push/begin opens a quarantine with a random name and an index.php' );
+// 8c. a db chunk lands in the SHADOW table, live untouched; a chunk naming another table is refused.
+$sql = "DROP TABLE IF EXISTS `$pt`;\nCREATE TABLE `$pt` (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(32)) ENGINE=InnoDB;\nINSERT INTO `$pt` (`id`,`v`) VALUES\n(1,'local-1'),\n(2,'local-2'),\n(3,'local-3');\n";
+$r   = $send( 'POST', '/rexenv-sync/v1/push/db', array( 'push_id' => $pid, 'table' => $pt ), wp_json_encode( array( 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ) ) ) );
+$check( 200 === $r->get_status() && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxnew_$pt`" ) && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ), 'push/db fills the shadow table; the live table is untouched' );
+$evil = "INSERT INTO `$pt` (v) VALUES ('x');\nDELETE FROM `{$wpdb->options}`;\n";
+$r    = $send( 'POST', '/rexenv-sync/v1/push/db', array( 'push_id' => $pid, 'table' => $pt ), wp_json_encode( array( 'sql' => $evil, 'sha256' => hash( 'sha256', $evil ) ) ) );
+$check( 400 === $r->get_status() && $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options}" ) > 10, 'a chunk naming another table is refused whole — options survived' );
+// 8d. the file lands in the quarantine, not in place.
+$r = $send( 'POST', '/rexenv-sync/v1/push/file', array( 'push_id' => $pid, 'path' => $pfile, 'offset' => '0' ), 'local ' );
+$r = $send( 'POST', '/rexenv-sync/v1/push/file', array( 'push_id' => $pid, 'path' => $pfile, 'offset' => '6' ), 'version' );
+$check( 200 === $r->get_status() && 'live version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && 'local version' === file_get_contents( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid . '/' . $pfile ), 'push/file appends into the quarantine; the live file is untouched' );
+// 8e. swap: live is the pushed data, the backup holds the old, the pairing row survived.
+$pairing_before = get_option( Rexenv_Sync_Pairing::OPTION );
+$r = $send( 'POST', '/rexenv-sync/v1/push/swap', array( 'push_id' => $pid ) );
+$d = $r->get_data();
+$check( 200 === $r->get_status() && $d['backup_id'] === $pid && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'local-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxbak_$pt`" ) && 'local version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && is_file( WP_CONTENT_DIR . '/rexsync-backups/' . $pid . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid ) && ! file_exists( ABSPATH . '.maintenance' ), 'push/swap: live is the pushed data and file, the old ones kept in the backup, quarantine gone, maintenance off' );
+$check( get_option( Rexenv_Sync_Pairing::OPTION ) === $pairing_before, 'the plugin\'s own pairing row survives the swap' );
+$check( ! in_array( 'rexsync-backups/' . $pid . '/' . $pfile, array_column( Rexenv_Sync_Reader::list_files( null, array() )['files'], 'path' ), true ), 'the backup folder is never listed for a pull' );
+// 8f. rollback: everything back.
+$r = $send( 'POST', '/rexenv-sync/v1/push/rollback', array( 'backup_id' => $pid ) );
+$check( 200 === $r->get_status() && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'live-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && 'live version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/rexsync-backups/' . $pid ) && false === get_option( Rexenv_Sync_Pusher::KEEP ), 'push/rollback puts the old table and file back and drops the backup' );
+$check( 404 === $send( 'POST', '/rexenv-sync/v1/push/rollback', array( 'backup_id' => $pid ) )->get_status(), 'a second rollback of the same backup is refused' );
+// 8g. abort: an open push leaves nothing.
+$r   = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array(), 'base' => $base_now() ) ) );
+$pid2 = $r->get_data()['push_id'];
+$send( 'POST', '/rexenv-sync/v1/push/db', array( 'push_id' => $pid2, 'table' => $pt ), wp_json_encode( array( 'sql' => $sql, 'sha256' => hash( 'sha256', $sql ) ) ) );
+$send( 'POST', '/rexenv-sync/v1/push/abort', array( 'push_id' => $pid2 ) );
+$check( null === $wpdb->get_var( "SHOW TABLES LIKE 'rxnew_$pt'" ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid2 ), 'push/abort drops the shadow table and the quarantine' );
+$wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
+@unlink( WP_CONTENT_DIR . '/' . $pfile );
+
 Rexenv_Sync_Pairing::delete();
 echo "integration: $fail failed\n";

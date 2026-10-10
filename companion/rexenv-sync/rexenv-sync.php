@@ -22,6 +22,7 @@ define( 'REXENV_SYNC_DIR', __DIR__ );
 require_once __DIR__ . '/includes/class-rexenv-sync-signature.php';
 require_once __DIR__ . '/includes/class-rexenv-sync-pairing.php';
 require_once __DIR__ . '/includes/class-rexenv-sync-reader.php';
+require_once __DIR__ . '/includes/class-rexenv-sync-pusher.php';
 require_once __DIR__ . '/includes/class-rexenv-sync-rest.php';
 
 add_action( 'rest_api_init', array( 'Rexenv_Sync_Rest', 'register' ) );

@@ -21,7 +21,7 @@ final class Rexenv_Sync_Reader {
 	const MAX_SECONDS = 15;
 
 	/** Paths the plugin never lists or reads, whatever rexenv asks (§5). */
-	const OWN_EXCLUDES = array( 'uploads/rexsync-*', 'uploads/rexsync-*/*', 'rexsync-backups/*' );
+	const OWN_EXCLUDES = array( 'uploads/rexsync-*', 'uploads/rexsync-*/*', 'rexsync-backups', 'rexsync-backups/*' );
 
 	public static function manifest() {
 		global $wpdb;
@@ -62,6 +62,10 @@ final class Rexenv_Sync_Reader {
 	 * `/manifest`, and a big site's manifest ran past `max_execution_time` (review,
 	 * 10 Oct 2026). rexenv only compares stamps of the same site for equality.
 	 */
+	public static function stamp( array $status ) {
+		return self::checksum( $status );
+	}
+
 	private static function checksum( array $status ) {
 		return 'rows:' . (int) $status['Rows'] . ':len:' . (int) $status['Data_length'] . ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' );
 	}

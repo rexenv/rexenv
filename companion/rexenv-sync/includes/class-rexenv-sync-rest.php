@@ -23,6 +23,12 @@ final class Rexenv_Sync_Rest {
 			'/files/list' => array( 'GET', 'files_list' ),
 			'/files/read' => array( 'POST', 'files_read' ),
 			'/db/export'  => array( 'GET', 'db_export' ),
+			'/push/begin'    => array( 'POST', 'push_begin' ),
+			'/push/file'     => array( 'POST', 'push_file' ),
+			'/push/db'       => array( 'POST', 'push_db' ),
+			'/push/swap'     => array( 'POST', 'push_swap' ),
+			'/push/rollback' => array( 'POST', 'push_rollback' ),
+			'/push/abort'    => array( 'POST', 'push_abort' ),
 		);
 	}
 
@@ -105,6 +111,46 @@ final class Rexenv_Sync_Rest {
 
 	public static function db_export( WP_REST_Request $request ) {
 		return rest_ensure_response( Rexenv_Sync_Reader::export_table( (string) $request->get_param( 'table' ), $request->get_param( 'cursor' ) ) );
+	}
+
+	private static function body_json( WP_REST_Request $request ) {
+		$j = json_decode( (string) $request->get_body(), true );
+		return is_array( $j ) ? $j : array();
+	}
+
+	private static function strings( $v ) {
+		return is_array( $v ) ? array_values( array_filter( array_map( 'strval', $v ), 'strlen' ) ) : array();
+	}
+
+	public static function push_begin( WP_REST_Request $request ) {
+		$j = self::body_json( $request );
+		return rest_ensure_response( Rexenv_Sync_Pusher::begin(
+			self::strings( isset( $j['tables'] ) ? $j['tables'] : null ),
+			self::strings( isset( $j['files'] ) ? $j['files'] : null ),
+			isset( $j['base'] ) && is_array( $j['base'] ) ? $j['base'] : array(),
+			self::strings( isset( $j['override'] ) ? $j['override'] : null )
+		) );
+	}
+
+	public static function push_file( WP_REST_Request $request ) {
+		return rest_ensure_response( Rexenv_Sync_Pusher::receive_file( (string) $request->get_param( 'push_id' ), (string) $request->get_param( 'path' ), $request->get_param( 'offset' ), (string) $request->get_body() ) );
+	}
+
+	public static function push_db( WP_REST_Request $request ) {
+		$j = self::body_json( $request );
+		return rest_ensure_response( Rexenv_Sync_Pusher::receive_sql( (string) $request->get_param( 'push_id' ), (string) $request->get_param( 'table' ), isset( $j['sql'] ) ? (string) $j['sql'] : '', isset( $j['sha256'] ) ? (string) $j['sha256'] : '' ) );
+	}
+
+	public static function push_swap( WP_REST_Request $request ) {
+		return rest_ensure_response( Rexenv_Sync_Pusher::swap( (string) $request->get_param( 'push_id' ) ) );
+	}
+
+	public static function push_rollback( WP_REST_Request $request ) {
+		return rest_ensure_response( Rexenv_Sync_Pusher::rollback( (string) $request->get_param( 'backup_id' ) ) );
+	}
+
+	public static function push_abort( WP_REST_Request $request ) {
+		return rest_ensure_response( Rexenv_Sync_Pusher::abort( (string) $request->get_param( 'push_id' ) ) );
 	}
 
 	/** Send the file frame as raw bytes, not JSON (§4.3). */

@@ -120,7 +120,7 @@ back unchanged. `null` means done.
 - `/db/export` never emits the plugin's own option rows (§5), by `WHERE option_name NOT IN
   (...)` on the options table and `sitemeta` alike.
 
-### 4.2 Write (push) — later stage (plan S2), shape fixed now
+### 4.2 Write (push) — built 10 Oct 2026 (plan S2)
 
 | Route | In | Out |
 |---|---|---|
@@ -130,7 +130,7 @@ back unchanged. `null` means done.
 | `POST /push/swap?push_id=` | — | `{swapped: [..], backup_id}`. One `RENAME TABLE` for the live → `rxbak_` → live rotation; files moved with the old ones kept under the backup; the plugin's option rows re-written; caches flushed; maintenance mode on for the duration only |
 | `POST /push/rollback?backup_id=` | — | `{restored: [..]}` |
 | `POST /push/abort?push_id=` | — | `{removed: true}`. Quarantine dir and `rxnew_*` tables gone |
-| `GET /push/status?push_id=` | — | where an interrupted push stands, for the client's resume or abort |
+| ~~`GET /push/status?push_id=`~~ | — | NOT in v1 (10 Oct 2026): an interrupted push is `abort`ed and started again; resume is S3 |
 
 **`/push/swap` never runs without a backup made in the same request** (plan invariant #1). If
 the backup step fails, nothing is swapped.
