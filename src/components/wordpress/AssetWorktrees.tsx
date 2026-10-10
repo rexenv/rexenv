@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { GitBranch, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirm, Overlay } from "@/components/ui/dialog";
-import { repoBranches, worktreeChildren, worktreeCreate, worktreePreview, worktreeRemove } from "@/lib/ipc";
+import { repoBranches, worktreeAdoptable, worktreeChildren, worktreeCreate, worktreePreview, worktreeRemove, worktreeServe } from "@/lib/ipc";
 import { toastBackendError } from "@/lib/toast";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import type { WorktreeRequest } from "@/types";
@@ -29,6 +29,17 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const children = useQuery({ queryKey: ["sites", "worktrees", siteId], queryFn: () => worktreeChildren(siteId) });
+  // Worktrees of the site's own repository made elsewhere (Claude Code, a plain
+  // `git worktree add`) — Shape B only (§9 Q6): a Serve button each.
+  const adoptable = useQuery({ queryKey: ["sites", "worktrees-adoptable", siteId], queryFn: () => worktreeAdoptable(siteId), enabled: kind === "site" });
+  const serve = useMutation({
+    mutationFn: (path: string) => worktreeServe(siteId, path),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sites"] });
+      navigate("/sites");
+    },
+    onError: toastBackendError,
+  });
   // A site worktree (Shape B) has no asset; a plugin/theme one names its folder.
   const mine = (children.data ?? []).filter((w) =>
     kind === "site" ? w.assetKind == null : w.assetKind === kind && w.assetDir === dirName,
@@ -120,6 +131,24 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
               </button>
             </div>
           ))}
+        </div>
+      )}
+      {kind === "site" && (adoptable.data ?? []).length > 0 && (
+        <div className="mt-3 border-t border-rex-border-subtle pt-2">
+          <div className="text-[0.71875rem] text-rex-text-muted">Worktrees of this repository made elsewhere — serve one as a site:</div>
+          <div className="mt-1 flex flex-col gap-1">
+            {(adoptable.data ?? []).map((w) => (
+              <div key={w.path} className="flex items-center gap-2 text-[0.75rem]">
+                <span className="truncate font-mono text-rex-text" title={w.path}>{w.path}</span>
+                <span className="rounded-full bg-rex-surface-2 px-1.5 py-0.5 font-mono text-[0.625rem] text-rex-text-muted">{w.branch ?? "detached"}</span>
+                {w.missing && <span className="text-[0.6875rem] text-status-warning-bright">folder missing</span>}
+                <span className="flex-1" />
+                <Button size="sm" variant="secondary" disabled={w.missing || serve.isPending} onClick={() => serve.mutate(w.path)}>
+                  Serve
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
       {open && (

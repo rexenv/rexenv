@@ -496,3 +496,158 @@ pub async fn worktree_relations(state: State<'_, AppState>) -> Result<Vec<Worktr
         .map(|w| WorktreeRelation { site_id: w.site_id, parent_id: w.parent_id, asked_branch: w.branch })
         .collect())
 }
+
+// ── W7: serving a whole-site worktree another tool made ─────────────────────
+
+/// A worktree of the parent's repository that is not a rexenv site (yet): what
+/// `git worktree list` shows, minus the main worktree and the ones already served.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdoptableWorktree {
+    pub path: String,
+    pub branch: Option<String>,
+    /// git says the folder is gone (`prunable`).
+    pub missing: bool,
+}
+
+/// `worktree_adoptable` — worktrees of `site_id`'s own repository (Shape B only,
+/// §9 Q6 decided 10 Oct 2026) that rexenv does not serve.
+#[tauri::command]
+pub async fn worktree_adoptable<R: tauri::Runtime>(app: AppHandle<R>, site_id: String) -> Result<Vec<AdoptableWorktree>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let (site, served): (Site, Vec<PathBuf>) = {
+            let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            let site = store::get_site(&conn, &site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))?;
+            let served = store::list_sites(&conn)?.into_iter().map(|s| PathBuf::from(s.path)).collect();
+            (site, served)
+        };
+        let root = PathBuf::from(&site.path);
+        if !root.join(".git").exists() {
+            return Ok(Vec::new());
+        }
+        let env = crate::commands::repo::shell_env(&state, &app.state::<crate::commands::repo::RepoJobs>(), false)?;
+        let git = core::devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+        let main = canon(&root);
+        let served: Vec<PathBuf> = served.iter().map(|p| canon(p)).collect();
+        Ok(worktree::list(state.platform.supervisor(), &git.path, &env, &root)?
+            .into_iter()
+            .filter(|e| !e.bare && canon(&e.path) != main && !served.contains(&canon(&e.path)))
+            .map(|e| AdoptableWorktree { path: e.path.to_string_lossy().into_owned(), branch: e.branch, missing: e.prunable })
+            .collect())
+    })
+    .await
+    .map_err(|e| Error::Other(format!("worktree worker died: {e}")))?
+}
+
+/// `worktree_serve` — serve an EXISTING worktree of `parent_id`'s repository as a
+/// linked child (§2.7). The folder is the other tool's: rexenv never
+/// `git worktree remove`s it (`adopted`), only stops serving it on delete.
+#[tauri::command]
+pub async fn worktree_serve<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    jobs: State<'_, ProvisionJobs>,
+    parent_id: String,
+    path: String,
+    domain: Option<String>,
+) -> Result<SiteProvisionState> {
+    let folder = PathBuf::from(path.trim());
+    let (new, parent, branch) = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let parent = store::get_site(&conn, &parent_id)?.ok_or_else(|| Error::Other(format!("no site {parent_id}")))?;
+        if !folder.join(".git").is_file() {
+            return Err(Error::Other(format!("{} is not a git worktree.", folder.display())));
+        }
+        let own_gitdir = worktree::gitdir_of(&folder.join(".git")).unwrap_or_default();
+        let parent_git = std::fs::canonicalize(PathBuf::from(&parent.path).join(".git")).unwrap_or_default();
+        if !std::fs::canonicalize(&own_gitdir).unwrap_or(own_gitdir).starts_with(&parent_git) {
+            return Err(Error::Other(format!("{} is not a worktree of {}'s repository.", folder.display(), parent.domain)));
+        }
+        // The branch, live from git, names the site.
+        let env = state.platform.shell().login_shell_env()?;
+        let git = core::devtools::resolve_git(state.platform.as_ref(), &env)?;
+        let branch = core::repo::run_git_lines(state.platform.supervisor(), &git.path, &env, &folder, &["branch", "--show-current"])?
+            .into_iter()
+            .next()
+            .filter(|b| !b.is_empty())
+            .unwrap_or_else(|| "detached".into());
+        let mut req = WorktreeRequest { parent_id: parent.id.clone(), asset_kind: None, asset_dir: None, branch: branch.clone(), base: None, domain, skip_uploads: false };
+        if req.branch == "detached" {
+            req.branch = "head".into();
+        }
+        let (mut new, _, _) = plan_child(&conn, &req)?;
+        new.path = folder.to_string_lossy().into_owned();
+        (new, parent, branch)
+    };
+    let content_rel = parent.content_dir_rel().to_string();
+    let record = |conn: &rusqlite::Connection, site: &Site| -> Result<()> {
+        store::set_site_multisite(conn, &site.id, parent.multisite.as_db())?;
+        store::set_site_content_dir(conn, &site.id, &content_rel)?;
+        store::insert_site_worktree(
+            conn,
+            &store::NewWorktree {
+                site_id: &site.id,
+                parent_id: &parent.id,
+                shape: WorktreeShape::Site,
+                worktree_path: &site.path,
+                adopted: true,
+                asset_kind: None,
+                asset_dir: None,
+                branch: &branch,
+                base: None,
+                skip_uploads: false,
+            },
+        )
+    };
+    off_the_runtime(|| site_provision::start_with(&app, &state, &jobs, new, None, None, core::sites::Ownership::User, Some(&record)))
+}
+
+// ── Re-clone DB from parent (§9 Q7, decided 10 Oct 2026) ──────────────────
+
+/// `worktree_reclone_db` — replace a worktree child's database with a fresh copy
+/// of its parent's, URLs moved again. The child's database is dropped and
+/// refilled by `core::dbclone` (which refuses a database rexenv did not make).
+#[tauri::command]
+pub async fn worktree_reclone_db<R: tauri::Runtime>(app: AppHandle<R>, site_id: String) -> Result<u64> {
+    let state = app.state::<AppState>();
+    let (child, parent) = {
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let w = store::get_site_worktree(&conn, &site_id)?.ok_or_else(|| Error::Other("not a worktree site".into()))?;
+        let child = store::get_site(&conn, &site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))?;
+        let parent = store::get_site(&conn, &w.parent_id)?.ok_or_else(|| Error::Other(format!("{}'s parent site is gone", child.domain)))?;
+        (child, parent)
+    };
+    if child.site_type != SiteType::Wordpress {
+        return Err(Error::Other(format!("{} is not a WordPress site — only its database and URLs are re-cloned here.", child.domain)));
+    }
+    if child.db_name == parent.db_name {
+        return Err(Error::Other(format!("{} shares its parent's database — there is nothing to re-clone.", child.domain)));
+    }
+    let engine = crate::core::db::DbEngine::from_site(child.db_engine);
+    let minor = core::php::minor_of(&child.php_version);
+    let (php, wp_phar) = crate::commands::wordpress::wp_tools(&state, &minor).await?;
+    let engine_version = crate::commands::database::effective_db_version(&state, engine)?;
+    let check = {
+        let mut mgr = state.services.lock().await;
+        mgr.spawn_db(state.platform.as_ref(), engine).await?
+    };
+    crate::core::service_manager::await_ready(check.into_iter().collect()).await?;
+    let (db_client, dump) = engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
+    let scratch = state.platform.paths().app_data_dir()?.join("worktrees");
+    let docroot = child.served_root();
+    let network = !matches!(parent.multisite, MultisiteMode::None);
+    let (source, target, from, to, child_id) = (parent.db_name.clone(), child.db_name.clone(), parent.domain.clone(), child.domain.clone(), child.id.clone());
+    tauri::async_runtime::spawn_blocking(move || {
+        let st = app.state::<AppState>();
+        let spec = core::dbclone::CloneSpec { engine, client: &db_client, dump: &dump, port: engine.port(), source: &source, target: &target, scratch_dir: &scratch };
+        core::dbclone::clone_database(&spec, st.platform.permissions(), &|exists| {
+            let conn = st.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            core::dbrestore::record_provenance(&conn, &child_id, exists)
+        })?;
+        crate::core::wordpress::rehome_urls_on_copy(st.platform.as_ref(), &php, &wp_phar, &docroot, &scratch, engine.port(), &target, &from, &to, network)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("re-clone worker died: {e}")))?
+}

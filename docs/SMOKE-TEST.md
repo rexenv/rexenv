@@ -969,6 +969,11 @@ branch in that repository:
       serves. Remove it from the Worktree sites row → the "Remove anyway?" question quotes the
       file; Cancel leaves everything; Remove anyway deletes it. `git branch` in the plugin still
       lists the branch.
+- [ ] On a worktree site's page, the header's **Re-clone DB from parent** → confirm → the site shows
+      the parent's content again at its own domain (a post made only here is gone).
+- [ ] On a site whose own folder is a git checkout, run `git worktree add ../elsewhere -b try` by
+      hand → Repository tab → **Worktree sites** lists it under "made elsewhere" → **Serve** → it
+      becomes `try.<site>`, served from that folder; Delete that site → the folder is still there.
 - [ ] Delete the PARENT while a worktree site exists → refused, naming the child.
 - [ ] `rex worktree <site> add <plugin-dir> <branch>` prints the phases and ends `… — created`;
       `rex worktree <site> list` shows it with its branch; `rex worktree <child> remove` refuses

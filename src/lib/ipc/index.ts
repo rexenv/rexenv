@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, AdoptableWorktree } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -558,6 +558,25 @@ export async function worktreeChildren(parentId: string): Promise<WorktreeView[]
 export async function worktreeOf(siteId: string): Promise<WorktreeView | null> {
   if (!isTauri()) return null;
   return invoke<WorktreeView | null>("worktree_of", { siteId });
+}
+
+/** Worktrees of the site's OWN repository that another tool made and rexenv does
+ *  not serve — Claude Code's, a plain `git worktree add`. */
+export async function worktreeAdoptable(siteId: string): Promise<AdoptableWorktree[]> {
+  if (!isTauri()) return [];
+  return invoke<AdoptableWorktree[]>("worktree_adoptable", { siteId });
+}
+
+/** Serve an existing worktree folder as a linked child of `parentId`. rexenv
+ *  never removes that folder — deleting the site only stops serving it. */
+export async function worktreeServe(parentId: string, path: string, domain?: string): Promise<SiteProvisionState> {
+  return invoke<SiteProvisionState>("worktree_serve", { parentId, path, domain: domain ?? null });
+}
+
+/** Replace a worktree child's database with a fresh copy of its parent's,
+ *  URLs moved again. Returns the replacement count. */
+export async function worktreeRecloneDb(siteId: string): Promise<number> {
+  return invoke<number>("worktree_reclone_db", { siteId });
 }
 
 /** Every child → parent row (the Sites list's branch chips). */

@@ -1627,6 +1627,13 @@ export interface WorktreeView {
   adopted: boolean;
 }
 
+/** A worktree of the site's own repository that rexenv does not serve (yet). */
+export interface AdoptableWorktree {
+  path: string;
+  branch: string | null;
+  missing: boolean;
+}
+
 /** Child → parent rows for the Sites list's chips (no git reads). */
 export interface WorktreeRelation {
   siteId: string;

@@ -166,6 +166,9 @@ mod tests {
         //    are called by name from the MCP source; these two are reached otherwise:
         ("worktree_create", Tool("worktree")),
         ("worktree_of", Tool("worktree")),
+        ("worktree_adoptable", Gap("an `adoptable` action on the worktree tool (Read) — the shape an agent needs most, since its own worktrees are the ones to serve; not yet; TODO row Git worktree workflow")),
+        ("worktree_serve", Gap("a `serve` action on the worktree tool (Changes) — not yet; TODO row Git worktree workflow")),
+        ("worktree_reclone_db", Gap("a `reclone` action on the worktree tool (Full: it replaces the child database) — not yet; TODO row Git worktree workflow")),
         ("worktree_relations", Never("the Sites list's grouping rows; an agent reads the same through the worktree action's list")),
         // ── live_sync (docs/PLAN-wp-live-sync.md §2.9: pull is Full-level agent work LATER —
         //    S4 adds `live` status/diff/pull; pairing takes a pasted secret, and push/rollback

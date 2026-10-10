@@ -33,7 +33,12 @@
 //!  10. it is a LINKED site whose folder is the worktree;
 //!  11. its `wp-config.php` is copied and pointed at its own database, and its
 //!      URLs are moved;
-//!  12. a dirty one refuses Delete, a clean one goes through git.
+//!  12. a dirty one refuses Delete, a clean one goes through git;
+//!  13. Re-clone DB from parent replaces the child's data and keeps its URL;
+//!  14. a worktree made outside rexenv (`git worktree add` by hand) is listed as
+//!      adoptable, on its branch (W7);
+//!  15. serving it makes an adopted, linked child; deleting that site leaves
+//!      the folder for the tool that made it.
 //!
 //! Edge safety: the fixture manager adopts the database tier only, so the
 //! serve phase is SKIPPED and the real edge is never touched (the
@@ -386,6 +391,71 @@ async fn main() -> std::process::ExitCode {
         } else {
             failures.push(format!("11: config names its db={} siteurl={siteurl:?}", config.contains(&b.db_name)));
         }
+        // 13. Re-clone DB from parent: a post written only in the child is gone after.
+        let _ = query(&mysql, &b.db_name, "INSERT INTO wp_posts (post_title, post_status, post_type, post_date, post_date_gmt, post_modified, post_modified_gmt, post_content, post_excerpt, to_ping, pinged, post_content_filtered) VALUES ('CHILD-ONLY','publish','post',NOW(),NOW(),NOW(),NOW(),'','','','','')");
+        let before = query(&mysql, &b.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='CHILD-ONLY'");
+        let re = commands::worktree::worktree_reclone_db(handle.clone(), b.id.clone()).await;
+        let after = query(&mysql, &b.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='CHILD-ONLY'");
+        let url = query(&mysql, &b.db_name, "SELECT option_value FROM wp_options WHERE option_name='siteurl'");
+        if re.is_ok() && before == "1" && after == "0" && url == format!("https://{want_b}") {
+            println!("13 ok — Re-clone DB: the child's own post is gone, the parent's data is back, siteurl stays the child's");
+        } else {
+            failures.push(format!("13: reclone {re:?} before={before} after={after} url={url}"));
+        }
+
+        // 14–15. W7: a worktree made ELSEWHERE (a plain `git worktree add`) is served
+        //        as an adopted child; deleting that site leaves the folder.
+        // Where another tool keeps its worktrees — OUTSIDE the sites folder (a linked
+        // folder inside it is refused by design).
+        let elsewhere = std::env::temp_dir().join(format!("rexenv-elsewhere-{pid}"));
+        git_in(&root, &["worktree", "add", "-b", "feature/outside", &elsewhere.to_string_lossy(), "main"]);
+        let listed = commands::worktree::worktree_adoptable(handle.clone(), parent.id.clone()).await.unwrap_or_default();
+        let seen = listed.iter().any(|w| Path::new(&w.path).file_name() == elsewhere.file_name() && w.branch.as_deref() == Some("feature/outside"));
+        if seen {
+            println!("14 ok — a worktree made outside rexenv is listed as adoptable, on its branch");
+        } else {
+            failures.push(format!("14: adoptable {listed:?}"));
+        }
+        let served = commands::worktree::worktree_serve(
+            handle.clone(),
+            handle.state::<AppState>(),
+            handle.state::<site_provision::ProvisionJobs>(),
+            parent.id.clone(),
+            elsewhere.to_string_lossy().into_owned(),
+            None,
+        )
+        .await;
+        match served {
+            Ok(snap) => {
+                created.extend(snap.site_id.clone());
+                let fin = wait_settled(snap.id.clone()).await;
+                let adopted = fin.site_id.as_deref().and_then(site_of);
+                let rel = adopted.as_ref().and_then(|s| {
+                    let state = handle.state::<AppState>();
+                    let conn = state.db.lock().unwrap();
+                    rexenv_lib::state::store::get_site_worktree(&conn, &s.id).unwrap()
+                });
+                if fin.status == "ok"
+                    && adopted.as_ref().is_some_and(|s| s.docroot_managed == Some(false) && s.domain == format!("feature-outside.{parent_domain}"))
+                    && rel.as_ref().is_some_and(|w| w.adopted)
+                {
+                    println!("15a ok — served as an adopted, linked child at feature-outside.<parent>");
+                } else {
+                    failures.push(format!("15a: settled {} ({:?}) adopted={:?} rel={rel:?}", fin.status, fin.error, adopted.as_ref().map(|s| (&s.domain, s.docroot_managed))));
+                }
+                if let Some(s) = &adopted {
+                    let del = commands::sites::delete_site(handle.state::<AppState>(), handle.state::<commands::tunnels::Tunnels>(), s.id.clone()).await;
+                    if matches!(del, Ok(true)) && elsewhere.join(".git").is_file() && site_of(&s.id).is_none() {
+                        println!("15b ok — deleting the adopted site leaves the other tool's folder in place");
+                    } else {
+                        failures.push(format!("15b: delete {del:?}, folder present {}", elsewhere.exists()));
+                    }
+                }
+            }
+            Err(e) => failures.push(format!("15: serve: {e}")),
+        }
+        let _ = Command::new("git").args(["worktree", "remove", "--force", &elsewhere.to_string_lossy()]).current_dir(&root).output();
+
         // Its removal: dirty refused, clean through git.
         let stray = folder.join("wip.txt");
         std::fs::write(&stray, "work").unwrap();
