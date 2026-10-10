@@ -179,6 +179,9 @@ mod tests {
         ("live_sync_pull", Gap("S4 of docs/PLAN-wp-live-sync.md adds the `live` tool's pull (Full — it replaces the local database); TODO row WordPress live ↔ local sync")),
         ("live_sync_job", Never(JOBS)),
         ("live_sync_active", Never(JOBS)),
+        ("live_sync_push_plan", Never("the picker behind a push; a push is never an agent tool (owner, 9 Oct 2026), so neither is its plan")),
+        ("live_sync_push", Never("the only operation in rexenv that can change something OUTSIDE this machine: a human click plus the live host typed, never an agent (owner, 9 Oct 2026; ledger #834)")),
+        ("live_sync_rollback", Never("changes the live site; the same ruling as the push it undoes (owner, 9 Oct 2026)")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),

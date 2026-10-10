@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, AdoptableWorktree } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, LiveSyncPushPlan, AdoptableWorktree } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -516,6 +516,24 @@ export async function liveSyncUnpair(siteId: string): Promise<boolean> {
  *  this Unix time. Progress streams on `onLiveSyncState`. */
 export async function liveSyncPull(siteId: string, uploadsSince?: number): Promise<LiveSyncJobState> {
   return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null });
+}
+
+/** The push picker's facts: tables (live-owned marked), the live host, the last sync. Reaches live. */
+export async function liveSyncPushPlan(siteId: string): Promise<LiveSyncPushPlan> {
+  return invoke<LiveSyncPushPlan>("live_sync_push_plan", { siteId });
+}
+
+/** Push this site TO live. `confirmHost` is what the person typed — Rust compares it to the
+ *  live host and refuses anything else (ledger #834). `tables` null = every table but the
+ *  live-owned. A conflict settles the job as `conflicts` with nothing sent; `overrideItems`
+ *  are the conflicts chosen to overwrite on the next try. */
+export async function liveSyncPush(siteId: string, confirmHost: string, tables: string[] | null, files: boolean, overrideItems: string[]): Promise<LiveSyncJobState> {
+  return invoke<LiveSyncJobState>("live_sync_push", { siteId, confirmHost, tables, files, overrideItems });
+}
+
+/** Put live back to the backup a push made. */
+export async function liveSyncRollback(siteId: string, backupId: string): Promise<void> {
+  return invoke<void>("live_sync_rollback", { siteId, backupId });
 }
 
 export async function liveSyncActive(siteId: string): Promise<LiveSyncJobState | null> {

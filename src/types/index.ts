@@ -1580,7 +1580,9 @@ export interface LiveSyncJobState {
   id: string;
   siteId: string;
   domain: string;
-  status: "running" | "ok" | "failed";
+  kind: "pull" | "push";
+  /** `conflicts`: a push that sent nothing — live changed since the base; `conflicts` names what. */
+  status: "running" | "ok" | "failed" | "conflicts";
   lines: string[];
   error: string | null;
   tables: number;
@@ -1588,6 +1590,21 @@ export interface LiveSyncJobState {
   files: number;
   refusedFiles: string[];
   backupDb: string | null;
+  /** A push's backup on LIVE — what Roll back names. */
+  backupId: string | null;
+  conflicts: string[];
+  /** What a push was asked to send — "Push anyway" repeats it with overrides. */
+  askedTables: string[] | null;
+  askedFiles: boolean;
+}
+
+/** The push picker's rows (`live_sync_push_plan`): the LOCAL site's tables, the
+ *  live-owned ones (users, comments, orders, form entries) marked so they start
+ *  unticked; the host the person must type; when the site was last synced. */
+export interface LiveSyncPushPlan {
+  liveHost: string;
+  tables: { name: string; liveOwned: boolean }[];
+  baseAt: number | null;
 }
 
 /** A plugin/theme worktree site to make (`docs/PLAN-git-worktrees.md`):

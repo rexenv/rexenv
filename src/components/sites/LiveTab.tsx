@@ -1,28 +1,48 @@
 /**
  * The Live tab (`docs/PLAN-wp-live-sync.md` §2.9): connect this WordPress site
- * to a live one with the key from the rexenv Sync plugin, then Pull. Push is a
- * later stage and is not here.
+ * to a live one with the key from the rexenv Sync plugin, then Pull — or Push,
+ * through a picker (live-owned tables start unticked) and the live host typed
+ * out. Rust holds both push gates (ledger #834): the typed host is compared
+ * there, and a never-pulled site is refused there; this component only keeps
+ * the button disabled until the typing matches, so the refusal is rarely seen.
  *
  * The secret never reaches this component: pairing answers with the key id and
  * the site URL only, and every later call names the site.
  */
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CloudDownload, Link2, Loader2, Unlink } from "lucide-react";
+import { CloudDownload, CloudUpload, Link2, Loader2, Undo2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
-import { liveSyncActive, liveSyncPair, liveSyncPairing, liveSyncPull, liveSyncUnpair, onLiveSyncState } from "@/lib/ipc";
+import {
+  liveSyncActive,
+  liveSyncPair,
+  liveSyncPairing,
+  liveSyncPull,
+  liveSyncPush,
+  liveSyncPushPlan,
+  liveSyncRollback,
+  liveSyncUnpair,
+  onLiveSyncState,
+} from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn, TECH_INPUT } from "@/lib/utils";
-import type { LiveSyncJobState, Site } from "@/types";
+import type { LiveSyncJobState, LiveSyncPushPlan, Site } from "@/types";
 
 const INPUT =
   "h-8 w-full rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand";
+
+/** What a push is asked to do — a conflict retry repeats the job's own with overrides. */
+interface PushAsk {
+  tables: string[] | null;
+  files: boolean;
+}
 
 export function LiveTab({ site }: { site: Site }) {
   const qc = useQueryClient();
   const pairing = useQuery({ queryKey: ["live-sync-pairing", site.id], queryFn: () => liveSyncPairing(site.id) });
   const [job, setJob] = useState<LiveSyncJobState | null>(null);
+  const [picker, setPicker] = useState<LiveSyncPushPlan | null>(null);
   useEffect(() => {
     let off = () => {};
     void liveSyncActive(site.id).then((j) => {
@@ -32,18 +52,37 @@ export function LiveTab({ site }: { site: Site }) {
     return () => off();
   }, [site.id]);
 
+  const follow = async (j: LiveSyncJobState) => {
+    setJob(j);
+    const off = await onLiveSyncState(j.id, (s) => {
+      setJob(s);
+      if (s.status !== "running") {
+        off();
+        void qc.invalidateQueries({ queryKey: ["sites"] });
+        if (s.status === "ok" && s.kind === "pull") toast.success(`Pulled ${s.tables} tables and ${s.files} files from ${site.domain}'s live site`);
+        if (s.status === "ok" && s.kind === "push") toast.success(`Pushed ${s.tables} tables and ${s.files} files to the live site`);
+      }
+    });
+  };
   const pull = useMutation({
     mutationFn: (uploadsSince?: number) => liveSyncPull(site.id, uploadsSince),
-    onSuccess: async (j) => {
-      setJob(j);
-      const off = await onLiveSyncState(j.id, (s) => {
-        setJob(s);
-        if (s.status !== "running") {
-          off();
-          void qc.invalidateQueries({ queryKey: ["sites"] });
-          if (s.status === "ok") toast.success(`Pulled ${s.tables} tables and ${s.files} files from ${site.domain}'s live site`);
-        }
-      });
+    onSuccess: follow,
+    onError: toastBackendError,
+  });
+  const push = useMutation({
+    mutationFn: (a: PushAsk & { confirmHost: string; overrideItems: string[] }) => liveSyncPush(site.id, a.confirmHost, a.tables, a.files, a.overrideItems),
+    onSuccess: (j) => {
+      setPicker(null);
+      void follow(j);
+    },
+    onError: toastBackendError,
+  });
+  const plan = useMutation({ mutationFn: () => liveSyncPushPlan(site.id), onSuccess: setPicker, onError: toastBackendError });
+  const rollback = useMutation({
+    mutationFn: (backupId: string) => liveSyncRollback(site.id, backupId),
+    onSuccess: () => {
+      toast.success("The live site is back to what it held before the push");
+      setJob((j) => (j ? { ...j, backupId: null, lines: [...j.lines, "rolled back"] } : j));
     },
     onError: toastBackendError,
   });
@@ -57,6 +96,7 @@ export function LiveTab({ site }: { site: Site }) {
   if (!pairing.data) return <ConnectForm site={site} onPaired={() => void qc.invalidateQueries({ queryKey: ["live-sync-pairing", site.id] })} />;
   const p = pairing.data;
   const running = job?.status === "running";
+  const busy = running || pull.isPending || push.isPending || plan.isPending || rollback.isPending;
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,7 +109,7 @@ export function LiveTab({ site }: { site: Site }) {
           <Button
             size="sm"
             variant="ghost"
-            disabled={running || unpair.isPending}
+            disabled={busy || unpair.isPending}
             onClick={async () => {
               if (await confirm({ title: "Disconnect from the live site?", message: "This site keeps everything it has pulled. The live site's own key stays valid until you disconnect there too.", confirmLabel: "Disconnect" }))
                 unpair.mutate();
@@ -81,7 +121,7 @@ export function LiveTab({ site }: { site: Site }) {
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
             variant="primary"
-            disabled={running || pull.isPending}
+            disabled={busy}
             onClick={async () => {
               if (
                 await confirm({
@@ -93,11 +133,11 @@ export function LiveTab({ site }: { site: Site }) {
                 pull.mutate(undefined);
             }}
           >
-            {running ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <CloudDownload className="h-3.5 w-3.5" />} Pull from live
+            {running && job?.kind === "pull" ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <CloudDownload className="h-3.5 w-3.5" />} Pull from live
           </Button>
           <Button
             variant="secondary"
-            disabled={running || pull.isPending}
+            disabled={busy}
             title="Media older than six months stays on the live site — a big library pulls faster"
             onClick={async () => {
               if (await confirm({ title: `Pull ${p.siteUrl}, recent uploads only?`, message: "Uploads older than six months stay on the live site and will 404 here. Everything else is pulled as usual.", confirmLabel: "Pull" }))
@@ -106,21 +146,153 @@ export function LiveTab({ site }: { site: Site }) {
           >
             Pull, recent uploads only
           </Button>
+          <span className="flex-1" />
+          <Button variant="secondary" disabled={busy || !!picker} title="Send this site's tables and changed files to the live site — after a picker and the live host typed out" onClick={() => plan.mutate()}>
+            {plan.isPending || (running && job?.kind === "push") ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <CloudUpload className="h-3.5 w-3.5" />} Push to live…
+          </Button>
         </div>
       </div>
-      {job && <JobCard job={job} />}
+      {picker && (
+        <PushPicker
+          site={site}
+          plan={picker}
+          busy={push.isPending}
+          onCancel={() => setPicker(null)}
+          onPush={(tables, files, confirmHost) => push.mutate({ tables, files, confirmHost, overrideItems: [] })}
+        />
+      )}
+      {job && (
+        <JobCard
+          job={job}
+          liveHost={picker?.liveHost ?? hostOf(p.siteUrl)}
+          busy={busy}
+          onOverride={async (items) => {
+            if (!job) return;
+            if (
+              await confirm({
+                title: `Overwrite ${items.length} item(s) on ${hostOf(p.siteUrl)}?`,
+                message: `These changed on the live site after your last sync. Pushing anyway replaces them with this site's version:\n\n${items.join("\n")}\n\nThe live site keeps a backup you can roll back to.`,
+                confirmLabel: "Push anyway",
+                danger: true,
+              })
+            )
+              push.mutate({ tables: job.askedTables, files: job.askedFiles, confirmHost: hostOf(p.siteUrl), overrideItems: items });
+          }}
+          onRollback={async (backupId) => {
+            if (
+              await confirm({
+                title: `Roll the live site back to ${backupId}?`,
+                message: "The tables and files this push replaced come back on the live site exactly as they were. What the push sent is kept on live as the new backup.",
+                confirmLabel: "Roll back",
+                danger: true,
+              })
+            )
+              rollback.mutate(backupId);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function JobCard({ job }: { job: LiveSyncJobState }) {
-  const [open, setOpen] = useState(false);
+/** The host of an `https://…` URL — a URL, not a path (the path guard watches `split("/")`). */
+function hostOf(url: string): string {
+  const m = /^https?:\/\/([^/]+)/.exec(url);
+  return m?.[1] ?? url;
+}
+
+function PushPicker({
+  site,
+  plan,
+  busy,
+  onCancel,
+  onPush,
+}: {
+  site: Site;
+  plan: LiveSyncPushPlan;
+  busy: boolean;
+  onCancel: () => void;
+  /** Always the explicit list: a `null` would mean "all but the live-owned" to Rust,
+   *  and a person who ticked wp_users meant wp_users. */
+  onPush: (tables: string[], files: boolean, confirmHost: string) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(plan.tables.filter((t) => !t.liveOwned).map((t) => t.name)));
+  const [files, setFiles] = useState(true);
+  const [typed, setTyped] = useState("");
+  const matches = typed.trim().toLowerCase() === plan.liveHost.toLowerCase();
+  const nothing = picked.size === 0 && !files;
+  const toggle = (name: string) =>
+    setPicked((s) => {
+      const n = new Set(s);
+      if (n.has(name)) n.delete(name);
+      else n.add(name);
+      return n;
+    });
   return (
-    <div className={cn("rounded-lg border p-4", job.status === "failed" ? "border-status-error-border bg-status-error-bg/40" : "border-rex-border bg-rex-surface-1")}>
+    <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-4" data-testid="push-picker">
+      <div className="text-[0.8125rem] font-medium text-rex-text">
+        Push {site.domain} to <span className="font-mono">{plan.liveHost}</span>
+      </div>
+      <p className="mt-1 text-[0.78125rem] leading-[1.55] text-rex-text-muted">
+        Each ticked table replaces the live one; files changed here since the last sync are sent. The live site keeps a
+        backup of everything replaced. Anything that changed on the live site since{" "}
+        {plan.baseAt ? <span className="font-mono">{new Date(plan.baseAt * 1000).toLocaleString()}</span> : "the last sync"} stops
+        the push first, so nothing is overwritten unseen.
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+        {plan.tables.map((t) => (
+          <label key={t.name} className="flex items-center gap-2 text-[0.75rem] text-rex-text">
+            <input type="checkbox" checked={picked.has(t.name)} onChange={() => toggle(t.name)} disabled={busy} aria-label={t.name} />
+            <span className="truncate font-mono">{t.name}</span>
+            {t.liveOwned && (
+              <span className="rounded-full bg-rex-surface-2 px-1.5 py-0.5 text-[0.625rem] text-rex-text-muted" title="The live site writes here (users, comments, orders, entries) — what it wrote since your last pull would be lost">
+                live writes here
+              </span>
+            )}
+          </label>
+        ))}
+      </div>
+      <label className="mt-3 flex items-center gap-2 text-[0.78125rem] text-rex-text">
+        <input type="checkbox" checked={files} onChange={(e) => setFiles(e.target.checked)} disabled={busy} /> Files changed here since the last sync (themes, plugins, uploads)
+      </label>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-[0.78125rem] text-rex-text-muted">
+          Type <span className="font-mono text-rex-text">{plan.liveHost}</span> to push:
+        </span>
+        <input {...TECH_INPUT} value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={plan.liveHost} className={cn(INPUT, "max-w-[18rem]")} aria-label="Live host to confirm" disabled={busy} />
+        <span className="flex-1" />
+        <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button variant="primary" disabled={!matches || nothing || busy} onClick={() => onPush([...picked], files, typed)}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <CloudUpload className="h-3.5 w-3.5" />} Push
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function JobCard({
+  job,
+  liveHost,
+  busy,
+  onOverride,
+  onRollback,
+}: {
+  job: LiveSyncJobState;
+  liveHost: string;
+  busy: boolean;
+  onOverride: (items: string[]) => void;
+  onRollback: (backupId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const bad = job.status === "failed" || job.status === "conflicts";
+  return (
+    <div className={cn("rounded-lg border p-4", bad ? "border-status-error-border bg-status-error-bg/40" : "border-rex-border bg-rex-surface-1")}>
       <div className="flex items-center gap-2 text-[0.8125rem] text-rex-text">
         {job.status === "running" && <Loader2 className="h-3.5 w-3.5 animate-rex-spin text-rex-text-muted" />}
-        {job.status === "running" && <span>Pulling…</span>}
-        {job.status === "ok" && (
+        {job.status === "running" && <span>{job.kind === "push" ? "Pushing…" : "Pulling…"}</span>}
+        {job.status === "ok" && job.kind === "pull" && (
           <span>
             Pulled {job.tables} tables ({job.rows} rows) and {job.files} files.
             {job.backupDb && (
@@ -130,8 +302,46 @@ function JobCard({ job }: { job: LiveSyncJobState }) {
             )}
           </span>
         )}
+        {job.status === "ok" && job.kind === "push" && (
+          <span>
+            Pushed {job.tables} tables and {job.files} files to <span className="font-mono">{liveHost}</span>.
+            {job.backupId ? (
+              <>
+                {" "}The live site keeps what they replaced as <span className="font-mono">{job.backupId}</span>.
+              </>
+            ) : (
+              " Rolled back."
+            )}
+          </span>
+        )}
+        {job.status === "conflicts" && (
+          <span>
+            Nothing was sent: {job.conflicts.length} item(s) changed on <span className="font-mono">{liveHost}</span> since your last sync.
+          </span>
+        )}
         {job.status === "failed" && <span className="whitespace-pre-line text-status-error-bright">{job.error}</span>}
+        <span className="flex-1" />
+        {job.status === "ok" && job.kind === "push" && job.backupId && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onRollback(job.backupId as string)}>
+            <Undo2 className="h-3.5 w-3.5" /> Roll back
+          </Button>
+        )}
       </div>
+      {job.status === "conflicts" && (
+        <div className="mt-2">
+          <ul className="font-mono text-[0.71875rem] text-rex-text-muted">
+            {job.conflicts.map((c) => (
+              <li key={c}>{c}</li>
+            ))}
+          </ul>
+          <div className="mt-2 flex gap-2">
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => onOverride(job.conflicts)}>
+              Push anyway, overwriting these
+            </Button>
+          </div>
+          <div className="mt-1 text-[0.71875rem] text-rex-text-muted">Or pull first to bring the live changes here, then push again.</div>
+        </div>
+      )}
       {job.refusedFiles.length > 0 && (
         <div className="mt-1 text-[0.71875rem] text-rex-text-muted">{job.refusedFiles.length} file(s) the live site would not serve were left out.</div>
       )}

@@ -1158,17 +1158,30 @@ export function DevUiReview() {
         // `view=live` (wk-checks/uireview.js "live-*"): `&paired=1` renders the connected
         // state with a settled pull; otherwise the connect form. `live_sync_pair` records
         // what the form SENT (`window.__livePairs`) and answers as a live site would.
+        // `&push=ok` / `&push=conflicts`: the settled job is a push instead; `live_sync_push`
+        // records what the picker SENT (`window.__livePushes`).
         case "live_sync_pairing":
           return params.get("paired") === "1" ? { siteUrl: "https://example.com", keyId: "k_0123abcd", basicAuthUser: null } : null;
-        case "live_sync_active":
-          return params.get("paired") === "1"
-            ? { id: "j1", siteId: "s1", domain: "example.rex", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, rows: 1560, files: 457, refusedFiles: [], backupDb: "wp_example_rex_prepull" }
-            : null;
+        case "live_sync_active": {
+          if (params.get("paired") !== "1") return null;
+          const job = { id: "j1", siteId: "s1", domain: "example.rex", kind: "pull", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, rows: 1560, files: 457, refusedFiles: [], backupDb: "wp_example_rex_prepull", backupId: null, conflicts: [], askedTables: null, askedFiles: false };
+          if (params.get("push") === "ok") return { ...job, kind: "push", status: "ok", tables: 10, rows: 0, files: 3, backupDb: null, backupId: "rxbak_20261010_1a2b3c", lines: ["push: 10 tables, 3 of 457 files changed since the last sync, to https://example.com"] };
+          if (params.get("push") === "conflicts") return { ...job, kind: "push", status: "conflicts", tables: 0, rows: 0, files: 0, backupDb: null, conflicts: ["wp_posts", "themes/shop/style.css"], lines: [], askedTables: ["wp_options", "wp_posts"], askedFiles: true };
+          return job;
+        }
+        case "live_sync_push_plan":
+          return { liveHost: "example.com", tables: ["wp_options", "wp_posts", "wp_postmeta", "wp_users", "wp_usermeta", "wp_comments"].map((name) => ({ name, liveOwned: /users|usermeta|comments/.test(name) })), baseAt: 1760000000 };
+        case "live_sync_push":
+          ((window as unknown as { __livePushes?: unknown[] }).__livePushes ??= []).push(args);
+          return { id: "j3", siteId: "s1", domain: "example.rex", kind: "push", status: "running", lines: [], error: null, tables: 0, rows: 0, files: 0, refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: (args as { tables?: string[] }).tables ?? null, askedFiles: !!(args as { files?: boolean }).files };
+        case "live_sync_rollback":
+          ((window as unknown as { __liveRollbacks?: unknown[] }).__liveRollbacks ??= []).push(args);
+          return undefined;
         case "live_sync_pair":
           ((window as unknown as { __livePairs?: unknown[] }).__livePairs ??= []).push(args);
           return { pairing: { siteUrl: "https://example.com", keyId: "k_0123abcd", basicAuthUser: null }, wp: "6.8", php: "8.3.1", tables: 12, multisite: false };
         case "live_sync_pull":
-          return { id: "j2", siteId: "s1", domain: "example.rex", status: "running", lines: [], error: null, tables: 0, rows: 0, files: 0, refusedFiles: [], backupDb: null };
+          return { id: "j2", siteId: "s1", domain: "example.rex", kind: "pull", status: "running", lines: [], error: null, tables: 0, rows: 0, files: 0, refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: null, askedFiles: false };
         case "live_sync_unpair":
           return true;
         case "db_import_record":

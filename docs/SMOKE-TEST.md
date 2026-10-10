@@ -1007,6 +1007,20 @@ Needs a live WordPress over HTTPS you may write a plugin into. Install
 - [ ] On the live site, Tools → rexenv Sync → **Regenerate key** → Pull locally → the card says
       "the site has a different rexenv pairing now — paste its current key"; the local site is
       unchanged (the local-only test post is still there).
+- [ ] **Push to live…** → the picker lists the LOCAL tables with `wp_users`, `wp_usermeta`,
+      `wp_comments` (and any order/entry tables) UNTICKED and badged "live writes here"; **Push**
+      stays disabled until the live host is typed exactly (`example.co` keeps it off). Edit a
+      local post and one theme file first → Push → the card streams "push: N tables, 1 of M
+      files…", then "Pushed N tables and 1 files to <host>. The live site keeps what they
+      replaced as `rxbak_…`." The LIVE site now shows the local edit at the LIVE domain (no
+      `.rex` link anywhere — view source); its users and comments are untouched; Tools →
+      rexenv Sync is still there (the plugin stayed active).
+- [ ] Make a post ON the live site, then Push again → the card says "Nothing was sent: 1
+      item(s) changed on <host>" naming `wp_posts`; live is unchanged. **Push anyway,
+      overwriting these** → the confirm names `wp_posts` → the live post is gone (it is in the
+      new backup). **Roll back** → asks, names the backup id → the live post is back.
+- [ ] A site that was never pulled (connect, then push straight away) → refused with "pull once
+      first"; nothing on live changed.
 - [ ] **Disconnect** locally → the Live tab is the connect form again; the site keeps its data.
 - [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
       password → Connect works; without them, the firewall/401 sentence.

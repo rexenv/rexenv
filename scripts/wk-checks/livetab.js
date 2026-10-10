@@ -4,7 +4,13 @@
 //   2. paired: the site URL and key id show, Pull asks before it runs, and the
 //      settled pull's numbers and the backup database are shown;
 //   3. a failed pull shows its reason;
-//   4. no horizontal overflow, no page error, in both themes.
+//   4. no horizontal overflow, no page error, in both themes;
+//   5. Push: the picker starts with the live-owned tables UNTICKED, Push stays
+//      disabled until the live host is typed exactly, and what is SENT is the
+//      explicit table list (ticked ones only) + files + the typed host;
+//   6. a push stopped by conflicts lists them and offers "Push anyway", which
+//      asks first and sends them as overrides;
+//   7. a settled push shows its backup id, and Roll back asks before it runs.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 
@@ -44,6 +50,63 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&pull=failed`, { waitUntil: "networkidle" });
     await page.waitForTimeout(400);
     if (!(await page.evaluate(() => document.body.innerText)).includes("firewall")) fails.push(`${scheme} 3: the failed pull's reason is not shown`);
+
+    // 5. the push picker
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: "Push to live…" }).click();
+    await page.waitForTimeout(400);
+    const picker = page.getByTestId("push-picker");
+    if (!(await picker.count())) fails.push(`${scheme} 5: no picker after Push`);
+    for (const [name, want] of [["wp_posts", true], ["wp_options", true], ["wp_users", false], ["wp_comments", false]])
+      if ((await page.getByLabel(name, { exact: true }).isChecked()) !== want) fails.push(`${scheme} 5: ${name} ticked=${!want} by default`);
+    const pushBtn = picker.getByRole("button", { name: "Push", exact: true });
+    if (!(await pushBtn.isDisabled())) fails.push(`${scheme} 5: Push enabled before the host was typed`);
+    await page.getByLabel("Live host to confirm").fill("example.co");
+    if (!(await pushBtn.isDisabled())) fails.push(`${scheme} 5: Push enabled on a near-miss host`);
+    await page.getByLabel("Live host to confirm").fill("example.com");
+    if (await pushBtn.isDisabled()) fails.push(`${scheme} 5: Push disabled on the right host`);
+    await page.getByLabel("wp_postmeta", { exact: true }).uncheck();
+    await pushBtn.click();
+    await page.waitForTimeout(300);
+    const pushes = await page.evaluate(() => window.__livePushes ?? []);
+    const sentPush = pushes[0] || {};
+    const wantTables = ["wp_options", "wp_posts"];
+    if (!(JSON.stringify((sentPush.tables || []).slice().sort()) === JSON.stringify(wantTables) && sentPush.files === true && sentPush.confirmHost === "example.com" && Array.isArray(sentPush.overrideItems) && sentPush.overrideItems.length === 0))
+      fails.push(`${scheme} 5: push sent ${JSON.stringify(pushes)}`);
+    if (await picker.count()) fails.push(`${scheme} 5: the picker stayed open after Push`);
+    if ((await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))) fails.push(`${scheme}: overflow (picker)`);
+
+    // 6. conflicts
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=conflicts`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const ctext = await page.evaluate(() => document.body.innerText);
+    for (const want of ["Nothing was sent", "wp_posts", "themes/shop/style.css"]) if (!ctext.includes(want)) fails.push(`${scheme} 6: "${want}" not shown`);
+    await page.screenshot({ path: `shot-livetab-conflicts-${scheme}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Push anyway, overwriting these" }).click();
+    await page.waitForTimeout(200);
+    const cdlg = await page.getByRole("dialog").innerText().catch(() => "");
+    if (!cdlg.includes("themes/shop/style.css")) fails.push(`${scheme} 6: Push anyway did not ask first (${cdlg.slice(0, 80)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Push anyway" }).click();
+    await page.waitForTimeout(300);
+    const over = (await page.evaluate(() => window.__livePushes ?? []))[0] || {};
+    if (!(JSON.stringify(over.overrideItems) === JSON.stringify(["wp_posts", "themes/shop/style.css"]) && JSON.stringify(over.tables) === JSON.stringify(["wp_options", "wp_posts"]) && over.files === true && over.confirmHost === "example.com"))
+      fails.push(`${scheme} 6: override sent ${JSON.stringify(over)}`);
+
+    // 7. a settled push + Roll back
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=ok`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const ptext = await page.evaluate(() => document.body.innerText);
+    for (const want of ["Pushed 10 tables and 3 files", "rxbak_20261010_1a2b3c"]) if (!ptext.includes(want)) fails.push(`${scheme} 7: "${want}" not shown`);
+    await page.getByRole("button", { name: "Roll back" }).click();
+    await page.waitForTimeout(200);
+    const rdlg = await page.getByRole("dialog").innerText().catch(() => "");
+    if (!rdlg.includes("rxbak_20261010_1a2b3c")) fails.push(`${scheme} 7: Roll back did not ask first (${rdlg.slice(0, 80)})`);
+    if ((await page.evaluate(() => (window.__liveRollbacks ?? []).length)) !== 0) fails.push(`${scheme} 7: rollback ran before the answer`);
+    await page.getByRole("dialog").getByRole("button", { name: "Roll back" }).click();
+    await page.waitForTimeout(300);
+    const rb = await page.evaluate(() => window.__liveRollbacks ?? []);
+    if (!(rb[0] && rb[0].backupId === "rxbak_20261010_1a2b3c")) fails.push(`${scheme} 7: rollback sent ${JSON.stringify(rb)}`);
     await page.close();
   }
   await browser.close();

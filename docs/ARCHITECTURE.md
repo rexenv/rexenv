@@ -1470,8 +1470,14 @@ honest footer —
   update. A pull (`core/live_sync/pull.rs`, #827) stages the whole database, moves its URLs,
   then swaps with ONE `RENAME TABLE`, keeping the previous local tables in `<db>_prepull`;
   files come through a staging folder; nothing local is deleted. The Live tab (#829) pairs,
-  pulls (always after a confirm), and shows the outcome; push is a later stage and is never
-  an agent tool.
+  pulls (always after a confirm), and shows the outcome. A push (`core/live_sync/push.rs`,
+  #833) copies the local database whole, moves the copy's URLs to the live host, and uploads
+  the chosen tables and the files changed since the last sync into the plugin's quarantine
+  and shadow tables; live changes in ONE swap (#832) and keeps a backup rexenv can roll back
+  to. The plugin judges conflicts against the base rexenv recorded at the last sync and
+  stops the push with nothing sent. The push gates are in Rust (#834): the live host typed
+  out, a base that exists; live-owned tables (users, comments, orders, entries) start
+  unticked. Push and rollback are never an agent tool.
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request
