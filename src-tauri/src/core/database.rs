@@ -167,7 +167,17 @@ pub(crate) fn export_to_downloads(dump: &Path, port: u16, domain: &str, name: &s
 /// default in the dump tools, and WordPress uses neither). A failed dump
 /// removes what it wrote.
 pub(crate) fn dump_to_file(dump: &Path, port: u16, name: &str, dest: &Path) -> Result<()> {
+    dump_tables_to_file(dump, port, name, &[], dest)
+}
+
+/// [`dump_to_file`] for the named `tables` only (every table when empty) —
+/// `core::live_sync::push` dumps one table at a time so each lands as its own
+/// chunk stream. Table names are validated like database names.
+pub(crate) fn dump_tables_to_file(dump: &Path, port: u16, name: &str, tables: &[&str], dest: &Path) -> Result<()> {
     validate_db_name(name)?;
+    for t in tables {
+        validate_db_name(t)?;
+    }
     // --result-file (not shell redirection): no shell involved, so a Downloads
     // path with spaces can't break, and mysqldump writes the file itself.
     // Deliberately NOT client_base_args, because the dump tools don't honor
@@ -186,6 +196,7 @@ pub(crate) fn dump_to_file(dump: &Path, port: u16, name: &str, dest: &Path) -> R
             &format!("--result-file={}", dest.display()),
             name,
         ])
+        .args(tables)
         .output()?;
     if !out.status.success() {
         // A failed dump can leave a partial file — never leave it for the user

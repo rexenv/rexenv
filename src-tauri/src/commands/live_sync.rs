@@ -246,7 +246,7 @@ async fn run_pull<R: tauri::Runtime>(
         mgr.spawn_db(state.platform.as_ref(), engine).await?
     };
     service_manager::await_ready(check.into_iter().collect()).await?;
-    let (db_client, _) = engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
+    let (db_client, dump) = engine.sql_client_bins(state.platform.as_ref(), &engine_version).await?;
     let scratch = state.platform.paths().app_data_dir()?.join("live-sync").join("scratch");
     let docroot = site.served_root();
     let (a2, e2) = (app.clone(), entry.clone());
@@ -258,6 +258,7 @@ async fn run_pull<R: tauri::Runtime>(
         platform: state.platform.as_ref(),
         engine,
         client: &db_client,
+        dump,
         port: engine.port(),
         db_name: &site.db_name,
         domain: &site.domain,
@@ -267,5 +268,8 @@ async fn run_pull<R: tauri::Runtime>(
         scratch: &scratch,
     };
     let options = pull::PullOptions { excludes: Vec::new(), uploads_since };
-    pull::pull_into(&client, &local, &options, &mut on_line).await
+    let report = pull::pull_into(&client, &local, &options, &mut on_line).await?;
+    // The base for the next push (§2.6).
+    crate::core::live_sync::base::put(state.platform.as_ref(), &site.id, &report.base)?;
+    Ok(report)
 }

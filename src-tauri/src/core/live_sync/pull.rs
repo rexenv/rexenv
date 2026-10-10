@@ -44,6 +44,8 @@ pub struct LocalSite<'a> {
     pub platform: &'a dyn Platform,
     pub engine: DbEngine,
     pub client: &'a SqlClient,
+    /// The engine's dump binary (`sql_client_bins`' second half) — the push dumps with it.
+    pub dump: PathBuf,
     pub port: u16,
     pub db_name: &'a str,
     pub domain: &'a str,
@@ -65,6 +67,8 @@ pub struct PullReport {
     pub replacements: u64,
     /// The database now holding the local site as it was before this pull.
     pub backup_db: String,
+    /// What the live site looked like — the next push's base (§2.6).
+    pub base: super::base::SyncBase,
 }
 
 /// The host of `https://host[:port][/path]` — what the copied database says.
@@ -115,6 +119,8 @@ pub async fn pull_into(
     local.engine.drop_database(local.client, local.port, &stage)?;
     local.engine.create_database(local.client, local.port, &stage)?;
     let mut report = PullReport { backup_db: backup.clone(), ..Default::default() };
+    report.base.tables = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
+    report.base.at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let staged: Result<()> = async {
         for t in &m.tables {
             let file = local.scratch.join(format!("pull-{}.sql", t.name));
@@ -180,6 +186,7 @@ pub async fn pull_into(
     let mut excludes: Vec<&str> = DEFAULT_EXCLUDES.to_vec();
     excludes.extend(options.excludes.iter().map(String::as_str));
     let files = client.list_files(&excludes, options.uploads_since).await?;
+    report.base.files = files.iter().map(|f| (f.path.clone(), format!("{}:{}", f.size, f.mtime))).collect();
     if let Some(since) = options.uploads_since {
         on_line(&format!("uploads older than {since} (Unix time) left on live"));
     }

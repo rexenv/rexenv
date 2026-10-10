@@ -15,7 +15,13 @@
 //!   3. the live upload arrived; the pairing row did not;
 //!   4. the plugin that came along is not active locally;
 //!   5. a pull that fails before the swap (a key the site no longer knows) leaves
-//!      the local site exactly as it was.
+//!      the local site exactly as it was;
+//!   6. (L10, push) a local post and the one file changed since the base reach
+//!      live with LIVE's siteurl and the pairing row intact, users untouched;
+//!   7. the backup holds live's previous posts;
+//!   8. rollback removes both;
+//!   9. a table live changed since the base STOPS the push with nothing sent;
+//!  10. overriding it pushes.
 //!
 //! Does NOT prove: HTTPS, a real host, a table prefix that differs (both fixtures
 //! use `wp_`), files deleted on live (never deleted locally in v1).
@@ -67,7 +73,7 @@ async fn main() -> std::process::ExitCode {
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
-    let (mysql, _) = DbEngine::Mysql.sql_client_bins(&*plat, binaries::pins().mysql).await.expect("mysql client");
+    let (mysql, mysqldump) = DbEngine::Mysql.sql_client_bins(&*plat, binaries::pins().mysql).await.expect("mysql client");
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());
     app.manage(site_provision::ProvisionJobs::default());
@@ -163,6 +169,7 @@ async fn main() -> std::process::ExitCode {
         platform: platform.as_ref(),
         engine: DbEngine::Mysql,
         client: &mysql,
+        dump: mysqldump.clone(),
         port: database::MYSQL_PORT,
         db_name: &local.db_name,
         domain: &local.domain,
@@ -205,6 +212,70 @@ async fn main() -> std::process::ExitCode {
     );
     let active = wordpress::wp_run(&php, &wp, &local_root, &["plugin", "list", "--status=active", "--field=name", "--skip-plugins"]).unwrap_or_default();
     check(!active.lines().any(|l| l.trim() == "rexenv-sync"), "4. the plugin that came along is not active locally");
+
+    // ── PUSH (L10): a local change goes to live; rollback; a conflict stops it. ──
+    use rexenv_lib::core::live_sync::{base, push};
+    let _ = wordpress::wp_run(&php, &wp, &local_root, &["post", "create", "--post_title=PUSHED-FROM-LOCAL", "--post_status=publish"]);
+    let prior = base::SyncBase { tables: Default::default(), files: Default::default(), at: 0 };
+    // The base a real pull records: the client's report carries it; here the pull above
+    // did not keep it, so take a fresh one the same way the command does.
+    let m = client.manifest().await.unwrap();
+    let fresh = base::SyncBase {
+        tables: m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect(),
+        files: client.list_files(&pull::DEFAULT_EXCLUDES, None).await.unwrap().into_iter().map(|f| (f.path, format!("{}:{}", f.size, f.mtime))).collect(),
+        // The time of "the last sync" — a moment ago, so only files written after it
+        // count as changed locally.
+        at: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64 - 1,
+    };
+    let _ = prior;
+    tokio::time::sleep(Duration::from_millis(1100)).await; // a second later than `at`
+    std::fs::write(local_root.join("wp-content/uploads/2026/from-local.txt"), "from local").unwrap();
+    let opts = push::PushOptions { tables: None, files: true, override_items: vec![] };
+    let pushed = push::push_from(&client, &target, Some(&fresh), &opts, &mut sink).await;
+    let live_db = &live.db_name;
+    match &pushed {
+        Ok(r) => {
+            check(
+                query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "1"
+                    && query(&mysql, live_db, "SELECT option_value FROM wp_options WHERE option_name='siteurl'") == format!("https://{}", live.domain)
+                    && std::fs::read_to_string(live_root.join("wp-content/uploads/2026/from-local.txt")).ok().as_deref() == Some("from local")
+                    && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_options WHERE option_name='rexsync_pairing'") == "1"
+                    && !r.tables.iter().any(|t| t.ends_with("users"))
+                    && r.files == 1,
+                &format!("6. push: the local post and ONLY the changed file ({}) are on live, siteurl is LIVE's, the pairing row survived, users was not pushed", r.files),
+            );
+            check(query(&mysql, live_db, "SELECT COUNT(*) FROM rxbak_wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0", "7. the backup holds live's previous posts");
+            match client.push_rollback(&r.backup_id).await {
+                Ok(()) => check(
+                    query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0"
+                        && !live_root.join("wp-content/uploads/2026/from-local.txt").exists(),
+                    "8. rollback: the pushed post and file are gone from live",
+                ),
+                Err(e) => check(false, &format!("8. rollback: {e}")),
+            }
+        }
+        Err(push::PushStop::Conflicts(c)) => check(false, &format!("6. push stopped on conflicts {c:?}")),
+        Err(push::PushStop::Failed(e)) => check(false, &format!("6. push: {e}")),
+    }
+    // 9. A conflict: live changed since the base → the push stops BEFORE anything is sent.
+    match wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=LIVE-CHANGED-SINCE", "--post_status=publish"]) {
+        Ok(o) => println!("  live post create: {o}"),
+        Err(e) => println!("  live post create FAILED: {e}"),
+    }
+    let stale_base = fresh.clone();
+    let again = push::push_from(&client, &target, Some(&stale_base), &opts, &mut sink).await;
+    match again {
+        Err(push::PushStop::Conflicts(list)) => check(
+            list.iter().any(|t| t.ends_with("posts")) && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0",
+            &format!("9. a table live changed since the base stops the push, nothing sent ({list:?})"),
+        ),
+        other => check(false, &format!("9. expected conflicts, got {}", match other { Ok(_) => "ok".into(), Err(push::PushStop::Failed(e)) => e.to_string(), Err(push::PushStop::Conflicts(c)) => format!("{c:?}") })),
+    }
+    // 10. Overriding the conflict pushes.
+    let opts2 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec!["wp_posts".into()] };
+    let over = push::push_from(&client, &target, Some(&stale_base), &opts2, &mut sink).await;
+    let over_why = match &over { Ok(_) => "ok".to_string(), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
+    check(over.is_ok() && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-CHANGED-SINCE'") == "0", &format!("10. overriding the conflict pushes that table (live's newer post is gone, as warned) — {over_why}"));
 
     // Teardown: both sites' databases and rows, the backup, the scratch dir.
     {

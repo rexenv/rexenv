@@ -62,7 +62,7 @@ $r = $send( 'GET', '/rexenv-sync/v1/manifest' );
 $m = $r->get_data();
 global $wpdb;
 $names = array_column( isset( $m['tables'] ) ? $m['tables'] : array(), 'name' );
-$check( 200 === $r->get_status() && 'rexsync1' === $m['protocol'] && untrailingslashit( home_url() ) === $m['site_url'] && in_array( $wpdb->options, $names, true ), 'signed manifest: protocol, site_url, the options table' );
+$check( 200 === $r->get_status() && 'rexsync1' === $m['protocol'] && untrailingslashit( home_url() ) === $m['site_url'] && in_array( $wpdb->options, $names, true ) && ! in_array( Rexenv_Sync_Pairing::nonce_table(), $names, true ), 'signed manifest: protocol, site_url, the options table, never the nonce table' );
 
 // 3. Replay, skew, tamper, an old key.
 $fixed = array( 'nonce' => 'AAECAwQFBgcICQoLDA0ODw' );
@@ -246,6 +246,10 @@ $r = $send( 'POST', '/rexenv-sync/v1/push/swap', array( 'push_id' => $pid ) );
 $d = $r->get_data();
 $check( 200 === $r->get_status() && $d['backup_id'] === $pid && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'local-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxbak_$pt`" ) && 'local version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && is_file( WP_CONTENT_DIR . '/rexsync-backups/' . $pid . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid ) && ! file_exists( ABSPATH . '.maintenance' ), 'push/swap: live is the pushed data and file, the old ones kept in the backup, quarantine gone, maintenance off' );
 $check( get_option( Rexenv_Sync_Pairing::OPTION ) === $pairing_before, 'the plugin\'s own pairing row survives the swap' );
+$was_active = get_option( 'active_plugins' );
+update_option( 'active_plugins', array_values( array_diff( (array) $was_active, array( 'rexenv-sync/rexenv-sync.php' ) ) ) );
+Rexenv_Sync_Pusher::ensure_active();
+$check( in_array( 'rexenv-sync/rexenv-sync.php', (array) get_option( 'active_plugins' ), true ), 'a pushed options table that lacks the plugin does not deactivate it' );
 $check( ! in_array( 'rexsync-backups/' . $pid . '/' . $pfile, array_column( Rexenv_Sync_Reader::list_files( null, array() )['files'], 'path' ), true ), 'the backup folder is never listed for a pull' );
 // 8f. rollback: everything back.
 $r = $send( 'POST', '/rexenv-sync/v1/push/rollback', array( 'backup_id' => $pid ) );

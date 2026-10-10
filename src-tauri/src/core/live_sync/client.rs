@@ -81,6 +81,18 @@ struct FrameHeader {
     error: Option<String>,
 }
 
+/// What `/push/begin` answers.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PushBegun {
+    pub push_id: String,
+    #[serde(default)]
+    pub conflicts: Vec<String>,
+}
+
+/// The §4.2 conflict refusal, as the client reports it: the items live changed.
+#[derive(Debug, Clone)]
+pub struct Conflicts(pub Vec<String>);
+
 /// A `wp-content`-relative path the protocol allows: `/`-separated, relative, no
 /// `.`/`..` segments, no `\`, no `:`, nothing empty. Pure.
 ///
@@ -132,6 +144,15 @@ pub fn parse_frame(frame: &[u8], asked: &HashSet<String>) -> Result<Vec<FrameRec
     }
 }
 
+/// The conflict list out of a 409 body, when it is one.
+pub fn conflicts_of(body: &str) -> Option<Vec<String>> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    if v.get("code")?.as_str()? != "conflict" {
+        return None;
+    }
+    Some(v.get("data")?.get("conflicts")?.as_array()?.iter().filter_map(|c| c.as_str().map(str::to_string)).collect())
+}
+
 /// The §6 sentence for a refusal, from the status and the body.
 fn refusal(status: u16, body: &str) -> Error {
     let code = serde_json::from_str::<serde_json::Value>(body)
@@ -143,10 +164,19 @@ fn refusal(status: u16, body: &str) -> Error {
         (_, Some("bad_signature")) => "the pairing does not match — paste the site's key into rexenv again".into(),
         (_, Some("replayed")) => "the site saw this request twice — try again".into(),
         (_, Some("unknown_table")) => "the site has no such table".into(),
+        (_, Some("conflict")) => "the live site changed since rexenv last saw it".into(),
+        (_, Some("no_push")) => "the site no longer has that push — start it again".into(),
+        (_, Some("no_backup")) => "the site keeps no such backup".into(),
+        (_, Some("incomplete")) => "the push is missing data — start it again".into(),
         (403 | 406, None) => "a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request".into(),
         (404, None) => "the site does not answer as rexenv Sync — is the plugin installed and active?".into(),
         (413, _) => "the site's host refused a request that large".into(),
-        (s, c) => format!("the site answered {s}{}", c.map(|c| format!(" ({c})")).unwrap_or_default()),
+        (s, c) => {
+            // The plugin's own sentence, when it gave one — a 500 from `push/db` names
+            // the statement its database refused, which is the whole diagnosis.
+            let msg = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_string));
+            format!("the site answered {s}{}{}", c.map(|c| format!(" ({c})")).unwrap_or_default(), msg.map(|m| format!(": {m}")).unwrap_or_default())
+        }
     };
     Error::Other(format!("rexenv Sync: {why}."))
 }
@@ -159,6 +189,8 @@ pub struct Client {
     /// HTTP basic auth in front of the site (§11 Q5) — sent as `Authorization`
     /// on every request; nothing to do with the pairing.
     basic_auth: Option<(String, String)>,
+    /// The last 409's conflict list, for `push_begin` to hand back as data.
+    last_conflicts: std::sync::Mutex<Option<Vec<String>>>,
 }
 
 impl Client {
@@ -173,7 +205,7 @@ impl Client {
             .build()
             .map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?;
         let base = key.site_url.clone();
-        Ok(Self { key, base, http, basic_auth: None })
+        Ok(Self { key, base, http, basic_auth: None, last_conflicts: std::sync::Mutex::new(None) })
     }
 
     /// Send `Authorization: Basic` on every request — a site behind HTTP auth.
@@ -217,7 +249,9 @@ impl Client {
         let status = resp.status().as_u16();
         let bytes = resp.bytes().await.map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?.to_vec();
         if !(200..300).contains(&status) {
-            return Err(refusal(status, &String::from_utf8_lossy(&bytes)));
+            let text = String::from_utf8_lossy(&bytes);
+            *self.last_conflicts.lock().expect("conflicts lock") = conflicts_of(&text);
+            return Err(refusal(status, &text));
         }
         Ok(bytes)
     }
@@ -338,6 +372,60 @@ impl Client {
                 Err(e)
             }
         }
+    }
+}
+
+impl Client {
+    /// `/push/begin` (§4.2). `Err` carries the §6 sentence; a conflict is
+    /// `Ok(PushBegun)` ONLY when every conflict was in `override` — otherwise the
+    /// `Conflicts` list comes back so the caller can ask.
+    pub async fn push_begin(&self, tables: &[String], files: &[String], base: &super::base::SyncBase, override_items: &[String]) -> Result<std::result::Result<PushBegun, Conflicts>> {
+        let body = serde_json::to_vec(&serde_json::json!({ "tables": tables, "files": files, "base": { "tables": base.tables, "files": base.files }, "override": override_items })).expect("json");
+        match self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/begin", &[], body).await {
+            Ok(bytes) => Ok(Ok(Self::json(&bytes)?)),
+            Err(e) => {
+                // The refusal's body is folded into the error text by `send`; re-read it.
+                if let Some(list) = self.last_conflicts.lock().expect("conflicts lock").take() {
+                    return Ok(Err(Conflicts(list)));
+                }
+                Err(e)
+            }
+        }
+    }
+
+    /// `/push/file`: the whole file, in ≤ 4 MB pieces appended by offset.
+    pub async fn push_file(&self, push_id: &str, rel: &str, bytes: &[u8]) -> Result<()> {
+        const PIECE: usize = 4 * 1024 * 1024;
+        let mut offset = 0usize;
+        loop {
+            let end = (offset + PIECE).min(bytes.len());
+            let off = offset.to_string();
+            self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/file", &[("push_id", push_id), ("path", rel), ("offset", &off)], bytes[offset..end].to_vec()).await?;
+            offset = end;
+            if offset >= bytes.len() {
+                return Ok(());
+            }
+        }
+    }
+
+    /// `/push/db`: one chunk of a table's dump.
+    pub async fn push_sql(&self, push_id: &str, table: &str, sql: &str) -> Result<()> {
+        let body = serde_json::to_vec(&serde_json::json!({ "sql": sql, "sha256": sign::sha256_hex(sql.as_bytes()) })).expect("json");
+        self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/db", &[("push_id", push_id), ("table", table)], body).await.map(|_| ())
+    }
+
+    /// `/push/swap` → the backup id.
+    pub async fn push_swap(&self, push_id: &str) -> Result<String> {
+        let v: serde_json::Value = Self::json(&self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/swap", &[("push_id", push_id)], Vec::new()).await?)?;
+        v.get("backup_id").and_then(|b| b.as_str()).map(str::to_string).ok_or_else(|| Error::Other("rexenv Sync: the swap answered with no backup id.".into()))
+    }
+
+    pub async fn push_rollback(&self, backup_id: &str) -> Result<()> {
+        self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/rollback", &[("backup_id", backup_id)], Vec::new()).await.map(|_| ())
+    }
+
+    pub async fn push_abort(&self, push_id: &str) -> Result<()> {
+        self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/abort", &[("push_id", push_id)], Vec::new()).await.map(|_| ())
     }
 }
 

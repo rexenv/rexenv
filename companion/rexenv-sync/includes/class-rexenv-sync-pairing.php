@@ -19,7 +19,7 @@ final class Rexenv_Sync_Pairing {
 
 	/** Every option row this plugin owns — never exported, never overwritten by a push. */
 	public static function owned_option_patterns() {
-		return array( self::OPTION, 'rexsync\_n\_%', '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+		return array( self::OPTION, '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
 	}
 
 	/** ['key_id' => ..., 'secret' => raw bytes] or an empty array. */
@@ -71,26 +71,55 @@ final class Rexenv_Sync_Pairing {
 		delete_option( self::OPTION );
 	}
 
+	/** The nonce table: `<prefix>rexsync_nonces` — its OWN table, never in options. */
+	public static function nonce_table() {
+		global $wpdb;
+		return $wpdb->prefix . 'rexsync_nonces';
+	}
+
+	/** Make the nonce table (activation, and lazily if it is missing). */
+	public static function ensure_nonce_table() {
+		global $wpdb;
+		$t = self::nonce_table();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$wpdb->query( "CREATE TABLE IF NOT EXISTS `$t` (k CHAR(40) NOT NULL PRIMARY KEY, at INT UNSIGNED NOT NULL) ENGINE=InnoDB" );
+	}
+
 	/**
 	 * Has this nonce been seen in the last NONCE_TTL? Records it when not — in ONE
-	 * step: `add_option` is an INSERT on a unique key, so of two copies of a request
-	 * arriving together exactly one wins. Transients were get-then-set, and both
-	 * copies could pass (review, 10 Oct 2026). Expired rows are swept now and then.
+	 * step: an INSERT on a primary key, so of two copies of a request arriving
+	 * together exactly one wins (a get-then-set let both pass; review, 10 Oct 2026).
+	 *
+	 * In its own table, NOT `wp_options` (10 Oct 2026, the first whole push): a
+	 * nonce row per signed request moved the options table's stamp on every call,
+	 * so every push saw `wp_options` as "changed on live since the base".
 	 */
 	public static function nonce_seen( $nonce_key ) {
 		global $wpdb;
-		$name = 'rexsync_n_' . substr( $nonce_key, 0, 40 );
-		$now  = time();
-		if ( add_option( $name, $now, '', 'no' ) ) {
+		$t   = self::nonce_table();
+		$k   = substr( $nonce_key, 0, 40 );
+		$now = time();
+		$suppress = $wpdb->suppress_errors( true );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$n = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO `$t` (k, at) VALUES (%s, %d)", $k, $now ) );
+		if ( false === $n ) {
+			self::ensure_nonce_table();
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+			$n = $wpdb->query( $wpdb->prepare( "INSERT IGNORE INTO `$t` (k, at) VALUES (%s, %d)", $k, $now ) );
+		}
+		$wpdb->suppress_errors( $suppress );
+		if ( 1 === (int) $n ) {
 			if ( 0 === wp_rand( 0, 49 ) ) {
-				// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-				$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s AND option_value < %d", 'rexsync\_n\_%', $now - Rexenv_Sync_Signature::NONCE_TTL ) );
+				// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+				$wpdb->query( $wpdb->prepare( "DELETE FROM `$t` WHERE at < %d", $now - Rexenv_Sync_Signature::NONCE_TTL ) );
 			}
 			return false;
 		}
-		$at = (int) get_option( $name );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$at = (int) $wpdb->get_var( $wpdb->prepare( "SELECT at FROM `$t` WHERE k = %s", $k ) );
 		if ( $now - $at > Rexenv_Sync_Signature::NONCE_TTL ) {
-			update_option( $name, $now, false ); // an expired nonce, used again much later
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+			$wpdb->query( $wpdb->prepare( "UPDATE `$t` SET at = %d WHERE k = %s", $now, $k ) ); // an expired nonce, used again much later
 			return false;
 		}
 		return true;

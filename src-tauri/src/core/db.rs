@@ -598,6 +598,15 @@ impl DbEngine {
         }
     }
 
+    /// [`dump_to_file`](Self::dump_to_file) for the named tables only — MySQL family only
+    /// (a live WordPress is MySQL; nothing pushes a PostgreSQL site to one).
+    pub fn dump_tables_to_file(&self, dump: &Path, port: u16, name: &str, tables: &[&str], dest: &Path) -> Result<()> {
+        match self {
+            DbEngine::Mysql | DbEngine::Mariadb => database::dump_tables_to_file(dump, port, name, tables, dest),
+            other => Err(Error::Other(format!("{} has no table-wise dump", other.label()))),
+        }
+    }
+
     /// Dump database `name` into `dest` with the export's flags. `dump` is the
     /// dump BINARY from [`sql_client_bins`](Self::sql_client_bins).
     pub fn dump_to_file(&self, dump: &Path, port: u16, name: &str, dest: &Path) -> Result<()> {

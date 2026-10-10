@@ -23,14 +23,28 @@ final class Rexenv_Sync_Reader {
 	/** Paths the plugin never lists or reads, whatever rexenv asks (§5). */
 	const OWN_EXCLUDES = array( 'uploads/rexsync-*', 'uploads/rexsync-*/*', 'rexsync-backups', 'rexsync-backups/*' );
 
+	/**
+	 * `SHOW TABLE STATUS` for this site's tables, with LIVE numbers: MySQL 8 caches
+	 * `Rows`, `Auto_increment` and `Update_time` for 24 h by default
+	 * (`information_schema_stats_expiry`), which made a stamp miss an INSERT (10 Oct
+	 * 2026). MariaDB has no such variable; the SET is let fail there.
+	 */
+	public static function table_status() {
+		global $wpdb;
+		$suppress = $wpdb->suppress_errors( true );
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->query( 'SET SESSION information_schema_stats_expiry = 0' );
+		$wpdb->suppress_errors( $suppress );
+		$like = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		return (array) $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A );
+	}
+
 	public static function manifest() {
 		global $wpdb;
 		$tables = array();
-		$like   = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$rows = $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A );
-		foreach ( (array) $rows as $r ) {
-			if ( self::is_view( $r ) ) {
+		foreach ( self::table_status() as $r ) {
+			if ( self::is_view( $r ) || self::is_own_table( $r['Name'] ) ) {
 				continue; // a view is a query, not data: never listed, never exported
 			}
 			$tables[] = array(
@@ -56,6 +70,11 @@ final class Rexenv_Sync_Reader {
 		);
 	}
 
+	/** The plugin's own tables (the nonce table): never listed, exported or pushed. */
+	public static function is_own_table( $name ) {
+		return $name === Rexenv_Sync_Pairing::nonce_table();
+	}
+
 	/**
 	 * The table's change stamp (§4.1): rows, data length and the engine's update
 	 * time. NOT `CHECKSUM TABLE` — that reads the whole table on InnoDB, on every
@@ -67,7 +86,14 @@ final class Rexenv_Sync_Reader {
 	}
 
 	private static function checksum( array $status ) {
-		return 'rows:' . (int) $status['Rows'] . ':len:' . (int) $status['Data_length'] . ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' );
+		// `Auto_increment` moves on every INSERT; `Update_time` on InnoDB (MySQL ≥ 5.7,
+		// kept in memory, NULL after a restart) on every write. `Rows` is an estimate
+		// and `Data_length` is in pages — neither moved for one inserted post, which
+		// is how the first conflict test saw no conflict (10 Oct 2026). A NULL-after-
+		// restart `Update_time` errs toward a conflict, i.e. toward asking.
+		return 'ai:' . ( isset( $status['Auto_increment'] ) ? (int) $status['Auto_increment'] : 0 )
+			. ':upd:' . ( isset( $status['Update_time'] ) ? $status['Update_time'] : '' )
+			. ':rows:' . (int) $status['Rows'] . ':len:' . (int) $status['Data_length'];
 	}
 
 	private static function is_view( array $status ) {
@@ -220,7 +246,8 @@ final class Rexenv_Sync_Reader {
 		// BASE TABLEs only — a view is never exported (it would arrive as a CREATE VIEW
 		// followed by INSERTs into the view, which an import refuses).
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		return (array) $wpdb->get_col( $wpdb->prepare( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE %s", $like ) );
+		$names = (array) $wpdb->get_col( $wpdb->prepare( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE %s", $like ) );
+		return array_values( array_filter( $names, function ( $n ) { return ! self::is_own_table( $n ); } ) );
 	}
 
 	/**

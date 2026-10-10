@@ -33,4 +33,5 @@ if ( is_admin() ) {
 	add_action( 'admin_menu', array( 'Rexenv_Sync_Admin', 'menu' ) );
 }
 
+register_activation_hook( __FILE__, array( 'Rexenv_Sync_Pairing', 'ensure_nonce_table' ) );
 register_uninstall_hook( __FILE__, array( 'Rexenv_Sync_Pairing', 'delete' ) );

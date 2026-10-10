@@ -113,6 +113,10 @@ back unchanged. `null` means done.
   `CHECKSUM TABLE`: that reads the whole table on InnoDB, on every `/manifest`, and a big
   site's manifest would pass `max_execution_time`. rexenv only compares stamps of the same
   site for EQUALITY. Views are not listed.
+- The nonce store is the plugin's own table `<prefix>rexsync_nonces` (never listed, exported
+  or pushed): a row per signed request in `wp_options` would move that table's stamp on
+  every call. The stamp is `ai:<Auto_increment>:upd:<Update_time>:rows:<n>:len:<bytes>`,
+  read with `information_schema_stats_expiry = 0` on MySQL 8.
 - `/db/export`'s cursor is `"k:<json>"` (keyset: a single-column primary key, `WHERE pk >
   last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
   written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes

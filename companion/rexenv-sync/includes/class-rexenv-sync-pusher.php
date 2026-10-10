@@ -52,7 +52,8 @@ final class Rexenv_Sync_Pusher {
 		global $wpdb;
 		$like = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		return (array) $wpdb->get_col( $wpdb->prepare( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE %s", $like ) );
+		$names = (array) $wpdb->get_col( $wpdb->prepare( "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME LIKE %s", $like ) );
+		return array_values( array_filter( $names, function ( $n ) { return ! Rexenv_Sync_Reader::is_own_table( $n ); } ) );
 	}
 
 	/**
@@ -96,12 +97,9 @@ final class Rexenv_Sync_Pusher {
 	/** Tables whose stamp, and files whose size:mtime, differ from `base`. */
 	public static function conflicts( array $tables, array $files, array $base ) {
 		global $wpdb;
-		$out  = array();
-		$like = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		$status = $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A );
-		$now    = array();
-		foreach ( (array) $status as $r ) {
+		$out = array();
+		$now = array();
+		foreach ( Rexenv_Sync_Reader::table_status() as $r ) {
 			$now[ $r['Name'] ] = Rexenv_Sync_Reader::stamp( $r );
 		}
 		$base_t = isset( $base['tables'] ) && is_array( $base['tables'] ) ? $base['tables'] : array();
@@ -181,12 +179,23 @@ final class Rexenv_Sync_Pusher {
 		return array( 'ok' => true );
 	}
 
-	/** Split a dump on statement ends. Dumps escape newlines inside strings as `\n`, so `;\n` never occurs in a value. */
+	/**
+	 * Split a dump on statement ends. Dumps escape newlines inside strings as `\n`,
+	 * so `;\n` never occurs in a value. mysqldump puts `-- ` comment lines BEFORE a
+	 * statement in the same piece (`-- Table structure…` then `DROP TABLE`), so
+	 * comment LINES are stripped, never the piece.
+	 */
 	private static function statements( $sql ) {
 		$out = array();
 		foreach ( explode( ";\n", $sql ) as $part ) {
-			$part = trim( $part );
-			if ( '' !== $part && 0 !== strpos( $part, '--' ) ) {
+			$lines = array();
+			foreach ( explode( "\n", $part ) as $line ) {
+				if ( 0 !== strpos( ltrim( $line ), '--' ) ) {
+					$lines[] = $line;
+				}
+			}
+			$part = trim( implode( "\n", $lines ) );
+			if ( '' !== $part ) {
 				$out[] = $part;
 			}
 		}
@@ -244,16 +253,20 @@ final class Rexenv_Sync_Pusher {
 			rename( $from, $to );
 			$moved[] = $rel;
 		}
+		// The cache FIRST: the options table under WordPress just changed, and
+		// `get_option` would otherwise answer from the old table's cached rows — the
+		// first whole push kept the plugin "active" in cache only (10 Oct 2026).
+		wp_cache_flush();
 		foreach ( $own as $name => $value ) {
 			if ( false !== $value ) {
 				update_option( $name, $value, false );
 			}
 		}
+		self::ensure_active();
 		update_option( self::KEEP, array( 'id' => $push_id, 'tables' => $r['tables'], 'files' => $moved, 'at' => time() ), false );
 		$r['state'] = 'swapped';
 		self::save_record( $push_id, $r );
 		self::remove_dir( self::quarantine( $push_id ) );
-		wp_cache_flush();
 		delete_option( 'rewrite_rules' );
 		self::maintenance( false );
 		return array( 'swapped' => $r['tables'], 'files' => count( $moved ), 'backup_id' => $push_id );
@@ -296,14 +309,15 @@ final class Rexenv_Sync_Pusher {
 				unlink( $pushed ); // the push ADDED it; before it there was nothing
 			}
 		}
+		wp_cache_flush(); // before any read — see `swap`
 		foreach ( $own as $name => $value ) {
 			if ( false !== $value ) {
 				update_option( $name, $value, false );
 			}
 		}
+		self::ensure_active();
 		delete_option( self::KEEP );
 		self::remove_dir( $bdir );
-		wp_cache_flush();
 		delete_option( 'rewrite_rules' );
 		self::maintenance( false );
 		return array( 'restored' => $keep['tables'], 'files' => count( $keep['files'] ) );
@@ -322,6 +336,21 @@ final class Rexenv_Sync_Pusher {
 		}
 		self::remove_dir( self::quarantine( $push_id ) );
 		return array( 'removed' => true );
+	}
+
+	/**
+	 * Keep THIS plugin active across a swap. The pushed options table came from
+	 * the local copy, where rexenv deactivates the plugin (plan §2.8) — so the
+	 * first whole push took the plugin's own routes away with it (10 Oct 2026).
+	 */
+	public static function ensure_active() {
+		$me     = 'rexenv-sync/rexenv-sync.php';
+		$active = get_option( 'active_plugins' );
+		$active = is_array( $active ) ? $active : array();
+		if ( ! in_array( $me, $active, true ) ) {
+			$active[] = $me;
+			update_option( 'active_plugins', $active );
+		}
 	}
 
 	/** The previous backup's tables and folder. */
