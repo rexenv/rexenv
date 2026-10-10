@@ -2,7 +2,7 @@
 
 **Status:** BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the
 panel, `rex worktree`, the MCP `worktree` tool; live checks green on macOS, the Dell and the
-Ubuntu VM (#814–#823, #830–#831). Open: the SMOKE GUI rows (unrun on every OS), the prune offer,
+Ubuntu VM (#814–#823, #830–#831). SMOKE GUI rows: 9 of 10 run on the macOS VM, 10 Oct 2026 — three defects found and fixed (#848). Open: the same rows on Windows/Linux, the prune offer,
 CLI/MCP arms for adopt/serve/re-clone (parity Gap), Windows/Linux reruns of legs 13–15. Was:
 PLANNED 9 Oct 2026. Owner request ("Git worktree workflow"); the
 agent wrote it while the owner was away. **Owner answered 9 Oct 2026** (§9). Domain:

@@ -1230,6 +1230,7 @@ export function Sites() {
       {deleteTarget && (
         <DeleteSiteDialog
           site={deleteTarget}
+          removesFolder={worktreeRows.some((w) => w.siteId === deleteTarget.id && w.removesFolder)}
           dbState={dbStates.get(deleteTarget.id)}
           onPlainDelete={() => {
             remove.mutate(deleteTarget);

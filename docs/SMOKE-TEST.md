@@ -953,39 +953,55 @@ app quit (#784), and an adopted session restarted the site without its env vars 
 
 On a WordPress site with a plugin that is a git checkout (its row shows **git**), and a second
 branch in that repository:
-- [ ] Click **git** → under the repo panel, **Worktree sites** reads "None yet". **New worktree…**
+- [x] Click **git** → under the repo panel, **Worktree sites** reads "None yet". **New worktree…**
       → Create is disabled until a branch is picked; pick the second branch → the box shows
       `https://<branch>.<site>` (a subdomain-multisite parent is refused, naming why).
-- [ ] **Create** → the Sites page shows the provision card with `copying the parent site`,
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): on a plain git checkout the chip read **git?** first — Adopt, then **git**; "None yet"; Create off until a branch; `https://feature-x.wtp.rex`.
+- [x] **Create** → the Sites page shows the provision card with `copying the parent site`,
       `adding the git worktree`, `installing dependencies`, `copying the database`, `pointing
       wp-config at this site`, `moving URLs to this domain`; it settles serving. The new row has a
       branch chip.
-- [ ] Open the worktree site: the page is the parent's content at the NEW domain (links and
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): settled serving in ~6 s with the `feature-x` chip — too fast to see the card; all seven phases are in its provision log.
+- [x] Open the worktree site: the page is the parent's content at the NEW domain (links and
       images point at the new domain — never `branch.branch.site`), wp-admin logs in, the plugin
       file shows the branch's code; the parent site still shows its own branch. The child's page
       header reads "plugin worktree of <parent> · <branch>".
-- [ ] Edit a file in the worktree's plugin folder → the Worktree sites row shows "1 uncommitted".
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): footer `wtdemo: feature-x` (parent `main`), 32 links all `https://feature-x.wtp.rex`, the parent's post, wp-login 200, header "plugin worktree of wtp.rex · feature-x".
+- [x] Edit a file in the worktree's plugin folder → the Worktree sites row shows "1 uncommitted".
       Delete the worktree site from the Sites list → refused, naming the file; the site still
       serves. Remove it from the Worktree sites row → the "Remove anyway?" question quotes the
       file; Cancel leaves everything; Remove anyway deletes it. `git branch` in the plugin still
       lists the branch.
-- [ ] On a worktree site's page, the header's **Re-clone DB from parent** → confirm → the site shows
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): all as written — the Sites-list refusal toast names `M wtdemo.php` (it also says "or remove it anyway", an option that lives on the Worktree sites row, not that list); Cancel kept everything; branch kept.
+- [x] On a worktree site's page, the header's **Re-clone DB from parent** → confirm → the site shows
       the parent's content again at its own domain (a post made only here is gone).
-- [ ] On a site whose own folder is a git checkout, run `git worktree add ../elsewhere -b try` by
-      hand → Repository tab → **Worktree sites** lists it under "made elsewhere" → **Serve** → it
-      becomes `try.<site>`, served from that folder; Delete that site → the folder is still there.
-- [ ] Delete the PARENT while a worktree site exists → refused, naming the child.
-- [ ] `rex worktree <site> add <plugin-dir> <branch>` prints the phases and ends `… — created`;
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): a CHILD-ONLY post gone, the parent's post there, links still on the child domain.
+- [x] On a site whose own folder is a git checkout, run `git worktree add ~/elsewhere-try -b try` by
+      hand (a folder OUTSIDE the sites folder) → Repository tab → **Worktree sites** lists it under
+      "made elsewhere" → **Serve** → it becomes `try.<site>`, served from that folder; Delete that
+      site → the folder is still there. A worktree INSIDE the sites folder (`../elsewhere` from a
+      site there) is listed with the reason and a `git worktree move` hint, and no Serve button.
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): `try2.gitp.rex` served "branch: try2", the
+      CLI delete said the folder was untouched and it was. The FIRST run used this row's old recipe
+      (`../elsewhere`, inside Sites): Serve was offered and then refused with "create a site normally
+      instead of linking it" — both wrong for a worktree; fixed, #848.
+- [x] Delete the PARENT while a worktree site exists → refused, naming the child.
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): "wtp.rex has 1 worktree site (feature-x…" and the parent still serves.
+- [x] `rex worktree <site> add <plugin-dir> <branch>` prints the phases and ends `… — created`;
       `rex worktree <site> list` shows it with its branch; `rex worktree <child> remove` refuses
       while a file is uncommitted and `--force` removes it.
-- [ ] **A worktree of the whole site** — on a site whose OWN folder is a git checkout (a Laravel
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330): list/branch/"1 uncommitted"/refusal/`--force` all as written — but `add` printed ONLY its last line: the CLI asked without streaming. Fixed (#848); the phases print from the next build.
+- [x] **A worktree of the whole site** — on a site whose OWN folder is a git checkout (a Laravel
       site from git): Repository tab → **Worktree sites** → New worktree… on a second branch →
       the card shows `copying the parent's config`, `installing dependencies` (or "vendor/ copied
       … the same composer.lock"), `copying the database`; the folder is
       `~/rexenv/Worktrees/<domain>`; the site serves the branch with its own `.env`
       (`APP_URL`, `DB_DATABASE`). Delete it → the folder goes, the branch stays.
+      ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330) on a Blank PHP site from git (no Laravel): phases "copying the parent's config", "installing dependencies", "starting to serve" (no database to copy); folder `~/rexenv/Worktrees/other.gitp.rex`; served "branch: other"; Delete → folder gone, branch kept — but the delete SAID "your folder … is untouched". Fixed (#848): dialog and CLI now say the worktree folder goes.
 - [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
+      Not run on a GUI build yet (the VM has no MCP client; the endpoint is off by default) —
+      covered at L0 by the `worktree` tool test (#822).
 - **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:
   an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
   "Access is denied", and the site stays — close the editor, Delete again.

@@ -486,6 +486,20 @@ pub struct WorktreeRelation {
     pub site_id: String,
     pub parent_id: String,
     pub asked_branch: String,
+    /// Deleting this child removes its FOLDER although `docrootManaged` is false
+    /// (#848): a whole-site worktree rexenv made is a linked site whose folder git
+    /// made for it, and `release_for_delete` removes it with the worktree.
+    pub removes_folder: bool,
+}
+
+/// Does deleting a worktree child remove its own folder beyond what
+/// `docrootManaged` says? Only a WHOLE-SITE worktree rexenv made (Shape B, not
+/// adopted): its folder is the worktree, and `release_for_delete` removes it. A
+/// plugin/theme child is a managed copy (its files go anyway); an adopted one
+/// belongs to the tool that made it (never removed). Found on the macOS VM (10 Oct
+/// 2026): the delete said "your folder … is untouched" while removing it.
+pub fn removes_folder(shape: Option<WorktreeShape>, adopted: bool) -> bool {
+    shape == Some(WorktreeShape::Site) && !adopted
 }
 
 #[tauri::command]
@@ -493,7 +507,7 @@ pub async fn worktree_relations(state: State<'_, AppState>) -> Result<Vec<Worktr
     let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
     Ok(store::all_site_worktrees(&conn)?
         .into_iter()
-        .map(|w| WorktreeRelation { site_id: w.site_id, parent_id: w.parent_id, asked_branch: w.branch })
+        .map(|w| WorktreeRelation { removes_folder: removes_folder(w.shape, w.adopted), site_id: w.site_id, parent_id: w.parent_id, asked_branch: w.branch })
         .collect())
 }
 
@@ -508,6 +522,8 @@ pub struct AdoptableWorktree {
     pub branch: Option<String>,
     /// git says the folder is gone (`prunable`).
     pub missing: bool,
+    /// Why Serve would refuse it — shown in place of the button (#848).
+    pub refusal: Option<String>,
 }
 
 /// `worktree_adoptable` — worktrees of `site_id`'s own repository (Shape B only,
@@ -531,10 +547,17 @@ pub async fn worktree_adoptable<R: tauri::Runtime>(app: AppHandle<R>, site_id: S
         let canon = |p: &std::path::Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let main = canon(&root);
         let served: Vec<PathBuf> = served.iter().map(|p| canon(p)).collect();
-        Ok(worktree::list(state.platform.supervisor(), &git.path, &env, &root)?
+        let found: Vec<_> = worktree::list(state.platform.supervisor(), &git.path, &env, &root)?
             .into_iter()
             .filter(|e| !e.bare && canon(&e.path) != main && !served.contains(&canon(&e.path)))
-            .map(|e| AdoptableWorktree { path: e.path.to_string_lossy().into_owned(), branch: e.branch, missing: e.prunable })
+            .collect();
+        let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+        Ok(found
+            .into_iter()
+            .map(|e| {
+                let refusal = if e.prunable { None } else { worktree::serve_refusal(&conn, state.platform.as_ref(), &e.path) };
+                AdoptableWorktree { path: e.path.to_string_lossy().into_owned(), branch: e.branch, missing: e.prunable, refusal }
+            })
             .collect())
     })
     .await
@@ -559,6 +582,9 @@ pub async fn worktree_serve<R: tauri::Runtime>(
         let parent = store::get_site(&conn, &parent_id)?.ok_or_else(|| Error::Other(format!("no site {parent_id}")))?;
         if !folder.join(".git").is_file() {
             return Err(Error::Other(format!("{} is not a git worktree.", folder.display())));
+        }
+        if let Some(why) = worktree::serve_refusal(&conn, state.platform.as_ref(), &folder) {
+            return Err(Error::Other(why));
         }
         let own_gitdir = worktree::gitdir_of(&folder.join(".git")).unwrap_or_default();
         let parent_git = std::fs::canonicalize(PathBuf::from(&parent.path).join(".git")).unwrap_or_default();
@@ -650,4 +676,21 @@ pub async fn worktree_reclone_db<R: tauri::Runtime>(app: AppHandle<R>, site_id: 
     })
     .await
     .map_err(|e| Error::Other(format!("re-clone worker died: {e}")))?
+}
+
+#[cfg(test)]
+mod removes_folder_tests {
+    use super::removes_folder;
+    use crate::state::models::WorktreeShape;
+
+    /// **Only a whole-site worktree rexenv made loses its folder on Delete** — the
+    /// dialog and `rex site delete` say so from this one rule (ledger #848). Plant:
+    /// drop the `!adopted` and an adopted folder reads as removed.
+    #[test]
+    fn only_an_owned_whole_site_worktree_loses_its_folder() {
+        assert!(removes_folder(Some(WorktreeShape::Site), false));
+        assert!(!removes_folder(Some(WorktreeShape::Site), true), "adopted: the other tool's folder stays");
+        assert!(!removes_folder(Some(WorktreeShape::Asset), false), "a plugin child is a managed copy — docrootManaged already says it goes");
+        assert!(!removes_folder(None, false));
+    }
 }

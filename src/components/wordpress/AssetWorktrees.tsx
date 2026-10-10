@@ -7,7 +7,7 @@
  * Sites page, which adopts the running provision job and shows its card — the
  * one place every create is watched.
  */
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, Loader2, Trash2 } from "lucide-react";
@@ -138,15 +138,21 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
           <div className="text-[0.71875rem] text-rex-text-muted">Worktrees of this repository made elsewhere — serve one as a site:</div>
           <div className="mt-1 flex flex-col gap-1">
             {(adoptable.data ?? []).map((w) => (
-              <div key={w.path} className="flex items-center gap-2 text-[0.75rem]">
+              <Fragment key={w.path}>
+              <div className="flex items-center gap-2 text-[0.75rem]">
                 <span className="truncate font-mono text-rex-text" title={w.path}>{w.path}</span>
                 <span className="rounded-full bg-rex-surface-2 px-1.5 py-0.5 font-mono text-[0.625rem] text-rex-text-muted">{w.branch ?? "detached"}</span>
                 {w.missing && <span className="text-[0.6875rem] text-status-warning-bright">folder missing</span>}
                 <span className="flex-1" />
-                <Button size="sm" variant="secondary" disabled={w.missing || serve.isPending} onClick={() => serve.mutate(w.path)}>
-                  Serve
-                </Button>
+                {/* Never offer what Serve would refuse (#848): the reason, in its place. */}
+                {!w.refusal && (
+                  <Button size="sm" variant="secondary" disabled={w.missing || serve.isPending} onClick={() => serve.mutate(w.path)}>
+                    Serve
+                  </Button>
+                )}
               </div>
+              {w.refusal && <div className="-mt-0.5 mb-1 text-[0.6875rem] leading-[1.45] text-status-warning-bright">{w.refusal}</div>}
+              </Fragment>
             ))}
           </div>
         </div>

@@ -16,12 +16,16 @@ import type { DbImportRecord, Site } from "@/types";
 
 export function DeleteSiteDialog({
   site,
+  removesFolder = false,
   dbState,
   onPlainDelete,
   onRevertThenDelete,
   onCancel,
 }: {
   site: Site;
+  /** A whole-site worktree rexenv made: Delete removes its folder although the site
+   *  is linked (`WorktreeRelation.removesFolder`, #848). */
+  removesFolder?: boolean;
   /** The site's db-import state, if any (the ONE serialized fact). */
   dbState?: DbImportRecord["state"];
   onPlainDelete: () => void;
@@ -29,6 +33,8 @@ export function DeleteSiteDialog({
   onRevertThenDelete: () => void;
   onCancel: () => void;
 }) {
+  // The folder stays only for a linked site that is NOT a worktree rexenv made (#848).
+  const keepsFolder = site.docrootManaged === false && !removesFolder;
   /* Hoisted above the variant split: the connected branch is the only one that
      uses it, but a hook can't sit after an early return. */
   const [typed, setTyped] = useState("");
@@ -41,7 +47,7 @@ export function DeleteSiteDialog({
         message={
           <>
             This permanently removes <span className="font-mono text-rex-text">{site.domain}</span>
-            {site.docrootManaged === false ? "" : ", its files"}
+            {keepsFolder ? "" : ", its files"}
             {site.type === "wordpress" ? (
               ", its database,"
             ) : site.dbCreated === true ? (
@@ -55,7 +61,7 @@ export function DeleteSiteDialog({
               ""
             )}{" "}
             and its certificate.
-            {site.docrootManaged === false && (
+            {keepsFolder && (
               <>
                 {" "}Your folder at{" "}
                 <span className="font-mono text-rex-text">{site.path}</span> is left
@@ -104,7 +110,7 @@ export function DeleteSiteDialog({
           )}
         </p>
         <p>
-          {site.docrootManaged === false ? (
+          {keepsFolder ? (
             <>
               Your folder at{" "}
               <span className="font-mono text-rex-text">{site.path}</span> is left

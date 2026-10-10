@@ -18,6 +18,7 @@ import { ImportProgressCard } from "@/routes/Import";
 import type { ImportOutcome, ImportProgress } from "@/types";
 import { useDownloads } from "@/lib/useDownloads";
 import { siteProvisionRetry } from "@/lib/ipc";
+import { AssetWorktrees } from "@/components/wordpress/AssetWorktrees";
 
 /** What `git ls-remote` answers with for a repo anyone actually works on.
  *  The branch list is long ON PURPOSE: the first fetch used to render a native
@@ -886,6 +887,19 @@ export function DevGitPanel() {
         // dirty count all render. The create/remove calls are RECORDED, because
         // what the dialog SENDS is the assertion (`?dirty=1`: the first, unforced
         // remove is refused the way the backend refuses it).
+        // `?panel=wt-site` (wk-checks/worktree.js leg 5, #848): a site whose OWN folder
+        // is a git checkout, with two worktrees made elsewhere — one servable, one
+        // inside the sites folder that Serve would refuse.
+        case "worktree_adoptable":
+          return [
+            { path: "/Users/somebody/elsewhere-try", branch: "try", missing: false, refusal: null },
+            {
+              path: "/Users/somebody/rexenv/Sites/elsewhere",
+              branch: "spike",
+              missing: false,
+              refusal: "/Users/somebody/rexenv/Sites/elsewhere is inside your rexenv sites folder, where a site cannot be linked — move it out first (`git worktree move /Users/somebody/rexenv/Sites/elsewhere <a folder outside it>`), or make the worktree with New worktree…, which puts it in ~/rexenv/Worktrees.",
+            },
+          ];
         case "worktree_children":
           return params.get("wt") === "1"
             ? [
@@ -1037,6 +1051,10 @@ export function DevGitPanel() {
           <ImportBarHost />
         ) : params.get("panel") === "provision" ? (
           <ProvisionHost />
+        ) : params.get("panel") === "wt-site" ? (
+          <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
+            <AssetWorktrees siteId="dev" kind="site" dirName="" />
+          </div>
         ) : params.get("panel") === "wp-add" ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <PluginsPanel siteId="dev" />

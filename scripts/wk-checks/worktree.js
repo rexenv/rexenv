@@ -9,7 +9,9 @@
 //      previews its domain; Create sends {assetKind, assetDir, branch, base};
 //   3. a refused (dirty) remove does NOT silently force: a second dialog quotes
 //      the backend's file list, and only accepting it sends force=true;
-//   4. no horizontal overflow, no page error, in both themes.
+//   4. no horizontal overflow, no page error, in both themes;
+//   5. (#848) worktrees made elsewhere: a servable one offers Serve; one Serve would
+//      refuse (inside the sites folder) shows the reason INSTEAD of a Serve button.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`;
@@ -80,6 +82,12 @@ const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`
     await page.waitForTimeout(400);
     calls = await page.evaluate(() => window.__worktreeRemoves ?? []);
     if (JSON.stringify(calls) !== "[false,true]") fails.push(`${scheme} 3: remove calls ${JSON.stringify(calls)}`);
+    // 5. the "made elsewhere" list never offers what Serve would refuse.
+    await page.goto(`${BASE}/dev/git-panel?panel=wt-site`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    const serves = await page.getByRole("button", { name: "Serve" }).count();
+    const why = await page.evaluate(() => document.body.innerText);
+    if (!(serves === 1 && why.includes("git worktree move") && why.includes("/Users/somebody/elsewhere-try"))) fails.push(`${scheme} 5: Serve buttons=${serves}, reason shown=${why.includes("git worktree move")}`);
     await page.close();
   }
   await browser.close();

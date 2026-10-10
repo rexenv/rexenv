@@ -1845,7 +1845,10 @@ fn cmd_worktree(words: &[String], json_output: bool) {
                     exit(1);
                 }
             };
-            let data = request(
+            // Streamed, like `site create`: the arm sends each phase as progress, and a
+            // plain `request` never asked for it — the first run on the macOS VM printed
+            // only the last line (10 Oct 2026, ledger #848).
+            let data = request_streaming(
                 "worktree.add",
                 json!({
                     "id": id,
@@ -1854,6 +1857,7 @@ fn cmd_worktree(words: &[String], json_output: bool) {
                     "base": flag_value(words, "--from"), "domain": flag_value(words, "--domain"),
                     "skipUploads": words.iter().any(|w| w == "--skip-uploads"),
                 }),
+                print_provision_progress,
             );
             if json_output {
                 return print_json(&data);
@@ -4306,7 +4310,9 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     // require --yes when stdin isn't a terminal-driven human).
     if !words.iter().any(|w| w == "--yes") {
         // The folder is only ours to delete when we created it — say which.
-        let folder = if site["docrootManaged"].as_bool() == Some(false) {
+        let folder = if site["removesFolderOnDelete"].as_bool() == Some(true) {
+            format!("This also removes its worktree folder at {} (the branch is kept).", site["path"].as_str().unwrap_or("?"))
+        } else if site["docrootManaged"].as_bool() == Some(false) {
             format!("Your folder at {} is left in place.", site["path"].as_str().unwrap_or("?"))
         } else {
             "This also removes its folder.".to_string()
@@ -4330,7 +4336,10 @@ fn cmd_site_delete(words: &[String], json_output: bool) {
     // correctly did not touch. The prompt already got this right — but `--yes`
     // skips the prompt, so for the user most likely to be scripting, the false
     // sentence was the only thing printed.
-    if site["docrootManaged"].as_bool() == Some(false) {
+    if site["removesFolderOnDelete"].as_bool() == Some(true) {
+        // A worktree rexenv made: its folder went with it (#848) — "untouched" was a lie.
+        outln!("✓ deleted {domain} (its worktree folder at {} removed; the branch is kept)", site["path"].as_str().unwrap_or("?"));
+    } else if site["docrootManaged"].as_bool() == Some(false) {
         outln!(
             "✓ deleted {domain} (database removed; your folder at {} is untouched)",
             site["path"].as_str().unwrap_or("?")
@@ -4672,6 +4681,38 @@ mod tests {
     /// union — every flag some arm accepts is read somewhere, and every flag
     /// read is accepted by some arm. Which arm gets which is the table's own
     /// business and is not measured here.
+    /// **Every socket command whose arm streams progress is CALLED streaming** (ledger
+    /// #848). The app sends progress only when asked; `rex worktree add` asked with a
+    /// plain `request` and printed nothing until the end (macOS VM, 10 Oct 2026). Plant:
+    /// turn `worktree.add` back into `request(` and this names it.
+    #[test]
+    fn every_streaming_arm_is_requested_streaming() {
+        const ME: &str = include_str!("main.rs");
+        const SERVER: &str = include_str!("../../src-tauri/src/cli_server.rs");
+        let mut streaming = Vec::new();
+        let arms: Vec<(usize, &str)> = SERVER.match_indices("\n        \"").collect();
+        for (k, (at, _)) in arms.iter().enumerate() {
+            let head = &SERVER[at + 10..];
+            let Some(end) = head.find('"') else { continue };
+            let name = &head[..end];
+            if !head[end..].starts_with("\" => {") || !name.contains('.') {
+                continue;
+            }
+            let body_end = arms.get(k + 1).map(|(n, _)| *n).unwrap_or(SERVER.len());
+            let body = &SERVER[*at..body_end];
+            if body.contains("progress.send(") || body.contains("live_follow(") {
+                streaming.push(name.to_string());
+            }
+        }
+        assert!(streaming.iter().any(|n| n == "site.create") && streaming.len() >= 4, "the arm scan found {streaming:?}");
+        let squeezed: String = ME.split_whitespace().collect::<Vec<_>>().join("");
+        for name in &streaming {
+            let called_streaming = squeezed.contains(&format!("request_streaming(\"{name}\""));
+            let called_plain = squeezed.contains(&format!("request(\"{name}\""));
+            assert!(called_streaming || !called_plain, "`{name}` streams progress but `rex` calls it with a plain request — nothing prints until it ends");
+        }
+    }
+
     #[test]
     fn every_flag_these_commands_read_is_a_flag_they_accept_and_vice_versa() {
         const ME: &str = include_str!("main.rs");

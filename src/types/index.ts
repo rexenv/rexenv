@@ -1675,6 +1675,8 @@ export interface AdoptableWorktree {
   path: string;
   branch: string | null;
   missing: boolean;
+  /** Why Serve would refuse it (inside the sites folder, …) — shown instead of the button. */
+  refusal: string | null;
 }
 
 /** Child → parent rows for the Sites list's chips (no git reads). */
@@ -1682,6 +1684,8 @@ export interface WorktreeRelation {
   siteId: string;
   parentId: string;
   askedBranch: string;
+  /** Deleting it removes its folder although `docrootManaged` is false (a whole-site worktree rexenv made, #848). */
+  removesFolder: boolean;
 }
 
 /** A git-sourced wp-content dir's provenance (the list "git" badge). */

@@ -636,8 +636,23 @@ where
                     .map_err(|_| Error::Other("database lock poisoned".into()))?;
                 crate::state::store::all_site_aliases(&conn)?
             };
+            // Per site: does Delete remove its folder although it is linked (#848)? The
+            // rule is `worktree::removes_folder`; `rex site delete` says what happens.
+            let folder_goes: Vec<String> = {
+                let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+                crate::state::store::all_site_worktrees(&conn)?
+                    .into_iter()
+                    .filter(|w| commands::worktree::removes_folder(w.shape, w.adopted))
+                    .map(|w| w.site_id)
+                    .collect()
+            };
+            let mut sites = to_value(&sites)?;
+            for s in sites.as_array_mut().into_iter().flatten() {
+                let goes = s["id"].as_str().is_some_and(|id| folder_goes.iter().any(|f| f == id));
+                s["removesFolderOnDelete"] = json!(goes);
+            }
             Ok(json!({
-                "sites": to_value(&sites)?,
+                "sites": sites,
                 "serving": to_value(&serving)?,
                 "aliases": to_value(&aliases)?,
             }))

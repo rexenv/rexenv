@@ -226,6 +226,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
+- [ ] **`rex start` right after a macOS boot fails on the edge instead of waiting for it** — seen on
+  the macOS 15.8 VM, 10 Oct 2026: within ~2 minutes of login, `rex start` answered "the Caddy edge
+  daemon was installed but its admin socket never came up — check logs/caddy-start.log", and a
+  `rex site create` in the same window failed the same way (Retry worked). The root LaunchDaemon's
+  Caddy comes up ~3 min after boot (memory of the 30 Sep run); a minute later the health log said
+  "re-adopted (sites were being served the whole time)". The start should wait for (or adopt) a
+  daemon that is still starting, or say that it is starting, not that it never came up.
+
 ### Open work that was living inside ticked rows
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that

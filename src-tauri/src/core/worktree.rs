@@ -774,8 +774,48 @@ pub fn remove(
     repo::run_git_op(supervisor, git, env, repo_dir, "worktree remove", &args, cancel, on_line)
 }
 
+/// Why rexenv will not serve the existing worktree at `path` as a site, in words
+/// that fit a WORKTREE — or `None` when it can (ledger #848). The rule is the
+/// linked-folder rule (`sites::validate_linked_docroot`); only its advice changes:
+/// "create a site normally" means nothing for a folder git made, so a worktree
+/// inside the sites folder is told how to move out instead. Asked by the "made
+/// elsewhere" list BEFORE it offers Serve — the macOS VM run (10 Oct 2026) offered
+/// Serve on a worktree that Serve then refused.
+pub fn serve_refusal(conn: &Connection, platform: &dyn crate::platform::traits::Platform, path: &Path) -> Option<String> {
+    let err = crate::core::sites::validate_linked_docroot(conn, platform, &path.to_string_lossy()).err()?.to_string();
+    if err.contains("inside your rexenv sites folder") {
+        return Some(format!(
+            "{} is inside your rexenv sites folder, where a site cannot be linked — move it out first \
+             (`git worktree move {} <a folder outside it>`), or make the worktree with New worktree…, \
+             which puts it in ~/rexenv/Worktrees.",
+            path.display(),
+            path.display()
+        ));
+    }
+    Some(err)
+}
+
 #[cfg(test)]
 mod tests {
+    /// **A worktree inside the sites folder is refused with a way OUT, and one
+    /// outside it is servable** (ledger #848). Plant: drop the rewrite and the
+    /// sentence says "create a site normally".
+    #[test]
+    fn a_worktree_in_the_sites_folder_is_told_how_to_move_out() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let platform = crate::platform::current();
+        let root = std::env::temp_dir().join(format!("rexenv-serve-refusal-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (sites, outside) = (root.join("Sites"), root.join("elsewhere-try"));
+        std::fs::create_dir_all(sites.join("elsewhere")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        crate::state::store::set_setting(&conn, crate::core::sites::SITES_DIR_KEY, &sites.to_string_lossy()).unwrap();
+        let inside = serve_refusal(&conn, &*platform, &sites.join("elsewhere")).expect("refused");
+        assert!(inside.contains("git worktree move") && inside.contains("New worktree") && !inside.contains("create a site normally"), "{inside}");
+        assert_eq!(serve_refusal(&conn, &*platform, &outside), None);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     use super::*;
 
     fn tmp(tag: &str) -> PathBuf {
