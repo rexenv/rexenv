@@ -332,6 +332,19 @@ COMMANDS:
                 Delete a worktree site: the worktree through git first (refused
                 while it has uncommitted work, unless --force), then the site.
                 The branch is always kept
+  live <domain> status                 The live site this WordPress site is connected to,
+                                       the last sync, the last job
+  live <domain> diff                   What changed ON LIVE since the last sync (tables, files)
+  live <domain> pull [--recent-uploads]
+                Replace this site's database and wp-content with the live site's
+                (the previous local tables are kept one step back)
+  live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]
+                Send this site's tables (default: all but the live-owned) and the
+                files changed here to the LIVE site, which keeps a backup. Stops
+                with the list when live changed since the last sync; --override
+                names what to overwrite anyway. --confirm must be the live host
+  live <domain> rollback <backup-id>   Put the live site back to a push's backup
+  live <domain> disconnect             Forget the pairing (the live site's key stays valid)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   config get|set <key> [value]       Settings the CLI may touch (refusals say why)
@@ -961,6 +974,7 @@ fn main() {
         Some("wp") => cmd_wp(&words[1..], json_output),
         Some("repo") => cmd_repo(&words[1..], json_output),
         Some("worktree") => cmd_worktree(&words[1..], json_output),
+        Some("live") => cmd_live(&words[1..], json_output),
         Some("service") => cmd_service(&words[1..], json_output),
         Some("config") => cmd_config(&words[1..], json_output),
         Some("mail") => cmd_mail(&words[1..], json_output),
@@ -1870,6 +1884,137 @@ fn cmd_worktree(words: &[String], json_output: bool) {
         }
         Some(other) => {
             errln!("rex: unknown worktree verb `{other}` — usage: {WORKTREE_USAGE}");
+            exit(1);
+        }
+    }
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+const LIVE_USAGE: &str =
+    "rex live <domain> status | diff | pull [--recent-uploads] | push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] | rollback <backup-id> | disconnect";
+
+/// Live ↔ local sync (`docs/PLAN-wp-live-sync.md` L12) — the Live tab's commands
+/// through `live.*` on the socket. `push` carries the typed host as `--confirm`;
+/// the app compares it, not this binary.
+fn cmd_live(words: &[String], json_output: bool) {
+    let known: &[&str] = match words.get(1).map(String::as_str) {
+        Some("pull") => &["--recent-uploads"],
+        Some("push") => &["--confirm", "--tables", "--no-files", "--override"],
+        _ => &[],
+    };
+    reject_unknown_flags(words, "live", known, LIVE_USAGE);
+    let site = find_site(words, LIVE_USAGE);
+    let id = site["id"].clone();
+    let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    let list = |flag: &str| flag_value(words, flag).map(|v| v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect::<Vec<_>>());
+    let on_line = |p: &Value| {
+        if let Some(l) = p["line"].as_str() {
+            errln!("  {l}");
+        }
+    };
+    let report = |data: &Value| {
+        match data["status"].as_str() {
+            Some("ok") if data["kind"] == json!("push") => outln!(
+                "pushed {} tables and {} files to live; the live site keeps what they replaced as {}",
+                data["tables"], data["files"], data["backupId"].as_str().unwrap_or("?")
+            ),
+            Some("ok") => outln!(
+                "pulled {} tables ({} rows) and {} files; the previous local tables are in {}",
+                data["tables"], data["rows"], data["files"], data["backupDb"].as_str().unwrap_or("?")
+            ),
+            Some("conflicts") => {
+                errln!("rex: nothing was sent — these changed on the live site since the last sync:");
+                for c in data["conflicts"].as_array().into_iter().flatten() {
+                    errln!("  {}", c.as_str().unwrap_or("?"));
+                }
+                errln!("pull first, or push again with --override <names>");
+                exit(1);
+            }
+            other => {
+                errln!("rex: the sync did not finish ({}): {}", other.unwrap_or("?"), data["error"].as_str().unwrap_or("no reason given"));
+                exit(1);
+            }
+        }
+    };
+    match words.get(1).map(String::as_str) {
+        Some("status") | None => {
+            let data = request("live.status", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(p) = data["pairing"].as_object() else {
+                return outln!("{domain} is not connected to a live site (connect in the app's Live tab)");
+            };
+            outln!("{domain} ↔ {} ({})", p["siteUrl"].as_str().unwrap_or("?"), p["keyId"].as_str().unwrap_or("?"));
+            match data["baseAt"].as_i64() {
+                Some(t) => outln!("last sync: {t} (unix)"),
+                None => outln!("never synced — pull once before a push"),
+            }
+            if let Some(last) = data["last"].as_object() {
+                outln!("last job: {} {}{}", last["kind"].as_str().unwrap_or("?"), last["status"].as_str().unwrap_or("?"), last["error"].as_str().map(|e| format!(" — {e}")).unwrap_or_default());
+            }
+        }
+        Some("diff") => {
+            let data = request("live.diff", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let t = data["tablesChanged"].as_array().cloned().unwrap_or_default();
+            let f = data["filesChanged"].as_array().cloned().unwrap_or_default();
+            if data["baseAt"].is_null() {
+                outln!("never synced: every table on live counts as changed");
+            }
+            outln!("{} of {} tables changed on live, {} files", t.len(), data["tablesOnLive"], f.len());
+            for x in t.iter().chain(f.iter()) {
+                outln!("  {}", x.as_str().unwrap_or("?"));
+            }
+        }
+        Some("pull") => {
+            let since = if words.iter().any(|w| w == "--recent-uploads") { Some(now_unix() - 183 * 86400) } else { None };
+            let data = request_streaming("live.pull", json!({ "id": id, "uploadsSince": since }), on_line);
+            if json_output {
+                return print_json(&data);
+            }
+            report(&data);
+        }
+        Some("push") => {
+            let Some(confirm) = flag_value(words, "--confirm") else {
+                errln!("rex: `live push` needs --confirm <live-host> (type the live site's host)\n{LIVE_USAGE}");
+                exit(1);
+            };
+            let data = request_streaming(
+                "live.push",
+                json!({ "id": id, "confirmHost": confirm, "tables": list("--tables"), "files": !words.iter().any(|w| w == "--no-files"), "override": list("--override").unwrap_or_default() }),
+                on_line,
+            );
+            if json_output {
+                return print_json(&data);
+            }
+            report(&data);
+        }
+        Some("rollback") => {
+            let Some(backup) = words.get(2).filter(|w| !w.starts_with("--")) else {
+                errln!("rex: usage: {LIVE_USAGE}");
+                exit(1);
+            };
+            let data = request("live.rollback", json!({ "id": id, "backupId": backup }));
+            if json_output {
+                return print_json(&data);
+            }
+            outln!("the live site is back to {backup}");
+        }
+        Some("disconnect") => {
+            let data = request("live.disconnect", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            outln!("{domain} disconnected (the live site's key stays valid until Disconnect there)");
+        }
+        Some(other) => {
+            errln!("rex: unknown live verb `{other}` — usage: {LIVE_USAGE}");
             exit(1);
         }
     }
@@ -4533,6 +4678,7 @@ mod tests {
             "fn cmd_site_enabled(",
             "fn cmd_repo(",
             "fn cmd_worktree(",
+            "fn cmd_live(",
             "fn cmd_mail(",
             "fn cmd_tunnel(",
             "fn cmd_logs(",

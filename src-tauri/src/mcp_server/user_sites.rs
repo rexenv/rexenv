@@ -859,6 +859,30 @@ static REGISTRY: &[UserTool] = &[
         scope: Scope::Destroy,
         handler: worktree,
     },
+    UserTool {
+        name: "live",
+        description: "The LIVE WordPress site a user's local site is connected to (through the rexenv \
+                      Sync plugin). Takes `site_id` and `action`: `status` — which live site, if any \
+                      (`read`); `diff` — what changed ON LIVE since the last sync: table and file names \
+                      (`read`); `pull` {recent_uploads_only?} — replaces this site's database and \
+                      wp-content with the live site's and keeps the previous local tables one step back \
+                      (`destroy`: it overwrites the local site). There is no push, pairing or rollback \
+                      here and never will be: sending anything TO a live site is the person's click.",
+        input_schema: || json!({
+            "type": "object",
+            "properties": {
+                "action": { "type": "string", "enum": ["status", "diff", "pull"] },
+                "site_id": { "type": "string" },
+                "recent_uploads_only": { "type": "boolean" }
+            },
+            "required": ["action", "site_id"],
+            "additionalProperties": false
+        }),
+        sweep_args: |id| json!({ "site_id": id, "action": "status" }),
+        summarise: |args| args.get("action").and_then(Value::as_str).map(|a| format!("live {a}")),
+        scope: Scope::Destroy,
+        handler: live,
+    },
 ];
 
 fn configure_params() -> Value {
@@ -1004,6 +1028,12 @@ pub trait SiteOps: Send + Sync {
     /// Start the child's job and answer with its SETTLED state, like `retry`.
     fn worktree_create<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
     fn worktree_remove<'a>(&'a self, id: String, force: bool) -> OpFuture<'a, Result<bool>>;
+    // ── live ↔ local sync (`docs/PLAN-wp-live-sync.md` L12) — status/diff/pull ONLY:
+    //    pair, push and rollback are never reachable from here (owner, 9 Oct 2026).
+    fn live_status<'a>(&'a self, id: String) -> OpFuture<'a, Result<Option<crate::commands::live_sync::Pairing>>>;
+    fn live_diff<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::commands::live_sync::LiveDiff>>;
+    /// Start the pull and answer its SETTLED state.
+    fn live_pull<'a>(&'a self, id: String, uploads_since: Option<i64>) -> OpFuture<'a, Result<crate::commands::live_sync::LiveSyncJobState>>;
     /// Truncate one log by its key — the Logs tab's own clear. Shared logs are
     /// every site's, which is why the tool arm that reaches this is `destroy`.
     fn log_clear<'a>(&'a self, key: String) -> OpFuture<'a, Result<()>>;
@@ -1833,6 +1863,50 @@ pub(crate) fn worktree_scope(action: &str) -> Option<Scope> {
         "create" => Scope::Manage,
         "remove" => Scope::Destroy,
         _ => return None,
+    })
+}
+
+pub(crate) fn live_scope(action: &str) -> Option<Scope> {
+    Some(match action {
+        "status" | "diff" => Scope::Read,
+        // A pull REPLACES the local database and wp-content: the same level as a reset.
+        "pull" => Scope::Destroy,
+        _ => return None,
+    })
+}
+
+/// The `live` tool: status, diff, pull. There is no push, rollback or pair
+/// action and there will not be one — a push is the only operation in rexenv
+/// that can change something outside this machine, and it stays a human click
+/// plus the live host typed (plan §2.9, owner 9 Oct 2026; ledger #834).
+fn live<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarget) -> ToolFuture<'a> {
+    Box::pin(async move {
+        let action = args.get("action").and_then(Value::as_str).ok_or_else(|| Error::Other("live needs an `action`.".into()))?;
+        let scope = live_scope(action).ok_or_else(|| Error::Other(format!("`{action}` is not a live action. Use status, diff or pull — a push is never an agent's to make.")))?;
+        let id = args.get("site_id").and_then(Value::as_str).ok_or_else(|| Error::Other(format!("live `{action}` needs a `site_id`.")))?;
+        let wanted = match action {
+            "status" => "read which live site it is connected to".to_string(),
+            "diff" => "read what changed on its live site since the last sync".to_string(),
+            _ => "replace its database and wp-content with the live site's (the previous local tables are kept one step back)".to_string(),
+        };
+        wp_precheck(&ctx, id, "live")?;
+        let site = claim_scope(&ctx, id, scope, &wanted)?;
+        acted.set(&site);
+        Ok(match action {
+            "status" => match ctx.ops.live_status(site.id.clone()).await? {
+                Some(p) => json!({ "connected": true, "siteUrl": p.site_url, "keyId": p.key_id }),
+                None => json!({ "connected": false }),
+            },
+            "diff" => {
+                let d = ctx.ops.live_diff(site.id.clone()).await?;
+                json!({ "liveHost": d.live_host, "baseAt": d.base_at, "tablesOnLive": d.tables_on_live, "tablesChanged": d.tables_changed, "filesChanged": d.files_changed })
+            }
+            _ => {
+                let since = args.get("recent_uploads_only").and_then(Value::as_bool).unwrap_or(false).then(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0) - 183 * 86400);
+                let st = ctx.ops.live_pull(site.id.clone(), since).await?;
+                json!({ "status": st.status, "tables": st.tables, "rows": st.rows, "files": st.files, "backupDb": st.backup_db, "error": st.error })
+            }
+        })
     })
 }
 
@@ -3873,6 +3947,23 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push(format!("worktree remove {id} {force}"));
             Box::pin(async { Ok(true) })
         }
+        fn live_status<'a>(&'a self, id: String) -> OpFuture<'a, Result<Option<crate::commands::live_sync::Pairing>>> {
+            self.calls.lock().unwrap().push(format!("live status {id}"));
+            Box::pin(async { Ok(Some(crate::commands::live_sync::Pairing { site_url: "https://example.com".into(), key_id: "k_0123abcd".into(), basic_auth_user: None })) })
+        }
+        fn live_diff<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::commands::live_sync::LiveDiff>> {
+            self.calls.lock().unwrap().push(format!("live diff {id}"));
+            Box::pin(async { Ok(crate::commands::live_sync::LiveDiff { live_host: "example.com".into(), base_at: Some(1), tables_on_live: 12, tables_changed: vec!["wp_posts".into()], files_changed: vec![] }) })
+        }
+        fn live_pull<'a>(&'a self, id: String, uploads_since: Option<i64>) -> OpFuture<'a, Result<crate::commands::live_sync::LiveSyncJobState>> {
+            self.calls.lock().unwrap().push(format!("live pull {id} {}", uploads_since.is_some()));
+            Box::pin(async move {
+                Ok(crate::commands::live_sync::LiveSyncJobState {
+                    id: "j1".into(), site_id: id, domain: "mine.rex".into(), kind: "pull".into(), status: "ok".into(), lines: vec![], error: None,
+                    tables: 12, rows: 1560, files: 457, refused_files: vec![], backup_db: Some("mine_prepull".into()), backup_id: None, conflicts: vec![], asked_tables: None, asked_files: false,
+                })
+            })
+        }
         fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>> {
             self.calls.lock().unwrap().push(format!("retry {site_id}"));
             Box::pin(async move {
@@ -5448,6 +5539,50 @@ pub(crate) mod tests {
             assert!(calls.contains(&c), "missing {c} in {calls:?}");
         }
         assert!(!calls.contains(&format!("worktree remove {} false", parent.id)), "the parent was never removed");
+    }
+
+    /// **`live`: status and diff under `read`, pull under `destroy` — and there is
+    /// no push, pairing or rollback action at any level** (ledger #836; owner, 9 Oct 2026).
+    #[tokio::test]
+    async fn live_reads_under_read_pulls_under_destroy_and_never_pushes() {
+        assert_eq!(live_scope("status"), Some(Scope::Read));
+        assert_eq!(live_scope("diff"), Some(Scope::Read));
+        assert_eq!(live_scope("pull"), Some(Scope::Destroy));
+        for never in ["push", "rollback", "pair", "connect", "disconnect"] {
+            assert_eq!(live_scope(never), None, "{never} must not be an action");
+        }
+        let state = app_state();
+        switch_on(&state);
+        let ops = FakeOps::default();
+        let acted = super::super::feed::ActedTarget::default();
+        let ctx = UserCtx::new(&state, &ops, &ops, &ops, &ops, &ops, &ops, &ops, "claude-code");
+        let site = test_site("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "mine.rex", SiteOrigin::User);
+        {
+            let conn = state.db.lock().unwrap();
+            store::insert_site(&conn, &site).unwrap();
+        }
+        dial(&state, crate::core::agent_access::AccessLevel::Read);
+        let v = live(ctx, &json!({ "site_id": site.id, "action": "status" }), &acted).await.unwrap();
+        assert_eq!(v["siteUrl"], "https://example.com", "{v}");
+        assert!(v.get("secret").is_none() && !v.to_string().contains("rexsync1"), "no secret in the view: {v}");
+        let v = live(ctx, &json!({ "site_id": site.id, "action": "diff" }), &acted).await.unwrap();
+        assert_eq!(v["tablesChanged"][0], "wp_posts", "{v}");
+        let err = live(ctx, &json!({ "site_id": site.id, "action": "push" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("not a live action") && err.contains("never"), "{err}");
+        let err = live(ctx, &json!({ "site_id": site.id, "action": "pull" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "a read grant does not overwrite the site: {err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Changes);
+        let err = live(ctx, &json!({ "site_id": site.id, "action": "pull" }), &acted).await.unwrap_err().to_string();
+        assert!(err.contains("`destroy`"), "changes does not overwrite the site: {err}");
+        dial(&state, crate::core::agent_access::AccessLevel::Full);
+        let v = live(ctx, &json!({ "site_id": site.id, "action": "pull", "recent_uploads_only": true }), &acted).await.unwrap();
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["backupDb"], "mine_prepull");
+        let calls = ops.calls.lock().unwrap().clone();
+        for c in [format!("live status {}", site.id), format!("live diff {}", site.id), format!("live pull {} true", site.id)] {
+            assert!(calls.contains(&c), "missing {c} in {calls:?}");
+        }
+        assert!(!calls.iter().any(|c| c.contains("push")), "{calls:?}");
     }
 
     /// **`repo`: reads under `read` on the site (two under rexenv itself), every

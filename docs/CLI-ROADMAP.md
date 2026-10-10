@@ -197,6 +197,19 @@ file — carried in the watcher snapshot as `logKey`, never rebuilt by the calle
 | `repo delete <domain> <dir> [--theme --yes]` | `repo_asset_status` (loss/linked preview, printed even with `--yes`) → the EXISTING `wp.plugin.delete`/`wp.theme.delete` arms | ✓ | shipped 18 Jul — pure client composition, zero new delete path; guard proven through dispatch (link gone, target byte-intact) |
 | `repo tools [--refresh]` | `repo_tools` | ✓ | shipped 18 Jul — plus a fixed line stating composer is the bundled phar |
 
+## Live ↔ local sync (`docs/PLAN-wp-live-sync.md` L12 — SHIPPED 10 Oct 2026)
+
+| Command | Backing IPC | Notes |
+|---|---|---|
+| `rex live <domain> status` | `live_sync_pairing` + `live_sync_active` + the base (arm `live.status`) | the live site, its key id, the last sync time, the last job; never the secret |
+| `rex live <domain> diff` | `live_sync_diff` (arm `live.diff`) | what changed ON LIVE since the base: table names (checksum moved) and wp-content files (size:mtime moved); read-only, the plugin's conflict verdict asked ahead of a push |
+| `rex live <domain> pull [--recent-uploads]` | `live_sync_pull` (arm `live.pull`) | blocks until the job settles, streaming the job's log lines to stderr; `--recent-uploads` leaves media older than six months on live |
+| `rex live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]` | `live_sync_push` (arm `live.push`) | `--confirm` is the typed host the Live tab asks for — the APP compares it (#834), the binary only carries it; no `--tables` = every table but the live-owned; a conflict exits 1 with the names, nothing sent; `--override` names what to overwrite anyway |
+| `rex live <domain> rollback <backup-id>` | `live_sync_rollback` (arm `live.rollback`) | the live site back to a push's backup; the base is re-read from live |
+| `rex live <domain> disconnect` | `live_sync_unpair` (arm `live.disconnect`) | forgets the pairing here; the live site's key stays valid until Disconnect there |
+
+Not a `rex` command, by ruling: pairing (`connect`) — the key is pasted in the app's Live tab or the New Site dialog, never typed into a shell history.
+
 ## Worktree sites (`docs/PLAN-git-worktrees.md` W9 — SHIPPED 10 Oct 2026)
 
 | Command | Backing IPC | Notes |
@@ -239,7 +252,7 @@ had claimed a clean sweep for as long as that row sat three screens above it —
 the same shape as the two `mail` rows below, and the reason both are now gated by
 `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
-94 commands shipped (91 + the three `worktree.*` arms, 10 Oct 2026) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
+100 commands shipped (94 + the six `live.*` arms, 10 Oct 2026; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
 counter was caught measuring a SUPERSET a second way: it counts every quoted match arm
 anywhere in `cli_server.rs`, and a helper there (`repo_job_settled`) had an `"add" =>` arm
 that is not a command. Moving that helper out for the Windows port (it now lives in

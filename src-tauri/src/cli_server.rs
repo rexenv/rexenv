@@ -407,6 +407,35 @@ where
         .ok_or_else(|| Error::Other("repo job registry not ready".into()))
 }
 
+fn live_jobs_state<R, M>(app: &M) -> Result<tauri::State<'_, commands::live_sync::LiveSyncJobs>>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    app.try_state::<commands::live_sync::LiveSyncJobs>().ok_or_else(|| Error::Other("live-sync job registry not ready".into()))
+}
+
+/// Stream a live-sync job's log lines as progress, then answer its settled state.
+async fn live_follow<R, M>(app: &M, id: &str, progress: &Progress) -> Result<Value>
+where
+    R: tauri::Runtime,
+    M: Manager<R>,
+{
+    let jobs = live_jobs_state(app)?;
+    let mut sent = 0usize;
+    loop {
+        let snap = commands::live_sync::live_sync_job(jobs.clone(), id.to_string()).await?;
+        for line in &snap.lines[sent.min(snap.lines.len())..] {
+            progress.send(json!({ "kind": "live", "line": line }));
+        }
+        sent = snap.lines.len();
+        if snap.status != "running" {
+            return to_value(&snap);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    }
+}
+
 fn provision_jobs_state<R, M>(
     app: &M,
 ) -> Result<tauri::State<'_, commands::site_provision::ProvisionJobs>>
@@ -1563,6 +1592,55 @@ where
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(400)).await;
             }
+        }
+        // ── live ↔ local sync (docs/PLAN-wp-live-sync.md L12) — the Live tab's
+        //    commands. `live.push` takes the typed host like the tab does; the gate
+        //    is in `live_sync_push` itself, never here.
+        "live.status" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let pairing = commands::live_sync::live_sync_pairing(state.clone(), id.clone()).await?;
+            let jobs = live_jobs_state(app)?;
+            let last = commands::live_sync::live_sync_active(jobs.clone(), id.clone()).await?;
+            let base_at = crate::core::live_sync::base::get(state.platform.as_ref(), &id)?.map(|b| b.at);
+            Ok(json!({ "pairing": to_value(&pairing)?, "baseAt": base_at, "last": to_value(&last)? }))
+        }
+        "live.diff" => {
+            let state = app_state(app)?;
+            to_value(&commands::live_sync::live_sync_diff(state.clone(), need_str(&args, "id", cmd)?).await?)
+        }
+        "live.pull" => {
+            let state = app_state(app)?;
+            let jobs = live_jobs_state(app)?;
+            let started = commands::live_sync::live_sync_pull(app.app_handle().clone(), state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, args["uploadsSince"].as_i64()).await?;
+            live_follow(app, &started.id, progress).await
+        }
+        "live.push" => {
+            let state = app_state(app)?;
+            let jobs = live_jobs_state(app)?;
+            let tables = args["tables"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>());
+            let over = args["override"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
+            let started = commands::live_sync::live_sync_push(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "confirmHost", cmd)?,
+                tables,
+                args["files"].as_bool().unwrap_or(true),
+                over,
+            )
+            .await?;
+            live_follow(app, &started.id, progress).await
+        }
+        "live.rollback" => {
+            let state = app_state(app)?;
+            commands::live_sync::live_sync_rollback(state.clone(), need_str(&args, "id", cmd)?, need_str(&args, "backupId", cmd)?).await?;
+            Ok(json!({ "rolledBack": true }))
+        }
+        "live.disconnect" => {
+            let state = app_state(app)?;
+            Ok(json!({ "disconnected": commands::live_sync::live_sync_unpair(state.clone(), need_str(&args, "id", cmd)?).await? }))
         }
         "worktree.remove" => {
             let state = app_state(app)?;

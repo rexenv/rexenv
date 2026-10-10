@@ -1480,7 +1480,11 @@ honest footer —
   unticked. Push and rollback are never an agent tool. New site → From a live site (#835)
   proves the pasted key against the live site before anything exists, stores the pairing in
   the insert's own transaction, and chains the first pull; the install's admin account is a
-  placeholder the pull replaces.
+  placeholder the pull replaces. **`rex live` and the MCP `live` tool** (L12, #836) call
+  the same `commands::live_sync` functions as the tab: status/diff are Read, pull is Full
+  (`destroy` — it overwrites the local site); push and rollback exist on the CLI only with
+  `--confirm <live-host>` (the app compares it) and on the MCP server not at all; pairing
+  is neither (the key would land in shell history).
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request

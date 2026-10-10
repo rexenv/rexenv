@@ -1306,6 +1306,7 @@ pub fn run() {
             commands::live_sync::live_sync_push_plan,
             commands::live_sync::live_sync_push,
             commands::live_sync::live_sync_rollback,
+            commands::live_sync::live_sync_diff,
             commands::live_sync::live_sync_preview,
             commands::live_sync::live_sync_create_from_live,
             commands::db_import::db_import_state,

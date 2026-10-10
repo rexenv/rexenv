@@ -259,6 +259,54 @@ where
     Ok(first)
 }
 
+/// Wait for job `id` to settle and answer its final state — what `rex live pull`
+/// and the MCP `live` tool return (the first snapshot only says `running`).
+pub async fn settle(jobs: &LiveSyncJobs, id: &str) -> Result<LiveSyncJobState> {
+    loop {
+        let snap = {
+            let map = jobs.jobs.lock().expect("live sync jobs lock");
+            map.get(id).map(|e| snapshot(e)).ok_or_else(|| Error::Other(format!("no live-sync job {id}")))?
+        };
+        if snap.status != "running" {
+            return Ok(snap);
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    }
+}
+
+/// What changed on LIVE since the base (`rex live diff`, the MCP `live` diff):
+/// the plugin's conflict verdict, asked ahead of a push and without one.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveDiff {
+    pub live_host: String,
+    /// Unix seconds of the last pull/push, or null when never synced (then every table is "changed").
+    pub base_at: Option<i64>,
+    pub tables_on_live: usize,
+    /// Tables whose live checksum differs from the base's, or that the base never saw.
+    pub tables_changed: Vec<String>,
+    /// Files (under wp-content) whose live size:mtime differs from the base's, or new on live.
+    pub files_changed: Vec<String>,
+}
+
+/// `live_sync_diff` — read-only: the manifest and file list against the base.
+#[tauri::command]
+pub async fn live_sync_diff(state: State<'_, AppState>, site_id: String) -> Result<LiveDiff> {
+    let site = wordpress_site(&state, &site_id)?;
+    let client = client_for(&state, &site.id)?;
+    let m = client.manifest().await?;
+    let b = base::get(state.platform.as_ref(), &site.id)?.unwrap_or_default();
+    let tables_changed = m.tables.iter().filter(|t| b.tables.get(&t.name) != Some(&t.checksum)).map(|t| t.name.clone()).collect();
+    let files_changed = client
+        .list_files(&pull::DEFAULT_EXCLUDES, None)
+        .await?
+        .into_iter()
+        .filter(|f| b.files.get(&f.path).map(|s| *s != format!("{}:{}", f.size, f.mtime)).unwrap_or(true))
+        .map(|f| f.path)
+        .collect();
+    Ok(LiveDiff { live_host: pull::host_of(&m.site_url), base_at: base::get(state.platform.as_ref(), &site.id)?.map(|b| b.at), tables_on_live: m.tables.len(), tables_changed, files_changed })
+}
+
 /// A sortable job id prefix (seconds since the epoch) — no chrono dependency.
 fn chrono_like_now() -> String {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string()

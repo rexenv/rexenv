@@ -174,9 +174,7 @@ mod tests {
         //    S4 adds `live` status/diff/pull; pairing takes a pasted secret, and push/rollback
         //    are never tools, owner ruling 9 Oct 2026)
         ("live_sync_pair", Never("the pasted key is a secret the person holds; an agent that could pair a site could point it at any site it chose (plan invariant #3)")),
-        ("live_sync_pairing", Gap("S4 of docs/PLAN-wp-live-sync.md adds the `live` tool's status (Read); TODO row WordPress live ↔ local sync")),
         ("live_sync_unpair", Never("undoing the person's pairing; the person does it in the Live tab")),
-        ("live_sync_pull", Gap("S4 of docs/PLAN-wp-live-sync.md adds the `live` tool's pull (Full — it replaces the local database); TODO row WordPress live ↔ local sync")),
         ("live_sync_job", Never(JOBS)),
         ("live_sync_active", Never(JOBS)),
         ("live_sync_push_plan", Never("the picker behind a push; a push is never an agent tool (owner, 9 Oct 2026), so neither is its plan")),

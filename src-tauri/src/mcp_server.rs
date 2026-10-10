@@ -1171,6 +1171,20 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn worktree_remove<'a>(&'a self, id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
         Box::pin(async move { crate::commands::worktree::worktree_remove(self.state()?, self.tunnels()?, id, force).await })
     }
+    fn live_status<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::live_sync::Pairing>>> {
+        Box::pin(async move { crate::commands::live_sync::live_sync_pairing(self.state()?, id).await })
+    }
+    fn live_diff<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::live_sync::LiveDiff>> {
+        Box::pin(async move { crate::commands::live_sync::live_sync_diff(self.state()?, id).await })
+    }
+    fn live_pull<'a>(&'a self, id: String, uploads_since: Option<i64>) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::live_sync::LiveSyncJobState>> {
+        Box::pin(async move {
+            let jobs = tauri::Manager::try_state::<crate::commands::live_sync::LiveSyncJobs>(&self.app)
+                .ok_or_else(|| crate::error::Error::Other("live-sync job registry not ready".into()))?;
+            let started = crate::commands::live_sync::live_sync_pull(self.app.clone(), self.state()?, jobs.clone(), id, uploads_since).await?;
+            crate::commands::live_sync::settle(&jobs, &started.id).await
+        })
+    }
     fn retry<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
         Box::pin(async move {
             let started =
