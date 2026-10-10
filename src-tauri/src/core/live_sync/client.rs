@@ -201,7 +201,7 @@ fn refusal(status: u16, body: &str) -> Error {
         (_, Some("unknown_table")) => "the site has no such table".into(),
         (_, Some("conflict")) => "the live site changed since rexenv last saw it".into(),
         (_, Some("no_push")) => "the site no longer has that push — start it again".into(),
-        (_, Some("no_backup")) => "the site keeps no such backup".into(),
+        (_, Some("no_backup")) => "that backup is no longer on the live site — it was rolled back already, or a newer push replaced it".into(),
         (_, Some("incomplete")) => "the push is missing data — start it again".into(),
         (403 | 406, None) => "a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request".into(),
         (404, None) => "the site does not answer as rexenv Sync — is the plugin installed and active?".into(),

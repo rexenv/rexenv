@@ -1635,7 +1635,8 @@ where
         }
         "live.rollback" => {
             let state = app_state(app)?;
-            commands::live_sync::live_sync_rollback(state.clone(), need_str(&args, "id", cmd)?, need_str(&args, "backupId", cmd)?).await?;
+            let jobs = live_jobs_state(app)?;
+            commands::live_sync::live_sync_rollback(state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, need_str(&args, "backupId", cmd)?).await?;
             Ok(json!({ "rolledBack": true }))
         }
         "live.disconnect" => {

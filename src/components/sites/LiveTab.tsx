@@ -86,7 +86,12 @@ export function LiveTab({ site }: { site: Site }) {
       toast.success("The live site is back to what it held before the push");
       setJob((j) => (j ? { ...j, backupId: null, lines: [...j.lines, "rolled back"] } : j));
     },
-    onError: toastBackendError,
+    onError: (e) => {
+      // Gone on live already (rolled back elsewhere, or a newer push): the button
+      // must not stay (#846). The backend forgets it too.
+      if (String(e).includes("no longer on the live site")) setJob((j) => (j ? { ...j, backupId: null } : j));
+      toastBackendError(e);
+    },
   });
   const unpair = useMutation({
     mutationFn: () => liveSyncUnpair(site.id),
@@ -184,7 +189,7 @@ export function LiveTab({ site }: { site: Site }) {
             if (
               await confirm({
                 title: `Roll the live site back to ${backupId}?`,
-                message: "The tables and files this push replaced come back on the live site exactly as they were. What the push sent is kept on live as the new backup.",
+                message: "The tables and files this push replaced come back on the live site exactly as they were. What the push sent is removed from the live site.",
                 confirmLabel: "Roll back",
                 danger: true,
               })
@@ -198,6 +203,11 @@ export function LiveTab({ site }: { site: Site }) {
 }
 
 /** The host of an `https://…` URL — a URL, not a path (the path guard watches `split("/")`). */
+/** "1 file", "2 files" — the card's counts read as sentences. */
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
 function hostOf(url: string): string {
   const m = /^https?:\/\/([^/]+)/.exec(url);
   return m?.[1] ?? url;
@@ -296,7 +306,7 @@ function JobCard({
         {job.status === "running" && <span>{job.kind === "push" ? "Pushing…" : "Pulling…"}</span>}
         {job.status === "ok" && job.kind === "pull" && (
           <span>
-            Pulled {job.tables} tables ({job.rows} rows) and {job.files} files.
+            Pulled {plural(job.tables, "table")} ({plural(job.rows, "row")}) and {plural(job.files, "file")}.
             {job.backupDb && (
               <>
                 {" "}The previous local tables are in <span className="font-mono">{job.backupDb}</span>.
@@ -306,7 +316,7 @@ function JobCard({
         )}
         {job.status === "ok" && job.kind === "push" && (
           <span>
-            Pushed {job.tables} tables and {job.files} files to <span className="font-mono">{liveHost}</span>.
+            Pushed {plural(job.tables, "table")} and {plural(job.files, "file")} to <span className="font-mono">{liveHost}</span>.
             {job.backupId ? (
               <>
                 {" "}The live site keeps what they replaced as <span className="font-mono">{job.backupId}</span>.

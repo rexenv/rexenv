@@ -514,14 +514,40 @@ async fn run_push<R: tauri::Runtime>(
     Ok(report)
 }
 
+/// Forget `backup_id` on every job of `site_id` that still offers it — after a
+/// rollback, from ANY caller, or once live says that backup is gone. Found on the
+/// VM (10 Oct 2026): a push rolled back with `rex live rollback` still showed
+/// "Roll back" in the Live tab, and pressing it only drew a refusal (#846).
+pub fn forget_backup(jobs: &LiveSyncJobs, site_id: &str, backup_id: &str) -> usize {
+    let map = jobs.jobs.lock().expect("live sync jobs lock");
+    let mut n = 0;
+    for e in map.values() {
+        let mut st = e.state.lock().expect("live sync state lock");
+        if st.site_id == site_id && st.backup_id.as_deref() == Some(backup_id) {
+            st.backup_id = None;
+            st.lines.push(format!("rolled back to {backup_id}"));
+            n += 1;
+        }
+    }
+    n
+}
+
 /// `live_sync_rollback` — put the live site back to `backup_id` (the tables and
 /// files of the push that made it). The base is re-read from live afterwards,
 /// so the next push judges conflicts against what live now holds.
 #[tauri::command]
-pub async fn live_sync_rollback(state: State<'_, AppState>, site_id: String, backup_id: String) -> Result<()> {
+pub async fn live_sync_rollback(state: State<'_, AppState>, jobs: State<'_, LiveSyncJobs>, site_id: String, backup_id: String) -> Result<()> {
     let site = wordpress_site(&state, &site_id)?;
     let client = client_for(&state, &site.id)?;
-    client.push_rollback(&backup_id).await?;
+    if let Err(e) = client.push_rollback(&backup_id).await {
+        // Gone on live (rolled back already, or replaced by a newer push): no job may
+        // keep offering it.
+        if e.to_string().contains("no longer on the live site") {
+            forget_backup(&jobs, &site.id, &backup_id);
+        }
+        return Err(e);
+    }
+    forget_backup(&jobs, &site.id, &backup_id);
     if let Some(mut b) = base::get(state.platform.as_ref(), &site.id)? {
         let m = client.manifest().await?;
         b.tables = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
@@ -713,7 +739,40 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use super::{php_minor_for, typed_host_matches};
+    use super::{forget_backup, php_minor_for, typed_host_matches, Entry, LiveSyncJobState, LiveSyncJobs};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+
+    fn job(id: &str, site: &str, backup: Option<&str>) -> Arc<Entry> {
+        Arc::new(Entry {
+            id: id.into(),
+            running: AtomicBool::new(false),
+            state: Mutex::new(LiveSyncJobState {
+                id: id.into(), site_id: site.into(), domain: "x.rex".into(), kind: "push".into(), status: "ok".into(), lines: vec![],
+                error: None, tables: 2, rows: 0, files: 1, refused_files: vec![], backup_db: None, backup_id: backup.map(str::to_string),
+                conflicts: vec![], asked_tables: None, asked_files: true,
+            }),
+        })
+    }
+
+    /// **A rolled-back backup is offered by no job afterwards — whoever rolled it
+    /// back — and only that site's job with that backup id changes** (ledger #846).
+    /// Plant: drop the `site_id` test and the other site's job loses its backup too.
+    #[test]
+    fn a_rollback_from_anywhere_retires_the_button() {
+        let jobs = LiveSyncJobs::default();
+        {
+            let mut m = jobs.jobs.lock().unwrap();
+            m.insert("a".into(), job("a", "s1", Some("b1")));
+            m.insert("b".into(), job("b", "s1", Some("b0")));
+            m.insert("c".into(), job("c", "s2", Some("b1")));
+        }
+        assert_eq!(forget_backup(&jobs, "s1", "b1"), 1);
+        let m = jobs.jobs.lock().unwrap();
+        let backup = |k: &str| m[k].state.lock().unwrap().backup_id.clone();
+        assert_eq!((backup("a"), backup("b").as_deref(), backup("c").as_deref()), (None, Some("b0"), Some("b1")));
+        assert!(m["a"].state.lock().unwrap().lines.iter().any(|l| l.contains("rolled back to b1")));
+    }
 
     /// **A from-live site runs live's PHP minor when rexenv ships it, else the
     /// NEWEST shipped — and says which** (plan §2.7). Newest by version, not by

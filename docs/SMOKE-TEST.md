@@ -1019,10 +1019,17 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       `wp_comments` (and any order/entry tables) UNTICKED and badged "live writes here"; **Push**
       stays disabled until the live host is typed exactly (`example.co` keeps it off). Edit a
       local post and one theme file first → Push → the card streams "push: N tables, 1 of M
-      files…", then "Pushed N tables and 1 files to <host>. The live site keeps what they
-      replaced as `rxbak_…`." The LIVE site now shows the local edit at the LIVE domain (no
+      files…", then "Pushed N tables and 1 file to <host>. The live site keeps what they
+      replaced as `<backup id>`." The LIVE site now shows the local edit at the LIVE domain (no
       `.rex` link anywhere — view source); its users and comments are untouched; Tools →
       rexenv Sync is still there (the plugin stayed active).
+      ◐ 10 Oct 2026, macOS 15.8 VM (release build 320991e8) against https://live-sync.rex.bd:
+      the picker opened with `wpcs_users/usermeta/comments/commentmeta` unticked and badged;
+      Push off on `live-sync.rex.b`, on at `live-sync.rex.bd`; Cancel. The push itself ran from
+      `rex live … push` on the same app (1 file, post at the live domain), then `rex live …
+      rollback` (post gone; the file 404 with a cache-buster). Found there: the card kept
+      offering Roll back after the CLI rollback, its dialog claimed the push is "kept on live as
+      the new backup" (it is removed), and "1 files" — all fixed, #846.
 - [ ] Make a post ON the live site, then Push again → the card says "Nothing was sent: 1
       item(s) changed on <host>" naming `wp_posts`; live is unchanged. **Push anyway,
       overwriting these** → the confirm names `wp_posts` → the live post is gone (it is in the

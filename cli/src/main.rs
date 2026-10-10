@@ -1889,6 +1889,12 @@ fn cmd_worktree(words: &[String], json_output: bool) {
     }
 }
 
+/// "1 file", "2 files" from a JSON count.
+fn plural(n: &Value, word: &str) -> String {
+    let n = n.as_u64().unwrap_or(0);
+    format!("{n} {word}{}", if n == 1 { "" } else { "s" })
+}
+
 fn now_unix() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
@@ -1918,12 +1924,12 @@ fn cmd_live(words: &[String], json_output: bool) {
     let report = |data: &Value| {
         match data["status"].as_str() {
             Some("ok") if data["kind"] == json!("push") => outln!(
-                "pushed {} tables and {} files to live; the live site keeps what they replaced as {}",
-                data["tables"], data["files"], data["backupId"].as_str().unwrap_or("?")
+                "pushed {} and {} to live; the live site keeps what they replaced as {}",
+                plural(&data["tables"], "table"), plural(&data["files"], "file"), data["backupId"].as_str().unwrap_or("?")
             ),
             Some("ok") => outln!(
-                "pulled {} tables ({} rows) and {} files; the previous local tables are in {}",
-                data["tables"], data["rows"], data["files"], data["backupDb"].as_str().unwrap_or("?")
+                "pulled {} ({}) and {}; the previous local tables are in {}",
+                plural(&data["tables"], "table"), plural(&data["rows"], "row"), plural(&data["files"], "file"), data["backupDb"].as_str().unwrap_or("?")
             ),
             Some("conflicts") => {
                 errln!("rex: nothing was sent — these changed on the live site since the last sync:");
