@@ -371,6 +371,16 @@ pub fn list(
     Ok(parse_porcelain(&lines))
 }
 
+/// `git worktree prune` in `repo_dir`: git drops its records of worktrees whose
+/// FOLDERS are already gone — it never deletes a file (#849). Answers how many
+/// records went (prunable before minus after), by git's own `list`.
+pub fn prune(supervisor: &dyn ProcessSupervisor, git: &Path, env: &[(String, String)], repo_dir: &Path) -> Result<usize> {
+    let before = list(supervisor, git, env, repo_dir)?.iter().filter(|e| e.prunable).count();
+    repo::run_git_lines(supervisor, git, env, repo_dir, &["worktree", "prune"])?;
+    let after = list(supervisor, git, env, repo_dir)?.iter().filter(|e| e.prunable).count();
+    Ok(before.saturating_sub(after))
+}
+
 /// What `add` checks out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AddSpec {

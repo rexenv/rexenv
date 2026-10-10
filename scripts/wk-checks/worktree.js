@@ -11,7 +11,8 @@
 //      the backend's file list, and only accepting it sends force=true;
 //   4. no horizontal overflow, no page error, in both themes;
 //   5. (#848) worktrees made elsewhere: a servable one offers Serve; one Serve would
-//      refuse (inside the sites folder) shows the reason INSTEAD of a Serve button.
+//      refuse (inside the sites folder) shows the reason INSTEAD of a Serve button;
+//   6. (#849) a worktree whose folder is gone: "Clean up missing (1)" prunes once.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`;
@@ -87,7 +88,14 @@ const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`
     await page.waitForTimeout(500);
     const serves = await page.getByRole("button", { name: "Serve" }).count();
     const why = await page.evaluate(() => document.body.innerText);
-    if (!(serves === 1 && why.includes("git worktree move") && why.includes("/Users/somebody/elsewhere-try"))) fails.push(`${scheme} 5: Serve buttons=${serves}, reason shown=${why.includes("git worktree move")}`);
+    // The missing one's Serve is disabled, not absent — one ENABLED Serve, for the servable one.
+    const enabledServes = await page.locator('button:has-text("Serve"):not([disabled])').count();
+    if (!(serves === 2 && enabledServes === 1 && why.includes("git worktree move") && why.includes("/Users/somebody/elsewhere-try"))) fails.push(`${scheme} 5: Serve buttons=${serves} (enabled ${enabledServes}), reason shown=${why.includes("git worktree move")}`);
+    // 6. (#849) a vanished folder: "Clean up missing (1)" asks git to prune, once.
+    await page.getByRole("button", { name: "Clean up missing (1)" }).click();
+    await page.waitForTimeout(300);
+    const prunes = await page.evaluate(() => window.__prunes ?? 0);
+    if (prunes !== 1) fails.push(`${scheme} 6: Clean up missing → ${prunes} prune calls`);
     await page.close();
   }
   await browser.close();

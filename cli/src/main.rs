@@ -332,6 +332,16 @@ COMMANDS:
                 Delete a worktree site: the worktree through git first (refused
                 while it has uncommitted work, unless --force), then the site.
                 The branch is always kept
+  worktree <domain> adoptable          Worktrees of the site's own repository made elsewhere
+                                       (another tool, a hand `git worktree add`), and why
+                                       one cannot be served
+  worktree <domain> serve <path> [--domain D]
+                Serve such a worktree as a site (rexenv never removes its folder)
+  worktree <domain> prune              Drop git's records of worktrees whose folders are gone
+                                       (no file is deleted)
+  worktree <worktree-domain> reclone-db [--yes]
+                Replace a worktree site's database with a fresh copy of its parent's,
+                URLs moved to the worktree's domain
   live <domain> status                 The live site this WordPress site is connected to,
                                        the last sync, the last job
   live <domain> diff                   What changed ON LIVE since the last sync (tables, files)
@@ -1778,7 +1788,7 @@ fn follow_watch_log(w: &Value, dir: &str) {
 }
 
 const WORKTREE_USAGE: &str =
-    "rex worktree <domain> list | add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | <worktree-domain> remove [--force]";
+    "rex worktree <domain> list | add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | adoptable | serve <path> [--domain D] | prune | <worktree-domain> remove [--force] | <worktree-domain> reclone-db [--yes]";
 
 /// Worktree sites (`docs/PLAN-git-worktrees.md`) — the same commands the app's
 /// Worktree sites panel calls, through `worktree.*` on the socket.
@@ -1786,6 +1796,8 @@ fn cmd_worktree(words: &[String], json_output: bool) {
     let known: &[&str] = match words.get(1).map(String::as_str) {
         Some("add") => &["--theme", "--from", "--domain", "--skip-uploads"],
         Some("remove") => &["--force"],
+        Some("serve") => &["--domain"],
+        Some("reclone-db") => &["--yes"],
         _ => &[],
     };
     reject_unknown_flags(words, "worktree", known, WORKTREE_USAGE);
@@ -1885,6 +1897,68 @@ fn cmd_worktree(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             outln!("removed {} (the branch is kept)", site["domain"].as_str().unwrap_or("?"));
+        }
+        Some("adoptable") => {
+            let data = request("worktree.adoptable", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let Some(rows) = data["worktrees"].as_array().filter(|a| !a.is_empty()) else {
+                return outln!("no worktrees of this repository made elsewhere");
+            };
+            for w in rows {
+                let state = if w["missing"] == json!(true) {
+                    "folder missing (rex worktree <domain> prune)".to_string()
+                } else if let Some(why) = w["refusal"].as_str() {
+                    format!("cannot be served: {why}")
+                } else {
+                    "servable".to_string()
+                };
+                outln!("{:<48} {:<20} {state}", w["path"].as_str().unwrap_or("?"), w["branch"].as_str().unwrap_or("detached"));
+            }
+        }
+        Some("serve") => {
+            let Some(path) = rest.first() else {
+                errln!("rex: usage: {WORKTREE_USAGE}");
+                exit(1);
+            };
+            let data = request_streaming(
+                "worktree.serve",
+                json!({ "id": id, "path": path, "domain": flag_value(words, "--domain") }),
+                print_provision_progress,
+            );
+            if json_output {
+                return print_json(&data);
+            }
+            match data["status"].as_str() {
+                Some("ok") => outln!("{} — {}", data["domain"].as_str().unwrap_or("?"), data["summary"].as_str().unwrap_or("serving")),
+                other => {
+                    errln!("rex: the worktree site did not finish ({}): {}", other.unwrap_or("?"), data["error"].as_str().unwrap_or("no reason given"));
+                    exit(1);
+                }
+            }
+        }
+        Some("prune") => {
+            let data = request("worktree.prune", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            outln!("pruned {} vanished worktree record(s); no file was deleted", data["pruned"].as_u64().unwrap_or(0));
+        }
+        Some("reclone-db") => {
+            if !words.iter().any(|w| w == "--yes") {
+                err!("replace {}'s database with a fresh copy of its parent's? Anything written there since is lost. [y/N] ", site["domain"].as_str().unwrap_or("?"));
+                let mut answer = String::new();
+                if std::io::stdin().read_line(&mut answer).is_err() || !matches!(answer.trim(), "y" | "Y" | "yes") {
+                    errln!("aborted (nothing changed)");
+                    exit(1);
+                }
+            }
+            let data = request("worktree.reclone", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            outln!("re-cloned {}'s database from its parent ({} URL replacements)", site["domain"].as_str().unwrap_or("?"), data["replacements"].as_u64().unwrap_or(0));
         }
         Some(other) => {
             errln!("rex: unknown worktree verb `{other}` — usage: {WORKTREE_USAGE}");

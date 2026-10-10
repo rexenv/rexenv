@@ -217,6 +217,10 @@ Not a `rex` command, by ruling: pairing (`connect`) — the key is pasted in the
 | `rex worktree <domain> list` | `worktree_children` (arm `worktree.list`) | git's live branch + uncommitted count per worktree site of the site's git plugins/themes |
 | `rex worktree <domain> add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads]` — two words: a plugin/theme worktree; one word: the site's OWN repository (W10) | `commands::worktree::start` + the job's own state (arm `worktree.add`) | blocks until the job settles, streaming phase progress like `site create`; `--from` makes `<branch>` NEW; positional parsing skips `--from`/`--domain` values |
 | `rex worktree <worktree-domain> remove [--force]` | `worktree_remove` (arm `worktree.remove`) | the worktree goes through git first (refused with the files named while uncommitted, unless `--force`), then the ordinary delete; the branch is kept |
+| `rex worktree <domain> adoptable` | `worktree_adoptable` (arm `worktree.adoptable`) | the site's own repository's worktrees made elsewhere, each "servable", "folder missing" or "cannot be served: <why>" (the same `refusal` the panel shows, #848) |
+| `rex worktree <domain> serve <path> [--domain D]` | `worktree_serve` (arm `worktree.serve`) | streams the phases like `add`; rexenv never removes that folder |
+| `rex worktree <domain> prune` | `worktree_prune` (arm `worktree.prune`) | `git worktree prune`: drops records of folders that are gone, deletes no file (#849) |
+| `rex worktree <worktree-domain> reclone-db [--yes]` | `worktree_reclone_db` (arm `worktree.reclone`) | asks first unless `--yes`; the child's database is replaced by a fresh copy of the parent's, URLs moved |
 
 ## Infrastructure (enables the above, not user commands)
 
@@ -252,7 +256,7 @@ had claimed a clean sweep for as long as that row sat three screens above it —
 the same shape as the two `mail` rows below, and the reason both are now gated by
 `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
-100 commands shipped (94 + the six `live.*` arms, 10 Oct 2026; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
+104 commands shipped (100 + the four new `worktree.*` arms, 10 Oct 2026; 100 = 94 + the six `live.*` arms; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
 counter was caught measuring a SUPERSET a second way: it counts every quoted match arm
 anywhere in `cli_server.rs`, and a helper there (`repo_job_settled`) had an `"add" =>` arm
 that is not a command. Moving that helper out for the Windows port (it now lives in

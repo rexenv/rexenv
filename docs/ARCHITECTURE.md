@@ -1540,7 +1540,9 @@ honest footer —
   made elsewhere is offered for Serve only when the linked-folder rule would accept it —
   otherwise the list shows why (inside the sites folder: `git worktree move` it out), and
   Delete says the truth about the folder: a whole-site worktree rexenv made loses its folder
-  with the site, an adopted one keeps it (#848).
+  with the site, an adopted one keeps it (#848). A folder git still records but that is gone
+  is "folder missing", and "Clean up missing" runs `git worktree prune` — git's records
+  only, no file (#849). The CLI and the MCP tool carry adoptable/serve/prune/re-clone.
 - **A worktree of a site's OWN repository (Shape B, W10, #823)** is a LINKED site whose
   folder git made, at `Worktrees/<domain>` BESIDE the sites folder. It cannot sit inside
   the sites folder, because the linked-folder rule refuses that, and the rule stays. The

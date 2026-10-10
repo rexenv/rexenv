@@ -1658,6 +1658,46 @@ where
             let state = app_state(app)?;
             Ok(json!({ "disconnected": commands::live_sync::live_sync_unpair(state.clone(), need_str(&args, "id", cmd)?).await? }))
         }
+        // The made-elsewhere list, serving one, pruning vanished ones, re-cloning a
+        // child's database (#849) — the Repository panel's and the child header's
+        // commands, by name.
+        "worktree.adoptable" => {
+            let rows = commands::worktree::worktree_adoptable(app.app_handle().clone(), need_str(&args, "id", cmd)?).await?;
+            Ok(json!({ "worktrees": to_value(&rows)? }))
+        }
+        "worktree.serve" => {
+            let state = app_state(app)?;
+            let jobs = provision_jobs_state(app)?;
+            let started = commands::worktree::worktree_serve(
+                app.app_handle().clone(),
+                state.clone(),
+                jobs.clone(),
+                need_str(&args, "id", cmd)?,
+                need_str(&args, "path", cmd)?,
+                args["domain"].as_str().map(str::to_string),
+            )
+            .await?;
+            let mut sent_phase = usize::MAX;
+            loop {
+                let snap = commands::site_provision::state_of(jobs.inner(), &started.id)?;
+                if snap.phase_cursor != sent_phase {
+                    sent_phase = snap.phase_cursor;
+                    progress.send(provision_progress(&snap));
+                }
+                if snap.status != "running" {
+                    return to_value(&snap);
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            }
+        }
+        "worktree.prune" => {
+            let pruned = commands::worktree::worktree_prune(app.app_handle().clone(), need_str(&args, "id", cmd)?).await?;
+            Ok(json!({ "pruned": pruned }))
+        }
+        "worktree.reclone" => {
+            let replaced = commands::worktree::worktree_reclone_db(app.app_handle().clone(), need_str(&args, "id", cmd)?).await?;
+            Ok(json!({ "replacements": replaced }))
+        }
         "worktree.remove" => {
             let state = app_state(app)?;
             let id = need_str(&args, "id", cmd)?;

@@ -1493,6 +1493,7 @@ pub fn run() {
             commands::worktree::worktree_relations,
             commands::worktree::worktree_adoptable,
             commands::worktree::worktree_serve,
+            commands::worktree::worktree_prune,
             commands::worktree::worktree_reclone_db,
             commands::repo::repo_asset_status,
             commands::repo::repo_unmanaged,

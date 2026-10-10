@@ -610,6 +610,12 @@ export async function worktreeServe(parentId: string, path: string, domain?: str
   return invoke<SiteProvisionState>("worktree_serve", { parentId, path, domain: domain ?? null });
 }
 
+/** `git worktree prune` in the site's own repository: drop git's records of
+ *  worktrees whose folders are gone. No file is deleted; answers how many went. */
+export async function worktreePrune(siteId: string): Promise<number> {
+  return invoke<number>("worktree_prune", { siteId });
+}
+
 /** Replace a worktree child's database with a fresh copy of its parent's,
  *  URLs moved again. Returns the replacement count. */
 export async function worktreeRecloneDb(siteId: string): Promise<number> {

@@ -1171,6 +1171,22 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
     fn worktree_remove<'a>(&'a self, id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<bool>> {
         Box::pin(async move { crate::commands::worktree::worktree_remove(self.state()?, self.tunnels()?, id, force).await })
     }
+    fn worktree_adoptable<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<Vec<crate::commands::worktree::AdoptableWorktree>>> {
+        Box::pin(async move { crate::commands::worktree::worktree_adoptable(self.app.clone(), site_id).await })
+    }
+    fn worktree_serve<'a>(&'a self, parent_id: String, path: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::site_provision::SiteProvisionState>> {
+        Box::pin(async move {
+            let (state, jobs) = (self.state()?, self.jobs()?);
+            let started = crate::commands::worktree::worktree_serve(self.app.clone(), state, jobs.clone(), parent_id, path, None).await?;
+            crate::commands::site_provision::settle(&jobs, &started.id, None).await
+        })
+    }
+    fn worktree_prune<'a>(&'a self, site_id: String) -> user_sites::OpFuture<'a, crate::error::Result<usize>> {
+        Box::pin(async move { crate::commands::worktree::worktree_prune(self.app.clone(), site_id).await })
+    }
+    fn worktree_reclone<'a>(&'a self, child_id: String) -> user_sites::OpFuture<'a, crate::error::Result<u64>> {
+        Box::pin(async move { crate::commands::worktree::worktree_reclone_db(self.app.clone(), child_id).await })
+    }
     fn live_status<'a>(&'a self, id: String) -> user_sites::OpFuture<'a, crate::error::Result<Option<crate::commands::live_sync::Pairing>>> {
         Box::pin(async move { crate::commands::live_sync::live_sync_pairing(self.state()?, id).await })
     }

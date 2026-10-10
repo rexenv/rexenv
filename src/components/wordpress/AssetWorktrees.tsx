@@ -13,7 +13,7 @@ import { useNavigate } from "react-router-dom";
 import { GitBranch, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { confirm, Overlay } from "@/components/ui/dialog";
-import { repoBranches, worktreeAdoptable, worktreeChildren, worktreeCreate, worktreePreview, worktreeRemove, worktreeServe } from "@/lib/ipc";
+import { repoBranches, worktreeAdoptable, worktreeChildren, worktreeCreate, worktreePreview, worktreePrune, worktreeRemove, worktreeServe } from "@/lib/ipc";
 import { toastBackendError } from "@/lib/toast";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import type { WorktreeRequest } from "@/types";
@@ -32,6 +32,14 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
   // Worktrees of the site's own repository made elsewhere (Claude Code, a plain
   // `git worktree add`) — Shape B only (§9 Q6): a Serve button each.
   const adoptable = useQuery({ queryKey: ["sites", "worktrees-adoptable", siteId], queryFn: () => worktreeAdoptable(siteId), enabled: kind === "site" });
+  // Folders git still records but that are gone (#849): one click asks git to drop
+  // those records — no file is touched, so no confirm.
+  const prune = useMutation({
+    mutationFn: () => worktreePrune(siteId),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["sites", "worktrees-adoptable", siteId] }),
+    onError: toastBackendError,
+  });
+  const missingCount = (adoptable.data ?? []).filter((w) => w.missing).length;
   const serve = useMutation({
     mutationFn: (path: string) => worktreeServe(siteId, path),
     onSuccess: () => {
@@ -135,7 +143,15 @@ export function AssetWorktrees({ siteId, kind, dirName }: { siteId: string; kind
       )}
       {kind === "site" && (adoptable.data ?? []).length > 0 && (
         <div className="mt-3 border-t border-rex-border-subtle pt-2">
-          <div className="text-[0.71875rem] text-rex-text-muted">Worktrees of this repository made elsewhere — serve one as a site:</div>
+          <div className="flex items-center gap-2">
+            <div className="text-[0.71875rem] text-rex-text-muted">Worktrees of this repository made elsewhere — serve one as a site:</div>
+            <span className="flex-1" />
+            {missingCount > 0 && (
+              <Button size="sm" variant="ghost" disabled={prune.isPending} title="git worktree prune — drops git's record of each folder that is gone; deletes no file" onClick={() => prune.mutate()}>
+                Clean up missing ({missingCount})
+              </Button>
+            )}
+          </div>
           <div className="mt-1 flex flex-col gap-1">
             {(adoptable.data ?? []).map((w) => (
               <Fragment key={w.path}>

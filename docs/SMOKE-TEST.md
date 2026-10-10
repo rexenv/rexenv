@@ -998,6 +998,12 @@ branch in that repository:
       `~/rexenv/Worktrees/<domain>`; the site serves the branch with its own `.env`
       (`APP_URL`, `DB_DATABASE`). Delete it → the folder goes, the branch stays.
       ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330) on a Blank PHP site from git (no Laravel): phases "copying the parent's config", "installing dependencies", "starting to serve" (no database to copy); folder `~/rexenv/Worktrees/other.gitp.rex`; served "branch: other"; Delete → folder gone, branch kept — but the delete SAID "your folder … is untouched". Fixed (#848): dialog and CLI now say the worktree folder goes.
+- [ ] Delete a served worktree's folder by hand (`rm -rf ~/elsewhere-try`) → Refresh → the row reads
+      "folder missing" and **Clean up missing (1)** appears → click → the row is gone; `git worktree
+      list` no longer names it; no other file moved. Same from the CLI: `rex worktree <site> adoptable`
+      → "folder missing", `rex worktree <site> prune` → "pruned 1".
+- [ ] `rex worktree <site> serve <path>` streams the phases and serves; `rex worktree <child>
+      reclone-db` asks, then re-clones.
 - [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
       Not run on a GUI build yet (the VM has no MCP client; the endpoint is off by default) —

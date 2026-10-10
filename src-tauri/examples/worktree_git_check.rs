@@ -20,6 +20,8 @@
 //!   5. Adding into a path that already exists is refused BEFORE git runs.
 //!   6. A NEW-branch request whose branch already exists (a Retry) checks it out
 //!      instead of failing on `-b`.
+//!   7. (#849) A worktree whose folder vanished reads `prunable`; `prune` drops
+//!      exactly that record, keeps the others, and deletes no file.
 //!
 //! Everything written lives under this example's own temp root; the sandbox
 //! `Platform` is only used to resolve git and spawn it (examples/common).
@@ -172,6 +174,19 @@ fn main() {
     let e = worktree::list(sup, &git, &env, &repo).unwrap();
     assert!(e.iter().any(|w| same(&w.path, &wt_c) && w.branch.as_deref() == Some("fix-y")), "{e:?}");
     println!("6 ok — a retried new-branch add checks out the branch an earlier attempt made");
+
+    // 7. A vanished folder: git says prunable; prune drops that record only.
+    let keep_marker = repo.join("keep.txt");
+    std::fs::write(&keep_marker, "stays").unwrap();
+    std::fs::remove_dir_all(&wt_c).expect("remove our own worktree folder by hand");
+    let e = worktree::list(sup, &git, &env, &repo).unwrap();
+    assert!(e.iter().any(|w| same(&w.path, &wt_c) && w.prunable), "the vanished folder reads prunable: {e:?}");
+    let n = worktree::prune(sup, &git, &env, &repo).expect("prune");
+    let e = worktree::list(sup, &git, &env, &repo).unwrap();
+    assert_eq!(n, 1, "exactly the vanished one");
+    assert!(!e.iter().any(|w| same(&w.path, &wt_c)) && e.iter().any(|w| same(&w.path, &repo)), "{e:?}");
+    assert!(keep_marker.exists(), "prune deletes no file");
+    println!("7 ok — prune drops only the record whose folder is gone, and no file");
 
     std::fs::remove_dir_all(&root).expect("cleanup of our own temp root");
     println!("worktree_git_check: all green");

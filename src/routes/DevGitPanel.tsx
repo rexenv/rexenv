@@ -893,6 +893,7 @@ export function DevGitPanel() {
         case "worktree_adoptable":
           return [
             { path: "/Users/somebody/elsewhere-try", branch: "try", missing: false, refusal: null },
+            { path: "/Users/somebody/gone-wt", branch: "old", missing: true, refusal: null },
             {
               path: "/Users/somebody/rexenv/Sites/elsewhere",
               branch: "spike",
@@ -900,6 +901,9 @@ export function DevGitPanel() {
               refusal: "/Users/somebody/rexenv/Sites/elsewhere is inside your rexenv sites folder, where a site cannot be linked — move it out first (`git worktree move /Users/somebody/rexenv/Sites/elsewhere <a folder outside it>`), or make the worktree with New worktree…, which puts it in ~/rexenv/Worktrees.",
             },
           ];
+        case "worktree_prune":
+          ((window as unknown as { __prunes?: number }).__prunes = ((window as unknown as { __prunes?: number }).__prunes ?? 0) + 1);
+          return 1;
         case "worktree_children":
           return params.get("wt") === "1"
             ? [

@@ -564,6 +564,29 @@ pub async fn worktree_adoptable<R: tauri::Runtime>(app: AppHandle<R>, site_id: S
     .map_err(|e| Error::Other(format!("worktree worker died: {e}")))?
 }
 
+/// `worktree_prune` — `git worktree prune` in `site_id`'s own repository: drop
+/// git's records of worktrees whose folders are already gone (the "folder missing"
+/// rows of the made-elsewhere list). No file is deleted; answers how many went (#849).
+#[tauri::command]
+pub async fn worktree_prune<R: tauri::Runtime>(app: AppHandle<R>, site_id: String) -> Result<usize> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let site = {
+            let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+            store::get_site(&conn, &site_id)?.ok_or_else(|| Error::Other(format!("no site {site_id}")))?
+        };
+        let root = PathBuf::from(&site.path);
+        if !root.join(".git").exists() {
+            return Err(Error::Other(format!("{} is not a git checkout — nothing to prune.", site.domain)));
+        }
+        let env = crate::commands::repo::shell_env(&state, &app.state::<crate::commands::repo::RepoJobs>(), false)?;
+        let git = core::devtools::resolve_git(state.platform.as_ref(), &env)?;
+        worktree::prune(state.platform.supervisor(), &git.path, &env, &root)
+    })
+    .await
+    .map_err(|e| Error::Other(format!("worktree worker died: {e}")))?
+}
+
 /// `worktree_serve` — serve an EXISTING worktree of `parent_id`'s repository as a
 /// linked child (§2.7). The folder is the other tool's: rexenv never
 /// `git worktree remove`s it (`adopted`), only stops serving it on delete.
