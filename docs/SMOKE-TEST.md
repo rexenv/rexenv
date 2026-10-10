@@ -1002,8 +1002,13 @@ branch in that repository:
       "folder missing" and **Clean up missing (1)** appears → click → the row is gone; `git worktree
       list` no longer names it; no other file moved. Same from the CLI: `rex worktree <site> adoptable`
       → "folder missing", `rex worktree <site> prune` → "pruned 1".
+      ✓ Linux only (Ubuntu VM, 10 Oct 2026): GUI and CLI both as written; macOS not run on this build yet.
 - [ ] `rex worktree <site> serve <path>` streams the phases and serves; `rex worktree <child>
       reclone-db` asks, then re-clones.
+      ✓ Linux only (Ubuntu VM, 10 Oct 2026): serve served "branch: try"; reclone-db asked, `n` →
+      "aborted (nothing changed)", `--yes` → re-cloned. The serve stream showed only the phases its
+      400 ms poll caught, and over ssh "— created" can print before the last phase line (stdout and
+      stderr travel apart) — neither is wrong. macOS not run on this build yet.
 - [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
       Not run on a GUI build yet (the VM has no MCP client; the endpoint is off by default) —
@@ -1011,6 +1016,22 @@ branch in that repository:
 - **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:
   an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
   "Access is denied", and the site stays — close the editor, Delete again.
+  - [x] **Linux** — ✓ 10 Oct 2026, Ubuntu 22.04 arm64 VM (debug deb of this tree), every row above
+        but MCP: git? → Adopt → git, "None yet", Create off until a branch, `https://feature-x.wtl.rex`;
+        all phases in the provision log, settled serving with the chip; footer `wtdemo: feature-x`
+        (parent `main`), 30 links all on the child domain, wp-login 200; "1 uncommitted", the Sites-list
+        Delete refused naming `M wtdemo.php`, Remove → "Remove anyway?" quoting it, Cancel kept it,
+        Remove anyway removed it, branch kept; Re-clone dropped a child-only post; parent Delete refused
+        naming the child; made-elsewhere, whole-site and prune rows as written. Found there: the
+        child's header line broke "feature-x" in two at 1280 px — fixed (#848, wk-check leg 7).
+  - [ ] **Windows** — the Dell (Win10, debug build of this tree), 10 Oct 2026: rows 1–3 ✓ (git? →
+        Adopt → git, "None yet", `https://feature-x.wtw.rex`; all phases logged, serving with the chip;
+        footer `wtdemo: feature-x`, 30 links on the child domain, parent `main`, wp-login 200; header
+        "plugin worktree of wtw.rex · feature-x", the same line break as Linux). The rest — and the
+        editor-lock row — owed: the Dell dropped off the network mid-run. Two fixture traps met there:
+        a repo made through the ELEVATED ssh session is owned by Administrators, so the app's git
+        refuses it ("dubious ownership") — `takeown /R /F <dir>` first; and `rex wp` runs only its
+        vetted verbs (no `post create`).
 
 ## Live sync — pull a live WordPress site (`docs/PLAN-wp-live-sync.md`, built 10 Oct 2026)
 

@@ -12,7 +12,9 @@
 //   4. no horizontal overflow, no page error, in both themes;
 //   5. (#848) worktrees made elsewhere: a servable one offers Serve; one Serve would
 //      refuse (inside the sites folder) shows the reason INSTEAD of a Serve button;
-//   6. (#849) a worktree whose folder is gone: "Clean up missing (1)" prunes once.
+//   6. (#849) a worktree whose folder is gone: "Clean up missing (1)" prunes once;
+//   7. a worktree child's header line, in a column as narrow as the header leaves it, wraps
+//      between its pieces and never inside one ("feature-" / "x" on the Dell and the VM).
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`;
@@ -96,6 +98,24 @@ const URL = `${BASE}/dev/git-panel?panel=wp-add&plugins=list&git=1&wt=1&dirty=1`
     await page.waitForTimeout(300);
     const prunes = await page.evaluate(() => window.__prunes ?? 0);
     if (prunes !== 1) fails.push(`${scheme} 6: Clean up missing → ${prunes} prune calls`);
+    // 7. the header line never breaks inside a piece.
+    await page.goto(`${BASE}/dev/git-panel?panel=wt-of`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    const broken = await page.evaluate(() => {
+      const line = document.querySelector('[data-testid="wt-of"] > div');
+      if (!line) return ["(no line rendered)"];
+      const out = [];
+      for (const el of line.children) {
+        const text = el.textContent.trim();
+        if (!text) continue;
+        const r = document.createRange();
+        r.selectNodeContents(el);
+        const tops = new Set([...r.getClientRects()].map((q) => Math.round(q.top)));
+        if (tops.size > 1) out.push(text);
+      }
+      return out;
+    });
+    if (broken.length) fails.push(`${scheme} 7: broken inside a piece: ${JSON.stringify(broken)}`);
     await page.close();
   }
   await browser.close();

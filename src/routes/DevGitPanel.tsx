@@ -18,6 +18,7 @@ import { ImportProgressCard } from "@/routes/Import";
 import type { ImportOutcome, ImportProgress } from "@/types";
 import { useDownloads } from "@/lib/useDownloads";
 import { siteProvisionRetry } from "@/lib/ipc";
+import { WorktreeOfLine } from "@/components/sites/WorktreeOfLine";
 import { AssetWorktrees } from "@/components/wordpress/AssetWorktrees";
 
 /** What `git ls-remote` answers with for a repo anyone actually works on.
@@ -890,6 +891,14 @@ export function DevGitPanel() {
         // `?panel=wt-site` (wk-checks/worktree.js leg 5, #848): a site whose OWN folder
         // is a git checkout, with two worktrees made elsewhere — one servable, one
         // inside the sites folder that Serve would refuse.
+        // `?panel=wt-of` (wk-checks/worktree.js leg 7): a worktree child's header line, in a
+        // column as narrow as the site header leaves it at 1280 px.
+        case "worktree_of":
+          return {
+            siteId: "dev", domain: "feature-x.shop.rex", parentId: "parent", parentDomain: "shop.rex",
+            assetKind: "plugin", assetDir: "wtdemo", askedBranch: "feature-x", branch: "feature-x",
+            uncommitted: 1, present: true, provisioned: true, adopted: false,
+          };
         case "worktree_adoptable":
           return [
             { path: "/Users/somebody/elsewhere-try", branch: "try", missing: false, refusal: null },
@@ -1055,6 +1064,10 @@ export function DevGitPanel() {
           <ImportBarHost />
         ) : params.get("panel") === "provision" ? (
           <ProvisionHost />
+        ) : params.get("panel") === "wt-of" ? (
+          <div data-testid="wt-of" style={{ width: 340 }}>
+            <WorktreeOfLine siteId="dev" />
+          </div>
         ) : params.get("panel") === "wt-site" ? (
           <div className="rounded-lg border border-rex-border bg-rex-surface-1 p-2.5">
             <AssetWorktrees siteId="dev" kind="site" dirName="" />

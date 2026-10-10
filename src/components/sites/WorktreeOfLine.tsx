@@ -22,7 +22,10 @@ export function WorktreeOfLine({ siteId }: { siteId: string }) {
   const w = wt.data;
   if (!w) return null;
   return (
-    <div className="mt-1 flex items-center gap-1.5 text-[0.71875rem] text-rex-text-muted">
+    // Wraps BETWEEN its pieces, never inside one: the header gives this line only what the
+    // site name's column has left, and at 1280–1366 px (the Dell, the Ubuntu VM — 10 Oct 2026)
+    // a shrinking flex row broke "feature-x" into "feature-" / "x" and the label into two lines.
+    <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 whitespace-nowrap text-[0.71875rem] text-rex-text-muted">
       <GitBranch className="h-3 w-3" />
       <span>{w.assetKind ? `${w.assetKind} worktree of` : "worktree of"}</span>
       <button
@@ -33,7 +36,7 @@ export function WorktreeOfLine({ siteId }: { siteId: string }) {
         {w.parentDomain}
       </button>
       <span>·</span>
-      <span className="font-mono text-rex-text">
+      <span className="max-w-full truncate font-mono text-rex-text">
         {w.present ? (w.branch ?? "detached") : `${w.askedBranch} — not checked out`}
       </span>
       {w.uncommitted != null && w.uncommitted > 0 && (
