@@ -2,8 +2,9 @@
 
 **Status:** BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the
 panel, `rex worktree`, the MCP `worktree` tool; live checks green on macOS, the Dell and the
-Ubuntu VM (#814–#823, #830–#831). SMOKE GUI rows: 9 of 10 run on the macOS VM, 10 Oct 2026 — three defects found and fixed (#848). Prune and the adopt/serve/prune/re-clone CLI + MCP arms built (#849). Open: the SMOKE GUI
-rows on Windows/Linux, Windows/Linux reruns of legs 13–15. Was:
+Ubuntu VM (#814–#823, #830–#831). SMOKE GUI rows: 9 of 10 run on the macOS VM, 10 Oct 2026 — three defects found and fixed (#848). Prune and the adopt/serve/prune/re-clone CLI + MCP arms built (#849). Legs 13–15 and the
+prune leg ALL PASS on the Dell's Windows 10 and the Ubuntu VM (10 Oct 2026). Open: the SMOKE GUI
+rows on Windows/Linux. Was:
 PLANNED 9 Oct 2026. Owner request ("Git worktree workflow"); the
 agent wrote it while the owner was away. **Owner answered 9 Oct 2026** (§9). Domain:
 `feature-x.shop.rex` first, falling back to `shop-feature-x.rex` (§2.2). The WP plugin/theme
