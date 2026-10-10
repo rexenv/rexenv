@@ -1030,6 +1030,9 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       rollback` (post gone; the file 404 with a cache-buster). Found there: the card kept
       offering Roll back after the CLI rollback, its dialog claimed the push is "kept on live as
       the new backup" (it is removed), and "1 files" — all fixed, #846.
+      ✓ Then on the FIXED build (2e13a330), all from the GUI: push from the button (posts +
+      postmeta, files off) → the post on live → Roll back → the dialog says the push is removed →
+      "Rolled back.", no Roll back button left, the post gone from live.
 - [ ] Make a post ON the live site, then Push again → the card says "Nothing was sent: 1
       item(s) changed on <host>" naming `wp_posts`; live is unchanged. **Push anyway,
       overwriting these** → the confirm names `wp_posts` → the live post is gone (it is in the
