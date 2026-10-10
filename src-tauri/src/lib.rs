@@ -438,6 +438,7 @@ pub fn run() {
             app.manage(commands::site_provision::ProvisionJobs::default());
             app.manage(commands::valet_import::ImportJobs::default());
             app.manage(commands::db_import::DbImportJobs::default());
+            app.manage(commands::live_sync::LiveSyncJobs::default());
             // Registry of live per-site public tunnels (§9.1) + its health
             // prober (step 2 status honesty: dead children settled and public
             // URLs probed every 30s, UI open or not).
@@ -1296,6 +1297,12 @@ pub fn run() {
             commands::valet_import::valet_import_run,
             commands::valet_import::valet_import_cancel,
             commands::db_import::db_import_start,
+            commands::live_sync::live_sync_pair,
+            commands::live_sync::live_sync_pairing,
+            commands::live_sync::live_sync_unpair,
+            commands::live_sync::live_sync_pull,
+            commands::live_sync::live_sync_job,
+            commands::live_sync::live_sync_active,
             commands::db_import::db_import_state,
             commands::rewrite::rewrite_preview,
             commands::rewrite::rewrite_apply,

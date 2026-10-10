@@ -156,6 +156,9 @@ pub struct Client {
     key: PairingKey,
     base: String,
     http: reqwest::Client,
+    /// HTTP basic auth in front of the site (§11 Q5) — sent as `Authorization`
+    /// on every request; nothing to do with the pairing.
+    basic_auth: Option<(String, String)>,
 }
 
 impl Client {
@@ -170,7 +173,13 @@ impl Client {
             .build()
             .map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?;
         let base = key.site_url.clone();
-        Ok(Self { key, base, http })
+        Ok(Self { key, base, http, basic_auth: None })
+    }
+
+    /// Send `Authorization: Basic` on every request — a site behind HTTP auth.
+    pub fn with_basic_auth(mut self, user: &str, password: &str) -> Self {
+        self.basic_auth = Some((user.to_string(), password.to_string()));
+        self
     }
 
     /// Send to another origin while the key — and the manifest's `site_url` it is
@@ -191,10 +200,11 @@ impl Client {
         let sig = sign::signature(&self.key.secret, &canonical);
         let mut params: Vec<(&str, &str)> = vec![("rest_route", route)];
         params.extend_from_slice(query);
-        let resp = self
-            .http
-            .request(method, format!("{}/", self.base))
-            .query(&params)
+        let mut req = self.http.request(method, format!("{}/", self.base)).query(&params);
+        if let Some((u, p)) = &self.basic_auth {
+            req = req.basic_auth(u, Some(p));
+        }
+        let resp = req
             .header("X-Rexsync-Key", &self.key.key_id)
             .header("X-Rexsync-Ts", &ts)
             .header("X-Rexsync-Nonce", &nonce)
@@ -237,14 +247,18 @@ impl Client {
     }
 
     /// Every file under `wp-content`, through the cursor.
-    pub async fn list_files(&self, exclude: &[&str]) -> Result<Vec<RemoteFile>> {
+    pub async fn list_files(&self, exclude: &[&str], uploads_since: Option<i64>) -> Result<Vec<RemoteFile>> {
         let globs = exclude.join(",");
+        let since = uploads_since.map(|s| s.to_string());
         let mut out = Vec::new();
         let mut cursor: Option<String> = None;
         loop {
             let mut q: Vec<(&str, &str)> = Vec::new();
             if !globs.is_empty() {
                 q.push(("exclude", &globs));
+            }
+            if let Some(s) = &since {
+                q.push(("uploads_since", s));
             }
             if let Some(c) = &cursor {
                 q.push(("cursor", c));

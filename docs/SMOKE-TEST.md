@@ -985,6 +985,29 @@ branch in that repository:
   an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
   "Access is denied", and the site stays — close the editor, Delete again.
 
+## Live sync — pull a live WordPress site (`docs/PLAN-wp-live-sync.md`, built 10 Oct 2026)
+
+Needs a live WordPress over HTTPS you may write a plugin into. Install
+`companion/rexenv-sync` there (zip the folder), activate it, Tools → rexenv Sync →
+**Connect to rexenv** → copy the key.
+- [ ] A local WordPress site → **Live** tab → paste the key → **Connect** → "Connected to
+      https://… — WordPress x, N tables". A wrong key: refused, nothing stored (the form stays).
+      An `http://` site: refused with the HTTPS sentence.
+- [ ] **Pull from live** → the confirm names both sites → the card streams table lines, then
+      "Pulled N tables … files. The previous local tables are in `<db>_prepull`." The local site
+      now shows the live content at the LOCAL domain (links and images local); wp-admin logs in
+      with the LIVE site's users; the Plugins list shows rexenv Sync **inactive**.
+- [ ] **Pull, recent uploads only** → old media 404s locally, new media loads; the log says
+      "uploads older than … left on live".
+- [ ] On the live site, Tools → rexenv Sync → **Regenerate key** → Pull locally → the card says
+      "the site has a different rexenv pairing now — paste its current key"; the local site is
+      unchanged (the local-only test post is still there).
+- [ ] **Disconnect** locally → the Live tab is the connect form again; the site keeps its data.
+- [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
+      password → Connect works; without them, the firewall/401 sentence.
+- **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's
+  bundled PHP and on the Dell's (`live_sync_pull_check`).
+
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
 **Link folder** to one of your own. Everything below is on that asset's repo

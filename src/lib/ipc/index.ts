@@ -8,7 +8,7 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -489,6 +489,44 @@ export async function siteProvisionJob(
   blueprintId?: string,
 ): Promise<SiteProvisionState> {
   return invoke<SiteProvisionState>("site_provision_job", { site: input, wp, blueprintId });
+}
+
+/** Pair a local WordPress site with a live one: the pasted key is proven
+ *  against the live site's manifest, then stored owner-only. The secret never
+ *  comes back. */
+export async function liveSyncPair(
+  siteId: string,
+  key: string,
+  basicAuthUser?: string,
+  basicAuthPassword?: string,
+): Promise<LiveSyncPaired> {
+  return invoke<LiveSyncPaired>("live_sync_pair", { siteId, key, basicAuthUser: basicAuthUser || null, basicAuthPassword: basicAuthPassword || null });
+}
+
+export async function liveSyncPairing(siteId: string): Promise<LiveSyncPairing | null> {
+  if (!isTauri()) return null;
+  return invoke<LiveSyncPairing | null>("live_sync_pairing", { siteId });
+}
+
+export async function liveSyncUnpair(siteId: string): Promise<boolean> {
+  return invoke<boolean>("live_sync_unpair", { siteId });
+}
+
+/** Start a pull (live → this site). `uploadsSince`: skip uploads older than
+ *  this Unix time. Progress streams on `onLiveSyncState`. */
+export async function liveSyncPull(siteId: string, uploadsSince?: number): Promise<LiveSyncJobState> {
+  return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null });
+}
+
+export async function liveSyncActive(siteId: string): Promise<LiveSyncJobState | null> {
+  if (!isTauri()) return null;
+  return invoke<LiveSyncJobState | null>("live_sync_active", { siteId });
+}
+
+export async function onLiveSyncState(id: string, cb: (s: LiveSyncJobState) => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<LiveSyncJobState>(`live-sync://state/${id}`, (e) => cb(e.payload));
 }
 
 /** Make a plugin/theme WORKTREE site: the parent's WordPress copied, with the

@@ -104,8 +104,9 @@ final class Rexenv_Sync_Reader {
 	 * itself is bounded; the first version walked all of wp-content on every page
 	 * and could pass `max_execution_time` on a big site (review, 10 Oct 2026).
 	 */
-	public static function list_files( $cursor, array $client_globs ) {
+	public static function list_files( $cursor, array $client_globs, $uploads_since = null ) {
 		$state = array(
+			'since'  => null === $uploads_since ? null : (int) $uploads_since,
 			'out'    => array(),
 			'bytes'  => 0,
 			'start'  => microtime( true ),
@@ -161,6 +162,11 @@ final class Rexenv_Sync_Reader {
 				continue;
 			}
 			if ( ! is_file( $full ) || ( null !== $c && self::cmp_segments( $here, $c ) <= 0 ) ) {
+				continue;
+			}
+			// "Uploads older than N months stay on live" (§11 Q3): a mtime filter on
+			// `uploads/` only — code and themes are never left out by age.
+			if ( null !== $state['since'] && isset( $segs[0] ) && 'uploads' === $segs[0] && (int) filemtime( $full ) < $state['since'] ) {
 				continue;
 			}
 			$state['out'][]  = array( 'path' => $rel, 'size' => (int) filesize( $full ), 'mtime' => (int) filemtime( $full ) );

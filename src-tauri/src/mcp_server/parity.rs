@@ -167,6 +167,15 @@ mod tests {
         ("worktree_create", Tool("worktree")),
         ("worktree_of", Tool("worktree")),
         ("worktree_relations", Never("the Sites list's grouping rows; an agent reads the same through the worktree action's list")),
+        // ── live_sync (docs/PLAN-wp-live-sync.md §2.9: pull is Full-level agent work LATER —
+        //    S4 adds `live` status/diff/pull; pairing takes a pasted secret, and push/rollback
+        //    are never tools, owner ruling 9 Oct 2026)
+        ("live_sync_pair", Never("the pasted key is a secret the person holds; an agent that could pair a site could point it at any site it chose (plan invariant #3)")),
+        ("live_sync_pairing", Gap("S4 of docs/PLAN-wp-live-sync.md adds the `live` tool's status (Read); TODO row WordPress live ↔ local sync")),
+        ("live_sync_unpair", Never("undoing the person's pairing; the person does it in the Live tab")),
+        ("live_sync_pull", Gap("S4 of docs/PLAN-wp-live-sync.md adds the `live` tool's pull (Full — it replaces the local database); TODO row WordPress live ↔ local sync")),
+        ("live_sync_job", Never(JOBS)),
+        ("live_sync_active", Never(JOBS)),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),

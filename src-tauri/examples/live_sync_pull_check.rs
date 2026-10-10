@@ -182,7 +182,7 @@ async fn pull_legs(php: &Path, wp: &Path, docroot: &Path) -> bool {
         Err(e) => check(false, &format!("manifest: {e}")),
     }
     let own = "plugins/rexenv-sync/rexenv-sync.php".to_string();
-    let files = client.list_files(&[]).await.unwrap_or_default();
+    let files = client.list_files(&[], None).await.unwrap_or_default();
     check(files.iter().any(|f| f.path == own), &format!("the file list pages to the end ({} files) and holds the plugin's main file", files.len()));
 
     let dest = std::env::temp_dir().join(format!("rexenv-live-pull-{}", std::process::id()));

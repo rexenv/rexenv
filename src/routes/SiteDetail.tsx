@@ -41,6 +41,7 @@ import { Button } from "@/components/ui/button";
 import { confirm } from "@/components/ui/dialog";
 import { SiteTerminal } from "@/components/terminal/SiteTerminal";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
+import { LiveTab } from "@/components/sites/LiveTab";
 import { SiteLogs, logLineColor } from "@/components/sites/SiteLogs";
 import { WordPressManager } from "@/components/wordpress/WordPressManager";
 import { CoreFilesBanner } from "@/components/wordpress/CoreFilesBanner";
@@ -118,7 +119,7 @@ const SERVERS: { value: WebServer; label: string }[] = [
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
-type TabKey = "overview" | "wordpress" | "repository" | "database" | "logs" | "terminal" | "settings";
+type TabKey = "overview" | "wordpress" | "repository" | "database" | "live" | "logs" | "terminal" | "settings";
 
 export function SiteDetail() {
   const { id, tab } = useParams<{ id: string; tab?: TabKey }>();
@@ -256,6 +257,8 @@ export function SiteDetail() {
     // second-class, and never on a parent walk (see `repo_site_info`).
     { key: "repository", label: "Repository", show: !!repoInfo?.present },
     { key: "database", label: "Database", show: true },
+    // Live ↔ local sync — a WordPress site only (the live side is WordPress).
+    { key: "live", label: "Live", show: isWordpress },
     { key: "logs", label: "Logs", show: true },
     { key: "terminal", label: "Terminal", show: true },
     { key: "settings", label: "Settings", show: true },
@@ -372,6 +375,7 @@ export function SiteDetail() {
             <WordPressManager siteId={site.id} multisite={site.multisite} domain={site.domain} dbEngine={site.dbEngine} />
           )}
           {active === "database" && <DatabaseTab site={site} />}
+          {active === "live" && <LiveTab site={site} />}
           {active === "logs" && (
             <SiteLogs site={site} isWordpress={isWordpress} wpResolved={wpResolved} />
           )}

@@ -81,10 +81,20 @@ fn exec(local: &LocalSite, sql: &str, what: &str) -> Result<()> {
 }
 
 /// Pull everything the live site has into `local`. `on_line` gets one line per step.
+/// What a pull leaves out (§11 Q3).
+#[derive(Debug, Clone, Default)]
+pub struct PullOptions {
+    /// Extra `exclude` globs beside [`DEFAULT_EXCLUDES`].
+    pub excludes: Vec<String>,
+    /// Skip files under `uploads/` older than this Unix time — a big media
+    /// library's history stays on live.
+    pub uploads_since: Option<i64>,
+}
+
 pub async fn pull_into(
     client: &Client,
     local: &LocalSite<'_>,
-    extra_excludes: &[&str],
+    options: &PullOptions,
     on_line: &mut (dyn FnMut(&str) + Send),
 ) -> Result<PullReport> {
     if !local.engine.is_mysql_family() {
@@ -168,8 +178,11 @@ pub async fn pull_into(
 
     // ── 4. files ────────────────────────────────────────────────────────
     let mut excludes: Vec<&str> = DEFAULT_EXCLUDES.to_vec();
-    excludes.extend_from_slice(extra_excludes);
-    let files = client.list_files(&excludes).await?;
+    excludes.extend(options.excludes.iter().map(String::as_str));
+    let files = client.list_files(&excludes, options.uploads_since).await?;
+    if let Some(since) = options.uploads_since {
+        on_line(&format!("uploads older than {since} (Unix time) left on live"));
+    }
     let content = local.docroot.join("wp-content");
     let incoming_dir: PathBuf = content.join(format!(".rexsync-incoming-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
     let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();

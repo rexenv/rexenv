@@ -9,3 +9,4 @@ pub mod sign;
 
 pub mod client;
 pub mod pull;
+pub mod secrets;

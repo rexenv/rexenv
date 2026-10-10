@@ -16,6 +16,11 @@ const WIDTHS = [
 
 /** [name, query, actions] — actions run before the shot. */
 const SCENARIOS = [
+  // The Live tab (docs/PLAN-wp-live-sync.md §2.9): the connect form, then the connected
+  // state with a settled pull, and a failed pull's reason.
+  ["live-connect", "view=live", []],
+  ["live-paired", "view=live&paired=1", []],
+  ["live-pull-failed", "view=live&paired=1&pull=failed", []],
   ["card-consent-root", "view=card&rec=imported&preview=ready&root=1", []],
   // #810: a job that settles before the card subscribes must still show its end.
   ["card-instantfail", "view=card&dbjob=instantfail", []],

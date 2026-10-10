@@ -180,12 +180,12 @@ async fn main() -> std::process::ExitCode {
     }).unwrap()).unwrap().with_base_url(&format!("http://127.0.0.1:{PORT}"));
     let before = query(&mysql, &local.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LOCAL-ONLY'");
     let mut sink = |l: &str| println!("  | {l}");
-    let failed = pull::pull_into(&stale, &target, &[], &mut sink).await;
+    let failed = pull::pull_into(&stale, &target, &pull::PullOptions::default(), &mut sink).await;
     let after = query(&mysql, &local.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LOCAL-ONLY'");
     check(failed.is_err() && before == "1" && after == "1", "5. a pull refused by the site leaves the local site as it was");
 
     let client = Client::new(key.clone()).unwrap().with_base_url(&format!("http://127.0.0.1:{PORT}"));
-    match pull::pull_into(&client, &target, &[], &mut sink).await {
+    match pull::pull_into(&client, &target, &pull::PullOptions::default(), &mut sink).await {
         Ok(r) => println!("pulled: {} tables, {} rows, {} files, {} replacements", r.tables, r.rows, r.files, r.replacements),
         Err(e) => check(false, &format!("the pull: {e}")),
     }

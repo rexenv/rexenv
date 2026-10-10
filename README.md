@@ -203,7 +203,7 @@ rexenv/
         ├── commands/           # Tauri IPC handlers (THIN — just call core/)
         │   ├── system.rs       # status, setup, DNS/SSL, autostart, open-external
         │   ├── sites.rs · site_provision.rs · services.rs · database.rs · php.rs
-        │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs · worktree.rs
+        │   ├── wordpress.rs · wp_install.rs · repo.rs · blueprints.rs · worktree.rs · live_sync.rs
         │   ├── valet_import.rs · db_import.rs · rewrite.rs · downloads.rs
         │   ├── mail.rs · logs.rs · terminal.rs · tunnels.rs · settings.rs
         │   └── mcp.rs · scratch.rs      # the MCP surface + agent scratch sites
@@ -231,7 +231,7 @@ rexenv/
         │   ├── confedit.rs · confverify.rs · confrewrite.rs  # connection rewrite (Stage 3)
         │   ├── repo.rs · devtools.rs · dist_archive.rs    # add-from-Git, toolchain, `wp dist-archive`
         │   ├── worktree.rs     # git worktrees as sites — the never-rm-a-worktree guard (docs/PLAN-git-worktrees.md)
-        │   ├── live_sync/      # WordPress live ↔ local sync — so far the rexsync1 signature (docs/rexsync-protocol.md)
+        │   ├── live_sync/      # WordPress live ↔ local sync: signature, client, pull, the pairing file (docs/rexsync-protocol.md)
         │   ├── laravel.rs · dotenv.rs                     # Laravel create/install, `.env` read+write
         │   ├── starter.rs      # Blank-PHP starter page + seeded table (templates/starter/)
         │   ├── scratch.rs · wp_mailtag.rs                 # agent scratch sites (TTL, cap, reaper) + their mail stamp

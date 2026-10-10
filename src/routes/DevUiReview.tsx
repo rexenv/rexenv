@@ -54,6 +54,7 @@ import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressMan
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { DatabaseTab } from "@/components/sites/DatabaseTab";
+import { LiveTab } from "@/components/sites/LiveTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
@@ -1154,6 +1155,22 @@ export function DevUiReview() {
             patch: String((args as Record<string, unknown> | undefined)?.patch ?? ""),
             restarted: true,
           };
+        // `view=live` (wk-checks/uireview.js "live-*"): `&paired=1` renders the connected
+        // state with a settled pull; otherwise the connect form. `live_sync_pair` records
+        // what the form SENT (`window.__livePairs`) and answers as a live site would.
+        case "live_sync_pairing":
+          return params.get("paired") === "1" ? { siteUrl: "https://example.com", keyId: "k_0123abcd", basicAuthUser: null } : null;
+        case "live_sync_active":
+          return params.get("paired") === "1"
+            ? { id: "j1", siteId: "s1", domain: "example.rex", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, rows: 1560, files: 457, refusedFiles: [], backupDb: "wp_example_rex_prepull" }
+            : null;
+        case "live_sync_pair":
+          ((window as unknown as { __livePairs?: unknown[] }).__livePairs ??= []).push(args);
+          return { pairing: { siteUrl: "https://example.com", keyId: "k_0123abcd", basicAuthUser: null }, wp: "6.8", php: "8.3.1", tables: 12, multisite: false };
+        case "live_sync_pull":
+          return { id: "j2", siteId: "s1", domain: "example.rex", status: "running", lines: [], error: null, tables: 0, rows: 0, files: 0, refusedFiles: [], backupDb: null };
+        case "live_sync_unpair":
+          return true;
         case "db_import_record":
           return record();
         // `dbjob=instantfail` (#810): the job refuses in its first phase, so by the time the
@@ -1385,6 +1402,7 @@ export function DevUiReview() {
         </h1>
         {view === "card" && <DbImportCard site={fixtureSite({ dbEngine: params.get("engine") === "mariadb" ? "mariadb" : "mysql" })} />}
         {view === "dbtab" && <DbTabView />}
+        {view === "live" && <div className="w-[720px]"><LiveTab site={fixtureSite()} /></div>}
         {view === "appupdate" && (
           // A landmark that renders regardless, so a "no button" leg can tell an
           // empty state from a broken route.

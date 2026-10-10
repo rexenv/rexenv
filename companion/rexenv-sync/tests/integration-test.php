@@ -112,6 +112,20 @@ remove_all_filters( 'rexsync_max_list_bytes' );
 $check( $pages > 3, "small pages: $pages of them" );
 $check( $paged === $all, 'small pages list exactly the one-page list, in the same order' );
 
+// 4c. `uploads_since`: an old upload is left out, a new one and a theme file of any age stay.
+@mkdir( WP_CONTENT_DIR . '/uploads/age-probe', 0755, true );
+file_put_contents( WP_CONTENT_DIR . '/uploads/age-probe/old.txt', 'old' );
+file_put_contents( WP_CONTENT_DIR . '/uploads/age-probe/new.txt', 'new' );
+touch( WP_CONTENT_DIR . '/uploads/age-probe/old.txt', time() - 400 * 86400 );
+$aged  = array_column( Rexenv_Sync_Reader::list_files( null, array(), time() - 30 * 86400 )['files'], 'path' );
+$check(
+	! in_array( 'uploads/age-probe/old.txt', $aged, true ) && in_array( 'uploads/age-probe/new.txt', $aged, true ) && in_array( $own, $aged, true ),
+	sprintf( 'uploads_since leaves out only OLD uploads — code of any age stays (old=%d new=%d own=%d, old mtime %d, exists %d)', in_array( 'uploads/age-probe/old.txt', $aged, true ), in_array( 'uploads/age-probe/new.txt', $aged, true ), in_array( $own, $aged, true ), (int) @filemtime( WP_CONTENT_DIR . '/uploads/age-probe/old.txt' ), file_exists( WP_CONTENT_DIR . '/uploads/age-probe/new.txt' ) )
+);
+unlink( WP_CONTENT_DIR . '/uploads/age-probe/old.txt' );
+unlink( WP_CONTENT_DIR . '/uploads/age-probe/new.txt' );
+rmdir( WP_CONTENT_DIR . '/uploads/age-probe' );
+
 // 5. The file frame: the real file, and refusals for every path outside the rules.
 $asked = array( $own, '../wp-config.php', '/etc/passwd', 'plugins/../../wp-config.php', 'uploads/rexsync-0000/x' );
 $frame = Rexenv_Sync_Reader::file_frame( $asked, array() );

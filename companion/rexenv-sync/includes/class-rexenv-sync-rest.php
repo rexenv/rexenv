@@ -90,7 +90,8 @@ final class Rexenv_Sync_Rest {
 	}
 
 	public static function files_list( WP_REST_Request $request ) {
-		return rest_ensure_response( Rexenv_Sync_Reader::list_files( $request->get_param( 'cursor' ), self::globs( $request ) ) );
+		$since = $request->get_param( 'uploads_since' );
+		return rest_ensure_response( Rexenv_Sync_Reader::list_files( $request->get_param( 'cursor' ), self::globs( $request ), ( null === $since || '' === $since ) ? null : (int) $since ) );
 	}
 
 	public static function files_read( WP_REST_Request $request ) {

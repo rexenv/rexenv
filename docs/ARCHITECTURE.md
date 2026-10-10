@@ -1462,6 +1462,16 @@ honest footer —
   after the import, and the private (0600) dump file is removed on every path. The dump
   uses the export's flags, so stored routines and events are not copied; WordPress uses
   neither.
+- **Live ↔ local sync** (`docs/PLAN-wp-live-sync.md`, the wire in `docs/rexsync-protocol.md`;
+  built 10 Oct 2026 up to pull). The plugin `companion/rexenv-sync` on the LIVE site answers
+  signed requests only (#825). rexenv always calls out (`core/live_sync/client.rs`, #826) and
+  keeps nothing it cannot verify. The pairing secret is an owner-only file under app data on
+  every OS (#828) — not the keychain, because ad-hoc signing changes the code identity every
+  update. A pull (`core/live_sync/pull.rs`, #827) stages the whole database, moves its URLs,
+  then swaps with ONE `RENAME TABLE`, keeping the previous local tables in `<db>_prepull`;
+  files come through a staging folder; nothing local is deleted. The Live tab (#829) pairs,
+  pulls (always after a confirm), and shows the outcome; push is a later stage and is never
+  an agent tool.
 - **A plugin/theme worktree child is a COPY of its parent's WordPress, with one folder a
   git worktree** (#819, W4/W5, built 9 Oct 2026). It is not yet reachable from the UI: the
   command is unregistered until W8. `commands::worktree::start` validates the request

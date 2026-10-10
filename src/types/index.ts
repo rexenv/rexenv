@@ -1559,6 +1559,37 @@ export interface SiteProvisionState {
   assetsWarning?: string | null;
 }
 
+/** A local site's pairing with a live one (`docs/PLAN-wp-live-sync.md`) — never the secret. */
+export interface LiveSyncPairing {
+  siteUrl: string;
+  keyId: string;
+  basicAuthUser: string | null;
+}
+
+/** What pairing answered: the pairing, and what the live site said about itself. */
+export interface LiveSyncPaired {
+  pairing: LiveSyncPairing;
+  wp: string;
+  php: string;
+  tables: number;
+  multisite: boolean;
+}
+
+/** One pull (live → local), streamed on `live-sync://state/<id>`. */
+export interface LiveSyncJobState {
+  id: string;
+  siteId: string;
+  domain: string;
+  status: "running" | "ok" | "failed";
+  lines: string[];
+  error: string | null;
+  tables: number;
+  rows: number;
+  files: number;
+  refusedFiles: string[];
+  backupDb: string | null;
+}
+
 /** A plugin/theme worktree site to make (`docs/PLAN-git-worktrees.md`):
  *  `branch` is checked out, or made NEW from `base` when that is set. */
 export interface WorktreeRequest {
