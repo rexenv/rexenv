@@ -230,7 +230,14 @@ final class Rexenv_Sync_Reader {
 		if ( $first ) {
 			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
 			$create = $wpdb->get_row( "SHOW CREATE TABLE $q", ARRAY_N );
-			$sql   .= "DROP TABLE IF EXISTS $q;\n" . $create[1] . ";\n";
+			// The session the import runs in must accept what WordPress's own schema
+			// holds: core tables default datetimes to '0000-00-00 00:00:00', which a
+			// strict MySQL 8 refuses ("Invalid default value for 'comment_date'" — the
+			// first whole pull, 10 Oct 2026). mysqldump writes the same header.
+			$sql .= "/*!40101 SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n"
+				. 'SET NAMES ' . ( $wpdb->charset ? esc_sql( $wpdb->charset ) : 'utf8mb4' ) . ";\n"
+				. "SET FOREIGN_KEY_CHECKS=0;\n";
+			$sql .= "DROP TABLE IF EXISTS $q;\n" . $create[1] . ";\n";
 		}
 		$where = '';
 		if ( $table === $wpdb->options || ( is_multisite() && $table === $wpdb->sitemeta ) ) {

@@ -491,7 +491,7 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   clone a live site locally, Pull, Push with backup + Roll back, per-table conflict choice. Needs a new
   `SecretStore` platform trait (all three OSes). Plan + tasks L0–L15: `docs/PLAN-wp-live-sync.md`.
   Owner answered 9 Oct 2026: in-app zip only, and a push always needs a human click (never MCP). §11 Q2–Q7
-  are still open. L1 (the protocol spec) DRAFTED 10 Oct 2026: `docs/rexsync-protocol.md`, awaiting review; the signature half of L3/L5 built against shared vectors (#824); the plugin's pairing + read side (L3/L4) proven inside WordPress (#825). the client (L5) pulls from it over HTTP (#826). Next: L2 `SecretStore` (three OSes — needs §11 Q4) and L6, the pull job.
+  are still open. L1 (the protocol spec) DRAFTED 10 Oct 2026: `docs/rexsync-protocol.md`, awaiting review; the signature half of L3/L5 built against shared vectors (#824); the plugin's pairing + read side (L3/L4) proven inside WordPress (#825). the client (L5) pulls from it over HTTP (#826). the pull's core (L6) pulls a whole site into a local one (#827). Next: L2 `SecretStore` (needs §11 Q4 and the macOS keychain-vs-ad-hoc-signing question), then L6's job card and L7's New-site flow.
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"

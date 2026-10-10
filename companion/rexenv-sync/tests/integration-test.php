@@ -143,7 +143,7 @@ $r = $send( 'GET', '/rexenv-sync/v1/db/export', array( 'table' => $wpdb->options
 $d = $r->get_data();
 $check( 200 === $r->get_status() && false !== strpos( $d['sql'], "'siteurl'" ) && hash( 'sha256', $d['sql'] ) === $d['sha256'] && null === $d['cursor'], 'the options table exports, its sha256 right, in one chunk' );
 $check( false === strpos( $d['sql'], 'rexsync_pairing' ) && false === strpos( $d['sql'], $json['s'] ), 'the export carries neither the pairing row nor the secret' );
-$check( 0 === strpos( $d['sql'], 'DROP TABLE IF EXISTS' ), 'the first chunk starts with DROP + CREATE' );
+$check( false !== strpos( $d['sql'], "SQL_MODE='NO_AUTO_VALUE_ON_ZERO'" ) && strpos( $d['sql'], 'SQL_MODE' ) < strpos( $d['sql'], 'DROP TABLE IF EXISTS' ), 'the first chunk sets the import session up, then DROP + CREATE' );
 $r = $send( 'GET', '/rexenv-sync/v1/db/export', array( 'table' => 'not_a_table' ) );
 $check( 404 === $r->get_status(), 'an unknown table is refused' );
 
