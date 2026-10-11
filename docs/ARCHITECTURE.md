@@ -1471,7 +1471,9 @@ honest footer —
 - **Live ↔ local sync** (`docs/PLAN-wp-live-sync.md`, the wire in `docs/rexsync-protocol.md`;
   built 10 Oct 2026 up to pull). The plugin `companion/rexenv-sync` on the LIVE site answers
   signed requests only (#825). rexenv always calls out (`core/live_sync/client.rs`, #826) and
-  keeps nothing it cannot verify. The pairing secret is an owner-only file under app data on
+  keeps nothing it cannot verify. It refuses a plugin older than 0.1.1 (`MIN_PLUGIN`, #856):
+  0.1.0 exported every `%` as wpdb's random `{<64 hex>}` placeholder, so every pull broke the
+  permalink structure and a push carried the damage to live. The pairing secret is an owner-only file under app data on
   every OS (#828) — not the keychain, because ad-hoc signing changes the code identity every
   update. A pull (`core/live_sync/pull.rs`, #827) stages the whole database, moves its URLs,
   then swaps with ONE `RENAME TABLE`, keeping the previous local tables in `<db>_prepull`;

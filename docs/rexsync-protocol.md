@@ -125,7 +125,11 @@ back unchanged. `null` means done.
 - `/db/export`'s cursor is `"k:<json>"` (keyset: a single-column primary key, `WHERE pk >
   last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
   written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes
-  and break the chunk's `sha256`.
+  and break the chunk's `sha256`. A `%` is written as `%`: `$wpdb->_real_escape()` alone
+  writes it as wpdb's per-request `{<64 hex>}` placeholder, which only `$wpdb->query()`
+  turns back — and the chunk is imported by the mysql client. Plugin 0.1.0 shipped that,
+  so every pulled permalink structure broke and a push carried it to live (#856); the
+  client refuses a `manifest` whose `plugin` is older than 0.1.1 (`MIN_PLUGIN`).
 - The plugin's own option rows (never exported, restored around a swap): the pairing,
   `rexsync_backup` (the ONE kept backup, read by rollback), and `rexsync_push_<id>` (a push's
   record, from `begin` until its swap or abort — dropped at the end of the swap since 10 Oct

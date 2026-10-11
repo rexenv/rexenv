@@ -38,6 +38,28 @@ pub struct Manifest {
     pub free_bytes: Option<u64>,
 }
 
+/// The oldest plugin a pull or push may talk to. 0.1.0 exported every `%` in a cell as
+/// wpdb's per-request `{<64 hex>}` placeholder: a pull wrote the permalink structure as
+/// `/{8f2b…}year{8f2b…}/…` (every post link a 404) and a push carried it back to live (#856).
+pub const MIN_PLUGIN: (u32, u32, u32) = (0, 1, 1);
+
+/// The refusal for a plugin older than [`MIN_PLUGIN`], or `None`. An unreadable version
+/// is refused too: nothing says it is past the fix.
+pub fn plugin_too_old(version: &str) -> Option<String> {
+    let mut parts = version.trim().split('.').map(|p| p.parse::<u32>());
+    let v = match (parts.next(), parts.next(), parts.next().unwrap_or(Ok(0))) {
+        (Some(Ok(a)), Some(Ok(b)), Ok(c)) => (a, b, c),
+        _ => (0, 0, 0),
+    };
+    (v < MIN_PLUGIN).then(|| {
+        format!(
+            "rexenv Sync: the site's plugin is {version}, which damages a pulled database (every % in it, \
+             permalinks included). Update it first: Download plugin (.zip) here, then on the site Plugins → \
+             Add New → Upload Plugin → Replace current with uploaded."
+        )
+    })
+}
+
 /// One file in `/files/list`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct RemoteFile {
@@ -379,6 +401,9 @@ impl Client {
                 sign::PROTOCOL
             )));
         }
+        if let Some(e) = plugin_too_old(&m.plugin) {
+            return Err(Error::Other(e));
+        }
         if m.site_url.trim_end_matches('/') != self.key.site_url {
             return Err(Error::Other(format!(
                 "rexenv Sync: this key is for {}, but the site answering is {}.",
@@ -688,7 +713,7 @@ mod tests {
 
         // 503 first, then the manifest: the retry is used and nothing is reported.
         let manifest = serde_json::json!({
-            "protocol": sign::PROTOCOL, "plugin": "0.1.0", "site_url": "https://example.com", "wp": "6.8", "php": "8.3.1",
+            "protocol": sign::PROTOCOL, "plugin": "0.1.1", "site_url": "https://example.com", "wp": "6.8", "php": "8.3.1",
             "mysql": "8.0", "prefix": "wp_", "multisite": false, "tables": [], "free_bytes": null
         })
         .to_string();
@@ -712,6 +737,18 @@ mod tests {
         assert_eq!(join_rel(&dest, "plugins/a/b.php").unwrap(), dest.join("plugins").join("a").join("b.php"));
         for bad in ["C:/x/evil.php", "../x", "/etc/passwd", "a:b"] {
             assert!(join_rel(&dest, bad).is_err(), "{bad}");
+        }
+    }
+
+    /// **A plugin older than 0.1.1 is refused before anything is read from it** (ledger
+    /// #856). Plant: `MIN_PLUGIN = (0, 1, 0)` and 0.1.0 passes.
+    #[test]
+    fn a_plugin_that_damaged_percent_signs_is_refused() {
+        let e = plugin_too_old("0.1.0").expect("0.1.0 refused");
+        assert!(e.contains("0.1.0") && e.contains("Upload Plugin"), "{e}");
+        assert!(plugin_too_old("").is_some() && plugin_too_old("dev").is_some());
+        for ok in ["0.1.1", "0.2", "1.0.0", " 0.1.1 "] {
+            assert_eq!(plugin_too_old(ok), None, "{ok}");
         }
     }
 

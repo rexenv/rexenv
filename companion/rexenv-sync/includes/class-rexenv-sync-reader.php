@@ -360,6 +360,8 @@ final class Rexenv_Sync_Reader {
 		if ( '' !== $cell && ! preg_match( '//u', $cell ) ) {
 			return '0x' . bin2hex( $cell );
 		}
-		return "'" . $wpdb->_real_escape( $cell ) . "'";
+		// _real_escape() writes every `%` as wpdb's per-request `{hash}` placeholder; only
+		// $wpdb->query() turns it back, and this text is imported by the mysql client (#856).
+		return "'" . $wpdb->remove_placeholder_escape( $wpdb->_real_escape( $cell ) ) . "'";
 	}
 }

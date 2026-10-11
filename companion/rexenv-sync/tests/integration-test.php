@@ -178,8 +178,15 @@ for ( $i = 1; $i < count( $recs ); $i++ ) {
 $check( $refused, 'traversal, absolute and quarantine paths are refused, never read' );
 
 // 6. The options table, exported: the site's rows, never the pairing.
+update_option( 'rexsync_pct_probe', '/%year%/%postname%/ 100%' );
 $r = $send( 'GET', '/rexenv-sync/v1/db/export', array( 'table' => $wpdb->options ) );
 $d = $r->get_data();
+delete_option( 'rexsync_pct_probe' );
+// The chunk is imported by the mysql client, never through $wpdb->query() — whose `query`
+// filter is the only thing that turns wpdb's `{hash}` placeholder back into `%`. So the
+// TEXT must carry the `%` itself: a pull once wrote every permalink structure as
+// `/{8f2b…}year{8f2b…}/…` and a push carried it back to live (#856).
+$check( false !== strpos( $d['sql'], "'/%year%/%postname%/ 100%'" ) && ! preg_match( '/\{[0-9a-f]{64}\}/', $d['sql'] ), 'a % in a cell leaves as %, not as wpdb\'s placeholder' );
 $check( 200 === $r->get_status() && false !== strpos( $d['sql'], "'siteurl'" ) && hash( 'sha256', $d['sql'] ) === $d['sha256'] && null === $d['cursor'], 'the options table exports, its sha256 right, in one chunk' );
 $check( false === strpos( $d['sql'], 'rexsync_pairing' ) && false === strpos( $d['sql'], $json['s'] ), 'the export carries neither the pairing row nor the secret' );
 $check( false !== strpos( $d['sql'], "SQL_MODE='NO_AUTO_VALUE_ON_ZERO'" ) && strpos( $d['sql'], 'SQL_MODE' ) < strpos( $d['sql'], 'DROP TABLE IF EXISTS' ), 'the first chunk sets the import session up, then DROP + CREATE' );

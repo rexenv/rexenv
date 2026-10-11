@@ -1071,7 +1071,8 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       card of the pull refused under the OLD key stayed after the new key was accepted — fixed (#854).
 - [x] **Pull from live** → the confirm names both sites → the card streams table lines, then
       "Pulled N tables … files. The previous local tables are in `<db>_prepull`." The local site
-      now shows the live content at the LOCAL domain (links and images local); wp-admin logs in
+      now shows the live content at the LOCAL domain (links and images local); a POST opens at
+      its permalink — not a 404 (#856: the front page alone hid a broken permalink structure); wp-admin logs in
       with the LIVE site's users; the Plugins list shows rexenv Sync **inactive**; the local
       `wp-config.php` has `define( 'DISABLE_WP_CRON', true );` and the log says so.
       ◐ macOS 15.8 VM, this tree's release build, 11 Oct 2026: the confirm names both sites ("Pull https://live-sync.rex.bd into l14vm.rex?" … "Nothing
@@ -1156,7 +1157,25 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   admin fields, Create and pull → provision card → `live-sync.rex` pulled (45 links local, live's
   `admin`). Found: the log read "1 rows" and "1 files in the quarantine" — fixed (`live_sync::count`).
   Seen, not a defect: a native `title` tooltip stays drawn over the confirm until the mouse moves
-  (WebKitGTK draws it outside the page). **Windows: not run** — the Dell was offline.
+  (WebKitGTK draws it outside the page).
+  ✓ **Windows** — the Dell (Windows 10 22H2), this tree's debug build (`windows-app-build.sh`), 11 Oct
+  2026, same host and key: Download plugin → toast "Saved C:\Users\DELL\Downloads\rexenv-sync.zip…" (10
+  files); a wrong secret → "the pairing does not match", `rex live … status` "not connected", no
+  pairing file; an `http://` key → the HTTPS sentence; the real key → "Connected to … `k_31c79846`", the
+  pairing file's ACL the user alone (`icacls`: `DELL:(F)`). Pull → "Pulled 12 tables (209 rows) and 735
+  files… `wp_l14w_rex_prepull`", 45 links `https://l14w.rex`, the local-only post gone, user `admin`
+  only, rexenv Sync inactive, `DISABLE_WP_CRON` (wp-config line 94), "1 row" singular. Recent uploads →
+  "uploads older than … left on live". Push → picker badges as written, `live-sync.rex.b` kept Push
+  off → "Pushed 8 tables and 1 file … as `13a5b0d1…`" ("1 file in the quarantine", "1 chunk"); Roll back
+  → names the id → "Rolled back.", live's title and CSS back. `smoke1w.rex` never pulled → refused
+  before any picker; Disconnect → the connect form, the site 200. New site → From a live site → Check
+  names 8.3 and why, name/domain `live-sync`, no admin fields → Create and pull → the pull ran by
+  itself, 45 links `https://live-sync.rex`, `admin`. **Found:** after the push, the post's link 404'd on
+  LIVE: every pull had written `permalink_structure` as `/{8f2b…}year{8f2b…}/…` — the plugin's
+  `_real_escape` turns `%` into wpdb's placeholder, which only `$wpdb->query()` reverses — and the push
+  sent it back. The Ubuntu VM's two copies had it too (checked; the macOS VM's, same plugin, was not
+  re-opened) — those runs read the front page, never a post. Fixed in the plugin (0.1.1) and rexenv refuses an older plugin (#856). To re-run: upload the
+  new zip on the live site (Replace current), then pull and open a POST, not only the front page.
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
