@@ -1125,10 +1125,21 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       1 file … as `26324dc5…`"; live showed the edit, 45 links all `live-sync.rex.bd`, the CSS line served;
       Roll back → asks naming the id → "Rolled back.", no button left, the edit and the CSS line gone. The
       toast still said "1 files" — fixed.
-- [ ] Make a post ON the live site, then Push again → the card says "Nothing was sent: 1
-      item(s) changed on <host>" naming `wp_posts`; live is unchanged. **Push anyway,
-      overwriting these** → the confirm names `wp_posts` → the live post is gone (it is in the
-      new backup). **Roll back** → asks, names the backup id → the live post is back.
+- [ ] Make a post ON the live site (wp-admin), then Push again → the card says "Nothing was
+      sent: N item(s) changed on <host>" naming `wp_posts` — and only tables a new post writes
+      (`posts`, `postmeta`, `term_relationships`, `term_taxonomy`, `options`); never one it does
+      not, such as `wp_terms`; live is unchanged. **Push anyway, overwriting these** → the
+      confirm lists the names one per line → the live post is gone (it is in the new backup).
+      **Roll back** → asks, names the backup id → the live post is back.
+      ◐ the Dell (Windows 10), this tree's debug build, 11 Oct 2026, plugin 0.1.1, after a push +
+      Roll back: a post made on live → "Nothing was sent: 6 item(s)…" naming `wpcs_options`,
+      `postmeta`, `posts`, `term_relationships`, `term_taxonomy` AND `wpcs_terms` (the post added no
+      term); live unchanged. Push anyway → the confirm named the six, but run together into one line
+      with the next sentence ("…wpcs_terms The live site keeps…") → post 18 gone from live, the local
+      title on live → Roll back → post 18 back at its permalink. Found: (1) a RENAME (the rollback)
+      resets InnoDB's row estimate and the stamp carries `Rows`, so the base read right after went
+      stale on its own — `wpcs_terms` read `rows:0`; the plugin now ANALYZEs what it renamed (0.1.2,
+      #857); (2) the confirm's `\n`-joined list — now a list. Owed: the run on 0.1.2 with a fresh post.
 - [x] A site that was never pulled (connect, then push straight away) → refused with "pull once
       first"; nothing on live changed.
       ✓ the macOS 15.8 VM, this tree's release build, 11 Oct 2026: `smoke1.rex` connected, never pulled → refused "… has never been pulled from live-sync.rex.bd — pull

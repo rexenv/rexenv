@@ -249,6 +249,15 @@ $base_now = function () use ( $send, $pt, $pfile ) {
 	$full = WP_CONTENT_DIR . '/' . $pfile;
 	return array( 'tables' => $t, 'files' => array( $pfile => filesize( $full ) . ':' . filemtime( $full ) ) );
 };
+// The stamp a manifest would carry for $t NOW, and whether it is the settled one: what
+// a RENAME leaves must not move when InnoDB's statistics catch up (#857).
+$settled = function ( $t ) use ( $wpdb ) {
+	$wpdb->query( 'SET SESSION information_schema_stats_expiry = 0' );
+	$now = Rexenv_Sync_Reader::stamp( $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $t ), ARRAY_A ) );
+	$wpdb->get_results( "ANALYZE TABLE `$t`" );
+	$later = Rexenv_Sync_Reader::stamp( $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $t ), ARRAY_A ) );
+	return $now === $later ? true : "$now became $later";
+};
 $base = $base_now();
 // 8a. a conflict: live changes after the base was taken → begin refuses, names it.
 touch( WP_CONTENT_DIR . '/' . $pfile, time() + 5 );
@@ -278,6 +287,8 @@ $r = $send( 'POST', '/rexenv-sync/v1/push/swap', array( 'push_id' => $pid ) );
 $d = $r->get_data();
 $check( 200 === $r->get_status() && $d['backup_id'] === $pid && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'local-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxbak_$pt`" ) && 'local version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && is_file( WP_CONTENT_DIR . '/rexsync-backups/' . $pid . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $pid ) && ! file_exists( ABSPATH . '.maintenance' ), 'push/swap: live is the pushed data and file, the old ones kept in the backup, quarantine gone, maintenance off' );
 $check( get_option( Rexenv_Sync_Pairing::OPTION ) === $pairing_before, 'the plugin\'s own pairing row survives the swap' );
+$st = $settled( $pt );
+$check( true === $st, "the swapped table's stamp is already the settled one ($st)" );
 // #845: the push's record is gone after the swap, and neither it nor the kept backup
 // record would travel in a pull of the options table.
 $check( '0' === $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE 'rexsync\\_push\\_%'" ), 'no push record is left after the swap' );
@@ -293,6 +304,8 @@ $check( ! in_array( 'rexsync-backups/' . $pid . '/' . $pfile, array_column( Rexe
 // 8f. rollback: everything back.
 $r = $send( 'POST', '/rexenv-sync/v1/push/rollback', array( 'backup_id' => $pid ) );
 $check( 200 === $r->get_status() && '2' === $wpdb->get_var( "SELECT COUNT(*) FROM `$pt`" ) && 'live-1' === $wpdb->get_var( "SELECT v FROM `$pt` WHERE id=1" ) && 'live version' === file_get_contents( WP_CONTENT_DIR . '/' . $pfile ) && ! is_dir( WP_CONTENT_DIR . '/rexsync-backups/' . $pid ) && false === get_option( Rexenv_Sync_Pusher::KEEP ), 'push/rollback puts the old table and file back and drops the backup' );
+$st = $settled( $pt );
+$check( true === $st, "the rolled-back table's stamp is already the settled one ($st)" );
 $check( 404 === $send( 'POST', '/rexenv-sync/v1/push/rollback', array( 'backup_id' => $pid ) )->get_status(), 'a second rollback of the same backup is refused' );
 // 8g. abort: an open push leaves nothing.
 $r   = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array(), 'base' => $base_now() ) ) );

@@ -188,7 +188,19 @@ export function LiveTab({ site }: { site: Site }) {
             if (
               await confirm({
                 title: `Overwrite ${items.length} item(s) on ${hostOf(p.siteUrl)}?`,
-                message: `These changed on the live site after your last sync. Pushing anyway replaces them with this site's version:\n\n${items.join("\n")}\n\nThe live site keeps a backup you can roll back to.`,
+                // A list, not "\n"-joined text: the dialog does not keep newlines, and the
+                // names ran into one line with the next sentence ("wpcs_terms The live site").
+                message: (
+                  <>
+                    These changed on the live site after your last sync. Pushing anyway replaces them with this site's version:
+                    <ul className="my-2 font-mono text-[0.75rem]">
+                      {items.map((i) => (
+                        <li key={i}>{i}</li>
+                      ))}
+                    </ul>
+                    The live site keeps a backup you can roll back to.
+                  </>
+                ),
                 confirmLabel: "Push anyway",
                 danger: true,
               })

@@ -114,7 +114,11 @@ back unchanged. `null` means done.
 - `checksum` is a change STAMP, `"rows:<n>:len:<data_length>:upd:<UPDATE_TIME>"`, never
   `CHECKSUM TABLE`: that reads the whole table on InnoDB, on every `/manifest`, and a big
   site's manifest would pass `max_execution_time`. rexenv only compares stamps of the same
-  site for EQUALITY. Views are not listed.
+  site for EQUALITY. Views are not listed. `Rows` is InnoDB's ESTIMATE, and a `RENAME TABLE`
+  resets it (one row reads 0 until the next stats pass): a swap or rollback therefore ends with
+  `ANALYZE TABLE` on what it renamed, so the stamp rexenv reads straight after as its new base
+  does not move by itself minutes later (0.1.2, #857 — `wpcs_terms` stopped a push on
+  live-sync.rex.bd that no one had touched).
 - The nonce store is the plugin's own table `<prefix>rexsync_nonces` (never listed, exported
   or pushed): a row per signed request in `wp_options` would move that table's stamp on
   every call. The stamp is `ai:<Auto_increment>:upd:<Update_time>:rows:<n>:len:<bytes>`,

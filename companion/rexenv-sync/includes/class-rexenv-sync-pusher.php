@@ -270,6 +270,7 @@ final class Rexenv_Sync_Pusher {
 		delete_option( self::OPTION . $push_id );
 		self::remove_dir( self::quarantine( $push_id ) );
 		delete_option( 'rewrite_rules' );
+		self::settle_stats( $r['tables'] );
 		self::maintenance( false );
 		return array( 'swapped' => $r['tables'], 'files' => count( $moved ), 'backup_id' => $push_id );
 	}
@@ -321,6 +322,7 @@ final class Rexenv_Sync_Pusher {
 		delete_option( self::KEEP );
 		self::remove_dir( $bdir );
 		delete_option( 'rewrite_rules' );
+		self::settle_stats( $keep['tables'] );
 		self::maintenance( false );
 		return array( 'restored' => $keep['tables'], 'files' => count( $keep['files'] ) );
 	}
@@ -370,6 +372,22 @@ final class Rexenv_Sync_Pusher {
 	}
 
 	/** WordPress's own maintenance switch: the `.maintenance` file beside wp-config. */
+	/**
+	 * `ANALYZE TABLE` each table a swap or rollback renamed. A RENAME resets InnoDB's
+	 * row estimate (one row read `Rows` 0 straight after, 1 after the next stats pass),
+	 * and the change stamp carries `Rows`: rexenv reads the manifest right after a push
+	 * or rollback as its new base, the estimate settled minutes later, and the next push
+	 * stopped on tables nobody had touched — `wpcs_terms` on live-sync.rex.bd (#857).
+	 * ANALYZE writes no row, so `Update_time` and `Auto_increment` stay as they were.
+	 */
+	private static function settle_stats( array $tables ) {
+		global $wpdb;
+		foreach ( $tables as $t ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			$wpdb->get_results( 'ANALYZE TABLE `' . esc_sql( $t ) . '`' );
+		}
+	}
+
 	private static function maintenance( $on ) {
 		$file = ABSPATH . '.maintenance';
 		if ( $on ) {
