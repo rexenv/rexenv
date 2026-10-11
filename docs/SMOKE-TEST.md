@@ -1176,6 +1176,12 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   sent it back. The Ubuntu VM's two copies had it too (checked; the macOS VM's, same plugin, was not
   re-opened) — those runs read the front page, never a post. Fixed in the plugin (0.1.1) and rexenv refuses an older plugin (#856). To re-run: upload the
   new zip on the live site (Replace current), then pull and open a POST, not only the front page.
+  ✓ Re-run the same day on the Dell, the build with the gate, after the owner regenerated the key and
+  uploaded the zip: with 0.1.0 still on the site, Connect was refused with the update sentence; on
+  0.1.1 → Connect (`k_366fc6bd`) → Pull: `permalink_structure` `/%year%/%monthnum%/%day%/%postname%/`,
+  `/2008/06/21/html/` and `?p=10` both open the post, 0 of 1152 cells hold a `{64 hex}` token → Push
+  (a post title + `style.css`) → live's post opens at its permalink with the new title, the CSS line
+  served, 45 links `live-sync.rex.bd` → Roll back → title and CSS gone.
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
