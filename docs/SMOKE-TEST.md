@@ -1140,6 +1140,23 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       password → Connect works; without them, the firewall/401 sentence.
 - **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's
   bundled PHP and on the Dell's (`live_sync_pull_check`).
+  ✓ **Linux** — the Ubuntu 22.04 VM, this tree's debug deb (GNOME, WebKitGTK), 11 Oct 2026, against
+  live-sync.rex.bd with its current key: Download plugin → toast names `~/Downloads/rexenv-sync.zip`
+  (10 files); a wrong secret → "the pairing does not match — paste the site's key into rexenv again",
+  nothing stored; an `http://` key → the HTTPS sentence; the real key → "Connected to … — WordPress
+  7.1.3, 12 tables", the pairing file `600`. Pull → "Pulled 12 tables (209 rows) and 735 files…
+  `wp_l14lx_rex_prepull`", 45 links all `https://l14lx.rex`, the local-only post gone, user `admin`
+  only, rexenv Sync inactive, `DISABLE_WP_CRON` in wp-config, the log open at its end. Recent uploads
+  → "uploads older than … left on live" (the 404 half as on macOS: one recent upload). Push → picker
+  badges as written, `live-sync.rex.b` kept Push off → "Pushed 8 tables and 1 file … as `9685325f…`";
+  live showed the edit and the CSS line, 45 links `live-sync.rex.bd`; Roll back → names the id →
+  "Rolled back.", both gone from live. `smoke1.rex` connected, never pulled → Push to live… refused
+  before any picker. Disconnect → the connect form, `rex live … status` "not connected", the site
+  still 200. New site → From a live site → Check names 8.3 and says 8.1 is not installed (#855), no
+  admin fields, Create and pull → provision card → `live-sync.rex` pulled (45 links local, live's
+  `admin`). Found: the log read "1 rows" and "1 files in the quarantine" — fixed (`live_sync::count`).
+  Seen, not a defect: a native `title` tooltip stays drawn over the confirm until the mouse moves
+  (WebKitGTK draws it outside the page). **Windows: not run** — the Dell was offline.
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or

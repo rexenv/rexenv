@@ -197,7 +197,7 @@ pub async fn push_from(
             client.push_file(&push_id, rel, &std::fs::read(&p)?).await?;
         }
         if !files.is_empty() {
-            on_line(&format!("  {} files in the quarantine", files.len()));
+            on_line(&format!("  {} in the quarantine", super::count(files.len(), "file", "files")));
         }
         for t in &tables {
             let f = local.scratch.join(format!("push-{t}.sql"));
@@ -208,7 +208,7 @@ pub async fn push_from(
             for piece in &pieces {
                 client.push_sql(&push_id, t, piece).await?;
             }
-            on_line(&format!("  {t} — {} chunk(s) in the shadow table", pieces.len()));
+            on_line(&format!("  {t} — {} in the shadow table", super::count(pieces.len(), "chunk", "chunks")));
         }
         Ok(())
     }

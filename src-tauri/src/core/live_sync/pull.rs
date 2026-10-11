@@ -131,7 +131,7 @@ pub async fn pull_into(
             imported?;
             report.rows += rows;
             report.tables += 1;
-            on_line(&format!("  {} — {rows} rows", t.name));
+            on_line(&format!("  {} — {}", t.name, super::count(rows as usize, "row", "rows")));
         }
         let have = local.engine.list_tables(local.client, local.port, &stage)?;
         let missing: Vec<&str> = m.tables.iter().map(|t| t.name.as_str()).filter(|n| !have.iter().any(|h| h == n)).collect();
