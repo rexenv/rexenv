@@ -1,6 +1,6 @@
 # Release pipeline — ONE tag → every OS's artefacts, built on GitHub, drafted on the tap.
 #
-# Owner ruling, 27 Sep 2026 (docs/PLAN-ci-release.md): every release ships macOS, Windows
+# Owner ruling, 27 Sep 2026 (docs/archive/PLAN-ci-release.md): every release ships macOS, Windows
 # and Linux TOGETHER, and every artefact is built on a GitHub-hosted runner — never on a
 # developer's machine. The Linux port found three device-shaped bugs in one day (a deb
 # built on a 26.04 laptop runs on nothing older; a distro's renamed sonames), and a dmg

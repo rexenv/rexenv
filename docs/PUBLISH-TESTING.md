@@ -438,7 +438,7 @@ design; re-installing the route is SMOKE's Linux P1 row.
 archive `rexenv_0.8.8_universal.app.tar.gz` 28,355,104 bytes (`.sha256` OK). Source `49c07350`
 (tag `v0.8.8`, pushed), built by `rexenv/runtimes` run 36329787548 (macos-14 lane, 15:38:48 UTC);
 the same run built Windows and both Linux artefacts and drafted them together
-(`docs/PLAN-ci-release.md`). **§A0 ✅ by hand on the downloaded assets, 27 Sep 2026:** both
+(`docs/archive/PLAN-ci-release.md`). **§A0 ✅ by hand on the downloaded assets, 27 Sep 2026:** both
 binaries `x86_64 arm64`, `Dist_Archive_Command` ×5 in EACH slice, `minos 13.0` in both, codesign
 valid, Info.plist `0.8.8`, and the dmg's `rexenv` binary byte-identical to the archive's (the
 lane's `release-assets.sh --check` asserted the update key per slice and the archive layout).

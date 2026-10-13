@@ -15,7 +15,7 @@ it, and the Homebrew tap updates itself. Two workflows implement this.
 > pipeline drift.
 >
 > **Since 27 Sep 2026 every release is built ONLY on GitHub Actions, every OS at once**
-> (owner ruling, `docs/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
+> (owner ruling, `docs/archive/PLAN-ci-release.md`): one tag → macOS + Windows + Linux ×2 lanes →
 > one DRAFT — on `rexenv/rexenv` since 0.8.11 (30 Sep 2026); on the tap before — with all eight assets. The "build locally, upload to
 > the tap by hand" flow that cut 0.1.0–0.8.7 is retired; its section below is kept as the
 > record of why the artefacts live on the tap.

@@ -57,7 +57,6 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 | Plan | Status |
 |---|---|
-| `docs/PLAN-ci-release.md` | (no Status line in the first 20 lines) |
 | `docs/PLAN-linux-port.md` | SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open ro… |
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |

@@ -88,7 +88,7 @@ a control.
 #### `pre-push` — a `v*` tag must name the version the tagged commit declares
 
 Pushing a `v*` tag to `rexenv/rexenv` IS the release (since 27 Sep 2026: `release.yml`
-builds every OS on GitHub and drafts the release on the tap — `docs/PLAN-ci-release.md`).
+builds every OS on GitHub and drafts the release on the tap — `docs/archive/PLAN-ci-release.md`).
 The hook runs `scripts/check-versions.sh` against the four manifests **at the tagged
 commit** (a scratch copy, never the working tree) and refuses a tag that disagrees:
 CI's first job would fail in seconds anyway, but a tag GitHub has seen is fixed by a

@@ -6,7 +6,7 @@ description: Cut a rexenv release — version bump in all four manifests, verify
 # release — the runbook is `docs/RELEASING.md`; this is the order and the gates
 
 Read `docs/RELEASING.md` first. **Since 27 Sep 2026 every release is built ONLY on
-GitHub Actions, every OS from one tag** (owner ruling, `docs/PLAN-ci-release.md`):
+GitHub Actions, every OS from one tag** (owner ruling, `docs/archive/PLAN-ci-release.md`):
 macOS + Windows + Linux (x86_64 and aarch64) → one DRAFT on `rexenv/homebrew-tap`
 with every asset, or nothing. Never build a release artefact on a device; a local
 `pnpm release:mac|win|linux` is a proof run, not a release. Do not invent another flow.

@@ -12,7 +12,7 @@
 # Keeping the tag local was the interim flow, and the hook made that a mechanism rather
 # than a memory.
 #
-# On 27 Sep 2026 the owner ruled the opposite (docs/PLAN-ci-release.md): every release is
+# On 27 Sep 2026 the owner ruled the opposite (docs/archive/PLAN-ci-release.md): every release is
 # built ONLY on GitHub Actions, every OS at once, and `release.yml` now drafts the release
 # ON THE TAP (with TAP_TOKEN) with all eight assets. Pushing the tag IS the release. The
 # refusal's three reasons are gone — the minutes buy the build nobody's laptop shaped, the

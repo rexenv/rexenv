@@ -1,6 +1,6 @@
 # PLAN — every release from GitHub Actions, every OS at once (27 Sep 2026)
 
-**Status: SHIPPED — 0.8.8–0.8.11 built on Actions; the repo went PUBLIC on 30 Sep 2026 and the
+**Status: SHIPPED — archived 14 Oct 2026 (every release 0.8.8–0.8.13 built on Actions; the live runbook is `docs/RELEASING.md`). Was: SHIPPED — 0.8.8–0.8.11 built on Actions; the repo went PUBLIC on 30 Sep 2026 and the
 pipeline runs in this repo again (the 27–30 Sep runtimes interim ended) and, by the owner's ruling
 the same day, the draft lands HERE too — `docs/RELEASING.md`, "The artefacts live on
 `rexenv/rexenv`".**
