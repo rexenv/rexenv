@@ -1215,6 +1215,12 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   `permalink_structure` `/%year%/%monthnum%/%day%/%postname%/`, `/2008/06/21/html/` 200 with the
   post's title, 0 of 1329 cells hold a `{64 hex}` token, `admin` only, rexenv Sync not active,
   `DISABLE_WP_CRON`, posts 10/18/23 as on live. All three OSes have now pulled on 0.1.2.
+  ✓ **Windows re-pair** on the new key, 14 Oct 2026 — the Dell, the same build: `l14w.rex` (paired
+  with the revoked `k_366fc6bd`) → Disconnect → the key pasted from the clipboard → "Connected …
+  `k_a80b88b5`", the pairing file's ACL `DELL:(F)` alone → Pull → "Pulled 12 tables (232 rows) and
+  1055 files… `wp_l14w_rex_prepull`": permalinks kept, `/2008/06/21/html/` 200 with the post's
+  title, 0 of 1337 cells hold a `{64 hex}` token, `admin` only, rexenv Sync inactive,
+  `DISABLE_WP_CRON`. Every test machine's fixture is now on the current key.
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
