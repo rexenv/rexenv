@@ -1200,6 +1200,15 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   `/2008/06/21/html/` and `?p=10` both open the post, 0 of 1152 cells hold a `{64 hex}` token → Push
   (a post title + `style.css`) → live's post opens at its permalink with the new title, the CSS line
   served, 45 links `live-sync.rex.bd` → Roll back → title and CSS gone.
+  ✓ **Linux re-run** on plugin 0.1.2, 14 Oct 2026 — the Ubuntu 22.04 VM, this tree's debug deb (the
+  0.1.1 gate + #857 inside), after the owner regenerated the key again: `l14lx.rex` and
+  `live-sync.rex` (both pulled on 0.1.0, permalinks broken) → Disconnect → the connect form → the
+  new key → "Connected … `k_a80b88b5`", the pairing file `600` → Pull → "Pulled 12 tables (232 rows)
+  and 1055 files… `wp_l14lx_rex_prepull`" / `wp_live_sync_rex_prepull`: `permalink_structure`
+  `/%year%/%monthnum%/%day%/%postname%/`, `/2008/06/21/html/` 200 with the post's title, 0 of 1329
+  cells hold a `{64 hex}` token, `admin` only, rexenv Sync not among the active plugins,
+  `DISABLE_WP_CRON` in wp-config, posts 10/18/23 as on live. Push/Roll back not repeated here (the
+  Dell's 0.1.2 run above covers them).
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
