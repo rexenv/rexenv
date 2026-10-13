@@ -648,6 +648,11 @@ export function RepoPanel({
               onClick={() => {
                 qc.invalidateQueries({ queryKey: statusKey });
                 qc.invalidateQueries({ queryKey: branchesKey });
+                // The worktree lists are git state too: a folder deleted by hand shows as
+                // "folder missing" only once they are re-read (the macOS VM, 14 Oct 2026 —
+                // Refresh left a gone worktree offering Serve until the tab was re-entered).
+                qc.invalidateQueries({ queryKey: ["sites", "worktrees", siteId] });
+                qc.invalidateQueries({ queryKey: ["sites", "worktrees-adoptable", siteId] });
               }}
               title="Re-read git status"
             >

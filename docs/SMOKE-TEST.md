@@ -998,17 +998,36 @@ branch in that repository:
       `~/rexenv/Worktrees/<domain>`; the site serves the branch with its own `.env`
       (`APP_URL`, `DB_DATABASE`). Delete it → the folder goes, the branch stays.
       ✓ 10 Oct 2026, macOS 15.8 VM (release 2e13a330) on a Blank PHP site from git (no Laravel): phases "copying the parent's config", "installing dependencies", "starting to serve" (no database to copy); folder `~/rexenv/Worktrees/other.gitp.rex`; served "branch: other"; Delete → folder gone, branch kept — but the delete SAID "your folder … is untouched". Fixed (#848): dialog and CLI now say the worktree folder goes.
-- [ ] Delete a served worktree's folder by hand (`rm -rf ~/elsewhere-try`) → Refresh → the row reads
-      "folder missing" and **Clean up missing (1)** appears → click → the row is gone; `git worktree
-      list` no longer names it; no other file moved. Same from the CLI: `rex worktree <site> adoptable`
-      → "folder missing", `rex worktree <site> prune` → "pruned 1".
-      ✓ Linux only (Ubuntu VM, 10 Oct 2026): GUI and CLI both as written; macOS not run on this build yet.
-- [ ] `rex worktree <site> serve <path>` streams the phases and serves; `rex worktree <child>
+- [x] Delete the folder of a worktree made elsewhere that is NOT served (`rm -rf ~/elsewhere-try`)
+      → Refresh → its "made elsewhere" row reads "folder missing", Serve is off and **Clean up
+      missing (1)** appears → click → the row is gone; `git worktree list` no longer names it; no
+      other file moved. Same from the CLI: `rex worktree <site> adoptable` → "folder missing",
+      `rex worktree <site> prune` → "pruned 1". (A SERVED worktree whose folder is deleted stays a
+      site, its Worktree sites row reading "<branch> (not checked out)" — #852's shape; delete that
+      site from its row.)
+      ✓ Linux (Ubuntu VM, 10 Oct 2026): GUI and CLI both as written.
+      ✓ macOS 15.8 VM, this tree's release build, 14 Oct 2026: `rm -rf ~/elsewhere-try5` → CLI
+      `adoptable` "folder missing (rex worktree <domain> prune)"; the GUI row "folder missing", Serve
+      off, Clean up missing (1) → click → gone, `git worktree list` without it, branch `try5` kept;
+      `rm -rf ~/elsewhere-try` → `prune` "pruned 1 vanished worktree record(s); no file was deleted".
+      A served worktree's deleted folder (`try4`) read "try4 (not checked out)" as documented.
+      **Found:** the panel's **Refresh** re-read only git status and branches — the gone worktree kept
+      its Serve button until the tab was left and re-entered (the earlier runs had navigated, so it
+      passed). Fixed: Refresh invalidates both worktree lists; re-run on the fixed build the same day:
+      `rm -rf ~/elsewhere-try6` → Refresh → "folder missing", Serve off, Clean up missing (1) → gone.
+- [x] `rex worktree <site> serve <path>` streams the phases and serves; `rex worktree <child>
       reclone-db` asks, then re-clones.
-      ✓ Linux only (Ubuntu VM, 10 Oct 2026): serve served "branch: try"; reclone-db asked, `n` →
+      ✓ Linux (Ubuntu VM, 10 Oct 2026): serve served "branch: try"; reclone-db asked, `n` →
       "aborted (nothing changed)", `--yes` → re-cloned. The serve stream showed only the phases its
       400 ms poll caught, and over ssh "— created" can print before the last phase line (stdout and
-      stderr travel apart) — neither is wrong. macOS not run on this build yet.
+      stderr travel apart) — neither is wrong.
+      ✓ macOS 15.8 VM, this tree's release build, 14 Oct 2026: `serve ~/elsewhere-try3` streamed
+      "[ 0%] downloading binaries … [ 86%] starting to serve", "try3.gitp.rex — created — serving at
+      https://try3.gitp.rex"; an edit to that folder's `index.php` showed on the site at once (served
+      from the folder). `rex worktree wtp.rex add wtdemo feature-x` streamed its phases; a post made
+      only in the child's database → `reclone-db` asked "[y/N]", `n` → "aborted (nothing changed)",
+      the post still there; `--yes` → "re-cloned … from its parent (24 URL replacements)", the post
+      gone, the child 200.
 - [x] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
       ✓ 14 Oct 2026, macOS 15.8 VM, this tree's release build, driven as a raw JSON-RPC client over
