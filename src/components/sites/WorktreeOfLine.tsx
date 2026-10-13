@@ -1,6 +1,6 @@
 /**
  * "Worktree of shop.rex · feature/x" under a worktree child's domain
- * (`docs/PLAN-git-worktrees.md`, W8). The branch is git's answer now; when the
+ * (`docs/archive/PLAN-git-worktrees.md`, W8). The branch is git's answer now; when the
  * worktree is not there, it says what was asked for and that it is missing.
  * Renders nothing for every other site.
  */

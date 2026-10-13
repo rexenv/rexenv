@@ -1933,7 +1933,7 @@ started IN Local — a button rexenv never presses.
 - **N9** — delete the rexenv site (revert-then-delete default). `~/Local Sites/<name>`
   is untouched; Local's site still starts and serves.
 
-### Network steps — N10–N14 (added 12 Sep 2026, `docs/PLAN-local-multisite.md` T5)
+### Network steps — N10–N14 (added 12 Sep 2026, `docs/archive/PLAN-local-multisite.md` T5)
 
 **PASSED 13 Sep 2026**, owner-run on `multisite.local` (a subdomain network, `sub1` +
 `sub2`) after switching Local's router to localhost mode: "ekhon sob thik achhe". Its

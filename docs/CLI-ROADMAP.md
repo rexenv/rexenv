@@ -210,7 +210,7 @@ file — carried in the watcher snapshot as `logKey`, never rebuilt by the calle
 
 Not a `rex` command, by ruling: pairing (`connect`) — the key is pasted in the app's Live tab or the New Site dialog, never typed into a shell history.
 
-## Worktree sites (`docs/PLAN-git-worktrees.md` W9 — SHIPPED 10 Oct 2026)
+## Worktree sites (`docs/archive/PLAN-git-worktrees.md` W9 — SHIPPED 10 Oct 2026)
 
 | Command | Backing IPC | Notes |
 |---|---|---|

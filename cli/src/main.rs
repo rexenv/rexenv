@@ -1790,7 +1790,7 @@ fn follow_watch_log(w: &Value, dir: &str) {
 const WORKTREE_USAGE: &str =
     "rex worktree <domain> list | add [<dir>] <branch> [--theme] [--from <base>] [--domain D] [--skip-uploads] | adoptable | serve <path> [--domain D] | prune | <worktree-domain> remove [--force] | <worktree-domain> reclone-db [--yes]";
 
-/// Worktree sites (`docs/PLAN-git-worktrees.md`) — the same commands the app's
+/// Worktree sites (`docs/archive/PLAN-git-worktrees.md`) — the same commands the app's
 /// Worktree sites panel calls, through `worktree.*` on the socket.
 fn cmd_worktree(words: &[String], json_output: bool) {
     let known: &[&str] = match words.get(1).map(String::as_str) {

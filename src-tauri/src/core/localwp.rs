@@ -259,7 +259,7 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
                 doc.display()
             ))
         }
-        // A network imports (`docs/PLAN-local-multisite.md`) — adopted, never
+        // A network imports (`docs/archive/PLAN-local-multisite.md`) — adopted, never
         // converted — except in the two shapes this cut can't carry.
         _ if s.multisite.is_some() && matches!(mode, MultisiteMode::None) => {
             SiteStatus::Unsupported(format!(
@@ -631,7 +631,7 @@ mod tests {
         assert_eq!(
             (&by("multi").status, &by("multi").multisite),
             (&SiteStatus::Importable, &MultisiteMode::Subdomain),
-            "a network imports, carrying its mode (docs/PLAN-local-multisite.md)"
+            "a network imports, carrying its mode (docs/archive/PLAN-local-multisite.md)"
         );
         assert!(reason("gone").contains("folder is missing"), "{}", reason("gone"));
         assert!(reason("empty").contains("wp-config.php"), "{}", reason("empty"));

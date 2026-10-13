@@ -1,5 +1,5 @@
 //! Live check: a worktree of a LARAVEL site's own repository (W10 of
-//! `docs/PLAN-git-worktrees.md`, Shape B). Run:
+//! `docs/archive/PLAN-git-worktrees.md`, Shape B). Run:
 //! `cargo run --example worktree_laravel_check`
 //!
 //! `worktree_site_check` proves Shape B on WordPress. This one proves the two

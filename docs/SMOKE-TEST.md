@@ -949,7 +949,7 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   database** round-trips it (make a post → export → delete the post → import → post is back).
   ✓ 18 Sep 2026 (same VM and build).
 
-## Git worktree sites (`docs/PLAN-git-worktrees.md`, built 9–10 Oct 2026)
+## Git worktree sites (`docs/archive/PLAN-git-worktrees.md`, built 9–10 Oct 2026)
 
 On a WordPress site with a plugin that is a git checkout (its row shows **git**), and a second
 branch in that repository:

@@ -162,7 +162,7 @@ mod tests {
         // The banner's question, answered more widely: `checksums` names EVERY missing core file,
         // the long-named casualties included, and wp_maintain's `core_reinstall` is the repair.
         ("wp_core_cut_names", Tool("wp_info")),
-        // ── worktree (docs/PLAN-git-worktrees.md) — `worktree_children/preview/remove`
+        // ── worktree (docs/archive/PLAN-git-worktrees.md) — `worktree_children/preview/remove`
         //    are called by name from the MCP source; these two are reached otherwise:
         ("worktree_create", Tool("worktree")),
         ("worktree_of", Tool("worktree")),

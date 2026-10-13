@@ -6,6 +6,21 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 14 Oct 2026, after the worktree + live-sync build** (HEAD `cfaec633`, v0.8.13 + 70 commits): 7 ticked
+blocks moved by the script (6 from Now — the Caddy no-start, the worktree async worker and the 8–11 Oct
+rows — then the worktree row from Phase 4+ after its tick). All 30 open rows read against the code.
+**Shape 4 (every child closed): 1** — the Git worktree workflow: all SMOKE rows ticked on three OSes
+after the MCP row and #849's verbs ran on the macOS release build (`570f83bf`, `cfaec633`); ticked,
+moved, its plan archived with 20 citations repointed. **Shape 3 (narrative in an open row): 1
+rewritten** — the live-sync row now opens with its four open reasons; its 30-line build log went to
+the archive's "Judgement moves". **Shape 2 (a row claiming what is no longer true): 0 in the rows,
+4 in PLAN headers** — Windows port and Linux port said IN PROGRESS about OSes shipping since 0.8.8,
+the macOS 13 floor said PLANNED with T0–T6 landed, the Local multisite plan said IN FLIGHT while
+shipped since 13 Sep (now archived); corrected. Shape 1: 0 (the three Now rows that say "never run" —
+Linux's normal-stop leg, WebView2's bootstrapper, the macOS-keyed per-OS answers — were checked
+against SMOKE and the code and are still true). Orphaned prose: the Menu-bar app section (no rows
+since 5 Sep) removed, its text archived. Open after the pass: 30 rows.
+
 **Reconciled 9 Oct 2026, after the 0.8.13 publish** (HEAD `c32f79c8`): 28 open rows audited against the
 code, PUBLISH-TESTING and SMOKE. Shape 3 (shipped narrative inside an open row) was the big one: the
 **Windows launch** umbrella (1065 lines) and **Linux launch** (84) were open while both OSes have shipped
@@ -95,16 +110,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [x] **MySQL's binary log filled a user's Mac — 60 GB of `binlog.*`** (reported 14 Oct 2026). MySQL
-  8.x defaults `log_bin=ON` (ROW, 30-day expiry, 1 GB files) and rexenv's `--no-defaults` start left
-  no my.cnf or `SET PERSIST` that could turn it off; the user's own workaround was `PURGE BINARY LOGS`
-  plus a scheduled EVENT. A local dev server has no replica and no point-in-time restore.
-  ✓ 14 Oct 2026: `database::server_args` passes `--skip-log-bin` (pinned by a lib test); `start`
-  removes the leftover `binlog.index` + `binlog.NNNNNN` files first (only those names, regular files,
-  never fatal), so an existing user's 60 GB goes on the next MySQL start without a hand step; L1
-  `examples/mysql_binlog_check` against the real 8.4.6 (sandbox tier); ledger #858. Common `core/`
-  path on all three OSes — the Windows and Linux SMOKE rows are the per-OS runs still owed.
-
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),
@@ -183,22 +188,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on 7.4/8.0 although `platform/windows/mod.rs` enables `pdo_pgsql`), and `wp_dns::resolver_for(minor)`
   carries macOS measurements with no OS. Xdebug and the update catalogs are already per-OS. Split
   out of the Windows launch row 9 Oct 2026 (plan §3a Q3).
-- [x] **Windows: a Start all that never spawns Caddy and says nothing** — seen after a tree-kill
-  (Windows launch row) and again on the Dell right after the 0.8.13 `/S` install (PUBLISH-TESTING §A
-  0.8.13): `rex start` returned done, Caddy stayed idle, no log line; a second `rex start` brought it
-  up and three exact re-runs did not reproduce it. Not #806 (that edge was live). Next: log the
-  reason whenever `prepare_edge` plans no start, then catch it. **Third sighting, the Dell, 10 Oct
-  2026 23:27:** `rex stop`, the app relaunched (a new build swapped in), `rex start` 10 s later →
-  "done", Caddy idle; the app log's only edge line is health's `[edge-down] … stopped answering`
-  at 23:27:31 — five seconds after that start — so the manager DID hold an edge handle that died
-  (not "never spawned"). A second `rex start` brought it up. caddy-stdout.log for that minute was
-  not read (the Dell then dropped off the network).
-  ✓ 11 Oct 2026 (#853): it DID spawn — the watchdog killed it. The Dell's health log has exactly three
-  `[edge-down]` events (5, 9, 10 Oct), one per sighting, and Caddy's log has no line from any of those
-  starts. Start all returned "done" at the spawn, and the next watchdog poll found the admin socket not
-  up yet and killed the still-starting child. Now every Start-all path waits for the socket (a Caddy
-  that dies at start fails it, with its exit status and log tail), and the watchdog spares a running
-  child for 30 s. Proven on the Dell with :80 held (exit 1 naming Caddy's bind error, then up once freed).
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).
@@ -247,17 +236,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
-- [x] **`rex start` right after a macOS boot fails on the edge instead of waiting for it** — seen on
-  the macOS 15.8 VM, 10 Oct 2026: within ~2 minutes of login, `rex start` answered "the Caddy edge
-  daemon was installed but its admin socket never came up — check logs/caddy-start.log", and a
-  `rex site create` in the same window failed the same way (Retry worked). The root LaunchDaemon's
-  Caddy comes up ~3 min after boot (memory of the 30 Sep run); a minute later the health log said
-  "re-adopted (sites were being served the whole time)". The start should wait for (or adopt) a
-  daemon that is still starting, or say that it is starting, not that it never came up.
-  ✓ 11 Oct 2026 (#851): Start all waits for an edge whose supervisor process is under 6 min old and
-  adopts it; on the 15.8 VM a `rex start` 27 s after boot waited out the edge's `xpcproxy` hold and
-  exited 0 with no prompt. The cause was macOS: Background Task Management + XProtect, ~224 s.
-
 ### Open work that was living inside ticked rows
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
@@ -274,23 +252,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   returning an error → `Abort`. Next: run the failing shape under a console (`-NoNewWindow`) until it
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
-
-- [x] **On Windows, an example's `Reaped` PostgreSQL leaves `--forkchild` workers alive** ✓ 10 Oct 2026 — `Reaped::reap` runs `taskkill /PID <pid> /T /F` on Windows BEFORE terminating, while the parent link still names the children; `db_clone_check` then ran twice in a row on the Dell, both all green, the second not refused (found 10 Oct 2026 on
-  the Dell running `db_clone_check`): the run passed, but an `io_worker` child of the sandbox postmaster kept
-  listening on :13393 and holding the example's stdout. The ssh call hung, and the next run refused the port.
-  `taskkill /T` on the postmaster pid after the fact took all but one. `Reaped::from_proc` kills the postmaster
-  only; on Windows its children are not in a process group with it. Fix in `examples/common` (kill the tree,
-  or ask `pg_ctl stop`), then re-run `starter_seed_check` and `db_clone_check` on the Dell twice in a row.
-
-- [x] **Live sync: `/files/list` walks ALL of `wp-content` on every page** ✓ 10 Oct 2026 — a bounded sorted walk (`Rexenv_Sync_Reader::walk`): skips what sorts before the cursor, stops at the budget; 14 small pages = the one-page list, plant caught (#825) (code review, 10 Oct 2026). The
-  walk is sorted so a cursor can be a path, but nothing bounds the walk itself. A site with 100k
-  uploads could pass `max_execution_time` before the first page returns. Fix: walk in sorted order
-  and STOP at the budget (resume by descending into the cursor's directories), or cache the sorted
-  list per pull in a transient. `companion/rexenv-sync/includes/class-rexenv-sync-reader.php`.
-- [x] **Worktree git runs block an async worker** ✓ 10 Oct 2026 — `commands::worktree::off_the_runtime` (`block_in_place` on the multi-threaded runtime, a plain call on a current-thread one) wraps the IPC create/remove, the delete path's release, the CLI arm and the MCP op; `worktree_site_check` green through it (code review, 10 Oct 2026): `commands::worktree::start`
-  (Shape B's `git worktree add`) and `release_for_delete` (`git worktree remove`) run git synchronously
-  inside async commands, the delete path included. A big checkout holds a tokio worker for its whole
-  length, with no cancel. Move both into `spawn_blocking`.
 
 ## Ledger-driven proof backlog
 
@@ -443,14 +404,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   single-site restart (#444), web-tier restart (#445), `wp_user_delete` (#446), progress
   streaming (#447) — shipped 2 Sep 2026; live legs ride the in-app verify list in
   `docs/CLI-ROADMAP.md`. Original row text: `docs/archive/SHIPPED-2026-09.md`.
-## Menu-bar app
-
-Shipped 31 Aug – 1 Sep 2026 (Phases A–D, ledger #436–#441; log in
-`docs/archive/SHIPPED-2026-09.md`, design record `docs/archive/PLAN-menubar-tray.md`).
-The second-instance row this section last carried closed with #441
-(`hand_off_to_running_instance`: the CLI socket is the lock; a second launch activates
-the first and exits) — its box stayed `[ ]` under a struck-through title, ticked 5 Sep 2026.
-
 ## Blocked on external work
 
 - [ ] **The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean.** #317 moves its
@@ -512,17 +465,18 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   signed + notarized bundle; packaging-era, after Developer ID signing.
 - [ ] **Developer ID signing + notarization** — needs a paid Apple account;
   runbook ready in `docs/SIGNING.md`.
+
 ## Phase 4+ (next era)
 
-- [ ] **Git worktree workflow** — one branch = one running site at `feature-x.shop.rex` (falling back to
-  `shop-feature-x.rex`), with its own DB cloned from the parent and removal only through `git worktree
-  remove`. It also serves worktrees that agents (Claude Code, Cursor…) made outside rexenv. The WP
-  plugin/theme-repo shape comes first (owner, 9 Oct 2026). Plan + tasks W0–W11:
-  `docs/PLAN-git-worktrees.md`; W0 answered, §9 answered 10 Oct; W7 (adopt, Shape B) and Re-clone DB built the same day (#830, #831). W1 done (v45 relation + the delete guards, #814/#815), W2 done (domain rule + git plumbing, #816), W3 done (same-server DB copy, #817), W4+W5 done (the plugin worktree child job, #819; L1 ALL PASS), W6 done (delete through git, #820), W8 done (UI, #821; WebKit check green), W7 done (adopt an outside worktree, #830), W9 done (`rex worktree` + the MCP tool, #822), W10 done (the whole-site repo shape, #823), **W11 remaining runs next** (Windows lib tests + `worktree_site_check`; Linux on the VM). SMOKE GUI rows run on the macOS VM 10 Oct (9 of 10; three defects fixed, #848); prune + the adopt/serve/prune/re-clone CLI and MCP arms built (#849). Legs 13–15 + the prune leg ALL PASS on the Dell and the Ubuntu VM (10 Oct). SMOKE GUI rows run on Linux (10 Oct) and Windows (11 Oct) — every row but MCP; the Windows editor-lock row found a half-removal, fixed (#852). The MCP row run on the macOS VM's release build 14 Oct (raw client; Read/Changes/Full as written). #849's verbs run on the macOS VM's release build 14 Oct (serve/adoptable/prune/reclone-db, GUI Clean up missing); found Refresh not re-reading the worktree lists — fixed. Every SMOKE row in this section is now ticked on macOS; Windows and Linux carry their own ticks.
-- [ ] **WordPress live ↔ local sync** — a companion plugin on the live site + signed HTTPS from rexenv:
-  clone a live site locally, Pull, Push with backup + Roll back, per-table conflict choice. Needs a new
-  `SecretStore` platform trait (all three OSes). Plan + tasks L0–L15: `docs/PLAN-wp-live-sync.md`.
-  Owner answered 9 Oct 2026: in-app zip only, and a push always needs a human click (never MCP). §11 all answered 10 Oct 2026 (0600 file secret store on every OS). L1 (the protocol spec) DRAFTED 10 Oct 2026: `docs/rexsync-protocol.md`, awaiting review; the signature half of L3/L5 built against shared vectors (#824); the plugin's pairing + read side (L3/L4) proven inside WordPress (#825). the client (L5) pulls from it over HTTP (#826). the pull's core (L6) pulls a whole site into a local one (#827). L2 (one owner-only pairing file, #828), L6's job + the **Live tab** (#829) built 10 Oct: a WordPress site can connect and pull. S2 push built 10 Oct: the plugin's quarantine/shadow/swap/rollback (#832), `push_from` (#833), the job + the picker + the typed host + Roll back (#834). L7 New site → From a live site built 10 Oct (#835). `DISABLE_WP_CRON` on every pull (Q8b answered, #839); Download plugin (#838). L12 `rex live …` + the MCP `live` tool (status/diff/pull only) built 10 Oct (#836). L13's agent pass done 10 Oct (1 critical + 1 high + 2 medium + 1 low fixed, #837; owner's read still owed). L14 host 1 run 10 Oct (`live_sync_real_host_check` on live-sync.rex.bd: pull/push/rollback ✓, #842; on the 4th run the host reset this Mac's connections for some minutes, then recovered — not an IP block; reads now retry, #843). SMOKE GUI rows run on the macOS VM 11 Oct with the real key — connect, pull, push, Roll back, recent uploads, New site from a live site, never-pulled refusal, Disconnect (four UI defects fixed, #854/#855). The same rows on Linux (Ubuntu VM) and Windows (the Dell) 11 Oct — all pass; Windows found every pull turning `%` into wpdb's `{hash}` placeholder (permalinks 404, a push carried it to live), fixed in plugin 0.1.1 + rexenv refuses 0.1.0 (#856), re-run clean on the real host. The conflict row run on the Dell 11 Oct (Push anyway + Roll back ✓) found a false conflict — a RENAME resets InnoDB's row estimate, fixed in plugin 0.1.2 (#857) — and a run-together list in its confirm (fixed). Re-run on 0.1.2 the same day: the stop named only the five tables a post writes; Push anyway + Roll back ✓. The Ubuntu VM's two 0.1.0 pulls re-paired and re-pulled on 0.1.2 (14 Oct): permalinks kept, 0 placeholder cells; the macOS VM's `l14vm.rex` the same (14 Oct, release build) — all three OSes pulled on 0.1.2; the Dell's `l14w.rex` re-paired on the current key the same day. Not yet: hosts 2–3 (the multisite and basic-auth rows), S3 (resume, anonymise, uploads on demand, per-item conflict choice).
+- [ ] **WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows,
+  each needs its own live host), S3 (resume, anonymise, uploads on demand, per-item conflict
+  choice), MariaDB's row-estimate behaviour after a RENAME (#857 is ◐ for it), the owner's read of
+  L13's agent pass.** Everything else — pull, push with backup + Roll back, the per-table conflict
+  stop, New site → From a live site, `rex live`, the MCP `live` tool, plugin 0.1.2 — is built and
+  proven on macOS, Windows and Linux against the real host (#824–#847, #854–#857). Plan:
+  `docs/PLAN-wp-live-sync.md`; the build narrative moved to `docs/archive/SHIPPED-2026-10.md`
+  ("Judgement moves", 14 Oct 2026).
+
 ## Known baselines (not bugs)
 
 - WP builds shipping `wp-includes/php-ai-client/**` show those files as "foreign"

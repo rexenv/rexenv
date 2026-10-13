@@ -1562,7 +1562,7 @@ where
         // ── repo group (git/asset assets) — wave 1: pure request/response.
         // Every arm rides the SAME commands::repo fns the UI calls; `--theme`
         // arrives as `theme: true` and flips the kind.
-        // ── worktree sites (docs/PLAN-git-worktrees.md) — the panel's commands.
+        // ── worktree sites (docs/archive/PLAN-git-worktrees.md) — the panel's commands.
         "worktree.list" => {
             let id = need_str(&args, "id", cmd)?;
             let rows = commands::worktree::worktree_children(app.app_handle().clone(), id).await?;

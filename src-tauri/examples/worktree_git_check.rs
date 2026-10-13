@@ -1,5 +1,5 @@
 //! Live check for the **`git worktree` plumbing** under the worktree-sites
-//! feature (W2 of `docs/PLAN-git-worktrees.md`). Run:
+//! feature (W2 of `docs/archive/PLAN-git-worktrees.md`). Run:
 //! `cargo run --example worktree_git_check`
 //!
 //! Hermetic: the repository is built in this example's own temp dir, so it

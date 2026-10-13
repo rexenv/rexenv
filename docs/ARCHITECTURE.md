@@ -1402,7 +1402,7 @@ honest footer —
   DEFAULT 1 with no backfill, and that is exact rather than safe: before the column,
   stopping one site was impossible — `docs/archive/PLAN-per-site-lifecycle.md`). · v45
   `site_worktrees` (a site that is a git WORKTREE of another site's checkout —
-  `docs/PLAN-git-worktrees.md` §2.3: `parent_id`, `shape` asset|site, the worktree path,
+  `docs/archive/PLAN-git-worktrees.md` §2.3: `parent_id`, `shape` asset|site, the worktree path,
   `adopted`; the branch is NOT stored, git answers it live. `parent_id` has no
   `ON DELETE`, so with `foreign_keys=ON` the database itself refuses deleting a parent
   that still has children, #815)
@@ -1456,7 +1456,7 @@ honest footer —
   unrelated project deletable. `teardown` returns `{ existed, docroot_removed }`
   so "your folder is still there" is never ambiguous.
 - **A folder holding a git worktree is never `remove_dir_all`ed — even one rexenv owns**
-  (#814, 9 Oct 2026, W1 of `docs/PLAN-git-worktrees.md`). A worktree's `.git` is a FILE
+  (#814, 9 Oct 2026, W1 of `docs/archive/PLAN-git-worktrees.md`). A worktree's `.git` is a FILE
   pointing at a repository that lives elsewhere; deleting the folder destroys
   uncommitted work that repository will never miss. `core::worktree::
   foreign_checkout_under` finds any `.git` file under the docroot whose gitdir resolves
@@ -1668,7 +1668,7 @@ honest footer —
   a refused TLD is RE-HOMED onto the default TLD in the scan itself (`ea.local` →
   `ea.rex`, shown on the row as "was ea.local"), before `enrich` or site creation see
   it (#571); an allowed TLD keeps its name. A multisite NETWORK imports too (12 Sep 2026,
-  `docs/PLAN-local-multisite.md`): its mode comes from the registry's `multiSite` and is
+  `docs/archive/PLAN-local-multisite.md`): its mode comes from the registry's `multiSite` and is
   RECORDED after the ordinary provision (`core::sites::adopt_multisite`) — never by
   running `multisite-convert`, which every other path to a network runs and which would
   rewrite a live network's wp-config and tables. The batch's one reload serves it (the

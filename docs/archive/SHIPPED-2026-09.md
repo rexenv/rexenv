@@ -3384,11 +3384,11 @@ paying for anyway: **the tick belongs in the commit that does the work.**
 
 - [x] **Import Local multisite networks** ✓ 13 Sep 2026 — every child closed; the live
   pass ran owner-run on `multisite.local`. 12 Sep 2026, planned in
-  `docs/PLAN-local-multisite.md`. Q2 of the Local import (`docs/archive/PLAN-local-import.md`
+  `docs/archive/PLAN-local-multisite.md`. Q2 of the Local import (`docs/archive/PLAN-local-import.md`
   §9), parked the same morning and un-parked by the owner: "Q2 o kore felo multisite".
   Adopt the network (record its mode, never convert), move rexenv's copy's network URLs,
   and let the connect move `DOMAIN_CURRENT_SITE`.
-  - [x] T0 — the plan + this row ✓ 12 Sep 2026 — `docs/PLAN-local-multisite.md`
+  - [x] T0 — the plan + this row ✓ 12 Sep 2026 — `docs/archive/PLAN-local-multisite.md`
   - [x] T1 — scan + adopt: network rows importable, mode recorded without convert ✓ 12 Sep
     2026 — ledger #580; `adopting_a_network_records_the_mode_and_refuses_none`,
     `a_network_imports_with_its_mode_and_a_mapped_subsite_is_refused`,
@@ -3456,7 +3456,7 @@ paying for anyway: **the tick belongs in the commit that does the work.**
   the WordPress tab's new "Already a multisite network → Record as a network" card.
   Ledger #591, `a_network_is_read_from_wp_config_and_never_converted_again`,
   `an_imported_network_is_adopted_never_converted_and_reloaded`. Original text: found
-  12 Sep 2026 researching the Local network import (`docs/PLAN-local-multisite.md` §6).
+  12 Sep 2026 researching the Local network import (`docs/archive/PLAN-local-multisite.md` §6).
   Nothing in `core/valet.rs` / `commands/valet_import.rs` detects multisite, so the site
   lands as `multisite = none`: subdirectory subsites 404, subdomain subsites aren't
   served, and the WordPress tab offers "Convert to multisite" on a live network. The

@@ -214,7 +214,7 @@ it can:
   which plain wp-cli is asserted unable to reach — so reaching the copy can only be the
   override's doing, on PHP 8.x and again on 7.4 (Notice vs Warning on the
   redefinition). What both leave to `docs/PUBLISH-TESTING.md` §N is Local's real mysqld.
-  Leg C (12 Sep 2026, `docs/PLAN-local-multisite.md` T4) runs a real subdomain NETWORK
+  Leg C (12 Sep 2026, `docs/archive/PLAN-local-multisite.md` T4) runs a real subdomain NETWORK
   with a subsite through the network URL pass and the connect plan, ending with plain
   WordPress booting the subsite on its rexenv name and `COOKIE_DOMAIN` read back. Its
   first run is the reason this layer exists: T2 had shipped an override pin of
@@ -438,7 +438,7 @@ it can:
   `NewSite.path` with the resolved docroot before the clone/link rule ran, so every
   cloned site read as also-linked and was refused). **Building the fixture with the
   real tool is what makes a hermetic example an L1 rather than an L0 in disguise.**
-  **`worktree_git_check` (sandbox tier, 9 Oct 2026, W2 of `docs/PLAN-git-worktrees.md`)
+  **`worktree_git_check` (sandbox tier, 9 Oct 2026, W2 of `docs/archive/PLAN-git-worktrees.md`)
   is the same pattern for `git worktree`.** It builds a real plugin repo, adds two
   worktrees (an existing branch and a new one) with `core::worktree::add`, and reads them
   back through `list`. It then points `foreign_checkout_under` at a folder holding the

@@ -1,6 +1,6 @@
 # PLAN — rexenv on Linux (Ubuntu first): the port, the decisions it forces, and the launch
 
-**Status:** IN PROGRESS — started 24 Sep 2026 (overnight, owner asleep; the agent proceeds on
+**Status:** SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open row is the tunnel guard's normal-stop leg in `docs/TODO.md` § Now (reconciled 14 Oct 2026). This file stays the design record (§1.1 is the `cfg(target_os)` inventory). Was: IN PROGRESS — started 24 Sep 2026 (overnight, owner asleep; the agent proceeds on
 the defaults marked *assumed* below and the owner rules on §3 in the morning). Planned against
 `b2ee968a`. Open work is the "Linux launch" row in `docs/TODO.md`; this file is the reasoning.
 

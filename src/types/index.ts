@@ -1633,7 +1633,7 @@ export interface LiveSyncPushPlan {
   baseAt: number | null;
 }
 
-/** A plugin/theme worktree site to make (`docs/PLAN-git-worktrees.md`):
+/** A plugin/theme worktree site to make (`docs/archive/PLAN-git-worktrees.md`):
  *  `branch` is checked out, or made NEW from `base` when that is set. */
 export interface WorktreeRequest {
   parentId: string;

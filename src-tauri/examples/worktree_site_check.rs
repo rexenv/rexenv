@@ -1,5 +1,5 @@
 //! Live check: a **plugin worktree site** end to end through the REAL
-//! provisioning job (W4/W5 of `docs/PLAN-git-worktrees.md`, Shape A). Run:
+//! provisioning job (W4/W5 of `docs/archive/PLAN-git-worktrees.md`, Shape A). Run:
 //! `cargo run --example worktree_site_check`
 //!
 //! What it builds, all recorded as created and torn down from that record:

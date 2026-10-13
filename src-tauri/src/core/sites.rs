@@ -1573,7 +1573,7 @@ pub fn network_mode_on_disk(docroot: &Path) -> Option<MultisiteMode> {
 }
 
 /// Record that a site already IS a network — the Local import's adopt path
-/// (`docs/PLAN-local-multisite.md`). Unlike [`convert_multisite`], this runs
+/// (`docs/archive/PLAN-local-multisite.md`). Unlike [`convert_multisite`], this runs
 /// nothing: the network exists in their wp-config and in the copied database,
 /// and `multisite-convert` on a live network rewrites both. Every other path to
 /// a network converts first; the import must never (an adopted site left at

@@ -1,6 +1,6 @@
 # Import Local multisite networks — Q2 of the Local import
 
-**Status:** IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan),
+**Status:** SHIPPED — archived 14 Oct 2026 (T0–T5 done, owner-run 13 Sep 2026). Was: IN FLIGHT 12 Sep 2026 — owner: "Q2 o kore felo multisite". T0 (this plan),
 T1 (scan + adopt, ledger #580), T2 (the network URL pass, #573) and T3 (the connect moves
 `DOMAIN_CURRENT_SITE`, #581) and T4 (L1 leg C on a real network — which measured the
 override's `DOMAIN_CURRENT_SITE` pin unnecessary and removed it) done; T5 PASSED

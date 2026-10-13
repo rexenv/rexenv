@@ -1,5 +1,5 @@
 //! core::dbclone — copy one site's database into a NEW database on the same
-//! engine (`docs/PLAN-git-worktrees.md` §2.4: a worktree child starts from its
+//! engine (`docs/archive/PLAN-git-worktrees.md` §2.4: a worktree child starts from its
 //! parent's data).
 //!
 //! **Not the import pipeline, on purpose.** `dbdump::gate` refuses a source

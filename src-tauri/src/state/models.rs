@@ -119,7 +119,7 @@ impl SiteOrigin {
     }
 }
 
-/// Which of the two worktree shapes a child site is (`docs/PLAN-git-worktrees.md`
+/// Which of the two worktree shapes a child site is (`docs/archive/PLAN-git-worktrees.md`
 /// §2.1). Recorded at creation because the two are torn down differently: an
 /// `Asset` child's docroot is a COPY rexenv made (managed) with ONE plugin/theme
 /// dir replaced by a worktree, a `Site` child's docroot IS the worktree (linked).

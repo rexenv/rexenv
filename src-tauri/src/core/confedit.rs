@@ -55,7 +55,7 @@ pub enum RewriteKey {
     Name,
     /// A multisite network's `DOMAIN_CURRENT_SITE` — the host WordPress finds
     /// the network by and scopes its login cookies to — moved to the name
-    /// rexenv serves an imported network under (`docs/PLAN-local-multisite.md`
+    /// rexenv serves an imported network under (`docs/archive/PLAN-local-multisite.md`
     /// T3). A hostname, never a secret. wp-config only.
     NetworkDomain,
 }

@@ -1,5 +1,5 @@
 //! Live check for **copying one site's database into a new one on the same
-//! server** (`core::dbclone`, W3 of `docs/PLAN-git-worktrees.md`). Run:
+//! server** (`core::dbclone`, W3 of `docs/archive/PLAN-git-worktrees.md`). Run:
 //! `cargo run --example db_clone_check`
 //!
 //! Sandbox servers on fixture ports — one mysqld, one PostgreSQL — and an

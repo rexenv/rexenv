@@ -196,7 +196,7 @@ fn resolve(state: &State<'_, AppState>, site_id: &str) -> Result<Resolution> {
         None => plan,
     };
 
-    // A multisite NETWORK moves its domain too (docs/PLAN-local-multisite.md T3).
+    // A multisite NETWORK moves its domain too (docs/archive/PLAN-local-multisite.md T3).
     // WordPress finds the network — and scopes its login cookies — by
     // DOMAIN_CURRENT_SITE, which an imported network's wp-config still gives as
     // the source's host (`multi.local`); served as `multi.rex`, logins fail. The

@@ -259,7 +259,7 @@ struct PhasePlan {
     /// A Blank-PHP site asked for a starter database (`Site::has_starter_db`).
     starter_db: bool,
     /// A worktree child of Shape A: its WordPress is a COPY of the parent's,
-    /// with one plugin/theme dir a git worktree (`docs/PLAN-git-worktrees.md`).
+    /// with one plugin/theme dir a git worktree (`docs/archive/PLAN-git-worktrees.md`).
     worktree_copy: bool,
     /// A worktree child of Shape B: the whole site is a git worktree of the
     /// parent's checkout, served as a LINKED site.
@@ -2284,7 +2284,7 @@ fn php_requirement_refused(project: &Path, minor: &str) -> Option<(String, Strin
     Some((requirement, why))
 }
 
-/// The phases of a Shape A worktree child (`docs/PLAN-git-worktrees.md`
+/// The phases of a Shape A worktree child (`docs/archive/PLAN-git-worktrees.md`
 /// §2.1): copy the parent's WordPress (minus the one asset dir), add the
 /// worktree there, install its Composer deps, copy the parent's database, point
 /// `wp-config.php` and the URLs at this site. `None` = done, go on to `serve`.
@@ -2506,7 +2506,7 @@ async fn drive_worktree_copy<R: tauri::Runtime>(
     worktree_urls_phase(app, entry, site, parent, &docroot, progress).await
 }
 
-/// The phases of a Shape B worktree child (`docs/PLAN-git-worktrees.md` §2.5):
+/// The phases of a Shape B worktree child (`docs/archive/PLAN-git-worktrees.md` §2.5):
 /// the worktree IS this linked site's folder (made before the row), so what is
 /// left is what git does not carry. `None` = done, go on to `serve`.
 ///

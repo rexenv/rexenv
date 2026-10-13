@@ -697,7 +697,7 @@ const MIGRATIONS: &[&str] = &[
     // fact about the past, not the usual "assume the safe thing" guess.
     "ALTER TABLE sites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;",
     // v45 — a site that is a git WORKTREE of another site's checkout
-    // (`docs/PLAN-git-worktrees.md` §2.3). One row per child; the parent has none.
+    // (`docs/archive/PLAN-git-worktrees.md` §2.3). One row per child; the parent has none.
     //
     // A table of its own rather than columns on `sites`: the relation is a fact
     // about two rows, and a `sites` column would have to be threaded through

@@ -1,6 +1,6 @@
 # Git worktree workflow — one branch, one running site
 
-**Status:** BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the
+**Status:** SHIPPED — archived 14 Oct 2026: every SMOKE row in `docs/SMOKE-TEST.md` § Git worktree sites ticked on macOS, Windows and Linux (the MCP row and #849's verbs on the macOS release build, 14 Oct; Refresh fixed to re-read the worktree lists). Was: BUILT 10 Oct 2026 — W1–W11 (W7 = adopt a worktree another tool made, Shape B), the
 panel, `rex worktree`, the MCP `worktree` tool; live checks green on macOS, the Dell and the
 Ubuntu VM (#814–#823, #830–#831). SMOKE GUI rows: 9 of 10 run on the macOS VM, 10 Oct 2026 — three defects found and fixed (#848). Prune and the adopt/serve/prune/re-clone CLI + MCP arms built (#849). Legs 13–15 and the
 prune leg ALL PASS on the Dell's Windows 10 and the Ubuntu VM (10 Oct 2026). Open: the SMOKE GUI

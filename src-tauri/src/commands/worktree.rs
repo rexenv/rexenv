@@ -1,4 +1,4 @@
-//! Worktree child sites — the IPC edge of `docs/PLAN-git-worktrees.md`.
+//! Worktree child sites — the IPC edge of `docs/archive/PLAN-git-worktrees.md`.
 //!
 //! Thin, like every command module: validate the request against the parent
 //! row, derive the domain (`core::worktree::derive_domain`), and hand a

@@ -1,6 +1,6 @@
 # PLAN — rexenv on Windows: the port, the decisions it forces, and the launch
 
-**Status:** IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows,
+**Status:** SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still open live in `docs/TODO.md` § Now (reconciled 14 Oct 2026). This file stays the design record. Was: IN PROGRESS — W0, W1 and W2 done 12 Sep 2026: both crates compile for Windows,
 `scripts/windows-check.sh` runs inside `verify.sh`, and the Windows x64 artifacts are pinned
 and swept. **The owner ruled D1, D2, D4 and D6 on 13 Sep 2026** (D3 on 12 Sep); D5's signing
 waits on an unsigned-installer measurement. D1's supervision and worker count, and the owner's

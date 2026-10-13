@@ -1,4 +1,4 @@
-// WebKit check: a plugin's WORKTREE sites (docs/PLAN-git-worktrees.md, W8).
+// WebKit check: a plugin's WORKTREE sites (docs/archive/PLAN-git-worktrees.md, W8).
 //
 // Under a git plugin's repo panel: the list of worktree sites (domain, git's
 // live branch, the uncommitted count), the New-worktree dialog, and Remove.

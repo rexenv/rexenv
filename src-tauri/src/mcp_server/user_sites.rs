@@ -1029,7 +1029,7 @@ pub trait SiteOps: Send + Sync {
         enabled: bool,
     ) -> OpFuture<'a, Result<Option<crate::commands::sites::SiteEnabledReport>>>;
     fn retry<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<crate::commands::site_provision::SiteProvisionState>>;
-    // ── worktree sites (`docs/PLAN-git-worktrees.md`) — the app's commands ──
+    // ── worktree sites (`docs/archive/PLAN-git-worktrees.md`) — the app's commands ──
     fn worktree_children<'a>(&'a self, parent_id: String) -> OpFuture<'a, Result<Vec<crate::commands::worktree::WorktreeView>>>;
     fn worktree_preview<'a>(&'a self, req: crate::commands::worktree::WorktreeRequest) -> OpFuture<'a, Result<crate::commands::worktree::WorktreePreview>>;
     /// Start the child's job and answer with its SETTLED state, like `retry`.
@@ -1866,7 +1866,7 @@ fn site_restart<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::A
     })
 }
 
-/// Which scope each worktree action demands (`docs/PLAN-git-worktrees.md` §2.8):
+/// Which scope each worktree action demands (`docs/archive/PLAN-git-worktrees.md` §2.8):
 /// reading the list or a preview reads; making one copies the parent (which is
 /// only READ) into a NEW site — `manage`, like `site_create`; removing deletes
 /// files and a database — `destroy`, on the worktree site itself.

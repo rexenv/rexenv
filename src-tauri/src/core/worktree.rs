@@ -1,4 +1,4 @@
-//! Git worktrees as sites (`docs/PLAN-git-worktrees.md`).
+//! Git worktrees as sites (`docs/archive/PLAN-git-worktrees.md`).
 //!
 //! A worktree child is a site whose code — the whole docroot, or one plugin/theme
 //! dir inside a copied WordPress — is a `git worktree` of another site's checkout.

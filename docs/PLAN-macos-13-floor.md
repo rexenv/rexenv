@@ -1,6 +1,6 @@
 # PLAN — lowering the macOS floor from 15 to 13: every component's `minos`, measured, and the pin each would need
 
-**Status:** PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
+**Status:** IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TODO.md` § Now (reconciled 14 Oct 2026). Was: PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
 and a per-feature refusal where no build exists. Task list in §7; **T0–T6 landed 23 Sep 2026** (ledger #707–#713; #433 re-shaped). **T7 part-run the same day on a macOS 13.6 VM** — it found two real defects (the 14-only `activate` selector, #713; a second copy of the engine gate, #710) and, with them fixed, the legacy stack ran and served; the GUI-only rows, the bundles (no CLT on the VM), the 15-upgrade and the macOS 14 VM remain (`docs/SMOKE-TEST.md`).

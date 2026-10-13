@@ -116,7 +116,7 @@ pub struct DiscoveredSite {
     pub renamed_from: Option<String>,
     /// A WordPress network the source's own registry records — Local rows
     /// only; Valet/Herd have no such record and stay `None` (a finding of its
-    /// own, `docs/PLAN-local-multisite.md` §6).
+    /// own, `docs/archive/PLAN-local-multisite.md` §6).
     pub multisite: MultisiteMode,
     /// A subdomain network's subsite LABELS (`ea1` for `ea1.multi.local`), so
     /// the screen can show them under whatever name the network imports as.

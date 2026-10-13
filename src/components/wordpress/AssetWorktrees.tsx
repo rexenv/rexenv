@@ -1,5 +1,5 @@
 /**
- * Worktrees of one plugin/theme checkout (`docs/PLAN-git-worktrees.md`, W8).
+ * Worktrees of one plugin/theme checkout (`docs/archive/PLAN-git-worktrees.md`, W8).
  *
  * Rendered under the asset's RepoPanel: the list of worktree SITES made from
  * this checkout (branch and change count read from git now, never the recorded
