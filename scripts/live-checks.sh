@@ -166,6 +166,7 @@ metrics_check                  sandbox all
 monitor_coverage_demo          service macos
 multisite_check                network all
 multisite_wildcard_check       network macos
+mysql_binlog_check             sandbox all
 mysql_serve                    service all
 network_check                  network all
 nginx_fetch                    network all

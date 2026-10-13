@@ -1370,6 +1370,12 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
 - [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines
   screen (8 Aug). **Open: no run recorded.**
+- [ ] **MySQL writes no binary log** (ledger #858, 14 Oct 2026 — a user's Mac held 60 GB of
+  `binlog.*`). With MySQL running: `<app data>/mysql/data` holds no `binlog.index` and no
+  `binlog.NNNNNN`; `mysql --no-defaults -h127.0.0.1 -P13306 -uroot -e "SHOW VARIABLES LIKE 'log_bin'"`
+  says `OFF`. **Upgrade leg:** on a machine whose datadir still carries `binlog.*` from 0.8.13 or
+  earlier, Stop → Start MySQL: the files are gone and `logs/` records `removed N binary-log file(s)`.
+  **Tell:** `log_bin ON` or new `binlog.000001` after a site create = the flag is not reaching mysqld.
 - [x] Open a WordPress site you have NOT opened this session: the **WordPress tab and Magic
   Login are there on the first frame** — no second-late pop-in while `wp-info` resolves (8 Aug).
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
@@ -2843,6 +2849,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699). **Tell:** a
       blank frame with the URL bar above it filled in — the CSP refused the app's origin (#699),
       and nothing in any log says so.
+- [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
+      `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
+      adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
+      no `mysqld.exe` holds the files — hence Stop before Start on the upgrade leg. **Open: no
+      Windows run recorded** (the L1 example ran on macOS, 14 Oct 2026).
 - [x] **No console window, ever.** Start all (PostgreSQL included), open Tunnels, share a site,
       Browse a database, create a WordPress site: NO terminal / console window appears at any
       point, and none is left on the desktop afterwards (#705). ✓ 21 Sep 2026 (Win11 VM, the
@@ -3475,6 +3486,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       **✓ 28 Sep 2026 (VM, 0.8.9):** Browse on MySQL → "Browsing MySQL", Adminer 6.1.1 inside the
       panel, "MySQL version: 8.4.6 through PHP extension MySQLi", the `wp_lm_rex` database
       listed; the address bar carries the `adminer.rexenv.rex` URL with Copy / Open in browser.
+- [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
+      `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
+      upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the
+      Linux run owed. **Open: no Linux run recorded** (the L1 example ran on macOS, 14 Oct 2026).
 - [x] ✓ 24 Sep 2026 (VM): onboarding says "this computer", "Linux will ask for permission"; the
       New Site dialog refuses Apache and MariaDB with "isn't part of rexenv on Linux yet". Found
       and fixed the same day: the sidebar read 14.5–16.3 GB for a ~600 MB stack (#725; the rebuilt

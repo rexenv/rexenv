@@ -95,6 +95,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **MySQL's binary log filled a user's Mac — 60 GB of `binlog.*`** (reported 14 Oct 2026). MySQL
+  8.x defaults `log_bin=ON` (ROW, 30-day expiry, 1 GB files) and rexenv's `--no-defaults` start left
+  no my.cnf or `SET PERSIST` that could turn it off; the user's own workaround was `PURGE BINARY LOGS`
+  plus a scheduled EVENT. A local dev server has no replica and no point-in-time restore.
+  ✓ 14 Oct 2026: `database::server_args` passes `--skip-log-bin` (pinned by a lib test); `start`
+  removes the leftover `binlog.index` + `binlog.NNNNNN` files first (only those names, regular files,
+  never fatal), so an existing user's 60 GB goes on the next MySQL start without a hand step; L1
+  `examples/mysql_binlog_check` against the real 8.4.6 (sandbox tier); ledger #858. Common `core/`
+  path on all three OSes — the Windows and Linux SMOKE rows are the per-OS runs still owed.
+
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),

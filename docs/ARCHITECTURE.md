@@ -1107,6 +1107,13 @@ Live-proven end to end by `site_stop_start_check`.
   model); share data via EXPLICIT `--lc-messages-dir`/`--character-sets-dir` (the
   compiled-in defaults are placeholders). A failed bootstrap removes the half-written
   datadir so the `mysql/`-dir marker can't lie.
+- **MySQL runs with the binary log OFF** (`--skip-log-bin` in `database::server_args`, ledger
+  #858). MySQL 8.x defaults `log_bin=ON` with ROW format and a 30-day expiry, and because rexenv
+  starts it `--no-defaults` nothing a user could write (my.cnf, `SET PERSIST`) survived a restart
+  — a user's Mac held 60 GB of `binlog.*` (14 Oct 2026). A local server has no replica and no
+  point-in-time restore. `start` also deletes the `binlog.index` / `binlog.NNNNNN` files a server
+  that ran with the log left behind — only those names, regular files, never fatal — so an
+  existing datadir's backlog goes on the next start. MariaDB's default is already off.
 - The `php-debug` (Xdebug) variant is fully wired but returns `None` from `manifest()`
   until its checksums are pinned — see `docs/xdebug-debug-build.md`.
 - **PHP patch bumps ride app releases (Option A), and the launch sweep keeps what RUNS.**

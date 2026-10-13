@@ -29,7 +29,7 @@ pub fn mysqld_bin(basedir: &Path) -> PathBuf {
 /// `cached_sql_client`, so a bare path can no longer be handed to the
 /// functions that exec it — the `&Path`-means-two-things class that left nine
 /// examples red for a month (14 Aug 2026; docs/archive/SHIPPED-2026-08.md).
-pub(crate) fn mysql_client_bin(basedir: &Path) -> PathBuf {
+pub fn mysql_client_bin(basedir: &Path) -> PathBuf {
     basedir.join("bin/mysql")
 }
 
@@ -437,6 +437,75 @@ pub(crate) fn db_sizes(client: &SqlClient, port: u16) -> Result<Vec<(String, u64
         .collect())
 }
 
+/// The server's own argv (everything but the per-OS supervision flags), pure so a
+/// lib test can pin it. `--skip-log-bin` is load-bearing: MySQL 8.x turns the binary
+/// log ON by default and `--no-defaults` means no my.cnf (and no `SET PERSIST`) can
+/// turn it off, so every write to every site was journalled in ROW format and kept
+/// for 30 days (`binlog_expire_logs_seconds` 2592000, 1 GB per file). A user measured
+/// 60 GB of `binlog.*` on a Mac (14 Oct 2026); the dev machine carried 629 MB. A local
+/// dev server has no replica and no point-in-time restore, so the log buys nothing.
+/// Ledger #858.
+pub fn server_args(basedir: &Path, datadir: &Path, port: u16, socket: &Path, log: &Path) -> Vec<String> {
+    vec![
+        "--no-defaults".to_string(),
+        format!("--basedir={}", basedir.display()),
+        format!("--datadir={}", datadir.display()),
+        format!("--port={port}"),
+        format!("--socket={}", socket.display()),
+        "--bind-address=127.0.0.1".to_string(),
+        "--mysqlx=OFF".to_string(), // skip the X protocol (avoids :33060)
+        "--skip-log-bin".to_string(), // no binary log: local dev, see above
+        format!("--log-error={}", log.display()),
+    ]
+}
+
+/// True for the files MySQL's binary log consists of and NOTHING else: `binlog.index`
+/// and `binlog.` + exactly six digits (the default `--log-bin` basename; rexenv never
+/// set another). Anything else in the datadir — `binlog.000001.bak`, `binlog`, a
+/// schema dir, `ib_logfile0` — is not ours to touch.
+pub fn is_binlog_file(name: &str) -> bool {
+    match name.strip_prefix("binlog.") {
+        Some("index") => true,
+        Some(rest) => rest.len() == 6 && rest.bytes().all(|b| b.is_ascii_digit()),
+        None => false,
+    }
+}
+
+/// Delete the binary-log files a server that ran WITH the log left in `datadir`
+/// (ledger #858). Called by `start` right before the spawn, while no server runs:
+/// `--skip-log-bin` makes mysqld ignore `binlog.index`, so without this the files
+/// from before the flag landed would sit there forever — the 60 GB stays 60 GB.
+/// Deletes ONLY `is_binlog_file` names, one level deep, never a directory; a file
+/// that will not delete is skipped and logged, never fatal (a start must not fail
+/// over housekeeping). Returns `(files, bytes)` removed. Rollback of transactions
+/// that were PREPARED in the old log and never committed is the accepted cost.
+pub fn remove_binlogs(datadir: &Path) -> (usize, u64) {
+    let Ok(entries) = std::fs::read_dir(datadir) else {
+        return (0, 0);
+    };
+    let (mut files, mut bytes) = (0usize, 0u64);
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !is_binlog_file(name) {
+            continue;
+        }
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                files += 1;
+                bytes += meta.len();
+            }
+            Err(e) => log::warn!("mysql: could not remove old binary log {}: {e}", path.display()),
+        }
+    }
+    (files, bytes)
+}
+
 /// Start the shared MySQL server (foreground) via `ProcessSupervisor`.
 ///
 /// The platform's `mysqld_supervision_args` go last: on Windows `--no-monitor`, so the
@@ -449,17 +518,12 @@ pub fn start(
     socket: &Path,
 ) -> Result<Child> {
     let log = platform.paths().log_dir()?.join("mysql-error.log");
-    let mut args = vec![
-        "--no-defaults".to_string(),
-        format!("--basedir={}", basedir.display()),
-        format!("--datadir={}", datadir.display()),
-        format!("--port={port}"),
-        format!("--socket={}", socket.display()),
-        "--bind-address=127.0.0.1".to_string(),
-        "--mysqlx=OFF".to_string(), // skip the X protocol (avoids :33060)
-        format!("--log-error={}", log.display()),
-    ];
+    let mut args = server_args(basedir, datadir, port, socket, &log);
     args.extend(platform.supervisor().mysqld_supervision_args());
+    let (files, bytes) = remove_binlogs(datadir);
+    if files > 0 {
+        log::info!("mysql: removed {files} binary-log file(s), {} MB, left by a server that ran with log_bin ON (ledger #858)", bytes / 1_000_000);
+    }
     // A lock file from a server that died unclean, whose pid another program now has,
     // makes mysqld abort ("Unable to setup unix socket lock file") on every start until
     // someone removes two files by hand — measured after a VM reboot (`core::stale_lock`).
@@ -531,6 +595,74 @@ mod tests {
                 "--connect-timeout=10",
             ]
         );
+    }
+
+    #[test]
+    fn server_args_disable_the_binary_log_and_keep_no_defaults() {
+        // Pin the whole argv: `--skip-log-bin` is what stops the 60 GB (#858), and
+        // `--no-defaults` is why nothing else (my.cnf, SET PERSIST) could.
+        let args = server_args(
+            Path::new("/b"),
+            Path::new("/d"),
+            13306,
+            Path::new("/r/mysql.sock"),
+            Path::new("/l/mysql-error.log"),
+        );
+        assert_eq!(
+            args,
+            [
+                "--no-defaults",
+                "--basedir=/b",
+                "--datadir=/d",
+                "--port=13306",
+                "--socket=/r/mysql.sock",
+                "--bind-address=127.0.0.1",
+                "--mysqlx=OFF",
+                "--skip-log-bin",
+                "--log-error=/l/mysql-error.log",
+            ]
+        );
+    }
+
+    #[test]
+    fn is_binlog_file_matches_mysql_names_only() {
+        for yes in ["binlog.index", "binlog.000001", "binlog.000600", "binlog.999999"] {
+            assert!(is_binlog_file(yes), "{yes}");
+        }
+        for no in [
+            "binlog", "binlog.", "binlog.00001", "binlog.0000001", "binlog.00000a",
+            "binlog.000001.bak", "binlog.index.old", "mysql-bin.000001", "ib_logfile0",
+            "ibdata1", "mysql", "undo_001", "auto.cnf",
+        ] {
+            assert!(!is_binlog_file(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn remove_binlogs_deletes_only_the_log_files() {
+        let dir = std::env::temp_dir().join(format!("rexenv-binlog-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("mysql")).unwrap();
+        std::fs::create_dir_all(dir.join("binlog.000009")).unwrap(); // a DIR with a log name
+        for (name, size) in [("binlog.index", 30), ("binlog.000001", 1000), ("binlog.000002", 500)] {
+            std::fs::write(dir.join(name), vec![b'x'; size]).unwrap();
+        }
+        for keep in ["ibdata1", "auto.cnf", "binlog.000001.bak", "mysql-bin.000001"] {
+            std::fs::write(dir.join(keep), b"keep").unwrap();
+        }
+        assert_eq!(remove_binlogs(&dir), (3, 1530));
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            ["auto.cnf", "binlog.000001.bak", "binlog.000009", "ibdata1", "mysql", "mysql-bin.000001"]
+        );
+        assert_eq!(remove_binlogs(&dir), (0, 0)); // idempotent
+        assert_eq!(remove_binlogs(&dir.join("nope")), (0, 0)); // no datadir = no-op
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

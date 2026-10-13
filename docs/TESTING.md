@@ -1135,6 +1135,12 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   `db_dump_flags_check`): `dbdump.rs`'s real dump argv and `database.rs`'s exclusion of
   `--connect-timeout` were documented in prose only — prose the new proof promptly
   FALSIFIED (mariadb-dump warns-and-ignores rather than hard-erroring; ledger #195).
+- **The server's argv is pinned, and the pin is backed by a real start** (`database::server_args`
+  + `examples/mysql_binlog_check`, sandbox tier, ledger #858): MySQL 8.x's `log_bin=ON` default
+  cost a user 60 GB because nothing asserted what mysqld was started WITH. The L0 test pins the
+  whole array (`--skip-log-bin` included); the L1 example starts the bundled mysqld on a seeded
+  sandbox datadir and reads `log_bin = OFF` back from the server, since a flag the binary rejects
+  or ignores is invisible to any L0 test (the #195 shape).
 
 ## Proving a Linux claim
 
