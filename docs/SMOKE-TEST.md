@@ -1209,6 +1209,12 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   cells hold a `{64 hex}` token, `admin` only, rexenv Sync not among the active plugins,
   `DISABLE_WP_CRON` in wp-config, posts 10/18/23 as on live. Push/Roll back not repeated here (the
   Dell's 0.1.2 run above covers them).
+  ✓ **macOS re-run** on plugin 0.1.2, 14 Oct 2026 — the macOS 15.8 VM, this tree's release build:
+  `l14vm.rex` (pulled on 0.1.0) → Disconnect → the new key → "Connected … `k_a80b88b5`", the
+  pairing file `600` → Pull → "Pulled 12 tables (232 rows) and 1055 files… `wp_l14vm_rex_prepull`":
+  `permalink_structure` `/%year%/%monthnum%/%day%/%postname%/`, `/2008/06/21/html/` 200 with the
+  post's title, 0 of 1329 cells hold a `{64 hex}` token, `admin` only, rexenv Sync not active,
+  `DISABLE_WP_CRON`, posts 10/18/23 as on live. All three OSes have now pulled on 0.1.2.
 
 ## Git assets — Build zip
 Needs one git-managed plugin or theme: **Add from Git** on any plugin repo, or
