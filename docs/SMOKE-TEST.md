@@ -1009,10 +1009,20 @@ branch in that repository:
       "aborted (nothing changed)", `--yes` → re-cloned. The serve stream showed only the phases its
       400 ms poll caught, and over ssh "— created" can print before the last phase line (stdout and
       stderr travel apart) — neither is wrong. macOS not run on this build yet.
-- [ ] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
+- [x] An MCP client: `worktree` `list`/`preview` work at the dial's Read, `create` needs Changes,
       `remove` needs Full and is refused on a site that is not a worktree ("use site_delete").
-      Not run on a GUI build yet (the VM has no MCP client; the endpoint is off by default) —
-      covered at L0 by the `worktree` tool test (#822).
+      ✓ 14 Oct 2026, macOS 15.8 VM, this tree's release build, driven as a raw JSON-RPC client over
+      the socket (as the §AI agents runs were): endpoint toggled on in Settings (socket `srw-------`);
+      at Read `list` → `[]`, `preview` → `feature-x.wtp.rex`, `create` and `remove` → "needs `manage`
+      / `destroy` permission — `Agent access` at Changes / Full or above"; dial → Changes: `create` →
+      ten phases, "created — serving at https://feature-x.wtp.rex" in 7 s, `list` shows it (branch
+      `feature-x`, 0 uncommitted), the child 200 with `wtdemo: feature-x`, `git worktree list` has
+      both; `remove` at Changes refused; dial → Full: `remove` on `wtp.rex` → "wtp.rex is not a
+      worktree site — use site_delete for it.", on the child → `removed: true, branchKept: true`,
+      folder gone, branch kept, parent 200. The packaged feed drew every call by domain (the errors
+      amber-barred), "(deleted site)" for the removed child. Dial back to Read, endpoint off after.
+      Covered at L0 by the `worktree` tool test (#822); Windows/Linux not run as a client (same
+      server code; the rows below cover the GUI there).
 - **Windows and Linux**: the same rows (run on the Dell / the UTM VM, W11). On Windows, also:
   an editor holding a file in the worktree makes Delete fail with git's "Permission denied" /
   "Access is denied", and the site stays — close the editor, Delete again.
