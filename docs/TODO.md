@@ -275,11 +275,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     MotW stripped, no PE required — `check_tree` would have refused it), default no-op on macOS/Linux.
     NOTICES: a downloaded runtime, not distributed by us — the prose list, no table (the checker
     walks only the compiled-in composer tree). PORTS rows ×3 tables; PLATFORMS §3.
-  - [ ] **T3** `core/phpmyadmin.rs`: docroot + marker + rename-publish staging, the `config.inc.php`
+  - [x] **T3** `core/phpmyadmin.rs`: docroot + marker + rename-publish staging, the `config.inc.php`
     generator (pure, tested: loopback-only servers, forward-slash paths with a space AND a backslash,
     `AllowThirdPartyFraming = false`), the blowfish secret file owner-only via `permissions()`,
     `.user.ini` (#788 shape), the `verify_tree` probe BEFORE publish (plant: a fatal tree never
     becomes the docroot). Ledger rows plan §5.1, §5.2, §5.5.
+    ✓ **15 Oct 2026:** the module as planned (6 L0 tests, two plant-proven; the probe loads the
+    tree's own `constants.php` + autoloader and `PhpMyAdmin\Config` from the generated file, and
+    re-checks the LOADED servers and framing key); by hand on macOS the probe said OK on the real
+    5.2.3 tree (8.3.32 + 8.5.8) and FAIL on three plants (parse-error autoload, a remote server, framing
+    opened). Ledger #864–#866, each ◐ until T7's example runs on all three OSes. Nothing calls
+    `ensure` yet — T6 does.
   - [ ] **T4** the vhost in `sites::rebuild` emitted only for a staged docroot, cert, the
     `tunnels.rs` tunnel-origin assertion widened to both hosts. Ledger rows §5.3, §5.6.
   - [ ] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
