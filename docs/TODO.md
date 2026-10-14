@@ -273,6 +273,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the loaded config: refused → the real-stack leg through `dbconsole_proxy::forward` when the
     running app has it staged. macOS run: all sandbox legs green; the real-stack leg skipped there
     (the dev Mac's app is the release build). **Open: the real-stack leg + the Windows and Linux runs.**
+    ✓ **15 Oct 2026, the runs:** macOS VM (15.8, the release build swapped in) — every leg incl. the
+    real stack through the proxy; the first GUI Browse was an EMPTY frame → `AllowThirdPartyFraming`
+    `false` → `'sameorigin'` (ledger #865) and a rebuild now re-renders a staged config (an app
+    update's generator must reach it — the swapped app kept the old `false`); after both, phpMyAdmin
+    renders inside the app, logged in, and "Open in browser" opened it in Safari. Ubuntu VM (22.04
+    arm64, the container-built binary swapped into `/usr/bin`): `rex db console phpmyadmin` 2.6 s,
+    `SAMEORIGIN`, the logged-in title, `0600` secret, the example green incl. the real-stack leg.
   - [x] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
     in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
     `notices-check.py` decides whether its vendored composer tree needs per-package rows).

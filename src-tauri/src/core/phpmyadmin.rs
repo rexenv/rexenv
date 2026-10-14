@@ -140,11 +140,19 @@ pub const SERVER_MARIADB: usize = 2;
 /// That is the promise Adminer's wrapper keeps in `login()` — loopback engines
 /// only, never a remote host — kept here by construction instead of by code.
 ///
-/// `AllowThirdPartyFraming` stays FALSE (the default, written explicitly so a
-/// reader cannot wonder): the direct https vhost sends `X-Frame-Options: DENY`,
-/// so no page in the user's browser can frame a passwordless console. The in-app
-/// frame gets its headers from the `rexpma` proxy, which only rexenv's own scheme
-/// handler answers — see `core::dbconsole_proxy`.
+/// `AllowThirdPartyFraming` is `'sameorigin'`, and the value is MEASURED, not chosen
+/// for its name (macOS VM, 15 Oct 2026 — the first in-app frame was EMPTY while the
+/// proxy answered 200): phpMyAdmin's `Header.php` sends `X-Frame-Options: DENY` for
+/// anything but `true` and `SAMEORIGIN` for `'sameorigin'` — the direct https vhost
+/// stays unframeable by any OTHER origin, which is the clickjacking case — but it
+/// also adds `cross_framing_protection.js` and `<style id="cfs-style">html{display:
+/// none}</style>` ONLY when the value is exactly `false`: that script hides the whole
+/// document and tries `top.location = self.location` whenever `self !== top`, which
+/// inside rexenv's cross-origin iframe is a blank panel with no error anywhere.
+/// `'sameorigin'` keeps the header and drops the script; the proxy then strips the
+/// header and rewrites `frame-ancestors` on its own copy — an origin only rexenv's
+/// scheme handler answers — see `core::dbconsole_proxy`. Never `true`: that is no
+/// header at all on the direct vhost.
 ///
 /// No `PmaAbsoluteUri`: both the https vhost and the proxy origin serve this same
 /// tree, and every link must stay relative to whichever origin loaded it.
@@ -165,9 +173,11 @@ pub fn config_inc_php(secret: &str, temp_dir: &Path) -> String {
     out.push_str(&server_block(SERVER_MARIADB, "MariaDB", crate::core::db::MARIADB_PORT));
     out.push_str(
         "\n\
-         // Framing: the direct vhost is never frameable by a browser (X-Frame-Options: DENY);\n\
-         // rexenv's in-app frame reaches this tree through its own proxy origin instead.\n\
-         $cfg['AllowThirdPartyFraming'] = false;\n\
+         // Framing: 'sameorigin' — the direct vhost sends X-Frame-Options: SAMEORIGIN (no other\n\
+         // origin can frame it) WITHOUT phpMyAdmin's cross_framing_protection.js, which only\n\
+         // `false` adds and which blanks the page inside rexenv's own frame; that frame reaches\n\
+         // this tree through rexenv's proxy origin, which rewrites the framing headers itself.\n\
+         $cfg['AllowThirdPartyFraming'] = 'sameorigin';\n\
          // No upstream error reports, no phpinfo page, and the file-permission nag is for a\n\
          // config somebody hand-edits — this one is rexenv's.\n\
          $cfg['SendErrorReports'] = 'never';\n\
@@ -229,6 +239,20 @@ fn blowfish_secret(platform: &dyn Platform) -> Result<String> {
     Ok(fresh)
 }
 
+/// Re-render the STAGED docroot's `config.inc.php` from this build's generator — called by
+/// every config regeneration (`sites::rebuild`), beside the `.user.ini`, so an app update
+/// that changes what rexenv writes reaches a tree staged by the previous version. Found on
+/// the macOS VM (15 Oct 2026): the framing fix shipped, the app was swapped, and the
+/// docroot kept the old `false` until the user chose phpMyAdmin AGAIN — nothing else
+/// re-rendered it. No download, no probe, no rename: a text write into an existing tree.
+pub fn refresh_config(platform: &dyn Platform) -> Result<()> {
+    let dir = docroot(platform)?;
+    if staged_version(platform).is_none() {
+        return Ok(());
+    }
+    write_config(platform, &dir)
+}
+
 /// Render and write `config.inc.php` into `dir` (only when it differs).
 fn write_config(platform: &dyn Platform, dir: &Path) -> Result<()> {
     let tmp = temp_dir(platform)?;
@@ -275,8 +299,10 @@ foreach ($servers as $s) {
         fwrite(STDERR, "REXENV-PROBE-FAIL: a server is not a loopback config-auth server\n"); exit(1);
     }
 }
-if (($cfg->settings['AllowThirdPartyFraming'] ?? true) !== false) {
-    fwrite(STDERR, "REXENV-PROBE-FAIL: AllowThirdPartyFraming is not false\n"); exit(1);
+// 'sameorigin' keeps X-Frame-Options on the direct vhost; `true` would drop it, `false`
+// would add the frame-hiding script (plan §3.3, the macOS VM's blank panel).
+if (($cfg->settings['AllowThirdPartyFraming'] ?? true) !== 'sameorigin') {
+    fwrite(STDERR, "REXENV-PROBE-FAIL: AllowThirdPartyFraming is not 'sameorigin'\n"); exit(1);
 }
 fwrite(STDERR, "REXENV-PROBE-OK\n");
 "#;
@@ -437,12 +463,16 @@ mod tests {
         assert_eq!(SERVER_MARIADB, 2);
     }
 
-    /// The direct vhost is never frameable by a browser; the proxy widens its own
-    /// copy. And no absolute URI, so both origins keep relative links.
+    /// The direct vhost is never frameable by ANOTHER origin (`'sameorigin'` →
+    /// `X-Frame-Options: SAMEORIGIN`), and never `false` — that value adds phpMyAdmin's
+    /// frame-hiding script, which blanked rexenv's own frame (macOS VM, 15 Oct 2026) —
+    /// and never `true`, which sends no header at all. The proxy widens its own copy.
+    /// And no absolute URI, so both origins keep relative links.
     #[test]
     fn framing_is_denied_at_the_source_and_no_absolute_uri_is_set() {
         let cfg = config_inc_php(SECRET, Path::new("/tmp/x"));
-        assert!(cfg.contains("$cfg['AllowThirdPartyFraming'] = false;"));
+        assert!(cfg.contains("$cfg['AllowThirdPartyFraming'] = 'sameorigin';"), "{cfg}");
+        assert!(!cfg.contains("AllowThirdPartyFraming'] = false") && !cfg.contains("AllowThirdPartyFraming'] = true"));
         assert!(!cfg.contains("PmaAbsoluteUri"));
         assert!(cfg.contains("$cfg['SendErrorReports'] = 'never';"));
         assert!(cfg.starts_with("<?php\n"));

@@ -140,10 +140,13 @@ chevron and the private window explicitly.
   - `$cfg['TempDir']` = `app_data/phpmyadmin-tmp/` (Twig cache; phpMyAdmin is slow and noisy
     without it). Paths are written with forward slashes inside single-quoted PHP strings —
     app-data paths contain spaces on every OS and backslashes on Windows.
-  - `$cfg['AllowThirdPartyFraming'] = false` — the DEFAULT, kept on purpose: the direct https
-    vhost sends `X-Frame-Options: DENY` + `frame-ancestors 'self'`, so no page in the user's
-    browser can frame a passwordless console (the clickjacking case Adminer's wrapper guards).
-    The in-app frame gets its headers from the proxy (§3.3), not from this file.
+  - `$cfg['AllowThirdPartyFraming'] = 'sameorigin'` — **not `false`, and the reason was measured**
+    (macOS VM, 15 Oct 2026, T7): with `false` phpMyAdmin sends `X-Frame-Options: DENY` AND ships
+    `cross_framing_protection.js` + `<style id="cfs-style">html{display:none}</style>`, which hides
+    the document whenever `self !== top` — rexenv's in-app frame was an empty panel while the
+    proxy answered 200. `'sameorigin'` sends `SAMEORIGIN` (no other origin can frame the direct
+    vhost — the clickjacking case Adminer's wrapper guards) and adds no script; `true` would send
+    no header at all. The in-app frame gets its headers from the proxy (§3.3), not from this file.
   - `$cfg['SendErrorReports'] = 'never'`, `$cfg['ShowPhpInfo'] = false`, `$cfg['CheckConfigurationPermissions'] = false`
     (the file is rexenv's and world-readable permissions on Windows are not a defect).
   - `$cfg['PmaAbsoluteUri']` is NOT set: both origins (the https vhost and the proxy) must

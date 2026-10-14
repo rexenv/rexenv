@@ -941,8 +941,10 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   MariaDB → server 2. Browse on **PostgreSQL still opens Adminer** (its tooltip says why). A
   site's Database tab (MySQL site) opens phpMyAdmin on that site's database
   (`route=/database/structure&db=…`). `curl -sI https://phpmyadmin.rexenv.rex/index.php?server=1
-  | grep -i x-frame-options` → `DENY` (the direct vhost is never frameable; the app's frame
-  goes through `rexpma:`). Back to **Adminer**: a toast, Browse opens Adminer again, phpMyAdmin
+  | grep -i x-frame-options` → `SAMEORIGIN` (the direct vhost is never frameable by another
+  origin; the app's frame goes through `rexpma:`). **Tell:** an EMPTY frame with the URL bar
+  filled in = phpMyAdmin's own `cfs-style`/`cross_framing_protection.js` is back (the config
+  said `false`) or a CSP end is missing (#703's class). Back to **Adminer**: a toast, Browse opens Adminer again, phpMyAdmin
   stays installed (the line keeps its version). `rex db console` prints the same; `rex db
   console phpmyadmin` is the same install. L1 `phpmyadmin_check` (sandbox legs + the real-stack
   leg through the proxy). **Open: no GUI run recorded.**

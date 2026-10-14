@@ -15,7 +15,8 @@
 //! 6. The REAL stack leg, when the running stack has phpMyAdmin staged (`rex db console
 //!    phpmyadmin`): a GET through the console proxy (`dbconsole_proxy::forward`, the
 //!    in-app frame's path) answers 200 with phpMyAdmin's logged-in title, no
-//!    `X-Frame-Options`, and a CSP naming the app's origins (#869). Skipped, loudly, when
+//!    `X-Frame-Options`, a CSP naming the app's origins (#869), and NOT phpMyAdmin's
+//!    frame-hiding style/script (`'sameorigin'`, plan §3.3). Skipped, loudly, when
 //!    the stack is down or phpMyAdmin is not staged there — never a silent pass.
 //!
 //! Run: `cargo run --example phpmyadmin_check`
@@ -76,7 +77,7 @@ async fn main() -> std::process::ExitCode {
     assert!(dir.join("index.php").is_file() && dir.join("vendor/autoload.php").is_file());
     let cfg = std::fs::read_to_string(dir.join(phpmyadmin::CONFIG_FILE)).unwrap();
     assert!(cfg.contains("$cfg['Servers'][1]['host'] = '127.0.0.1';") && cfg.contains("$cfg['Servers'][2]['host'] = '127.0.0.1';"), "{cfg}");
-    assert!(cfg.contains("$cfg['AllowThirdPartyFraming'] = false;"));
+    assert!(cfg.contains("$cfg['AllowThirdPartyFraming'] = 'sameorigin';"), "{cfg}");
     assert!(!dir.join(".rexenv-probe.php").exists(), "the probe script is removed after the run");
     assert!(phpmyadmin::temp_dir(&*plat).unwrap().is_dir(), "the Twig temp dir exists");
     let secret = plat.paths().app_data_dir().unwrap().join("phpmyadmin.secret");
@@ -103,6 +104,16 @@ async fn main() -> std::process::ExitCode {
     let ini = std::fs::read_to_string(dir.join(".user.ini")).unwrap();
     assert!(ini.contains("upload_max_filesize=") && ini.contains("error_reporting=E_ALL & ~E_DEPRECATED"), "{ini}");
     println!("✓ after staging: the nginx block, the edge route and the .user.ini exist");
+
+    // (3b) An app update's generator reaches a tree staged by the previous version: tamper
+    // the staged config (the old `false` framing value) and a REBUILD restores it — nothing
+    // else re-renders it (macOS VM, 15 Oct 2026).
+    let cfg_path = dir.join(phpmyadmin::CONFIG_FILE);
+    std::fs::write(&cfg_path, cfg.replace("'sameorigin'", "false")).unwrap();
+    assert!(std::fs::read_to_string(&cfg_path).unwrap().contains("= false;"), "the tamper did not land");
+    let _ = rebuild(&*plat);
+    assert_eq!(std::fs::read_to_string(&cfg_path).unwrap(), cfg, "a rebuild did not re-render the staged config");
+    println!("✓ a rebuild re-renders the staged config.inc.php from this build's generator");
 
     // (4) PLANT: a tree whose autoloader is a parse error never becomes the docroot.
     let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
@@ -154,7 +165,12 @@ async fn main() -> std::process::ExitCode {
             assert!(!names.contains(&"set-cookie"), "{names:?}");
             let csp = r.headers.iter().find(|(n, _)| n == "content-security-policy").map(|(_, v)| v.clone()).unwrap_or_default();
             assert!(csp.contains("frame-ancestors tauri://localhost"), "{csp}");
-            println!("✓ REAL STACK: phpMyAdmin {v} answers through the console proxy, logged in, framing rewritten for the app");
+            // The replayed document must NOT carry phpMyAdmin's frame-hiding pair: with
+            // `AllowThirdPartyFraming = false` it ships `cfs-style` (html hidden) + a script
+            // that sets `top.location` when framed — the EMPTY panel of 15 Oct 2026.
+            assert!(!body.contains("cfs-style"), "the frame-hiding style is in the page — the config is `false` again");
+            assert!(!body.contains("cross_framing_protection"), "the frame-busting script is in the page");
+            println!("✓ REAL STACK: phpMyAdmin {v} answers through the console proxy, logged in, framing rewritten for the app, no frame-hiding script");
         }
         (false, _) => println!("– real-stack leg SKIPPED: no edge on :443 (start rexenv, then `rex db console phpmyadmin`)"),
         (true, None) => println!("– real-stack leg SKIPPED: the running app has not staged phpMyAdmin (`rex db console phpmyadmin`)"),

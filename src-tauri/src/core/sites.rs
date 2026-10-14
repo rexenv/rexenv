@@ -2945,6 +2945,10 @@ pub fn rebuild_configs_for(
     let phpmyadmin_docroot = phpmyadmin::staged_version(platform).map(|_| phpmyadmin::docroot(platform)).transpose()?;
     if let Some(dir) = &phpmyadmin_docroot {
         phpmyadmin::write_user_ini(dir, adminer_cap)?;
+        // And the generated config, from THIS build's generator: a docroot staged by an
+        // older app keeps that app's config until something re-renders it, and nothing
+        // else does (the macOS VM after the framing fix, 15 Oct 2026).
+        phpmyadmin::refresh_config(platform)?;
     }
     nginx_sites.extend(console_vhosts(adminer::docroot(platform)?, phpmyadmin_docroot.clone(), adminer_cap));
     // One page per stopped site, with that site's OWN domain baked in — the
@@ -3136,6 +3140,11 @@ mod tests {
         assert_eq!(body.matches("phpmyadmin::docroot(platform)").count(), 1, "the docroot is read once, behind the gate");
         assert!(body.contains("if phpmyadmin_docroot.is_some() {\n        console_hosts.push(phpmyadmin::PHPMYADMIN_HOST);"), "the edge route reads the same gate");
         assert!(!body.contains("phpmyadmin::ensure("), "rebuild must never stage the console (#175: nothing downloads under the services lock)");
+        assert!(
+            body.contains("phpmyadmin::write_user_ini(dir, adminer_cap)?;\n        // And the generated config")
+                && body.contains("phpmyadmin::refresh_config(platform)?;"),
+            "a staged docroot's config.inc.php is re-rendered by every rebuild (an app update's generator must reach it)"
+        );
     }
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};

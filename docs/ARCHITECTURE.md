@@ -2931,9 +2931,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   effective console is read-filtered — `phpmyadmin` only when chosen AND staged — so the generic
   settings door is inert for the key. **The passwordless gate is the generated config**:
   `auth_type = config` renders no login form and takes no host from a request; the only servers
-  are `127.0.0.1` on the two fixed ports (#864). `AllowThirdPartyFraming` stays false — the
-  direct vhost sends `X-Frame-Options: DENY` (#865); the in-app frame goes through its own
-  `rexpma:` proxy origin (#869/#870). Its vhost `phpmyadmin.rexenv.rex` exists only while staged
+  are `127.0.0.1` on the two fixed ports (#864). `AllowThirdPartyFraming` is `'sameorigin'` — the
+  direct vhost sends `X-Frame-Options: SAMEORIGIN` and no frame-hiding script; `false` ships
+  phpMyAdmin's `cross_framing_protection.js`, which blanked rexenv's own frame on the macOS VM
+  (#865); the in-app frame goes through its own `rexpma:` proxy origin (#869/#870). Its vhost `phpmyadmin.rexenv.rex` exists only while staged
   (`sites::console_vhosts`, #867), shares Adminer's import cap and 24 h timeout, and can never be
   a tunnel origin (#868). The blowfish secret is born owner-only OUTSIDE the docroot. Pinned
   5.2.3, measured on PHP 8.3.32/8.4.23/8.5.8 before the pin; no update family yet (plan §9).
