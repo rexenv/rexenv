@@ -6,7 +6,7 @@
 //! operations so commands/ remain thin.
 
 use crate::core::{
-    adminer, apache, binaries, frankenphp, php, proxy, repo, services, ssl, stopped_page, tld,
+    adminer, apache, binaries, frankenphp, php, phpmyadmin, proxy, repo, services, ssl, stopped_page, tld,
     tunnels,
 };
 use crate::error::{Error, Result};
@@ -2865,6 +2865,37 @@ pub fn rebuild_configs(
     )
 }
 
+/// The internal console vhosts, as nginx server blocks: Adminer always, phpMyAdmin only
+/// when its docroot is staged (`Some`). One function so the two cannot drift apart —
+/// both are `RewriteMode::Single` on the DEFAULT pool with the SAME import cap driving
+/// nginx and PHP together (importing dumps is both consoles' job, `adminer::import_cap`),
+/// the same 24 h read timeout, one name each (no site row → never shared or aliased, #24),
+/// and neither is a Laravel project. A value, not a branch inside `rebuild_configs_for`,
+/// so "no block before staging" is a tested rule rather than a reading of the function.
+pub(crate) fn console_vhosts(
+    adminer_docroot: PathBuf,
+    phpmyadmin_docroot: Option<PathBuf>,
+    cap: u64,
+) -> Vec<services::NginxSite> {
+    let vhost = |domain: &str, docroot: PathBuf| services::NginxSite {
+        domain: domain.to_string(),
+        aliases: Vec::new(),
+        docroot,
+        php_fpm_port: services::PHP_FPM_PORT,
+        rewrite: services::RewriteMode::Single,
+        body_limit: Some(cap),
+        read_timeout: Some(adminer::IMPORT_TIMEOUT_SECS),
+        php_value: Some(adminer::import_php_value(cap)),
+        storage_root: None,
+        env: Vec::new(),
+    };
+    let mut out = vec![vhost(adminer::ADMINER_HOST, adminer_docroot)];
+    if let Some(dir) = phpmyadmin_docroot {
+        out.push(vhost(phpmyadmin::PHPMYADMIN_HOST, dir));
+    }
+    out
+}
+
 /// Like [`rebuild_configs`] but from an explicit site list + precomputed nginx
 /// body limits and per-site env vars (so callers holding an async lock don't
 /// keep the DB connection borrowed across `.await`). `body_limits` comes from
@@ -2908,21 +2939,14 @@ pub fn rebuild_configs_for(
     // The same cap as a `.user.ini` in the docroot: a php-cgi group (Windows) ignores the vhost's
     // PHP_VALUE, and every PHP reads the file (#788).
     adminer::write_user_ini(&adminer::docroot(platform)?, adminer_cap)?;
-    nginx_sites.push(services::NginxSite {
-        domain: adminer::ADMINER_HOST.to_string(),
-        // The tooling vhost answers on ONE name, by design (#24: it has no site
-        // row, so it can never be shared or aliased).
-        aliases: Vec::new(),
-        docroot: adminer::docroot(platform)?,
-        php_fpm_port: services::PHP_FPM_PORT,
-        rewrite: services::RewriteMode::Single,
-        body_limit: Some(adminer_cap),
-        read_timeout: Some(adminer::IMPORT_TIMEOUT_SECS),
-        php_value: Some(adminer::import_php_value(adminer_cap)),
-        // The tooling vhost is not a Laravel project and never gets the mapping.
-        storage_root: None,
-        env: Vec::new(),
-    });
+    // phpMyAdmin's vhost exists ONLY while its docroot is staged (`phpmyadmin::ensure`,
+    // run when the user chooses that console): a server block over an empty docroot is
+    // a 404 with rexenv's name on it (ledger #867). Its `.user.ini` is written then too.
+    let phpmyadmin_docroot = phpmyadmin::staged_version(platform).map(|_| phpmyadmin::docroot(platform)).transpose()?;
+    if let Some(dir) = &phpmyadmin_docroot {
+        phpmyadmin::write_user_ini(dir, adminer_cap)?;
+    }
+    nginx_sites.extend(console_vhosts(adminer::docroot(platform)?, phpmyadmin_docroot.clone(), adminer_cap));
     // One page per stopped site, with that site's OWN domain baked in — the
     // page names the site, and a request arriving over a tunnel carries an
     // address that is not it (the trycloudflare host). Written by this rebuild,
@@ -2989,19 +3013,26 @@ pub fn rebuild_configs_for(
             stopped: stopped_pages.get(&s.id).cloned(),
         });
     }
-    // Edge route for the internal Adminer vhost (TLS via local CA → shared nginx).
-    let adminer_cert =
-        ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, adminer::ADMINER_HOST)?;
-    routes.push(proxy::SiteRoute {
-        host: adminer::ADMINER_HOST.to_string(),
-        aliases: Vec::new(),
-        wildcard: false,
-        upstream: format!("127.0.0.1:{nginx_http_port}"),
-        cert_path: adminer_cert.cert_path,
-        key_path: adminer_cert.key_path,
-        // The tooling vhost is not a Site and has no switch to stop it.
-        stopped: None,
-    });
+    // Edge routes for the internal console vhosts (TLS via local CA → shared nginx):
+    // Adminer always, phpMyAdmin only while staged — the same gate as its nginx block,
+    // read once above, so the edge can never route a name nginx has no block for.
+    let mut console_hosts = vec![adminer::ADMINER_HOST];
+    if phpmyadmin_docroot.is_some() {
+        console_hosts.push(phpmyadmin::PHPMYADMIN_HOST);
+    }
+    for host in console_hosts {
+        let cert = ssl::ensure_site_cert(platform.paths(), platform.permissions(), ca, host)?;
+        routes.push(proxy::SiteRoute {
+            host: host.to_string(),
+            aliases: Vec::new(),
+            wildcard: false,
+            upstream: format!("127.0.0.1:{nginx_http_port}"),
+            cert_path: cert.cert_path,
+            key_path: cert.key_path,
+            // A tooling vhost is not a Site and has no switch to stop it.
+            stopped: None,
+        });
+    }
     let caddyfile = proxy::write_caddyfile(
         platform,
         &proxy::CaddyConfig {
@@ -3063,6 +3094,49 @@ mod tests {
     }
 
     use super::*;
+
+    /// phpMyAdmin's block exists only while staged; Adminer's always. Both carry the
+    /// SAME cap, pool, mode and timeout — one rule for the two consoles.
+    #[test]
+    fn console_vhosts_emit_phpmyadmin_only_when_staged_and_share_one_rule() {
+        let a = PathBuf::from("/data/adminer");
+        let none = console_vhosts(a.clone(), None, 4096);
+        assert_eq!(none.len(), 1);
+        assert_eq!(none[0].domain, adminer::ADMINER_HOST);
+        let both = console_vhosts(a.clone(), Some(PathBuf::from("/data/phpmyadmin")), 4096);
+        assert_eq!(both.len(), 2);
+        assert_eq!(both[1].domain, phpmyadmin::PHPMYADMIN_HOST);
+        assert_eq!(both[1].docroot, PathBuf::from("/data/phpmyadmin"));
+        for v in &both {
+            assert_eq!(v.body_limit, Some(4096));
+            assert_eq!(v.php_value.as_deref(), Some(adminer::import_php_value(4096).as_str()));
+            assert_eq!(v.read_timeout, Some(adminer::IMPORT_TIMEOUT_SECS));
+            assert_eq!(v.php_fpm_port, services::PHP_FPM_PORT);
+            assert!(matches!(v.rewrite, services::RewriteMode::Single));
+            assert!(v.aliases.is_empty() && v.storage_root.is_none() && v.env.is_empty());
+        }
+    }
+
+    /// The gate `rebuild_configs_for` reads is the STAGED marker, not the docroot's
+    /// existence (a half-staged or retired docroot must not get a block), and the edge
+    /// route reads the same value — asserted on the text, since the function needs a
+    /// `Platform` (the live leg is `phpmyadmin_check`).
+    #[test]
+    fn rebuild_gates_the_phpmyadmin_block_and_route_on_the_staged_marker() {
+        let src = crate::core::copy_scan::production_source(include_str!("sites.rs"));
+        let body = src
+            .split("pub fn rebuild_configs_for(")
+            .nth(1)
+            .and_then(|b| b.split("\n}\n").next())
+            .expect("rebuild_configs_for");
+        assert!(
+            body.contains("phpmyadmin::staged_version(platform).map(|_| phpmyadmin::docroot(platform))"),
+            "the phpMyAdmin block is no longer gated on the staged marker"
+        );
+        assert_eq!(body.matches("phpmyadmin::docroot(platform)").count(), 1, "the docroot is read once, behind the gate");
+        assert!(body.contains("if phpmyadmin_docroot.is_some() {\n        console_hosts.push(phpmyadmin::PHPMYADMIN_HOST);"), "the edge route reads the same gate");
+        assert!(!body.contains("phpmyadmin::ensure("), "rebuild must never stage the console (#175: nothing downloads under the services lock)");
+    }
     use crate::state::db;
     use crate::state::models::{SiteDbEngine, SiteType, WebServer};
 

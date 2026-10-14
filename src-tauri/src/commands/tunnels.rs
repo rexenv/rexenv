@@ -1011,10 +1011,12 @@ mod adminer_can_never_be_shared {
              no site row and there is no other way in (#37). A target that came from anywhere \
              else would make that a validation someone has to get right."
         );
-        assert!(
-            !start.contains("ADMINER_HOST"),
-            "`start_tunnel` mentions the Adminer host, which it has no business naming"
-        );
+        for host in ["ADMINER_HOST", "PHPMYADMIN_HOST"] {
+            assert!(
+                !start.contains(host),
+                "`start_tunnel` mentions {host}, a passwordless console it has no business naming"
+            );
+        }
         // The lookup itself: a row, or an error. Never a fallback.
         let lookup = src
             .split("fn tunnel_site(")

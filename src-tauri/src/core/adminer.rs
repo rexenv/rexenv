@@ -920,8 +920,12 @@ mod tests {
         let cap = prod.find("let adminer_cap =").expect("the cap");
         let rest = &prod[cap..];
         let ini_at = rest.find("adminer::write_user_ini(&adminer::docroot(platform)?, adminer_cap)?").expect("the regeneration must write the .user.ini with the vhost's cap");
-        let vhost_at = rest.find("php_value: Some(adminer::import_php_value(adminer_cap))").expect("the vhost's PHP_VALUE");
-        assert!(ini_at < vhost_at + 400, "written beside the vhost that carries the same cap");
+        // The vhost itself is built by `console_vhosts` (one rule for both consoles, 15 Oct
+        // 2026) from the SAME `adminer_cap`, and that builder carries the PHP_VALUE.
+        let vhost_at = rest.find("console_vhosts(adminer::docroot(platform)?, phpmyadmin_docroot.clone(), adminer_cap)").expect("the vhosts built from the cap");
+        assert!(ini_at < vhost_at && vhost_at < ini_at + 900, "written beside the vhosts that carry the same cap");
+        let builder = prod.split("pub(crate) fn console_vhosts(").nth(1).expect("console_vhosts");
+        assert!(builder.contains("php_value: Some(adminer::import_php_value(cap))"), "the console vhosts' PHP_VALUE is the cap");
     }
 
     use super::*;

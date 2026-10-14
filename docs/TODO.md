@@ -286,8 +286,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     5.2.3 tree (8.3.32 + 8.5.8) and FAIL on three plants (parse-error autoload, a remote server, framing
     opened). Ledger #864–#866, each ◐ until T7's example runs on all three OSes. Nothing calls
     `ensure` yet — T6 does.
-  - [ ] **T4** the vhost in `sites::rebuild` emitted only for a staged docroot, cert, the
+  - [x] **T4** the vhost in `sites::rebuild` emitted only for a staged docroot, cert, the
     `tunnels.rs` tunnel-origin assertion widened to both hosts. Ledger rows §5.3, §5.6.
+    ✓ **15 Oct 2026:** `sites::console_vhosts` (one rule for both consoles) + the staged gate read
+    once for the nginx block and the edge route; the CA-rotation reissue covers the host while
+    staged; ledger #867 (◐, plant-proven L0) and #868 (✅). Live rebuild legs → T7.
   - [ ] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
     `X-Frame-Options` stripped on the replayed copy only, the `rexpma` scheme in `lib.rs` (+ a
     `PLAN-linux-port.md` §1.1 row), `PlatformWords` origin filled for macOS/Windows/Linux,

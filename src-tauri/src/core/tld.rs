@@ -20,8 +20,8 @@ use crate::error::{Error, Result};
 
 /// The backbone TLD — rexenv's home TLD. Installed at first-run/onboarding
 /// (its resolver file is the one `run_system_setup` writes), used as the
-/// seeded default for new sites, and hosts the internal Adminer vhost
-/// (`adminer.rexenv.rex`). It is NOT in the RFC safe set (warn tier — the UI
+/// seeded default for new sites, and hosts the internal console vhosts
+/// (`adminer.rexenv.rex`, `phpmyadmin.rexenv.rex`). It is NOT in the RFC safe set (warn tier — the UI
 /// notes possible future ICANN delegation), but it must never be blockable:
 /// the guard test below fails the build if it ever lands on the block list.
 /// `.test` is NOT auto-installed anymore — it's an ordinary safe-set choice

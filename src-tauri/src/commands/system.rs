@@ -639,6 +639,11 @@ pub async fn regenerate_certs(state: State<'_, AppState>) -> Result<u32> {
         count += 1;
     }
     core::ssl::reissue_site_cert(paths, perms, &state.ca, core::adminer::ADMINER_HOST, &[])?;
+    // phpMyAdmin's cert exists only while its vhost does (staged); an unstaged console
+    // gets a fresh one from the rebuild that first routes it.
+    if core::phpmyadmin::staged_version(state.platform.as_ref()).is_some() {
+        core::ssl::reissue_site_cert(paths, perms, &state.ca, core::phpmyadmin::PHPMYADMIN_HOST, &[])?;
+    }
 
     reload_edge_for_new_certs(&state, &sites).await?;
     Ok(count)
