@@ -1319,6 +1319,8 @@ pub fn run() {
             commands::database::adminer_set_theme,
             commands::database::adminer_update_check,
             commands::database::adminer_update_apply,
+            commands::database::db_console_status,
+            commands::database::db_console_set,
             commands::php::get_php_settings,
             commands::php::apply_php_settings,
             commands::system::setup_edge_conflict,

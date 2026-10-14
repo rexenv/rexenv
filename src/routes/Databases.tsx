@@ -19,9 +19,10 @@ import {
   dbEngineVersions,
   setDbEngineVersion,
 } from "@/lib/ipc";
-import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
+import { CONSOLE_LABEL, DB_CONSOLE_QUERY, consoleFor, consoleFrameSrc, consoleUrl, useDbConsole } from "@/lib/dbconsole";
 import { usePlatformWords } from "@/lib/usePlatformWords";
-import type { DbStatus } from "@/types";
+import type { DbConsole, DbStatus } from "@/types";
+import { dbConsoleSet } from "@/lib/ipc";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
@@ -59,6 +60,7 @@ function DbRow({
   onSwitchVersion,
   onBrowse,
   browserUrl,
+  console,
   onGoServices,
 }: {
   db: DbStatus;
@@ -66,8 +68,10 @@ function DbRow({
   versions: string[];
   onSwitchVersion: (v: string) => void;
   onBrowse: () => void;
-  /** The console's first-party URL for a real browser (`adminerUrl`). */
+  /** The console's first-party URL for a real browser (`consoleUrl`). */
   browserUrl: string;
+  /** Which console Browse / Open in browser lead to for THIS engine. */
+  console: DbConsole;
   /** Engine lifecycle lives on the Services page (P2-7) — link, never a dead button. */
   onGoServices: () => void;
 }) {
@@ -113,7 +117,13 @@ function DbRow({
           <>
             <button
               onClick={onBrowse}
-              title="Open in the in-app database browser"
+              data-probe="db-browse"
+              data-console={console}
+              title={
+                db.key === "postgres" && console === "adminer"
+                  ? "Open in Adminer inside the app — phpMyAdmin has no PostgreSQL driver, so PostgreSQL always opens in Adminer"
+                  : `Open in ${CONSOLE_LABEL[console]} inside the app`
+              }
               className="flex h-8 items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
             >
               <TableProperties className="h-3.5 w-3.5" />
@@ -127,7 +137,7 @@ function DbRow({
                 deep link — auto-login works there too (first-party cookies). */}
             <OpenInBrowserSplit
               url={browserUrl}
-              title={`Open ${db.label} in your browser`}
+              title={`Open ${db.label} in ${CONSOLE_LABEL[console]} in your browser`}
               chevronLabel={`Open ${db.label} in another browser`}
               probe="db-open-in-browser"
             />
@@ -162,6 +172,76 @@ function DbRow({
   );
 }
 
+
+/** The console choice for MySQL/MariaDB — ONE app-wide dial, not a second button on
+ *  every row (the owner's one-dial ruling, 3 Sep 2026; plan §3.1). Choosing phpMyAdmin
+ *  is what installs it: the button holds the sentence while the backend downloads,
+ *  probes, stages and reloads the web tier, and the row shows what phpMyAdmin's docroot
+ *  REALLY serves ("not installed" is a state, not a zero). PostgreSQL rows ignore the
+ *  dial — phpMyAdmin has no driver — and say so on their Browse button. */
+export function DbConsoleCard() {
+  const qc = useQueryClient();
+  const status = useDbConsole();
+  const choose = useMutation({
+    mutationFn: (console: DbConsole) => dbConsoleSet(console),
+    onSuccess: (fresh) => {
+      qc.setQueryData(DB_CONSOLE_QUERY, fresh);
+      toast.success(
+        fresh.console === "phpmyadmin"
+          ? `MySQL and MariaDB now open in phpMyAdmin ${fresh.phpmyadminStaged ?? ""}`.trim()
+          : "MySQL and MariaDB now open in Adminer",
+      );
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  if (!status) return null;
+  const pending = choose.isPending ? choose.variables : null;
+  const option = (console: DbConsole, hint: string) => {
+    const active = status.console === console;
+    return (
+      <button
+        key={console}
+        type="button"
+        role="radio"
+        aria-checked={active}
+        disabled={choose.isPending}
+        aria-busy={pending === console}
+        data-probe={`db-console-${console}`}
+        onClick={() => !active && choose.mutate(console)}
+        title={hint}
+        className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[0.71875rem] transition-colors ${
+          active ? "bg-rex-surface-2 text-rex-text shadow-sm" : "text-rex-text-muted hover:text-rex-text"
+        }`}
+      >
+        {pending === console && <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />}
+        {pending === console && console === "phpmyadmin" ? `Installing phpMyAdmin ${status.phpmyadminPinned}…` : CONSOLE_LABEL[console]}
+      </button>
+    );
+  };
+  return (
+    <div
+      data-probe="db-console"
+      data-console={status.console}
+      data-phpmyadmin-staged={status.phpmyadminStaged ?? ""}
+      className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3"
+    >
+      <span className="text-[0.84375rem] font-semibold text-rex-text">Database console</span>
+      <span className="text-[0.71875rem] text-rex-text-muted">for MySQL and MariaDB — PostgreSQL always opens in Adminer</span>
+      <div role="radiogroup" aria-label="Database console" className="ml-auto flex items-center gap-0.5 rounded-lg border border-rex-border bg-rex-bg p-0.5">
+        {option("adminer", "Adminer — the single-file console rexenv ships for every engine")}
+        {option(
+          "phpmyadmin",
+          status.phpmyadminStaged
+            ? `phpMyAdmin ${status.phpmyadminStaged} is installed — open MySQL and MariaDB in it`
+            : `Download phpMyAdmin ${status.phpmyadminPinned} (about 11 MB), check it runs on rexenv's PHP, and open MySQL and MariaDB in it`,
+        )}
+      </div>
+      <span className="w-full font-mono text-[0.6875rem] text-rex-text-muted sm:w-auto">
+        phpMyAdmin {status.phpmyadminStaged ?? "not installed yet"}
+      </span>
+    </div>
+  );
+}
 
 /** The Adminer version row: what the console is serving, and the one control
  *  that changes it.
@@ -289,6 +369,8 @@ export function Databases() {
     engine: "mysql" | "mariadb" | "postgres";
     label: string;
   } | null>(null);
+  // The app-wide console choice (MySQL/MariaDB); PostgreSQL ignores it.
+  const consoleSetting = useDbConsole()?.console;
   const { data: dbs = [], isLoading } = useQuery({
     queryKey: ["databases"],
     queryFn: databasesStatus,
@@ -329,12 +411,15 @@ export function Databases() {
             <ArrowLeft className="h-3.5 w-3.5" />
             Back
           </button>
-          <span className="font-mono text-[0.75rem] text-rex-text-muted">{browse.label} · Adminer</span>
+          <span className="font-mono text-[0.75rem] text-rex-text-muted">
+            {browse.label} · {CONSOLE_LABEL[consoleFor(engine, consoleSetting)]}
+          </span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-[18px]">
           <AdminerFrame
-            src={adminerFrameSrc({ engine }, words.dbBrowserOrigin)}
-            externalUrl={adminerUrl({ engine })}
+            console={consoleFor(engine, consoleSetting)}
+            src={consoleFrameSrc(engine, consoleSetting, words)}
+            externalUrl={consoleUrl(engine, consoleSetting)}
           />
         </div>
       </>
@@ -386,9 +471,11 @@ export function Databases() {
                     label: db.label,
                   })
                 }
-                browserUrl={adminerUrl({
-                  engine: db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql",
-                })}
+                browserUrl={consoleUrl(
+                  db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql",
+                  consoleSetting,
+                )}
+                console={consoleFor(db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql", consoleSetting)}
                 onGoServices={() => navigate("/services")}
               />
             ))}
@@ -410,6 +497,7 @@ export function Databases() {
             ))}
           </div>
         )}
+        {!isLoading && <DbConsoleCard />}
         {!isLoading && <AdminerVersionCard />}
       </div>
     </>

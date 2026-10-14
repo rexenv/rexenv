@@ -266,6 +266,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     all 200 with the logged-in title, zero fatal/deprecation on the page. Headers measured for T5:
     `X-Frame-Options: DENY`, a CSP with no `frame-ancestors`, cookies `SameSite=Strict`. **Open for
     the example itself and its Windows + Linux runs.**
+    ✓ **15 Oct 2026, the example:** `examples/phpmyadmin_check.rs` (network tier, `all`): no
+    block/route before staging → `ensure` into a sandbox (marker, two-loopback-server config,
+    framing denied, `0600` secret) → block + route + `.user.ini` after → PLANT a parse-error
+    autoloader (`ensure_from` seam): refused by name, docroot untouched → PLANT a remote server in
+    the loaded config: refused → the real-stack leg through `dbconsole_proxy::forward` when the
+    running app has it staged. macOS run: all sandbox legs green; the real-stack leg skipped there
+    (the dev Mac's app is the release build). **Open: the real-stack leg + the Windows and Linux runs.**
   - [x] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
     in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
     `notices-check.py` decides whether its vendored composer tree needs per-package rows).
@@ -302,10 +309,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     scheme-shape test, `frame-src` in `csp` + `devCsp`, the TS type + mock. Ledger #869, #870
     (plant-proven). The GUI render on each OS and the `SameSite=Strict` jar behaviour are T6's
     rows (nothing frames `rexpma:` until the UI exists).
-  - [ ] **T6** the `db_console` setting + IPC (`db_console_get` / `db_console_set` = download → probe →
+  - [x] **T6** the `db_console` setting + IPC (`db_console_get` / `db_console_set` = download → probe →
     stage → rebuild → reload, the button holding the sentence), the console card's segmented control
     + phpMyAdmin version line, `src/lib/dbconsole.ts` choosing URLs, Browse / Open in browser / the
     site Database tab following it, Postgres rows pinned to Adminer with the tooltip. GUI ×3; SMOKE ×3.
+    ✓ **15 Oct 2026 (built):** `db_console_status` / `db_console_set` (choosing phpMyAdmin IS the
+    install: prefetch → `ensure` → setting → web-tier reload), `phpmyadmin::effective_console`
+    read-filtered on the staged marker (CLI access read-only), the `DbConsoleCard`, `src/lib/
+    dbconsole.ts` + `phpmyadmin.ts`, the console-aware frame/tab/rows, `rex db console` +
+    `rex db browse` following it. SMOKE rows written for macOS, Windows, Linux — **GUI runs owed
+    on each OS** (the macOS dev Mac's running app holds a live tunnel, so the macOS GUI run is the
+    VM's).
   - [ ] **T8** docs with each commit: ARCHITECTURE (§Adminer → "Database consoles"), MAP, PLATFORMS §3,
     SMOKE main + § Windows + § Linux, DESIGN, TESTING + `live-checks.sh`, the ledger verdicts naming
     the OS each proof came from; then the plan header → SHIPPED and its move to `docs/archive/`.

@@ -355,6 +355,93 @@ pub async fn adminer_update_apply(
 }
 
 
+/// The console row: which console MySQL/MariaDB open in, and phpMyAdmin's state.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DbConsoleStatus {
+    /// `adminer` or `phpmyadmin` — the EFFECTIVE answer (`phpmyadmin::effective_console`:
+    /// chosen AND staged), never the raw setting.
+    pub console: String,
+    /// What phpMyAdmin's docroot is serving, or `None` before it was ever chosen — a
+    /// state, not a zero value ("not installed" vs "installed, 5.2.3").
+    pub phpmyadmin_staged: Option<String>,
+    /// The phpMyAdmin version this build ships (pin only — no update family yet).
+    pub phpmyadmin_pinned: String,
+}
+
+fn db_console_row(
+    platform: &dyn crate::platform::traits::Platform,
+    conn: &rusqlite::Connection,
+) -> DbConsoleStatus {
+    DbConsoleStatus {
+        console: crate::core::phpmyadmin::effective_console(platform, conn).to_string(),
+        phpmyadmin_staged: crate::core::phpmyadmin::staged_version(platform),
+        phpmyadmin_pinned: crate::core::binaries::pins().phpmyadmin.to_string(),
+    }
+}
+
+/// Read the console row. Cheap: a settings read and a marker read.
+#[tauri::command]
+pub fn db_console_status(state: State<'_, AppState>) -> Result<DbConsoleStatus> {
+    let conn = state
+        .db
+        .lock()
+        .map_err(|_| Error::Other("database lock poisoned".into()))?;
+    Ok(db_console_row(state.platform.as_ref(), &conn))
+}
+
+/// Choose the console for MySQL/MariaDB: `adminer` or `phpmyadmin`.
+///
+/// Choosing phpMyAdmin is what INSTALLS it — download (progress in the hub, no lock
+/// held, nothing written), the copy + generated config + CLI probe + rename publish
+/// (`phpmyadmin::ensure`, ledger #866), THEN the setting, THEN a web-tier reload so the
+/// new vhost and its edge route exist (`sites::console_vhosts`, staged-only, #867). A
+/// failure at any step leaves the previous console in place and the setting untouched;
+/// the effective answer is read-filtered on the staged marker anyway
+/// (`phpmyadmin::effective_console`). Choosing Adminer only writes the setting — the
+/// staged phpMyAdmin tree and its vhost stay (a second choice is a flip, not a download).
+#[tauri::command]
+pub async fn db_console_set(state: State<'_, AppState>, console: String) -> Result<DbConsoleStatus> {
+    let platform = state.platform.as_ref();
+    match console.as_str() {
+        "adminer" => {}
+        "phpmyadmin" => {
+            // One install at a time — the same claim set as PHP and Adminer applies.
+            let _flight = crate::commands::php::InFlight::claim("phpmyadmin")?;
+            let version = crate::core::binaries::pins().phpmyadmin;
+            let plan = crate::core::downloads::plan_for_phpmyadmin(platform, version);
+            crate::core::downloads::prefetch(platform, "Install phpMyAdmin", &plan).await?;
+            crate::core::phpmyadmin::ensure(platform, version).await?;
+        }
+        other => {
+            return Err(Error::Other(format!(
+                "unknown database console {other:?} — adminer or phpmyadmin"
+            )))
+        }
+    }
+    let sites = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::state::store::set_setting(&conn, crate::core::phpmyadmin::CONSOLE_KEY, &console)?;
+        crate::state::store::list_sites(&conn)?
+    };
+    // The vhost is emitted only for a staged docroot, so the first choice of phpMyAdmin
+    // needs a regenerate + reload for it to exist; a running stack gets it now, a stopped
+    // one at its next start (the rebuild reads the marker).
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.reload(platform, &state.ca, &sites, false).await?
+        } else {
+            Vec::new()
+        }
+    };
+    crate::core::service_manager::await_ready(checks).await?;
+    db_console_status(state)
+}
+
 #[cfg(test)]
 mod tests {
     /// **One apply at a time covers Adminer too, and does not block PHP.**

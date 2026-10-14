@@ -262,7 +262,8 @@ COMMANDS:
                 Import a dump — OVERWRITES the site's tables (asks first)
   db reset <domain>       Drop + reinstall WordPress (type the domain to confirm)
   db versions [--set <engine> <version>]   Per-engine server versions
-  db browse               Open Adminer in the browser
+  db console [adminer|phpmyadmin]   Which console MySQL/MariaDB open in (choosing phpMyAdmin installs it)
+  db browse               Open the database console in the browser
   php list      Pinned PHP versions: installed, default, pool port
   php default <minor>      Default version for new sites
   php install <minor> / php uninstall <minor>
@@ -1052,9 +1053,22 @@ fn main() {
             Some("import") => cmd_db_import(&words[2..], json_output),
             Some("reset") => cmd_db_reset(&words[2..], json_output),
             Some("versions") => cmd_db_versions(&words[2..], json_output),
-            Some("browse") => open_url("https://adminer.rexenv.rex"),
+            Some("console") => cmd_db_console(&words[2..], json_output),
+            // The console the app opens MySQL/MariaDB in — phpMyAdmin when chosen and
+            // installed, Adminer otherwise (the backend's effective answer, never the raw
+            // setting).
+            Some("browse") => {
+                let st = request("db.console", Value::Null);
+                // (`is_some_and`, not an option literal with a string inside: the completion
+                // guard scans this block for dispatched verbs by that spelling.)
+                open_url(if st["console"].as_str().is_some_and(|c| c == "phpmyadmin") {
+                    "https://phpmyadmin.rexenv.rex/"
+                } else {
+                    "https://adminer.rexenv.rex"
+                })
+            }
             _ => {
-                errln!("rex: usage: rex db <export|import|reset|versions|browse>\n\n{USAGE}");
+                errln!("rex: usage: rex db <export|import|reset|versions|console|browse>\n\n{USAGE}");
                 exit(1);
             }
         },
@@ -2644,7 +2658,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 fn cmd_completions(shell: Option<&str>) {
     const TOP: &str = "status start stop restart site wp repo worktree php db service logs doctor mail tunnel tld blueprints config version completions help";
     const SITE: &str = "list create delete info open login logs php xdebug server restart start stop domains rename domain move relink retry env cert";
-    const DB: &str = "export import reset versions browse";
+    const DB: &str = "export import reset versions console browse";
     const PHP: &str = "list default install uninstall settings";
     const WPA: &str = "plugin theme user search-replace cache-flush cron maintenance core";
     const REPO: &str =
@@ -4016,6 +4030,32 @@ fn cmd_db_reset(words: &[String], json_output: bool) {
 }
 
 const DB_VERSIONS_USAGE: &str = "rex: usage: rex db versions [--set <engine> <version>]";
+
+const DB_CONSOLE_USAGE: &str = "rex: usage: rex db console [adminer|phpmyadmin]";
+
+/// `rex db console` prints the effective console; with an argument it chooses one.
+/// Choosing phpMyAdmin is the install (download → probe → stage → web-tier reload), so
+/// the call can take a while on first use and returns what the docroot REALLY serves.
+fn cmd_db_console(words: &[String], json_output: bool) {
+    reject_unknown_flags(words, "db console", &[], DB_CONSOLE_USAGE);
+    let data = match words.first().map(String::as_str) {
+        None => request("db.console", Value::Null),
+        Some(c @ ("adminer" | "phpmyadmin")) => request("db.console.set", json!({ "console": c })),
+        Some(other) => {
+            errln!("rex: unknown console {other:?}\n{DB_CONSOLE_USAGE}");
+            exit(1);
+        }
+    };
+    if json_output {
+        return print_json(&data);
+    }
+    let console = data["console"].as_str().unwrap_or("?");
+    let staged = data["phpmyadminStaged"].as_str();
+    outln!(
+        "console: {console}  (MySQL and MariaDB; PostgreSQL always opens in Adminer)\nphpMyAdmin: {}",
+        staged.map(|v| format!("installed, {v}")).unwrap_or_else(|| format!("not installed (pinned {})", data["phpmyadminPinned"].as_str().unwrap_or("?")))
+    );
+}
 
 fn cmd_db_versions(words: &[String], json_output: bool) {
     // Same shape: no `--set` means LIST, so `--sett mysql 8.4` printed the

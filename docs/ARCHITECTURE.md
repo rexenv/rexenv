@@ -2916,6 +2916,29 @@ IPC surface — which is how a reader ends up designing against a system with on
   stack — never a tunnel origin. Per-site deep link via a generated `index.php` wrapper
   (`adminer_object()` hook): passwordless login for loopback servers only, auto-submits
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
+- **phpMyAdmin — the SECOND console, MySQL/MariaDB only** (`core/phpmyadmin.rs`, 15 Oct 2026,
+  `docs/PLAN-db-console-open-and-phpmyadmin.md`): asked for by users; phpMyAdmin has no
+  PostgreSQL driver, so a PostgreSQL row keeps Adminer whatever the choice. ONE app-wide dial
+  (`db_console` — the owner's one-dial ruling, never a second button per row) on the Databases
+  page's console card; Browse, Open in browser and the site Database tab follow it
+  (`src/lib/dbconsole.ts` is the one place that answers "which console, which URL"). **Choosing
+  it IS the install**: `db_console_set` downloads the pinned release zip (a `Shape::Dir` PHP
+  tree, OS-agnostic, prepared by `prepare_script_dir` — no executable to check), copies it to
+  `app_data/phpmyadmin.new`, GENERATES `config.inc.php`, PROBES the tree on the pool's pinned
+  PHP (the tree's own constants + autoloader + `PhpMyAdmin\Config`, re-checking the LOADED
+  servers and framing key), publishes by rename with the marker LAST, writes the setting, and
+  reloads the web tier. A tree that fails the probe never becomes the docroot (#866); the
+  effective console is read-filtered — `phpmyadmin` only when chosen AND staged — so the generic
+  settings door is inert for the key. **The passwordless gate is the generated config**:
+  `auth_type = config` renders no login form and takes no host from a request; the only servers
+  are `127.0.0.1` on the two fixed ports (#864). `AllowThirdPartyFraming` stays false — the
+  direct vhost sends `X-Frame-Options: DENY` (#865); the in-app frame goes through its own
+  `rexpma:` proxy origin (#869/#870). Its vhost `phpmyadmin.rexenv.rex` exists only while staged
+  (`sites::console_vhosts`, #867), shares Adminer's import cap and 24 h timeout, and can never be
+  a tunnel origin (#868). The blowfish secret is born owner-only OUTSIDE the docroot. Pinned
+  5.2.3, measured on PHP 8.3.32/8.4.23/8.5.8 before the pin; no update family yet (plan §9).
+  `rex db console [adminer|phpmyadmin]` is the same command; `rex db browse` opens the effective
+  console.
 - **The console's palette follows the APP, not the OS** (`adminer::set_theme` +
   the wrapper's `css()` · `adminer_set_theme` · 20 Aug 2026). Adminer decides its
   scheme from what `css()` returns — values naming only `dark` make it load

@@ -627,6 +627,17 @@ export interface SiteServing {
  *  version that exists and one rexenv can install are the same thing — a second
  *  field would be one fact rendered twice, and the copy explaining the gap would
  *  be a straight falsehood. */
+/** The console MySQL/MariaDB open in (`db_console_status`). `console` is the EFFECTIVE
+ *  answer — phpMyAdmin only when chosen AND staged — never the raw setting. */
+export interface DbConsoleStatus {
+  console: DbConsole;
+  /** What phpMyAdmin's docroot serves, or `null` before it was ever chosen. */
+  phpmyadminStaged: string | null;
+  /** The phpMyAdmin version this build ships (pin only). */
+  phpmyadminPinned: string;
+}
+export type DbConsole = "adminer" | "phpmyadmin";
+
 export interface AdminerStatus {
   /** What the docroot is serving right now. `null` before the first start has
    *  staged anything — a state, not a zero value: "nothing staged yet" and

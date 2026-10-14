@@ -9,13 +9,17 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { StackNeededPanel, useStoppedDependency } from "@/components/common/StackNeededPanel";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { DbImportCard } from "@/components/sites/DbImportCard";
-import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
+import { CONSOLE_LABEL, consoleFor, consoleFrameSrc, consoleUrl, useDbConsole } from "@/lib/dbconsole";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { Site } from "@/types";
 
 export function DatabaseTab({ site }: { site: Site }) {
   const words = usePlatformWords();
-  // Adminer is served THROUGH the stack (edge → nginx → a pool) and browses the
+  // Which console this engine opens in: the app-wide choice for MySQL/MariaDB,
+  // Adminer for PostgreSQL (`src/lib/dbconsole.ts`).
+  const consoleSetting = useDbConsole()?.console;
+  const console = consoleFor(site.dbEngine, consoleSetting);
+  // The console is served THROUGH the stack (edge → nginx → a pool) and browses the
   // site's engine, so both must be up before the frame can show anything but a
   // blank panel (Windows, 19 Sep 2026: the URL above an empty frame). A Blank PHP
   // site without a database never gets here — the branch below says "No database".
@@ -46,7 +50,7 @@ export function DatabaseTab({ site }: { site: Site }) {
         <div className="p-6 text-[0.78125rem] text-rex-text-muted">Checking rexenv&apos;s services…</div>
       ) : stopped ? (
         <div className="flex min-h-[420px] flex-1 flex-col">
-          <StackNeededPanel stopped={stopped} what="The database browser (Adminer)" />
+          <StackNeededPanel stopped={stopped} what={`The database browser (${CONSOLE_LABEL[console]})`} />
         </div>
       ) : (
         /* A FLEX column, not a plain div: the frame fills via flex-grow, and
@@ -54,8 +58,9 @@ export function DatabaseTab({ site }: { site: Site }) {
            iframeH=0 during the §C2 fix). min-h is the scroll floor. */
         <div className="flex min-h-[420px] flex-1 flex-col">
           <AdminerFrame
-            src={adminerFrameSrc({ engine: site.dbEngine, db: site.dbName }, words.dbBrowserOrigin)}
-            externalUrl={adminerUrl({ engine: site.dbEngine, db: site.dbName })}
+            console={console}
+            src={consoleFrameSrc(site.dbEngine, consoleSetting, words, site.dbName)}
+            externalUrl={consoleUrl(site.dbEngine, consoleSetting, site.dbName)}
           />
         </div>
       )}

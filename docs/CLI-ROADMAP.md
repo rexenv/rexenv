@@ -112,7 +112,8 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `db import <domain> <file.sql> [--yes]` | `wp_db_import` | ✓ | shipped 16 Jul — confirm + backup-first tip; path canonicalized client-side; round-trip live-verified (site 200 after) |
 | `db reset <domain>` | `wp_site_reset` | ✓ | shipped 16 Jul — TYPED domain confirmation (--confirm <domain> for scripts); wrong-confirm abort live |
 | `db versions [--set <engine> <version>]` | `databases_status` + `db_engine_versions` / `set_db_engine_version` | ✓ | shipped 16 Jul — matrix live; --set passthrough |
-| `db browse` | — (`open https://adminer.rexenv.rex`) | ✓ | shipped 16 Jul |
+| `db console [adminer\|phpmyadmin]` | `db_console_status` / `db_console_set` | ✓ | shipped 15 Oct 2026 — the Databases screen's dial; choosing phpMyAdmin IS the install (download → probe → stage → reload), so the first call takes a while and prints what the docroot really serves (`docs/PLAN-db-console-open-and-phpmyadmin.md`) |
+| `db browse` | `db_console_status` + `open https://<console host>` | ✓ | shipped 16 Jul; since 15 Oct 2026 opens the EFFECTIVE console (phpMyAdmin when chosen and installed, else Adminer) |
 
 ## WordPress
 
@@ -257,7 +258,7 @@ had claimed a clean sweep for as long as that row sat three screens above it —
 the same shape as the two `mail` rows below, and the reason both are now gated by
 `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
-106 commands shipped (104 + the two `live.sync_status` / `live.history` arms, 14 Oct 2026; 104 = 100 + the four new `worktree.*` arms, 10 Oct 2026; 100 = 94 + the six `live.*` arms; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
+108 commands shipped (106 + the two `db.console` / `db.console.set` arms, 15 Oct 2026; 106 = 104 + the two `live.sync_status` / `live.history` arms, 14 Oct 2026; 104 = 100 + the four new `worktree.*` arms, 10 Oct 2026; 100 = 94 + the six `live.*` arms; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
 counter was caught measuring a SUPERSET a second way: it counts every quoted match arm
 anywhere in `cli_server.rs`, and a helper there (`repo_job_settled`) had an `"add" =>` arm
 that is not a command. Moving that helper out for the Windows port (it now lives in

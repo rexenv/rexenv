@@ -75,6 +75,11 @@ mod tests {
         ("databases_status", Tool("stack_status")),
         ("db_engine_versions", Tool("stack_status")),
         ("db_engine_refusals", Tool("stack_status")),
+        // The console choice is the person's UI dial (one dial, 3 Sep ruling); an agent
+        // queries databases through db_query and opens a console with `open` — it has no
+        // business installing a second one or flipping what the person's Browse opens.
+        ("db_console_status", Never("which console the PERSON's Browse opens is a UI preference; agents read data through db_query")),
+        ("db_console_set", Never("choosing phpMyAdmin downloads and installs a tree and flips the person's console — a preference, not an agent action")),
         // ── logs
         ("log_targets", Tool("site_logs")),
         ("tail_log", Tool("site_logs")),

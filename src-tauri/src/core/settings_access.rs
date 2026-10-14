@@ -113,6 +113,11 @@ pub fn cli_access(key: &str) -> CliAccess {
         return CliAccess::ReadWrite;
     }
     match key {
+        crate::core::phpmyadmin::CONSOLE_KEY => CliAccess::ReadOnly(
+            "the database console choice — choosing phpMyAdmin downloads, probes and stages \
+             it before the value is written (`db_console_set`), and the value is honoured \
+             only over a staged tree. Change it on the Databases screen",
+        ),
         // Preferences that reach the raw setter; see UNVALIDATED_BUT_SAFE.
         "preferred_editor" | "preferred_browser" | "app_update_auto_check"
         | "app_update_skipped" => CliAccess::ReadWrite,

@@ -931,6 +931,21 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   console (Databases → Browse, and a site's Database tab). Needs a Mac with two browsers for the
   chevron (one browser = no chevron, by design). L2: `openin.js` asserts the shape and the
   `open_external` target. **Open: no run recorded.**
+- [ ] **phpMyAdmin as the console** (15 Oct 2026, T6 of the same plan): Databases → the
+  "Database console" card below the engines → **phpMyAdmin**. The button reads "Installing
+  phpMyAdmin 5.2.3…" while it downloads (the hub shows the bytes), probes and stages; then a
+  toast "MySQL and MariaDB now open in phpMyAdmin 5.2.3" and the card's line says `phpMyAdmin
+  5.2.3`. Browse on MySQL → "Browsing MySQL · phpMyAdmin", phpMyAdmin INSIDE the app, already
+  logged in as root (no login form exists), the databases listed; the bar above shows
+  `https://phpmyadmin.rexenv.rex/index.php?server=1` with Copy / Open in browser. Browse on
+  MariaDB → server 2. Browse on **PostgreSQL still opens Adminer** (its tooltip says why). A
+  site's Database tab (MySQL site) opens phpMyAdmin on that site's database
+  (`route=/database/structure&db=…`). `curl -sI https://phpmyadmin.rexenv.rex/index.php?server=1
+  | grep -i x-frame-options` → `DENY` (the direct vhost is never frameable; the app's frame
+  goes through `rexpma:`). Back to **Adminer**: a toast, Browse opens Adminer again, phpMyAdmin
+  stays installed (the line keeps its version). `rex db console` prints the same; `rex db
+  console phpmyadmin` is the same install. L1 `phpmyadmin_check` (sandbox legs + the real-stack
+  leg through the proxy). **Open: no GUI run recorded.**
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
@@ -3023,6 +3038,13 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       Vivaldi/Chromium `--incognito`/`--inprivate`, Firefox `-private-window`), and the browser is
       started as the detected executable with its arguments — no shell. The Dell has Edge + Chrome,
       so the chevron renders there. **Open: no run recorded.**
+- [ ] **phpMyAdmin as the console** (T6, 15 Oct 2026): the main body's row. Windows differences:
+      the frame loads `http://rexpma.localhost/index.php?server=1` (WebView2's spelling of the
+      `rexpma` scheme — `PlatformWords::phpmyadmin_origin`; an empty panel = #703's class, check
+      both CSP ends); the tree is prepared by `prepare_script_dir` (Mark-of-the-Web stripped, no
+      `.exe` required — `check_tree` would refuse it); the import cap reaches the php-cgi group
+      through the docroot's `.user.ini` (#788); `config.inc.php` carries forward-slash paths
+      (`C:/Users/…/AppData/Local/rexenv/rexenv/phpmyadmin-tmp`). **Open: no run recorded.**
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
       adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
@@ -3665,6 +3687,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       with a private flag); the Ubuntu VM has Firefox only unless a second browser is installed
       first (`snap install chromium`) — one browser = no chevron, by design. **Open: no run
       recorded.**
+- [ ] **phpMyAdmin as the console** (T6, 15 Oct 2026): the main body's row. Linux: the frame
+      loads `rexpma://localhost/…` (webkitgtk, the macOS shape); the secret is `0600` under
+      `~/.local/share/rexenv/phpmyadmin.secret`; the tree under `~/.local/share/rexenv/phpmyadmin`.
+      **Open: no run recorded.**
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
       upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the

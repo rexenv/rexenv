@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
+import type { AdminerStatus, DbConsoleStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
 
 /** macOS's platform words — the browser shell's answer, and `usePlatformWords`' answer until the backend's
  *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
@@ -198,6 +198,12 @@ export const mockPhpVersions: PhpVersion[] = [
  *  renders something and therefore the one worth looking at — and because
  *  upstream really is ahead: rexenv pins 5.4.2 while Adminer shipped 6.0.1.
  *  `?adminer=` in the dev harness swaps the other states in. */
+export const mockDbConsoleStatus: DbConsoleStatus = {
+  console: "adminer",
+  phpmyadminStaged: null,
+  phpmyadminPinned: "5.2.3",
+};
+
 export const mockAdminerStatus: AdminerStatus = {
   staged: "5.4.2",
   effective: "5.4.2",

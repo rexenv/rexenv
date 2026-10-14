@@ -14,7 +14,17 @@ import { currentTheme, subscribeTheme } from "@/lib/theme";
  *  frame: the first-party https URL with Copy + "Open in browser", so the same
  *  DB session can be driven from a full browser (auto-login works there too —
  *  first-party context, no iframe cookie games needed). */
-export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: string }) {
+export function AdminerFrame({
+  src,
+  externalUrl,
+  console = "adminer",
+}: {
+  src: string;
+  externalUrl?: string;
+  /** Which console `src` is: the palette file is Adminer's wrapper's (phpMyAdmin keeps
+   *  its own look in v1), and the frame's title names what it shows. */
+  console?: "adminer" | "phpmyadmin";
+}) {
   const [copied, setCopied] = useState(false);
   // The console renders in its own process off a file rexenv writes, so the
   // write has to LAND before the frame loads — hence `applied` gating the
@@ -26,8 +36,10 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
     let live = true;
     // A failure still loads the console: it would render in the OS scheme,
     // which is exactly what it did before this existed — worse than matching,
-    // better than a blank panel.
-    void adminerSetTheme(theme)
+    // better than a blank panel. phpMyAdmin has no palette file to write — the
+    // frame loads straight away.
+    const write = console === "adminer" ? adminerSetTheme(theme) : Promise.resolve();
+    void write
       .catch(() => {})
       .then(() => {
         if (live) setApplied(theme);
@@ -35,13 +47,13 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
     return () => {
       live = false;
     };
-  }, [theme]);
+  }, [theme, console]);
   if (!isTauri()) {
     return (
       <Placeholder
         icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
         label="Database browser"
-        hint="The embedded Adminer requires the rexenv desktop app."
+        hint="The embedded database console requires the rexenv desktop app."
       />
     );
   }
@@ -94,8 +106,9 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
             nothing inside it re-reads anything. */}
         {applied && (
           <iframe
-            key={applied}
-            title="Adminer"
+            key={`${console}-${applied}`}
+            title={console === "phpmyadmin" ? "phpMyAdmin" : "Adminer"}
+            data-probe={`db-frame-${console}`}
             src={src}
             className="absolute inset-0 h-full w-full border-0 bg-rex-bg"
           />

@@ -44,6 +44,28 @@ const SECRET_LEN: usize = 32;
 /// recompiles its templates (slow) and the console warns on each load.
 const TEMP_DIR: &str = "phpmyadmin-tmp";
 
+/// Where the user's console choice is stored — a settings ROW, `adminer` or
+/// `phpmyadmin`. Absent means Adminer. Postgres rows ignore it (no driver).
+pub const CONSOLE_KEY: &str = "db_console";
+
+/// The console the UI should open for MySQL/MariaDB: `phpmyadmin` ONLY when it is
+/// both chosen AND staged — read-time filtering, as `adminer::effective_version`
+/// does, so the generic `set_setting` door is inert for this key: a value written
+/// past `db_console_set` (which downloads, probes and stages before it persists)
+/// reads as Adminer until a real stage exists, never as a console with no vhost.
+pub fn effective_console(platform: &dyn Platform, conn: &rusqlite::Connection) -> &'static str {
+    let chosen = crate::state::store::get_setting(conn, CONSOLE_KEY).ok().flatten();
+    console_for(chosen.as_deref(), staged_version(platform).is_some())
+}
+
+/// The pure rule behind [`effective_console`].
+pub fn console_for(chosen: Option<&str>, staged: bool) -> &'static str {
+    match chosen {
+        Some("phpmyadmin") if staged => "phpmyadmin",
+        _ => "adminer",
+    }
+}
+
 /// Web docroot for phpMyAdmin, isolated from the binary cache: a COPY of the
 /// resolved tree plus the generated config. A copy rather than the cache dir
 /// itself, because the cache tree is pin-marked and may be retired/replaced by a
@@ -326,6 +348,15 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
 
     let src = binaries::resolve_dir(platform, "phpmyadmin", version).await?;
     let php = binaries::resolve_program(platform, "php", binaries::pins().php).await?;
+    ensure_from(platform, version, &src, &php)
+}
+
+/// The stage itself, from an explicit source tree and PHP — the seam the live example
+/// uses to PLANT a tree that fails the probe and assert the docroot is untouched
+/// (ledger #866). `ensure` is this with the resolved cache tree and the pinned PHP.
+pub fn ensure_from(platform: &dyn Platform, version: &str, src: &Path, php: &Path) -> Result<PathBuf> {
+    let dir = docroot(platform)?;
+    let marker = dir.join(STAGED_VERSION);
 
     let parent = dir
         .parent()
@@ -334,9 +365,9 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
     let fresh = parent.join("phpmyadmin.new");
     let _ = std::fs::remove_dir_all(&fresh);
     let build: Result<()> = (|| {
-        copy_dir_recursive(&src, &fresh)?;
+        copy_dir_recursive(src, &fresh)?;
         write_config(platform, &fresh)?;
-        verify_tree(&php, &fresh)
+        verify_tree(php, &fresh)
     })();
     if let Err(e) = build {
         let _ = std::fs::remove_dir_all(&fresh);
@@ -433,6 +464,17 @@ mod tests {
         assert_eq!(php_path_literal(Path::new("/o'brien/x")), "'/o\\'brien/x'");
         let cfg = config_inc_php(SECRET, Path::new(r"C:\Users\d e\tmp"));
         assert!(cfg.contains("$cfg['TempDir'] = 'C:/Users/d e/tmp';"), "{cfg}");
+    }
+
+    /// The choice is honoured only over a staged tree; anything else — junk,
+    /// absent, chosen-but-not-yet-staged — is Adminer.
+    #[test]
+    fn the_console_is_phpmyadmin_only_when_chosen_and_staged() {
+        assert_eq!(console_for(Some("phpmyadmin"), true), "phpmyadmin");
+        assert_eq!(console_for(Some("phpmyadmin"), false), "adminer");
+        assert_eq!(console_for(Some("adminer"), true), "adminer");
+        assert_eq!(console_for(Some("junk"), true), "adminer");
+        assert_eq!(console_for(None, true), "adminer");
     }
 
     #[test]

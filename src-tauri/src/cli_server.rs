@@ -1455,6 +1455,19 @@ where
                 .await?;
             Ok(Value::Null)
         }
+        // The database console choice (Adminer / phpMyAdmin) — the same command the
+        // Databases screen's dial runs, so `rex db console phpmyadmin` installs it too.
+        "db.console" => {
+            let state = app_state(app)?;
+            Ok(to_value(&commands::database::db_console_status(state.clone())?)?)
+        }
+        "db.console.set" => {
+            let state = app_state(app)?;
+            Ok(to_value(
+                &commands::database::db_console_set(state.clone(), need_str(&args, "console", cmd)?)
+                    .await?,
+            )?)
+        }
         // Core version pinning — update lives above; switch is exact-version.
         "wp.core-versions" => {
             Ok(json!({ "versions": to_value(&commands::wordpress::wp_core_versions().await?)? }))

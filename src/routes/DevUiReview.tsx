@@ -1129,6 +1129,8 @@ export function DevUiReview() {
           return { batch: null, items: [], seq: 0 };
         case "adminer_set_theme":
           return null;
+        case "db_console_status":
+          return { console: "adminer", phpmyadminStaged: null, phpmyadminPinned: "5.2.3" };
         case "adminer_status":
         case "adminer_update_check":
           switch (params.get("adminer")) {

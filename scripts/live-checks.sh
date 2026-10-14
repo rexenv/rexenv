@@ -78,6 +78,7 @@ adminer_login_gate_check       sandbox all
 adminer_proxy_check            stack   all
 adminer_update_check           network all
 adminer_serve_check            service all
+phpmyadmin_check               network all
 agent_db_check                 service all
 wp_mail_sink_check             service macos
 adopt_check                    demo    all

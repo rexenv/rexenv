@@ -617,7 +617,12 @@ The comps predate the real architecture. Correct as shipped:
   case says nothing: telling a WordPress user about a PHP version answers a
   question they cannot ask.
 - **Databases screen stays ENGINE-focused** — one row per engine with status +
-  CPU/RAM + start/stop + Browse. The comp's per-schema re-model (schema rows,
+  CPU/RAM + start/stop + Browse (+ since 14 Oct 2026 the app-wide "Open in browser" split
+  button beside it, `OpenInBrowserSplit`). The console CHOICE (Adminer / phpMyAdmin, 15 Oct
+  2026) is a card BELOW the table — a segmented control, one dial for the app, never a
+  second button on every row — and it is honest about state: "phpMyAdmin not installed yet"
+  is a sentence, the installing button keeps its sentence ("Installing phpMyAdmin 5.2.3…"),
+  and a PostgreSQL row's Browse says why it ignores the dial. The comp's per-schema re-model (schema rows,
   per-row export/import/drop) was **deliberately not adopted** (decision recorded
   in the design burndown §6): it needs a schema-enumeration backend and a larger
   UI for little gain, and the engine view matches the Services grouping.

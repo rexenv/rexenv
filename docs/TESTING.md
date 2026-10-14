@@ -957,7 +957,7 @@ about Windows behaviour is proven one of three ways, cheapest first:
 
 1. **A headless example on Windows.** Cross-build just the example
    (`cargo xwin build --release --target x86_64-pc-windows-msvc --example <name>`), copy it to
-   the VM or the Dell and run it. `postgres_admin_token_check` and `adminer_proxy_check` are
+   the VM or the Dell and run it. `postgres_admin_token_check`, `adminer_proxy_check` and `phpmyadmin_check` (network tier: stages into a sandbox, plants, and GETs the REAL stack's phpMyAdmin through the proxy when it is staged there — `rex db console phpmyadmin` first) are
    the shape: they exercise the real path with no GUI, so they can run over SSH.
 2. **The real installer on the VM.** Build it on the Dell (`scripts/release-windows.sh` →
    `npx tauri build`), install with `/S`, and read logs/ports/registry over SSH.

@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
+import type { StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncJobState, LiveSyncPushPlan,
@@ -24,6 +24,7 @@ import {
   mockSiteDomains,
   mockPhpSettings,
   mockAdminerStatus,
+  mockDbConsoleStatus,
   mockAppUpdateState,
   mockAppUpdateReadiness,
   mockPhpVersions,
@@ -855,6 +856,20 @@ export async function adminerUpdateCheck(): Promise<AdminerStatus> {
  *
  *  Returns the RE-MEASURED row rather than a success flag, so there is no field
  *  the frontend can assert and the backend can get wrong. */
+/** Which console MySQL/MariaDB open in, and phpMyAdmin's state. */
+export async function dbConsoleStatus(): Promise<DbConsoleStatus> {
+  if (!isTauri()) return mockDbConsoleStatus;
+  return invoke<DbConsoleStatus>("db_console_status");
+}
+
+/** Choose the console. `phpmyadmin` is what INSTALLS it: download → probe → stage →
+ *  the web tier reloaded with the new vhost — the call returns when the console can be
+ *  opened, or fails leaving the previous one in place. */
+export async function dbConsoleSet(console: DbConsole): Promise<DbConsoleStatus> {
+  if (!isTauri()) return { ...mockDbConsoleStatus, console, phpmyadminStaged: console === "phpmyadmin" ? mockDbConsoleStatus.phpmyadminPinned : mockDbConsoleStatus.phpmyadminStaged };
+  return invoke<DbConsoleStatus>("db_console_set", { console });
+}
+
 export async function adminerUpdateApply(version: string): Promise<AdminerStatus> {
   if (!isTauri()) return { staged: version, effective: version, updatable: null, pinned: mockAdminerStatus.pinned };
   return invoke<AdminerStatus>("adminer_update_apply", { version });
