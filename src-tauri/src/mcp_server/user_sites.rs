@@ -869,12 +869,15 @@ static REGISTRY: &[UserTool] = &[
     UserTool {
         name: "live",
         description: "The LIVE WordPress site a user's local site is connected to (through the rexenv \
-                      Sync plugin). Takes `site_id` and `action`: `status` — which live site, if any \
+                      Sync plugin). Takes `site_id` and `action`: `status` — which live site, if any, \
+                      and the verdict: up_to_date / behind (live moved: pull) / ahead (this copy moved: \
+                      the person pushes) / diverged / never_synced, with the tables and files that moved \
                       (`read`); `diff` — what changed ON LIVE since the last sync: table and file names \
-                      (`read`); `pull` {recent_uploads_only?} — replaces this site's database and \
-                      wp-content with the live site's and keeps the previous local tables one step back \
-                      (`destroy`: it overwrites the local site). There is no push, pairing or rollback \
-                      here and never will be: sending anything TO a live site is the person's click.",
+                      (`read`); `pull` {recent_uploads_only?} — brings what changed on the live site since \
+                      the last sync into this site (a table live did not touch keeps what it holds here) \
+                      and keeps the previous local tables one step back (`destroy`: it overwrites local \
+                      tables). There is no push, pairing or rollback here and never will be: sending \
+                      anything TO a live site is the person's click.",
         input_schema: || json!({
             "type": "object",
             "properties": {
@@ -1045,6 +1048,8 @@ pub trait SiteOps: Send + Sync {
     //    pair, push and rollback are never reachable from here (owner, 9 Oct 2026).
     fn live_status<'a>(&'a self, id: String) -> OpFuture<'a, Result<Option<crate::commands::live_sync::Pairing>>>;
     fn live_diff<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::commands::live_sync::LiveDiff>>;
+    /// The verdict — up to date / behind / ahead / diverged — and per-table detail.
+    fn live_sync_status<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::live_sync::status::SyncStatus>>;
     /// Start the pull and answer its SETTLED state.
     fn live_pull<'a>(&'a self, id: String, uploads_since: Option<i64>) -> OpFuture<'a, Result<crate::commands::live_sync::LiveSyncJobState>>;
     /// Truncate one log by its key — the Logs tab's own clear. Shared logs are
@@ -1910,7 +1915,24 @@ fn live<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
         acted.set(&site);
         Ok(match action {
             "status" => match ctx.ops.live_status(site.id.clone()).await? {
-                Some(p) => json!({ "connected": true, "siteUrl": p.site_url, "keyId": p.key_id }),
+                Some(p) => {
+                    // The verdict needs the live site; a site that does not answer still
+                    // has a pairing to report, with the reason beside it.
+                    let (verdict, detail) = match ctx.ops.live_sync_status(site.id.clone()).await {
+                        Ok(s) => (
+                            json!(s.verdict),
+                            json!({
+                                "baseAt": s.base_at, "baseKind": s.base_kind,
+                                "tablesBehind": s.tables_behind, "tablesAhead": s.tables_ahead,
+                                "filesLiveChanged": s.files.live_changed.len() + s.files.live_gone.len(), "filesLocalChanged": s.files.local_changed.len(),
+                                "tables": s.tables.iter().filter(|t| t.moved())
+                                    .map(|t| json!({ "name": t.name, "live": t.live, "local": t.local, "liveOwned": t.live_owned })).collect::<Vec<_>>(),
+                            }),
+                        ),
+                        Err(e) => (Value::Null, json!({ "error": e.to_string() })),
+                    };
+                    json!({ "connected": true, "siteUrl": p.site_url, "keyId": p.key_id, "verdict": verdict, "sync": detail })
+                }
                 None => json!({ "connected": false }),
             },
             "diff" => {
@@ -4008,12 +4030,23 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push(format!("live diff {id}"));
             Box::pin(async { Ok(crate::commands::live_sync::LiveDiff { live_host: "example.com".into(), base_at: Some(1), tables_on_live: 12, tables_changed: vec!["wp_posts".into()], files_changed: vec![] }) })
         }
+        fn live_sync_status<'a>(&'a self, id: String) -> OpFuture<'a, Result<crate::core::live_sync::status::SyncStatus>> {
+            self.calls.lock().unwrap().push(format!("live sync_status {id}"));
+            Box::pin(async {
+                use crate::core::live_sync::status::*;
+                Ok(SyncStatus {
+                    verdict: Verdict::Behind, live_host: "example.com".into(), base_at: Some(1), base_kind: Some("pull".into()),
+                    tables: vec![TableStatus { name: "wp_posts".into(), live: Change::Changed, local: Change::Same, live_owned: false }],
+                    tables_behind: 1, tables_ahead: 0, tables_ahead_live_owned: 0, files: FileStatus::default(), checked_at: 2,
+                })
+            })
+        }
         fn live_pull<'a>(&'a self, id: String, uploads_since: Option<i64>) -> OpFuture<'a, Result<crate::commands::live_sync::LiveSyncJobState>> {
             self.calls.lock().unwrap().push(format!("live pull {id} {}", uploads_since.is_some()));
             Box::pin(async move {
                 Ok(crate::commands::live_sync::LiveSyncJobState {
                     id: "j1".into(), site_id: id, domain: "mine.rex".into(), kind: "pull".into(), status: "ok".into(), lines: vec![], error: None,
-                    tables: 12, rows: 1560, files: 457, refused_files: vec![], backup_db: Some("mine_prepull".into()), backup_id: None, conflicts: vec![], asked_tables: None, asked_files: false,
+                    tables: 12, tables_kept: 0, rows: 1560, files: 457, files_kept: 0, files_deleted: 0, files_kept_edited: vec![], refused_files: vec![], backup_db: Some("mine_prepull".into()), backup_id: None, conflicts: vec![], asked_tables: None, asked_files: false,
                 })
             })
         }

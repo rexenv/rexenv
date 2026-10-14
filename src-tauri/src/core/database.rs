@@ -399,6 +399,44 @@ pub(crate) fn list_tables(client: &SqlClient, port: u16, name: &str) -> Result<V
     Ok(out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect())
 }
 
+/// Every BASE TABLE of `name` with its change stamp, for the live-sync status
+/// (`core::live_sync::stamps`): `CHECKSUM TABLE`'s value for each table — exact,
+/// local, cheap enough for a site's own database — except `options_table`, whose
+/// stamp is the content sum over its non-volatile rows (`options_sql`), the same
+/// rule the companion plugin applies on live. One client call per statement.
+pub(crate) fn table_stamps(client: &SqlClient, port: u16, name: &str, options_table: Option<&str>, options_sql: Option<&str>) -> Result<std::collections::BTreeMap<String, String>> {
+    validate_db_name(name)?;
+    let out = mysql_query(
+        client,
+        port,
+        &format!("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = '{name}' AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME"),
+        &format!("listing the tables of `{name}`"),
+    )?;
+    let tables: Vec<String> = out.lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+    let mut stamps = std::collections::BTreeMap::new();
+    let q = |t: &str| format!("`{}`.`{}`", name, t.replace('`', "``"));
+    let plain: Vec<String> = tables.iter().filter(|t| Some(t.as_str()) != options_table).map(|t| q(t)).collect();
+    if !plain.is_empty() {
+        let out = mysql_query(client, port, &format!("CHECKSUM TABLE {}", plain.join(", ")), &format!("stamping the tables of `{name}`"))?;
+        for line in out.lines() {
+            // `db.table<TAB>checksum` — the table part may itself hold a dot, so split at the FIRST
+            // dot (the database name is validated dot-free) and the LAST tab.
+            let Some((lhs, sum)) = line.rsplit_once('\t') else { continue };
+            let table = lhs.split_once('.').map(|(_, t)| t).unwrap_or(lhs);
+            stamps.insert(table.to_string(), format!("ck:{}", sum.trim()));
+        }
+    }
+    if let (Some(opt), Some(sql)) = (options_table, options_sql) {
+        if tables.iter().any(|t| t == opt) {
+            let out = mysql_query(client, port, &format!("USE `{name}`; {sql}"), &format!("stamping `{name}`.`{opt}`"))?;
+            let row = out.lines().last().unwrap_or("").trim();
+            let (n, sum) = row.split_once('\t').unwrap_or((row, "0"));
+            stamps.insert(opt.to_string(), format!("opt:{}:{}", n.trim(), sum.trim()));
+        }
+    }
+    Ok(stamps)
+}
+
 /// Disk size (data + indexes) of every database, in bytes, via one
 /// `information_schema` query on the bundled client — backs the per-site "DB
 /// size" number on the Sites page (a REAL per-site figure even for sites that

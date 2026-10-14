@@ -201,10 +201,11 @@ file — carried in the watcher snapshot as `logKey`, never rebuilt by the calle
 
 | Command | Backing IPC | Notes |
 |---|---|---|
-| `rex live <domain> status` | `live_sync_pairing` + `live_sync_active` + the base (arm `live.status`) | the live site, its key id, the last sync time, the last job; never the secret |
+| `rex live <domain> status` | `live_sync_pairing` + `live_sync_active` + the base (arm `live.status`), then `live_sync_status` (arm `live.sync_status`, 14 Oct 2026) | the live site, its key id, the last sync time, the last job; then the VERDICT — up to date / behind (pull) / ahead (push) / diverged — with the tables that moved (a live and a here column) and the files; a live site that does not answer leaves the first lines and says so; never the secret |
+| `rex live <domain> history` | `live_sync_history` (arm `live.history`) | the last 20 syncs, newest first: time, kind, outcome, counts, the backup id |
 | `rex live <domain> diff` | `live_sync_diff` (arm `live.diff`) | what changed ON LIVE since the base: table names (checksum moved) and wp-content files (size:mtime moved); read-only, the plugin's conflict verdict asked ahead of a push |
-| `rex live <domain> pull [--recent-uploads]` | `live_sync_pull` (arm `live.pull`) | blocks until the job settles, streaming the job's log lines to stderr; `--recent-uploads` leaves media older than six months on live |
-| `rex live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]` | `live_sync_push` (arm `live.push`) | `--confirm` is the typed host the Live tab asks for — the APP compares it (#834), the binary only carries it; no `--tables` = every table but the live-owned; a conflict exits 1 with the names, nothing sent; `--override` names what to overwrite anyway |
+| `rex live <domain> pull [--recent-uploads] [--full]` | `live_sync_pull` (arm `live.pull`) | blocks until the job settles, streaming the job's log lines to stderr; brings only what moved on live since the last sync (14 Oct 2026); `--full` replaces every table and file; `--recent-uploads` leaves media older than six months on live |
+| `rex live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]` | `live_sync_push` (arm `live.push`) | `--confirm` is the typed host the Live tab asks for — the APP compares it (#834), the binary only carries it; no `--tables` = the tables CHANGED HERE since the last sync but the live-owned (14 Oct 2026; every table but the live-owned on a base without local stamps); a conflict exits 1 with the names, nothing sent; `--override` names what to overwrite anyway |
 | `rex live <domain> rollback <backup-id>` | `live_sync_rollback` (arm `live.rollback`) | the live site back to a push's backup; the base is re-read from live |
 | `rex live <domain> disconnect` | `live_sync_unpair` (arm `live.disconnect`) | forgets the pairing here; the live site's key stays valid until Disconnect there |
 
@@ -256,7 +257,7 @@ had claimed a clean sweep for as long as that row sat three screens above it —
 the same shape as the two `mail` rows below, and the reason both are now gated by
 `no_roadmap_row_calls_unbuilt_a_thing_the_cli_already_dispatches`.
 
-104 commands shipped (100 + the four new `worktree.*` arms, 10 Oct 2026; 100 = 94 + the six `live.*` arms; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
+106 commands shipped (104 + the two `live.sync_status` / `live.history` arms, 14 Oct 2026; 104 = 100 + the four new `worktree.*` arms, 10 Oct 2026; 100 = 94 + the six `live.*` arms; 94 = 91 + the three `worktree.*` arms) — **and 91 was not a removal.** It read 92 until 12 Sep 2026, when the
 counter was caught measuring a SUPERSET a second way: it counts every quoted match arm
 anywhere in `cli_server.rs`, and a helper there (`repo_job_settled`) had an `"add" =>` arm
 that is not a command. Moving that helper out for the Windows port (it now lives in

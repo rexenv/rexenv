@@ -1624,10 +1624,18 @@ where
             let state = app_state(app)?;
             to_value(&commands::live_sync::live_sync_diff(state.clone(), need_str(&args, "id", cmd)?).await?)
         }
+        "live.sync_status" => {
+            let state = app_state(app)?;
+            to_value(&commands::live_sync::live_sync_status(state.clone(), need_str(&args, "id", cmd)?).await?)
+        }
+        "live.history" => {
+            let state = app_state(app)?;
+            to_value(&commands::live_sync::live_sync_history(state.clone(), need_str(&args, "id", cmd)?).await?)
+        }
         "live.pull" => {
             let state = app_state(app)?;
             let jobs = live_jobs_state(app)?;
-            let started = commands::live_sync::live_sync_pull(app.app_handle().clone(), state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, args["uploadsSince"].as_i64()).await?;
+            let started = commands::live_sync::live_sync_pull(app.app_handle().clone(), state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, args["uploadsSince"].as_i64(), args["full"].as_bool()).await?;
             live_follow(app, &started.id, progress).await
         }
         "live.push" => {

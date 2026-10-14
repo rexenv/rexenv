@@ -143,7 +143,7 @@ async fn main() -> std::process::ExitCode {
     let http = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().unwrap();
 
     // 1. Pull.
-    let pulled = pull::pull_into(&client, &target, &pull::PullOptions::default(), &mut sink).await;
+    let pulled = pull::pull_into(&client, &target, None, &pull::PullOptions::default(), &mut sink).await;
     let base = match &pulled {
         Ok(r) => {
             println!("pulled: {} tables, {} rows, {} files", r.tables, r.rows, r.files);

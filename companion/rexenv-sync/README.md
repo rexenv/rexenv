@@ -1,11 +1,16 @@
 # rexenv Sync — the WordPress plugin half of live ↔ local sync
 
-**The read side works; nothing in rexenv calls it yet.** This is the companion plugin
-that `docs/PLAN-wp-live-sync.md` describes: it goes on a LIVE WordPress site and answers signed
-HTTPS requests from rexenv (`docs/rexsync-protocol.md`). Built (10 Oct 2026):
-- the Tools → rexenv Sync page: connect, a key shown once, regenerate, disconnect;
-- the signature check on every route;
-- `/manifest`, `/files/list`, `/files/read` (the binary frame) and `/db/export`.
+This is the companion plugin that `docs/PLAN-wp-live-sync.md` describes: it goes on a LIVE
+WordPress site and answers signed HTTPS requests from rexenv (`docs/rexsync-protocol.md`), which
+ships it as a zip ("Download plugin"). Built (10 Oct 2026, 0.1.3 on 14 Oct 2026):
+- the Tools → rexenv Sync page: three cards — Connection (connected or not, the key id, last
+  contact, last pull / push / roll back by rexenv, the kept backup and its size on disk; Regenerate
+  key and Disconnect ask first), How it works, This site (address, versions, tables, free disk,
+  the REST address); the key shown once with Copy key;
+- the signature check on every route; `rexsync_last` records what rexenv last did here;
+- `/manifest` (the options table's stamp is a content stamp over the non-volatile rows —
+  `VOLATILE_OPTIONS`, mirrored in rexenv's `core/live_sync/stamps.rs`), `/files/list`,
+  `/files/read` (the binary frame) and `/db/export`.
 
 Push: `/push/begin` (conflicts against rexenv's base), `/push/file` and `/push/db` into a quarantine and shadow tables, `/push/swap` (one `RENAME TABLE`, backup made in the same request), `/push/rollback`, `/push/abort`.
 

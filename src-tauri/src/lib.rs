@@ -1307,6 +1307,8 @@ pub fn run() {
             commands::live_sync::live_sync_push,
             commands::live_sync::live_sync_rollback,
             commands::live_sync::live_sync_diff,
+            commands::live_sync::live_sync_status,
+            commands::live_sync::live_sync_history,
             commands::live_sync::live_sync_plugin_zip,
             commands::live_sync::live_sync_preview,
             commands::live_sync::live_sync_create_from_live,

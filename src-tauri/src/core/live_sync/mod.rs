@@ -3,9 +3,10 @@
 //!
 //! `sign` (the key and request signing, checked against the vectors the plugin's
 //! tests read too), `client` (the HTTP side), `pull`/`push` (the two jobs' cores),
-//! `base` (what live looked like at the last sync), `secrets` (the owner-only
-//! pairing file), `plugin_zip` (the plugin itself, for "Download plugin"). The
-//! IPC edge is `commands::live_sync`.
+//! `base` (what both sides looked like at the last sync, and the history),
+//! `stamps` (the local copy's table stamps), `status` (the verdict: up to date,
+//! behind, ahead, diverged), `secrets` (the owner-only pairing file), `plugin_zip`
+//! (the plugin itself, for "Download plugin"). The IPC edge is `commands::live_sync`.
 
 pub mod sign;
 
@@ -15,6 +16,8 @@ pub mod secrets;
 pub mod base;
 pub mod push;
 pub mod plugin_zip;
+pub mod stamps;
+pub mod status;
 
 /// `"1 row"`, `"2 rows"` — the job log's counts. The Ubuntu run of the SMOKE rows
 /// (11 Oct 2026) read "wpcs_terms — 1 rows" and "1 files in the quarantine" in

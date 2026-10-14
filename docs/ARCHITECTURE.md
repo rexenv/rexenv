@@ -1484,12 +1484,26 @@ honest footer —
   every OS (#828) — not the keychain, because ad-hoc signing changes the code identity every
   update. A pull (`core/live_sync/pull.rs`, #827) stages the whole database, moves its URLs,
   then swaps with ONE `RENAME TABLE`, keeping the previous local tables in `<db>_prepull`;
-  files come through a staging folder; nothing local is deleted. The Live tab (#829) pairs,
-  pulls (always after a confirm), and shows the outcome. A push (`core/live_sync/push.rs`,
+  files come through a staging folder. **Since 14 Oct 2026 a pull is incremental** (#861): a
+  table whose live stamp equals the base's is copied into the staging database from the local
+  copy server-side (so WordPress still boots against a whole copy for the URL move) and only
+  the moved tables are exported; a file whose `size:mtime` equals the base's stays; a file
+  live dropped is removed here only when untouched here since the base. "Pull everything
+  again" is the old whole pull. **The base has two halves** (`core/live_sync/base.rs`): live's
+  stamps from the plugin, and the LOCAL copy's own (`stamps.rs` — `CHECKSUM TABLE`, and for
+  `wp_options` a content stamp over the non-volatile rows, the same list the plugin uses on
+  live, #859). **The status** (`status.rs::judge`, #860) reads each side against its own
+  half: behind / ahead / diverged / up to date, per table and file; a live-owned table changed
+  here is listed, not counted. The Live tab (#829) pairs, checks status (the verdict card
+  carries Pull or Push…), pulls (always after a confirm), shows the outcome and the last 20
+  syncs (`<id>.history.json`). A push (`core/live_sync/push.rs`,
   #833) copies the local database whole, moves the copy's URLs to the live host, and uploads
-  the chosen tables and the files changed since the last sync into the plugin's quarantine
-  and shadow tables; live changes in ONE swap (#832) and keeps a backup rexenv can roll back
-  to. The plugin judges conflicts against the base rexenv recorded at the last sync and
+  the chosen tables — by default the ones CHANGED HERE since the base (#860), live-owned ones
+  left out — and the files changed since the last sync into the plugin's quarantine and
+  shadow tables; live changes in ONE swap (#832) and keeps a backup rexenv can roll back to.
+  A rollback refreshes live's half of the base and puts the local half back to what it was
+  before the push (the push records it as `before_push`), so the local changes the push sent
+  count as ahead again once live no longer has them (#862). The plugin judges conflicts against the base rexenv recorded at the last sync and
   stops the push with nothing sent. The push gates are in Rust (#834): the live host typed
   out, a base that exists; live-owned tables (users, comments, orders, entries) start
   unticked. Push and rollback are never an agent tool. New site → From a live site (#835)

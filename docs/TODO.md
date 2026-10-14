@@ -469,11 +469,14 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 ## Phase 4+ (next era)
 
 - [ ] **WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows,
-  each needs its own live host), S3 (resume, anonymise, uploads on demand, per-item conflict
-  choice), MariaDB's row-estimate behaviour after a RENAME (#857 is ◐ for it), the owner's read of
-  L13's agent pass.** Everything else — pull, push with backup + Roll back, the per-table conflict
-  stop, New site → From a live site, `rex live`, the MCP `live` tool, plugin 0.1.2 — is built and
-  proven on macOS, Windows and Linux against the real host (#824–#847, #854–#857). Plan:
+  each needs its own live host), S3's remainder (resume, anonymise, uploads on demand, per-item
+  conflict choice), MariaDB's row-estimate behaviour after a RENAME (#857 is ◐ for it), the owner's
+  read of L13's agent pass, and the Windows + Linux GUI runs of the 14 Oct rows (status, incremental
+  pull, the plugin page).** Everything else — pull (incremental since 14 Oct 2026), push with backup
+  + Roll back (only the tables changed here by default), the per-table conflict stop, the status
+  verdict + history, New site → From a live site, `rex live`, the MCP `live` tool, plugin 0.1.3 —
+  is built; proven on macOS, Windows and Linux against the real host up to 0.1.2 (#824–#847,
+  #854–#857), the 14 Oct rows on the fixture L1 + the macOS VM (#859–#862). Plan:
   `docs/PLAN-wp-live-sync.md`; the build narrative moved to `docs/archive/SHIPPED-2026-10.md`
   ("Judgement moves", 14 Oct 2026).
 

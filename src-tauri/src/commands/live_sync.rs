@@ -16,7 +16,7 @@
 
 use crate::commands::wordpress::wp_tools;
 use crate::core::db::DbEngine;
-use crate::core::live_sync::{base, client::Client, pull, push, secrets, sign};
+use crate::core::live_sync::{base, client::Client, pull, push, secrets, sign, stamps, status};
 use crate::core::{self, service_manager, sites};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
@@ -60,8 +60,16 @@ pub struct LiveSyncJobState {
     pub lines: Vec<String>,
     pub error: Option<String>,
     pub tables: usize,
+    /// A pull: tables unchanged on live, kept from the local copy (not exported).
+    pub tables_kept: usize,
     pub rows: u64,
     pub files: usize,
+    /// A pull: files unchanged on live, left as they are.
+    pub files_kept: usize,
+    /// A pull: files gone from live, removed here (untouched here since the last sync).
+    pub files_deleted: usize,
+    /// A pull: files gone from live but edited here — kept, named.
+    pub files_kept_edited: Vec<String>,
     pub refused_files: Vec<String>,
     pub backup_db: Option<String>,
     /// A push's backup id on LIVE — what Roll back names.
@@ -229,6 +237,7 @@ pub async fn live_sync_pull<R: tauri::Runtime>(
     jobs: State<'_, LiveSyncJobs>,
     site_id: String,
     uploads_since: Option<i64>,
+    full: Option<bool>,
 ) -> Result<LiveSyncJobState> {
     let site = wordpress_site(&state, &site_id)?;
     if !site.provisioned {
@@ -242,24 +251,86 @@ pub async fn live_sync_pull<R: tauri::Runtime>(
         }
     }
     let job_site = site.clone();
+    let full = full.unwrap_or(false);
     start_job(&app, &jobs, &site, "pull", move |worker, entry| async move {
-        let outcome = run_pull(&worker, &entry, &job_site, client, uploads_since).await;
-        let mut st = entry.state.lock().expect("live sync state lock");
-        match outcome {
-            Ok(r) => {
-                st.status = "ok".into();
-                st.tables = r.tables;
-                st.rows = r.rows;
-                st.files = r.files;
-                st.refused_files = r.refused_files;
-                st.backup_db = Some(r.backup_db);
-            }
-            Err(e) => {
-                st.status = "failed".into();
-                st.error = Some(e.to_string());
-            }
-        }
+        let outcome = run_pull(&worker, &entry, &job_site, client, uploads_since, full).await;
+        settle_pull(&worker, &entry, &job_site, outcome);
     })
+}
+
+/// Write a pull's outcome into its job and the site's history.
+fn settle_pull<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<Entry>, site: &Site, outcome: Result<pull::PullReport>) {
+    let mut st = entry.state.lock().expect("live sync state lock");
+    match outcome {
+        Ok(r) => {
+            st.status = "ok".into();
+            st.tables = r.tables;
+            st.tables_kept = r.tables_kept;
+            st.rows = r.rows;
+            st.files = r.files;
+            st.files_kept = r.files_kept;
+            st.files_deleted = r.files_deleted.len();
+            st.files_kept_edited = r.files_kept_edited;
+            st.refused_files = r.refused_files;
+            st.backup_db = Some(r.backup_db);
+        }
+        Err(e) => {
+            st.status = "failed".into();
+            st.error = Some(e.to_string());
+        }
+    }
+    let state = app.state::<AppState>();
+    let _ = base::history_push(state.platform.as_ref(), &site.id, history_of(&st));
+}
+
+/// The history line a settled job becomes.
+fn history_of(st: &LiveSyncJobState) -> base::HistoryEntry {
+    base::HistoryEntry {
+        at: base::now(),
+        kind: st.kind.clone(),
+        status: st.status.clone(),
+        tables: st.tables,
+        files: st.files,
+        rows: st.rows,
+        backup_id: st.backup_id.clone(),
+        error: st.error.clone().or_else(|| (!st.conflicts.is_empty()).then(|| format!("live changed since the last sync: {}", st.conflicts.join(", ")))),
+    }
+}
+
+/// What `live_sync_history` answers: the last syncs, newest first, and the base's own
+/// moment — a site synced before the history existed (14 Oct 2026) has a base and no
+/// entries, and the Live tab's "Last sync" line must still say when.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveHistory {
+    pub entries: Vec<base::HistoryEntry>,
+    pub base_at: Option<i64>,
+    pub base_kind: Option<String>,
+}
+
+/// `live_sync_history` — the site's last syncs, newest first, and when the base was recorded.
+#[tauri::command]
+pub async fn live_sync_history(state: State<'_, AppState>, site_id: String) -> Result<LiveHistory> {
+    let b = base::get(state.platform.as_ref(), &site_id)?;
+    Ok(LiveHistory { entries: base::history(state.platform.as_ref(), &site_id)?, base_at: b.as_ref().map(|b| b.at), base_kind: b.and_then(|b| (!b.kind.is_empty()).then_some(b.kind)) })
+}
+
+/// `live_sync_status` — where this copy stands against live (plan §2.6, 14 Oct
+/// 2026): up to date, behind (pull), ahead (push), diverged, or never synced; per
+/// table, which side moved; the file counts. Reaches the live site (manifest +
+/// file list) and reads the local database's stamps; writes nothing anywhere.
+#[tauri::command]
+pub async fn live_sync_status(state: State<'_, AppState>, site_id: String) -> Result<status::SyncStatus> {
+    let site = wordpress_site(&state, &site_id)?;
+    let client = client_for(&state, &site.id)?;
+    let m = client.manifest().await?;
+    let live_files = client.list_files(&pull::DEFAULT_EXCLUDES, None).await?;
+    let prior = base::get(state.platform.as_ref(), &site.id)?;
+    let tools = LocalTools::for_site(&state, &site).await?;
+    let local = tools.local(&state, &site);
+    let local_stamps = stamps::local_stamps(&local, &m.prefix)?;
+    let local_files: Vec<(String, i64)> = pull::walk_local(&tools.docroot.join("wp-content"))?.into_iter().map(|(p, _, m)| (p, m)).collect();
+    Ok(status::judge(&pull::host_of(&m.site_url), prior.as_ref(), &m, &live_files, &local_stamps, &local_files, base::now()))
 }
 
 /// Register a job for `site`, spawn `work` on it, answer the first snapshot.
@@ -283,8 +354,12 @@ where
             lines: Vec::new(),
             error: None,
             tables: 0,
+            tables_kept: 0,
             rows: 0,
             files: 0,
+            files_kept: 0,
+            files_deleted: 0,
+            files_kept_edited: Vec::new(),
             refused_files: Vec::new(),
             backup_db: None,
             backup_id: None,
@@ -423,14 +498,17 @@ async fn run_pull<R: tauri::Runtime>(
     site: &Site,
     client: Client,
     uploads_since: Option<i64>,
+    full: bool,
 ) -> Result<pull::PullReport> {
     let state = app.state::<AppState>();
     let tools = LocalTools::for_site(&state, site).await?;
     let local = tools.local(&state, site);
     let mut on_line = line_sink(app, entry);
-    let options = pull::PullOptions { excludes: Vec::new(), uploads_since };
-    let report = pull::pull_into(&client, &local, &options, &mut on_line).await?;
-    // The base for the next push (§2.6).
+    let options = pull::PullOptions { excludes: Vec::new(), uploads_since, full };
+    // Incremental against the base (14 Oct 2026); `full` replaces everything.
+    let prior = if full { None } else { base::get(state.platform.as_ref(), &site.id)? };
+    let report = pull::pull_into(&client, &local, prior.as_ref(), &options, &mut on_line).await?;
+    // The base for the next pull and push (§2.6).
     base::put(state.platform.as_ref(), &site.id, &report.base)?;
     Ok(report)
 }
@@ -444,6 +522,10 @@ pub struct PushTable {
     pub name: String,
     /// Live writes here (users, comments, orders, form entries): unticked by default.
     pub live_owned: bool,
+    /// Changed HERE since the last sync (its local stamp moved) — ticked by default
+    /// unless live-owned; `false` = unchanged, unticked; `null` = the base cannot say
+    /// (an old base without local stamps): ticked unless live-owned, as before.
+    pub changed_here: Option<bool>,
 }
 
 /// What `live_sync_push_plan` answers: the picker's rows and the gates' facts.
@@ -482,14 +564,20 @@ pub async fn live_sync_push_plan(state: State<'_, AppState>, site_id: String) ->
     // Refused HERE, before a picker (#855): a never-pulled site's tables still carry its own
     // prefix, so the live-owned marks (read with the LIVE prefix) all came out false — the macOS VM
     // showed `wp_users` ticked with no badge, and only the Push button then said "pull once first".
-    let base_at = base::get(state.platform.as_ref(), &site.id)?.map(|b| b.at);
-    if base_at.is_none() {
+    let prior = base::get(state.platform.as_ref(), &site.id)?;
+    let Some(prior) = prior else {
         return Err(never_pulled(&site.domain, &pull::host_of(&m.site_url)));
-    }
+    };
     let tools = LocalTools::for_site(&state, &site).await?;
+    let local = tools.local(&state, &site);
+    let changed = push::changed_locally(&prior, &stamps::local_stamps(&local, &m.prefix)?);
     let names = tools.engine.list_tables(&tools.db_client, tools.engine.port(), &site.db_name)?;
-    let tables = names.into_iter().map(|name| PushTable { live_owned: push::live_owned(&m.prefix, &name), name }).collect();
-    Ok(PushPlan { live_host: pull::host_of(&m.site_url), tables, base_at })
+    let tables = names
+        .into_iter()
+        .filter(|name| !stamps::plugin_own_table(&m.prefix, name))
+        .map(|name| PushTable { live_owned: push::live_owned(&m.prefix, &name), changed_here: changed.as_ref().map(|c| c.contains(&name)), name })
+        .collect();
+    Ok(PushPlan { live_host: pull::host_of(&m.site_url), tables, base_at: Some(prior.at) })
 }
 
 /// `live_sync_push` — push this site TO live. `confirm_host` must be the live
@@ -538,6 +626,7 @@ pub async fn live_sync_push<R: tauri::Runtime>(
             Ok(r) => {
                 st.status = "ok".into();
                 st.tables = r.tables.len();
+                st.tables_kept = r.tables_unchanged;
                 st.files = r.files;
                 st.backup_id = Some(r.backup_id);
             }
@@ -550,6 +639,8 @@ pub async fn live_sync_push<R: tauri::Runtime>(
                 st.error = Some(e.to_string());
             }
         }
+        let state = worker.state::<AppState>();
+        let _ = base::history_push(state.platform.as_ref(), &job_site.id, history_of(&st));
     })
 }
 
@@ -611,9 +702,25 @@ pub async fn live_sync_rollback(state: State<'_, AppState>, jobs: State<'_, Live
         for f in client.list_files(&pull::DEFAULT_EXCLUDES, None).await? {
             b.files.insert(f.path, format!("{}:{}", f.size, f.mtime));
         }
-        b.at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+        // LIVE's half is what live holds again. The LOCAL half goes back to what it was
+        // BEFORE the push (`before_push`, recorded by the push): the local copy did not
+        // change, but the base the push wrote said "local = live = what was pushed", and
+        // live no longer has it — so the local edits the push sent count as "ahead" again.
+        // Until 14 Oct 2026 `at` moved to now here (every local file edit stopped counting);
+        // the first real-host run of the fix then read "up to date" straight after a
+        // rollback, with the pushed edits still here (ledger #862).
+        if let Some(before) = b.before_push.take() {
+            b.local_tables = before.local_tables;
+            b.at = before.at;
+        }
+        b.kind = "rollback".into();
         base::put(state.platform.as_ref(), &site.id, &b)?;
     }
+    let _ = base::history_push(
+        state.platform.as_ref(),
+        &site.id,
+        base::HistoryEntry { at: base::now(), kind: "rollback".into(), status: "ok".into(), backup_id: Some(backup_id), ..Default::default() },
+    );
     Ok(())
 }
 
@@ -769,22 +876,8 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
             let job_site = site.clone();
             let w2 = worker.clone();
             let _ = start_job(&worker, &jobs, &site, "pull", move |w, entry| async move {
-                let outcome = run_pull(&w, &entry, &job_site, client, None).await;
-                let mut st = entry.state.lock().expect("live sync state lock");
-                match outcome {
-                    Ok(r) => {
-                        st.status = "ok".into();
-                        st.tables = r.tables;
-                        st.rows = r.rows;
-                        st.files = r.files;
-                        st.refused_files = r.refused_files;
-                        st.backup_db = Some(r.backup_db);
-                    }
-                    Err(e) => {
-                        st.status = "failed".into();
-                        st.error = Some(e.to_string());
-                    }
-                }
+                let outcome = run_pull(&w, &entry, &job_site, client, None, true).await;
+                settle_pull(&w, &entry, &job_site, outcome);
                 let _ = w2.emit("sites://changed", ());
             });
             return;
@@ -816,8 +909,8 @@ mod tests {
             running: AtomicBool::new(false),
             state: Mutex::new(LiveSyncJobState {
                 id: id.into(), site_id: site.into(), domain: "x.rex".into(), kind: "push".into(), status: "ok".into(), lines: vec![],
-                error: None, tables: 2, rows: 0, files: 1, refused_files: vec![], backup_db: None, backup_id: backup.map(str::to_string),
-                conflicts: vec![], asked_tables: None, asked_files: true,
+                error: None, tables: 2, tables_kept: 0, rows: 0, files: 1, files_kept: 0, files_deleted: 0, files_kept_edited: vec![], refused_files: vec![],
+                backup_db: None, backup_id: backup.map(str::to_string), conflicts: vec![], asked_tables: None, asked_files: true,
             }),
         })
     }
@@ -893,6 +986,23 @@ mod tests {
         assert_eq!(php_minor_for("7.3.33", &shipped), ("8.3".into(), false));
         let s2: Vec<String> = ["8.9", "8.10"].iter().map(|s| s.to_string()).collect();
         assert_eq!(php_minor_for("5.6.40", &s2).0, "8.10", "numeric, not lexical");
+    }
+
+    /// **A rollback refreshes LIVE's half of the base and puts the LOCAL half back to
+    /// what it was before the push** (ledger #862). TEXT: the rollback body sets
+    /// `b.tables`/`b.files`, restores `local_tables`/`at` from `before_push`, and never
+    /// stamps `base::now()` into `at`. Plant: `b.at = base::now()` back in → red.
+    #[test]
+    fn a_rollback_keeps_what_is_ahead_here() {
+        let src = crate::core::copy_scan::production_source(include_str!("live_sync.rs"));
+        let body = &src[src.find("pub async fn live_sync_rollback(").expect("rollback")..];
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        assert!(body.contains("b.tables =") && body.contains("b.files.clear()"), "the rollback no longer refreshes live's half");
+        assert!(body.contains("b.before_push.take()") && body.contains("b.local_tables = before.local_tables") && body.contains("b.at = before.at"), "the rollback no longer restores the pre-push local half");
+        assert!(!body.contains("b.at = base::now()"), "the rollback stamps now into the base");
+        // The push records what the rollback restores.
+        let push = include_str!("../core/live_sync/push.rs");
+        assert!(push.contains("before_push: Some(Box::new(super::base::LocalHalf { local_tables: base.local_tables.clone(), at: base.at }))"), "the push no longer records the pre-push local half");
     }
 
     /// **The typed host must be the live host, exactly** (ledger #834): a scheme,

@@ -1586,8 +1586,16 @@ export interface LiveSyncJobState {
   lines: string[];
   error: string | null;
   tables: number;
+  /** A pull: tables unchanged on live, kept from here; a push: tables unchanged here, left out. */
+  tablesKept: number;
   rows: number;
   files: number;
+  /** A pull: files unchanged on live, left as they are. */
+  filesKept: number;
+  /** A pull: files gone from live, removed here. */
+  filesDeleted: number;
+  /** A pull: files gone from live but edited here — kept, named. */
+  filesKeptEdited: string[];
   refusedFiles: string[];
   backupDb: string | null;
   /** A push's backup on LIVE — what Roll back names. */
@@ -1629,8 +1637,52 @@ export interface LiveSyncCreateInput {
  *  unticked; the host the person must type; when the site was last synced. */
 export interface LiveSyncPushPlan {
   liveHost: string;
-  tables: { name: string; liveOwned: boolean }[];
+  /** `changedHere`: its local stamp moved since the last sync (ticked by default unless
+   *  live-owned); `false` = unchanged (unticked); `null` = the base cannot say. */
+  tables: { name: string; liveOwned: boolean; changedHere: boolean | null }[];
   baseAt: number | null;
+}
+
+/** What one side did to one item since the last sync (`live_sync_status`). */
+export type LiveSyncChange = "same" | "changed" | "new" | "gone" | "unknown";
+
+/** The one-word answer: pull first / nothing to do / pull / push / both. */
+export type LiveSyncVerdict = "never_synced" | "up_to_date" | "behind" | "ahead" | "diverged";
+
+/** Where this copy stands against live (`live_sync_status`, `docs/PLAN-wp-live-sync.md`
+ *  §2.6): each side read against its OWN half of the base. A live-owned table changed
+ *  here is listed but never makes the copy "ahead" (a push leaves it out by default). */
+export interface LiveSyncStatus {
+  verdict: LiveSyncVerdict;
+  liveHost: string;
+  baseAt: number | null;
+  baseKind: string | null;
+  tables: { name: string; live: LiveSyncChange; local: LiveSyncChange; liveOwned: boolean }[];
+  tablesBehind: number;
+  tablesAhead: number;
+  tablesAheadLiveOwned: number;
+  files: { liveChanged: string[]; liveGone: string[]; localChanged: string[]; both: string[]; totalOnLive: number; totalLocal: number };
+  checkedAt: number;
+}
+
+/** `live_sync_history`: the last syncs, newest first, and when the base was recorded
+ *  (a site synced before the history existed has a base and no entries). */
+export interface LiveSyncHistory {
+  entries: LiveSyncHistoryEntry[];
+  baseAt: number | null;
+  baseKind: string | null;
+}
+
+/** One past sync, newest first. */
+export interface LiveSyncHistoryEntry {
+  at: number;
+  kind: "pull" | "push" | "rollback";
+  status: "ok" | "failed" | "conflicts";
+  tables: number;
+  files: number;
+  rows: number;
+  backupId: string | null;
+  error: string | null;
 }
 
 /** A plugin/theme worktree site to make (`docs/archive/PLAN-git-worktrees.md`):

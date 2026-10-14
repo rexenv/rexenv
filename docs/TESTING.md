@@ -981,6 +981,16 @@ comes from a 0600 FILE (`REXENV_LIVE_KEY_FILE`, default `~/live-sync-key.txt`, m
 and exits 2. It WRITES to the live site — one probe post, one probe upload — and rolls both back,
 checking each over public HTTPS. After a run, Regenerate the key on the plugin's page.
 
+**The live-sync STATUS and the incremental pull are proven on a fixture live site**
+(`live_sync_pull_into_check` legs 12–12d, 14 Oct 2026): right after a pull the verdict is up to
+date; a post on live + a comment here + a file changed, two dropped (one edited here) → diverged
+naming each; the incremental pull exports 4 tables and keeps 8, fetches 1 file and keeps 457,
+removes the dropped file, keeps the edited one; up to date again. The push leg then sends only
+the tables changed here. The plugin's own test (§9) holds the options stamp still under a
+transient, cron and rewrite-rules write. The volatile-row list exists twice — PHP and Rust —
+and `stamps::tests::the_plugin_and_rexenv_leave_out_the_same_option_rows` reads the plugin's
+source so the two cannot drift (#859).
+
 **The live-sync signature is proven from both sides by one file** (10 Oct 2026, #824).
 `companion/rexenv-sync/tests/vectors.json` is read by the Rust lib tests (`core::live_sync::sign`,
 in the bar) and by the plugin's plain-PHP test. That one is outside the bar because the bar

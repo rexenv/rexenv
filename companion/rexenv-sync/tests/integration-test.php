@@ -316,5 +316,38 @@ $check( null === $wpdb->get_var( "SHOW TABLES LIKE 'rxnew_$pt'" ) && ! is_dir( W
 $wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
 @unlink( WP_CONTENT_DIR . '/' . $pfile );
 
+// 9. The options stamp (0.1.3): a transient or cron write does not move it, a real
+//    option does, and the manifest carries it; the plugin's `rexsync_last` record exists
+//    after the signed calls above and never travels in an export.
+$s0 = Rexenv_Sync_Reader::options_stamp();
+set_transient( 'probe_stamp_t', 'x', 60 );
+$cron = get_option( 'cron' );
+$c2   = is_array( $cron ) ? $cron : array();
+$c2['rexsync_probe'] = 1;
+update_option( 'cron', $c2 );
+update_option( 'rewrite_rules', 'probe ' . wp_rand() );
+$s1 = Rexenv_Sync_Reader::options_stamp();
+delete_transient( 'probe_stamp_t' );
+update_option( 'cron', $cron );
+delete_option( 'rewrite_rules' );
+$check( 0 === strpos( $s0, 'opt:' ) && $s0 === $s1, "a transient, the cron queue and rewrite rules do not move the options stamp ($s0 / $s1)" );
+$desc = get_option( 'blogdescription' );
+update_option( 'blogdescription', 'probe ' . wp_rand() );
+$s2 = Rexenv_Sync_Reader::options_stamp();
+update_option( 'blogdescription', $desc );
+$check( $s1 !== $s2, 'a real option write moves the options stamp' );
+$m = $send( 'GET', '/rexenv-sync/v1/manifest' )->get_data();
+$opt_stamp = null;
+foreach ( $m['tables'] as $t ) {
+	if ( $t['name'] === $wpdb->options ) {
+		$opt_stamp = $t['checksum'];
+	}
+}
+$check( null !== $opt_stamp && 0 === strpos( $opt_stamp, 'opt:' ), "the manifest's options checksum is the content stamp ($opt_stamp)" );
+$last = Rexenv_Sync_Pairing::last();
+$check( isset( $last['seen']['at'] ) && isset( $last['pull']['table'] ) && isset( $last['push']['id'] ) && isset( $last['rollback']['id'] ), 'rexsync_last records the last contact, pull, push and rollback' );
+$check( false === strpos( Rexenv_Sync_Reader::export_table( $wpdb->options, null )['sql'], 'rexsync_last' ), 'an options export never carries rexsync_last' );
+
 Rexenv_Sync_Pairing::delete();
+$check( false === get_option( Rexenv_Sync_Pairing::LAST ), 'Disconnect drops the record too' );
 echo "integration: $fail failed\n";

@@ -182,6 +182,7 @@ mod tests {
         ("live_sync_preview", Never("takes the pasted key — the same secret live_sync_pair takes")),
         ("live_sync_create_from_live", Never("takes the pasted key; an agent that could create a site from any live site it chose holds the same power live_sync_pair denies it")),
         ("live_sync_rollback", Never("changes the live site; the same ruling as the push it undoes (owner, 9 Oct 2026)")),
+        ("live_sync_history", Never("the Live tab's list of past syncs; the `live` tool's status carries the verdict and the last sync, which is what an agent acts on")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),

@@ -21,7 +21,37 @@ final class Rexenv_Sync_Pairing {
 	public static function owned_option_patterns() {
 		// The push's records and the kept backup are the LIVE site's state: a pulled
 		// copy that carried `rexsync_backup` would believe it had a backup (#845).
-		return array( self::OPTION, 'rexsync\_push\_%', 'rexsync_backup', '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+		return array( self::OPTION, 'rexsync\_push\_%', 'rexsync_backup', self::LAST, '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+	}
+
+	/**
+	 * What rexenv last did here (`{seen: {at, route}, pull: {at, table}, push: {at,
+	 * id, tables, files}, rollback: {at, id}}`) — the admin page's "last contact"
+	 * and "last pull/push" lines. The plugin's own row: never exported, left out of
+	 * the options stamp (`Rexenv_Sync_Reader::VOLATILE_OPTIONS`), autoload off.
+	 */
+	const LAST = 'rexsync_last';
+
+	/** Record `$what` ("seen" | "pull" | "push" | "rollback") at now, with `$extra`. */
+	public static function note( $what, array $extra = array() ) {
+		$row = get_option( self::LAST );
+		if ( ! is_array( $row ) ) {
+			$row = array();
+		}
+		$now = time();
+		// "seen" is every signed request: one write a minute is plenty for a line
+		// that says "a minute ago" (a pull is ~25 requests).
+		if ( 'seen' === $what && isset( $row['seen']['at'] ) && $now - (int) $row['seen']['at'] < 60 ) {
+			return;
+		}
+		$row[ $what ] = array_merge( array( 'at' => $now ), $extra );
+		update_option( self::LAST, $row, false );
+	}
+
+	/** The record, or an empty array. */
+	public static function last() {
+		$row = get_option( self::LAST );
+		return is_array( $row ) ? $row : array();
 	}
 
 	/** ['key_id' => ..., 'secret' => raw bytes] or an empty array. */
@@ -71,6 +101,7 @@ final class Rexenv_Sync_Pairing {
 
 	public static function delete() {
 		delete_option( self::OPTION );
+		delete_option( self::LAST );
 	}
 
 	/** The nonce table: `<prefix>rexsync_nonces` — its OWN table, never in options. */

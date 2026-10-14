@@ -12,7 +12,15 @@
 //      asks first and sends them as overrides;
 //   7. a settled push shows its backup id, and Roll back asks before it runs;
 //   8. Download plugin saves the zip once and the toast names it;
-//   9. a log taller than its box opens scrolled to its END — the verdict lines are in view.
+//   9. a log taller than its box opens scrolled to its END — the verdict lines are in view;
+//  10. Check status (14 Oct 2026): one call, and the verdict card reads up to date / behind
+//      (with Pull) / ahead (with Push…) / diverged / never synced, "Show what moved" lists the
+//      tables with a live and a here column;
+//  11. the Pull menu: "Pull everything again" asks and SENDS full=true; the plain button sends
+//      full=false; a settled incremental pull says what was kept and removed;
+//  12. the picker: an UNCHANGED table starts unticked and badged "unchanged", a changed one ticked
+//      and badged "changed here";
+//  13. the history card lists past syncs with their outcome; the header says when the last sync was.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 
@@ -127,6 +135,98 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
       return el ? { tall: el.scrollHeight > el.clientHeight + 20, end: el.scrollHeight - el.scrollTop - el.clientHeight < 8 } : null;
     });
     if (!atEnd || !atEnd.tall || !atEnd.end) fails.push(`${scheme} 9: the log did not open at its end ${JSON.stringify(atEnd)}`);
+
+    // 10. Check status, every verdict.
+    for (const [verdict, want, button] of [
+      ["up_to_date", "Up to date", null],
+      ["behind", "Live has changes you do not have here — 1 table, 1 file. Pull", "Pull"],
+      ["ahead", "This site is ahead of live — 1 table, 2 files changed here. Push", "Push…"],
+      ["diverged", "Both sides changed — live: 1 table, 2 files; here: 1 table, 2 files", "Pull"],
+      ["never_synced", "Never synced — pull once first", "Pull"],
+    ]) {
+      await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&status=${verdict}`, { waitUntil: "networkidle" });
+      await page.waitForTimeout(300);
+      await page.getByRole("button", { name: "Check status" }).click();
+      await page.waitForTimeout(400);
+      const calls = await page.evaluate(() => (window.__liveStatusCalls ?? []).length);
+      const card = page.getByTestId("live-status");
+      const vtext = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
+      if (!(calls === 1 && vtext.includes(want))) fails.push(`${scheme} 10 ${verdict}: calls=${calls} card="${vtext.slice(0, 120)}"`);
+      if (button && !(await card.getByRole("button", { name: button, exact: true }).count())) fails.push(`${scheme} 10 ${verdict}: no ${button} button on the card`);
+      if (!button && (await card.getByRole("button").count())) fails.push(`${scheme} 10 ${verdict}: a button on an up-to-date card`);
+      if (verdict === "diverged") {
+        await card.getByRole("button", { name: "Show what moved" }).click();
+        await page.waitForTimeout(200);
+        const d = (await page.getByTestId("live-status-detail").innerText()).replace(/\s+/g, " ");
+        for (const w of ["wp_posts", "changed", "themes/shop/style.css", "uploads/2025/old.jpg", "changed on both sides"]) if (!d.includes(w)) fails.push(`${scheme} 10 diverged: detail lacks "${w}"`);
+        await page.screenshot({ path: `shot-livetab-status-${scheme}.png`, fullPage: true });
+      }
+      if (verdict === "ahead" && !vtext.includes("1 live-owned table changed here")) fails.push(`${scheme} 10 ahead: the live-owned line is missing`);
+    }
+    if ((await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))) fails.push(`${scheme}: overflow (status)`);
+
+    // 11. The Pull menu.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: "More ways to pull" }).click();
+    await page.waitForTimeout(150);
+    await page.getByRole("menuitem", { name: /Pull everything again/ }).click();
+    await page.waitForTimeout(200);
+    const fdlg = await page.getByRole("dialog").innerText().catch(() => "");
+    if (!fdlg.includes("Every table and every wp-content file")) fails.push(`${scheme} 11: "everything again" did not ask (${fdlg.slice(0, 80)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Pull", exact: true }).click();
+    await page.waitForTimeout(300);
+    const pulls = await page.evaluate(() => window.__livePulls ?? []);
+    if (!(pulls[0] && pulls[0].full === true)) fails.push(`${scheme} 11: everything-again sent ${JSON.stringify(pulls)}`);
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: "Pull from live" }).click();
+    await page.waitForTimeout(200);
+    const idlg = await page.getByRole("dialog").innerText().catch(() => "");
+    if (!idlg.includes("Only the tables and files that changed on the live site")) fails.push(`${scheme} 11: the plain pull's confirm (${idlg.slice(0, 80)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Pull", exact: true }).click();
+    await page.waitForTimeout(300);
+    const pulls2 = await page.evaluate(() => window.__livePulls ?? []);
+    if (!(pulls2[0] && pulls2[0].full === false)) fails.push(`${scheme} 11: the plain pull sent ${JSON.stringify(pulls2)}`);
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&pull=incremental`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const itext = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+    for (const w of ["Pulled 3 tables", "9 tables and 455 files unchanged on live were kept", "1 file gone from live removed here", "uploads/2026/notes.txt"]) if (!itext.includes(w)) fails.push(`${scheme} 11: incremental card lacks "${w}"`);
+
+    // 12. The picker's default ticks follow what changed here.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: "Push to live…" }).click();
+    await page.waitForTimeout(400);
+    if (await page.getByLabel("wp_terms", { exact: true }).isChecked()) fails.push(`${scheme} 12: an unchanged table started ticked`);
+    if (!(await page.getByLabel("wp_posts", { exact: true }).isChecked())) fails.push(`${scheme} 12: a changed table started unticked`);
+    const ptxt = (await page.getByTestId("push-picker").innerText()).replace(/\s+/g, " ");
+    if (!(ptxt.includes("unchanged") && ptxt.includes("changed here") && ptxt.includes("1 unchanged table start unticked"))) fails.push(`${scheme} 12: picker badges (${ptxt.slice(0, 200)})`);
+    // 12b. an old base (every local column "unknown"): no table is listed as moved, and the
+    //      card says why what changed here cannot be told.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&status=old_base`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: "Check status" }).click();
+    await page.waitForTimeout(400);
+    const otext = (await page.getByTestId("live-status").innerText()).replace(/\s+/g, " ");
+    if (!(otext.includes("Up to date") && otext.includes("cannot be told yet") && !otext.includes("Show what moved"))) fails.push(`${scheme} 12b: old-base card (${otext.slice(0, 160)})`);
+
+    // 13. History + the last-sync line.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const lastLine = await page.getByTestId("live-last-sync").innerText();
+    if (!/Last sync: pulled \d+ days? ago/.test(lastLine)) fails.push(`${scheme} 13: last-sync line "${lastLine}"`);
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&history=none`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const baseLine = await page.getByTestId("live-last-sync").innerText();
+    if (!/Last sync: pulled \d+ days? ago/.test(baseLine)) fails.push(`${scheme} 13: without history the line must read the base ("${baseLine}")`);
+    if (await page.getByTestId("live-history").count()) fails.push(`${scheme} 13: a history card with no entries`);
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    await page.getByRole("button", { name: /History/ }).click();
+    await page.waitForTimeout(200);
+    const htext = (await page.getByTestId("live-history").innerText()).replace(/\s+/g, " ");
+    for (const w of ["3 syncs", "Pulled 12 tables (1560 rows), 457 files", "Pushed (conflicts)", "wp_posts", "Pushed 2 tables, 1 file", "rxbak_20"]) if (!htext.includes(w)) fails.push(`${scheme} 13: history lacks "${w}" (${htext.slice(0, 200)})`);
     await page.close();
   }
   await browser.close();

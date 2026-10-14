@@ -74,6 +74,7 @@ final class Rexenv_Sync_Rest {
 			array( 'Rexenv_Sync_Pairing', 'nonce_seen' )
 		);
 		if ( null === $code ) {
+			Rexenv_Sync_Pairing::note( 'seen', array( 'route' => preg_replace( '#^/rexenv-sync/v1/#', '', $request->get_route() ) ) );
 			return true;
 		}
 		$messages = array(
@@ -116,7 +117,11 @@ final class Rexenv_Sync_Rest {
 	}
 
 	public static function db_export( WP_REST_Request $request ) {
-		return rest_ensure_response( Rexenv_Sync_Reader::export_table( (string) $request->get_param( 'table' ), $request->get_param( 'cursor' ) ) );
+		$cursor = $request->get_param( 'cursor' );
+		if ( null === $cursor || '' === $cursor ) {
+			Rexenv_Sync_Pairing::note( 'pull', array( 'table' => (string) $request->get_param( 'table' ) ) );
+		}
+		return rest_ensure_response( Rexenv_Sync_Reader::export_table( (string) $request->get_param( 'table' ), $cursor ) );
 	}
 
 	private static function body_json( WP_REST_Request $request ) {
@@ -148,11 +153,19 @@ final class Rexenv_Sync_Rest {
 	}
 
 	public static function push_swap( WP_REST_Request $request ) {
-		return rest_ensure_response( Rexenv_Sync_Pusher::swap( (string) $request->get_param( 'push_id' ) ) );
+		$r = Rexenv_Sync_Pusher::swap( (string) $request->get_param( 'push_id' ) );
+		if ( is_array( $r ) ) {
+			Rexenv_Sync_Pairing::note( 'push', array( 'id' => $r['backup_id'], 'tables' => count( $r['swapped'] ), 'files' => (int) $r['files'] ) );
+		}
+		return rest_ensure_response( $r );
 	}
 
 	public static function push_rollback( WP_REST_Request $request ) {
-		return rest_ensure_response( Rexenv_Sync_Pusher::rollback( (string) $request->get_param( 'backup_id' ) ) );
+		$r = Rexenv_Sync_Pusher::rollback( (string) $request->get_param( 'backup_id' ) );
+		if ( ! is_wp_error( $r ) ) {
+			Rexenv_Sync_Pairing::note( 'rollback', array( 'id' => (string) $request->get_param( 'backup_id' ) ) );
+		}
+		return rest_ensure_response( $r );
 	}
 
 	public static function push_abort( WP_REST_Request $request ) {

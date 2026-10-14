@@ -119,6 +119,14 @@ back unchanged. `null` means done.
   `ANALYZE TABLE` on what it renamed, so the stamp rexenv reads straight after as its new base
   does not move by itself minutes later (0.1.2, #857 — `wpcs_terms` stopped a push on
   live-sync.rex.bd that no one had touched).
+- **The options table's stamp is a CONTENT stamp** (plugin 0.1.3, 14 Oct 2026):
+  `opt:<count>:<sum of CRC32(option_name|option_value|autoload)>` over the rows that do not
+  move on their own — transients, `cron`, `rewrite_rules`, `recently_activated`, the plugin's
+  `rexsync_*` rows, Action Scheduler locks (`Rexenv_Sync_Reader::VOLATILE_OPTIONS`; rexenv's
+  copy for the LOCAL side is `core/live_sync/stamps.rs::VOLATILE_OPTIONS`, and a lib test
+  holds the two lists equal, #859). With `SHOW TABLE STATUS` fields every page view on live
+  moved `wp_options`, so "up to date" could never be said about it and every pull re-exported
+  it. The other tables keep the status stamp below.
 - The nonce store is the plugin's own table `<prefix>rexsync_nonces` (never listed, exported
   or pushed): a row per signed request in `wp_options` would move that table's stamp on
   every call. The stamp is `ai:<Auto_increment>:upd:<Update_time>:rows:<n>:len:<bytes>`,
@@ -135,9 +143,12 @@ back unchanged. `null` means done.
   so every pulled permalink structure broke and a push carried it to live (#856); the
   client refuses a `manifest` whose `plugin` is older than 0.1.1 (`MIN_PLUGIN`).
 - The plugin's own option rows (never exported, restored around a swap): the pairing,
-  `rexsync_backup` (the ONE kept backup, read by rollback), and `rexsync_push_<id>` (a push's
+  `rexsync_backup` (the ONE kept backup, read by rollback), `rexsync_push_<id>` (a push's
   record, from `begin` until its swap or abort — dropped at the end of the swap since 10 Oct
-  2026; it used to stay for ever, #845).
+  2026; it used to stay for ever, #845), and `rexsync_last` (0.1.3: what rexenv last did here
+  — `seen` on any signed request, at most once a minute; `pull` on a table's first export
+  chunk; `push` on a swap; `rollback` — the admin page's "last contact / last pull / last
+  push" lines; excluded from the options stamp with the other `rexsync_*` rows).
 - `/db/export` never emits the plugin's own option rows (§5), by `WHERE option_name NOT IN
   (...)` on the options table and `sitemeta` alike.
 

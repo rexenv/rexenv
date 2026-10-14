@@ -8,7 +8,9 @@
  */
 import type { StartupNotice, AdminerStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
-  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncJobState, LiveSyncPushPlan, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
+  AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
+  LiveSyncJobState, LiveSyncPushPlan,
+  LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -513,9 +515,22 @@ export async function liveSyncUnpair(siteId: string): Promise<boolean> {
 }
 
 /** Start a pull (live → this site). `uploadsSince`: skip uploads older than
- *  this Unix time. Progress streams on `onLiveSyncState`. */
-export async function liveSyncPull(siteId: string, uploadsSince?: number): Promise<LiveSyncJobState> {
-  return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null });
+ *  this Unix time. `full`: replace every table and fetch every file (the default
+ *  brings only what changed on live since the last sync). Progress streams on
+ *  `onLiveSyncState`. */
+export async function liveSyncPull(siteId: string, uploadsSince?: number, full?: boolean): Promise<LiveSyncJobState> {
+  return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null, full: full ?? false });
+}
+
+/** Where this copy stands against live: the verdict and per-table detail.
+ *  Reaches the live site; writes nothing. */
+export async function liveSyncStatus(siteId: string): Promise<LiveSyncStatus> {
+  return invoke<LiveSyncStatus>("live_sync_status", { siteId });
+}
+
+/** The site's last syncs, newest first, and when the base was recorded. */
+export async function liveSyncHistory(siteId: string): Promise<LiveSyncHistory> {
+  return invoke<LiveSyncHistory>("live_sync_history", { siteId });
 }
 
 /** Save the rexenv Sync plugin (the one built into this app) to Downloads as an

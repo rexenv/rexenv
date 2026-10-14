@@ -342,12 +342,16 @@ COMMANDS:
   worktree <worktree-domain> reclone-db [--yes]
                 Replace a worktree site's database with a fresh copy of its parent's,
                 URLs moved to the worktree's domain
-  live <domain> status                 The live site this WordPress site is connected to,
-                                       the last sync, the last job
+  live <domain> status                 The live site this WordPress site is connected to, and
+                                       the verdict: up to date / behind (pull) / ahead (push) /
+                                       diverged, with the tables and files that moved
   live <domain> diff                   What changed ON LIVE since the last sync (tables, files)
-  live <domain> pull [--recent-uploads]
-                Replace this site's database and wp-content with the live site's
-                (the previous local tables are kept one step back)
+  live <domain> history                The last syncs (pull / push / rollback), newest first
+  live <domain> pull [--recent-uploads] [--full]
+                Bring what changed on the live site since the last sync into this
+                site (tables live did not touch keep what they hold here); --full
+                replaces every table and file (the previous local tables are kept
+                one step back either way)
   live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]
                 Send this site's tables (default: all but the live-owned) and the
                 files changed here to the LIVE site, which keeps a backup. Stops
@@ -689,6 +693,42 @@ fn request_streaming(cmd: &str, args: Value, mut on_progress: impl FnMut(&Value)
 
 fn request(cmd: &str, args: Value) -> Value {
     request_inner(cmd, args, false, &mut |_| {})
+}
+
+/// [`request`] for a line that is a courtesy beside others: an app-side refusal
+/// comes back as `Err(message)` instead of ending the command (the app not
+/// running still exits as every request does). `rex live status` reads the
+/// verdict this way, so a live site that does not answer leaves the pairing
+/// lines on screen.
+fn request_lenient(cmd: &str, args: Value) -> std::result::Result<Value, String> {
+    let path = socket_path();
+    let mut sock = match connect(&path) {
+        Ok(s) => s,
+        Err(_) => {
+            errln!("{NOT_RUNNING}");
+            exit(2);
+        }
+    };
+    let line = json!({ "cmd": cmd, "args": args, "stream": false }).to_string();
+    if sock.write_all(format!("{line}\n").as_bytes()).and_then(|_| sock.flush()).is_err() {
+        errln!("{NOT_RUNNING}");
+        exit(2);
+    }
+    let mut reader = BufReader::new(sock);
+    let mut reply = String::new();
+    loop {
+        reply.clear();
+        match reader.read_line(&mut reply) {
+            Ok(n) if n > 0 => {
+                let Ok(v) = serde_json::from_str::<Value>(reply.trim()) else { return Err("unreadable reply from the app".into()) };
+                if v.get("progress").is_some() {
+                    continue;
+                }
+                return if v["ok"] == json!(true) { Ok(v["data"].clone()) } else { Err(v["error"].as_str().unwrap_or("unknown error").to_string()) };
+            }
+            _ => return Err("the app closed the connection without replying".into()),
+        }
+    }
 }
 
 fn request_inner(
@@ -1978,14 +2018,14 @@ fn now_unix() -> i64 {
 }
 
 const LIVE_USAGE: &str =
-    "rex live <domain> status | diff | pull [--recent-uploads] | push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] | rollback <backup-id> | disconnect";
+    "rex live <domain> status | diff | history | pull [--recent-uploads] [--full] | push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] | rollback <backup-id> | disconnect";
 
 /// Live ↔ local sync (`docs/PLAN-wp-live-sync.md` L12) — the Live tab's commands
 /// through `live.*` on the socket. `push` carries the typed host as `--confirm`;
 /// the app compares it, not this binary.
 fn cmd_live(words: &[String], json_output: bool) {
     let known: &[&str] = match words.get(1).map(String::as_str) {
-        Some("pull") => &["--recent-uploads"],
+        Some("pull") => &["--recent-uploads", "--full"],
         Some("push") => &["--confirm", "--tables", "--no-files", "--override"],
         _ => &[],
     };
@@ -2040,6 +2080,65 @@ fn cmd_live(words: &[String], json_output: bool) {
             if let Some(last) = data["last"].as_object() {
                 outln!("last job: {} {}{}", last["kind"].as_str().unwrap_or("?"), last["status"].as_str().unwrap_or("?"), last["error"].as_str().map(|e| format!(" — {e}")).unwrap_or_default());
             }
+            // The verdict needs the live site; a site that does not answer still has the lines above.
+            let s = request_lenient("live.sync_status", json!({ "id": id }));
+            match s {
+                Err(e) => outln!("status: could not be checked — {e}"),
+                Ok(s) => {
+                    let n = |k: &str| s[k].as_u64().unwrap_or(0);
+                    let files_live = s["files"]["liveChanged"].as_array().map_or(0, Vec::len) + s["files"]["liveGone"].as_array().map_or(0, Vec::len);
+                    let files_local = s["files"]["localChanged"].as_array().map_or(0, Vec::len);
+                    let line = match s["verdict"].as_str().unwrap_or("?") {
+                        "never_synced" => "never synced — pull once first".to_string(),
+                        "up_to_date" => "up to date — nothing to pull or push".to_string(),
+                        "behind" => format!("behind — live changed {} and {}: pull", plural(&json!(n("tablesBehind")), "table"), plural(&json!(files_live), "file")),
+                        "ahead" => format!("ahead — {} and {} changed here: push", plural(&json!(n("tablesAhead")), "table"), plural(&json!(files_local), "file")),
+                        "diverged" => format!("diverged — live: {}, {}; here: {}, {} (pull first, then push)", plural(&json!(n("tablesBehind")), "table"), plural(&json!(files_live), "file"), plural(&json!(n("tablesAhead")), "table"), plural(&json!(files_local), "file")),
+                        other => other.to_string(),
+                    };
+                    outln!("status: {line}");
+                    for t in s["tables"].as_array().cloned().unwrap_or_default() {
+                        let (live, local) = (t["live"].as_str().unwrap_or("same"), t["local"].as_str().unwrap_or("same"));
+                        if (live != "same" && live != "unknown") || (local != "same" && local != "unknown") {
+                            outln!("  {:<32} live: {:<8} here: {}{}", t["name"].as_str().unwrap_or("?"), live, local, if t["liveOwned"].as_bool().unwrap_or(false) { "  (live writes here)" } else { "" });
+                        }
+                    }
+                    for (label, key) in [("changed on live", "liveChanged"), ("gone from live", "liveGone"), ("changed here", "localChanged")] {
+                        let list = s["files"][key].as_array().cloned().unwrap_or_default();
+                        if !list.is_empty() {
+                            outln!("  files {label}: {}", list.iter().filter_map(|v| v.as_str()).take(10).collect::<Vec<_>>().join(", "));
+                            if list.len() > 10 {
+                                outln!("    … and {} more", list.len() - 10);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Some("history") => {
+            let data = request("live.history", json!({ "id": id }));
+            if json_output {
+                return print_json(&data);
+            }
+            let list = data["entries"].as_array().cloned().unwrap_or_default();
+            if list.is_empty() {
+                return match data["baseAt"].as_i64() {
+                    Some(t) => outln!("{domain}: no syncs since the history began; the base was recorded at {t} (unix)"),
+                    None => outln!("{domain}: no syncs yet"),
+                };
+            }
+            for e in list {
+                outln!(
+                    "{}  {:<9} {:<9} {} tables, {} files{}{}",
+                    e["at"].as_i64().unwrap_or(0),
+                    e["kind"].as_str().unwrap_or("?"),
+                    e["status"].as_str().unwrap_or("?"),
+                    e["tables"].as_u64().unwrap_or(0),
+                    e["files"].as_u64().unwrap_or(0),
+                    e["backupId"].as_str().map(|b| format!("  backup {b}")).unwrap_or_default(),
+                    e["error"].as_str().map(|x| format!("  — {x}")).unwrap_or_default()
+                );
+            }
         }
         Some("diff") => {
             let data = request("live.diff", json!({ "id": id }));
@@ -2058,7 +2157,8 @@ fn cmd_live(words: &[String], json_output: bool) {
         }
         Some("pull") => {
             let since = if words.iter().any(|w| w == "--recent-uploads") { Some(now_unix() - 183 * 86400) } else { None };
-            let data = request_streaming("live.pull", json!({ "id": id, "uploadsSince": since }), on_line);
+            let full = words.iter().any(|w| w == "--full");
+            let data = request_streaming("live.pull", json!({ "id": id, "uploadsSince": since, "full": full }), on_line);
             if json_output {
                 return print_json(&data);
             }

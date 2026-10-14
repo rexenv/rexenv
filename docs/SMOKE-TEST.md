@@ -1184,6 +1184,86 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
 - [x] **Disconnect** locally → the Live tab is the connect form again; the site keeps its data.
       ✓ macOS 15.8 VM, this tree's release build, 11 Oct 2026: `l14vm.rex` → Disconnect → "Disconnect from the live site? This site keeps everything it
       has pulled…" → the connect form; `rex live … status` "not connected"; `LOCALONLYPOST` still served.
+- [x] **Check status** (14 Oct 2026) on a connected, pulled site → the card says "Up to date —
+      nothing to pull or push" with no button. Make a post ON LIVE → Check status → "Live has
+      changes you do not have here — N tables, 0 files. Pull to bring them." with a Pull button;
+      "Show what moved" lists the tables a post writes with `changed` in the *on live* column and
+      `—` in *here*. Edit a local theme file → Check status → "Both sides changed…"; the file is
+      under *changed here*. Pull (from the card) → the confirm says only what changed on live is
+      replaced → the card streams "N unchanged on live, kept from here" and "files: 1 changed on
+      live since the last sync, M unchanged" → "Pulled N tables (… row) and 1 file — K tables and M
+      files unchanged on live were kept as they are here." The local theme edit is still there
+      (live did not touch that file). Check status → "This site is ahead of live — 0 tables, 1
+      file changed here. Push to send them." with a Push… button. Log in to wp-admin locally
+      (writes `usermeta` session tokens) → Check status still says ahead with "1 live-owned table
+      changed here … not counted".
+      ✓ the macOS 15.8 VM, this tree's release build, 14 Oct 2026, against live-sync.rex.bd (plugin
+      0.1.2 there — its `wp_options` stamp still moves on live's own transient writes, so that table
+      reads "changed on live" a while after any sync until the owner uploads 0.1.3): `l14vm.rex` on
+      its 11 Oct base → Check status → "Live has changes you do not have here — 2 tables, 0 files.
+      Pull to bring them." with Pull; Show what moved listed `wpcs_options`/`wpcs_usermeta` changed
+      on live, every *here* column "unknown" (an old base) — now filtered out with a line saying why.
+      Pull from the card → the confirm says only what changed is replaced → "Pulled 2 tables (186
+      rows) and 0 files — 10 tables and 1055 files unchanged on live were kept as they are here."
+      → Check status "Up to date — nothing to pull or push. Checked against live-sync.rex.bd just
+      now." A post title and `twentytwentyfive/style.css` edited here → "This site is ahead of live
+      — 1 table, 1 file changed here. Push to send them." with Push…; `rex live l14vm.rex status`
+      printed the same in 2 s ("ahead — 1 table and 1 file changed here: push", `wpcs_posts`, the
+      file). After the push: "Up to date". The plugin activated in the LOCAL copy (for the page row
+      below) → "ahead — 3 tables" incl. `wpcs_rexsync_nonces` "new" — its own table, now left out.
+      Found: the old verdict card stayed on screen while the next check ran (fixed: it clears, the
+      button reads "Checking…"); the GUI check took ~30–40 s where the CLI took 2 s (not explained;
+      the same command — left as seen).
+- [x] **Pull menu** → "Pull everything again" → the confirm says every table and file is
+      replaced → the log has no "kept from here" line; "Pull, recent uploads only" as before.
+      ✓ the macOS 15.8 VM, 14 Oct 2026: the chevron opened the two-item menu with its hints; "Pull
+      everything again" → "Pull everything from https://live-sync.rex.bd again? Every table and every
+      wp-content file on the live site replaces this site's…" → "Pulled 12 tables (232 rows) and 1055
+      files." — the local title, the CSS line and the locally activated 0.1.3 plugin all back to live's.
+- [x] **Push to live…** after the pull above → the picker: the edited file's table-less push —
+      the tables badged `unchanged` start unticked (grey), any table changed here badged
+      `changed here` starts ticked, the live-owned ones unticked as before; the sentence names
+      how many unchanged tables start unticked. Push → "Pushed 0 tables and 1 file … (K
+      unchanged tables left out)". Check status → "Up to date".
+      ✓ the macOS 15.8 VM, 14 Oct 2026: the picker opened with `wpcs_posts` ticked and badged
+      "changed here", seven tables badged "unchanged" and unticked (grey), the four live-owned ones
+      unticked with "live writes here", the sentence "(6 unchanged tables start unticked)" (it counted
+      the live-owned ones too at first — now only the unchanged non-live-owned); `live-sync.rex.bd`
+      typed → Push → "Pushed 1 table and 1 file to live-sync.rex.bd. The live site keeps what they
+      replaced as 3589161a…" — live's post title and the CSS line changed; Check status → "Up to
+      date"; Roll back → asks → live's title and CSS back → "Rolled back." A second round after new
+      local edits: push → Roll back → Check status "ahead — 3 tables, 1 file" again (#862; before the
+      fix it read "up to date").
+- [x] **History** (the card under the job) → opens to the syncs above, newest first, each with
+      its kind, outcome, counts and the push's backup id; the header line reads "Last sync:
+      pushed N minutes ago". `rex live <domain> status` prints the same verdict and the moved
+      tables; `rex live <domain> history` the same list.
+      ✓ the macOS 15.8 VM, 14 Oct 2026: "History (3 syncs)" → "Pulled 12 tables (232 rows), 1055
+      files" / "Rolled back 6a2dc43e…" / "Pushed 1 table, 1 file 6a2dc43e…", newest first; the header
+      read "Last sync: pulled just now" / "pushed just now" / "rolled back just now" after each, and
+      "Last sync: pulled 11 minutes ago" from the BASE on a site synced before the history existed.
+      `rex live l14vm.rex history` printed the same three lines with their backup id. Found: the
+      history's date column wrapped onto two lines — widened (not re-run on the VM).
+- [x] On the live site, Tools → rexenv Sync (plugin 0.1.3) → three cards: **Connection** —
+      "Connected to rexenv", the key id and when it was made, "Last contact N minutes ago",
+      "Last pull", "Last push (N tables, M files replaced here)", "Backup kept — from the push …
+      (size on disk)"; **How it works** — the three steps; **This site** — address (with "not
+      HTTPS" in red on a plain site), versions incl. plugin 0.1.3, table count and prefix, free
+      disk, the REST address. **Regenerate key** asks first ("The current one stops working at
+      once…"); the new key shows once with **Copy key** → "Copied."; **Disconnect** asks first →
+      "Not connected" with the Connect button.
+      ✓ 14 Oct 2026, plugin 0.1.3 activated in the macOS VM's LOCAL copy `l14vm.rex` (the live host
+      still runs 0.1.2 — uploading 0.1.3 there is the owner's), Safari on the VM: Not connected →
+      the three cards (Connection / How it works / This site: `https://l14vm.rex`, WordPress 7.1.3 ·
+      PHP 8.3.32 · MySQL 8.4.6 · plugin 0.1.3, "12 with the prefix wpcs_", 19 GB free, the REST
+      address) → Connect to rexenv → the key box with Copy key → "Copied."; the Connection card:
+      "Connected to rexenv", the key id "made 1 second ago", "Last contact never — the key has not
+      been pasted into rexenv yet", Last pull/push never, "Backup kept none — a push makes one";
+      Regenerate key → the browser's confirm "Make a new key? The current one stops working at
+      once…" → Cancel; Disconnect → confirm → "Disconnected. rexenv can no longer read or write
+      this site…" + Not connected. The "last contact / last pull / last push / backup kept" lines
+      with real values need the live host on 0.1.3 (their data is proven by the plugin's own test §9).
+      Then the local copy was pulled again whole, which put plugin 0.1.2 back and deactivated it.
 - [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
       password → Connect works; without them, the firewall/401 sentence.
 - **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's

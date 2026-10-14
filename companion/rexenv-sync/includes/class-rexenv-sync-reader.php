@@ -85,7 +85,43 @@ final class Rexenv_Sync_Reader {
 		return self::checksum( $status );
 	}
 
+	/**
+	 * Option rows that move on their own — transients, the cron queue, rewrite rules,
+	 * this plugin's rows. Left out of the options table's stamp on BOTH sides (rexenv
+	 * reads the same list for its local copy, `core/live_sync/stamps.rs`): with them in,
+	 * every page view on live moved the stamp, and "up to date" could never be said
+	 * about `wp_options` (14 Oct 2026). LIKE patterns, `_` escaped.
+	 */
+	const VOLATILE_OPTIONS = array( '\\_transient\\_%', '\\_site\\_transient\\_%', 'cron', 'rewrite\\_rules', 'recently\\_activated', 'rexsync\\_%', 'action\\_scheduler\\_lock\\_%' );
+
+	/** `WHERE` clause (without the keyword) leaving the volatile rows out of `$col`. */
+	public static function volatile_options_where( $col ) {
+		global $wpdb;
+		$parts = array();
+		foreach ( self::VOLATILE_OPTIONS as $pat ) {
+			$parts[] = $wpdb->prepare( "`$col` NOT LIKE %s", $pat ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		}
+		return implode( ' AND ', $parts );
+	}
+
+	/**
+	 * The options table's stamp: a CONTENT stamp over the non-volatile rows — row
+	 * count and a sum of each row's CRC32 — never `SHOW TABLE STATUS`, whose
+	 * `Update_time` moves on every transient write. Reads one small table; the
+	 * options table is the one table every request writes.
+	 */
+	public static function options_stamp() {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
+		$row = $wpdb->get_row( "SELECT COUNT(*) AS n, COALESCE(SUM(CRC32(CONCAT_WS('|', option_name, option_value, autoload))), 0) AS s FROM `{$wpdb->options}` WHERE " . self::volatile_options_where( 'option_name' ), ARRAY_A );
+		return 'opt:' . ( $row ? (int) $row['n'] : 0 ) . ':' . ( $row ? (string) $row['s'] : '0' );
+	}
+
 	private static function checksum( array $status ) {
+		global $wpdb;
+		if ( isset( $status['Name'] ) && $status['Name'] === $wpdb->options ) {
+			return self::options_stamp();
+		}
 		// `Auto_increment` moves on every INSERT; `Update_time` on InnoDB (MySQL ≥ 5.7,
 		// kept in memory, NULL after a restart) on every write. `Rows` is an estimate
 		// and `Data_length` is in pages — neither moved for one inserted post, which

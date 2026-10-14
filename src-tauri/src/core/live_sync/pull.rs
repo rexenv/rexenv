@@ -1,28 +1,42 @@
 //! Pull a live site INTO a local WordPress site (L6 of `docs/PLAN-wp-live-sync.md`,
 //! §2.4). The core of the job; the job card, the New-site flow and the stored key
-//! are later tasks.
+//! are `commands::live_sync`.
 //!
 //! The order is the safety argument:
-//! 1. every table is exported (`.partial` + sha256 per chunk) and imported into a
-//!    STAGING database, `<db>_pull` — the local site is not touched;
+//! 1. every table that moved on live is exported (`.partial` + sha256 per chunk)
+//!    and imported into a STAGING database, `<db>_pull`; every table that did NOT
+//!    move since the base is copied into the staging database from the LOCAL
+//!    copy, server-side (`INSERT … SELECT`) — so the staging copy is whole and
+//!    WordPress can boot against it, and the wire carries only what changed. The
+//!    local site is not touched;
 //! 2. the staging copy's URLs are moved from the live host to the local domain
 //!    (`rehome_urls_on_copy`, which re-reads `siteurl` to prove it);
 //! 3. only then ONE `RENAME TABLE` swaps: the local site's tables move to
 //!    `<db>_prepull` (kept — the previous local state, one step back), the staging
 //!    tables move in. A failure before this leaves the local site exactly as it was
 //!    (plan invariant #6); the staging database is dropped;
-//! 4. files land in a staging folder inside `wp-content` and are moved into place
-//!    one by one. Nothing local is deleted (the sync base that would say what was
-//!    deleted on live is S3).
+//! 4. files whose `size:mtime` moved on live (every file when there is no base, or
+//!    on a FULL pull) land in a staging folder inside `wp-content` and are moved
+//!    into place one by one. A file the base saw on live that live no longer has
+//!    is removed here ONLY if it was not touched here since the last sync (its
+//!    mtime is not after the base) — a local edit is never deleted by a pull.
+//!
+//! "Incremental" (14 Oct 2026): a table unchanged on live keeps whatever it holds
+//! here — a local edit to a table live did not touch survives a pull. A table
+//! live DID change is replaced whole (live wins on a pull; the previous local
+//! tables are in `_prepull`). A FULL pull (`PullOptions::full`) replaces everything,
+//! as every pull did before.
 //!
 //! MySQL/MariaDB only: a live WordPress is MySQL, and a local PostgreSQL site has
 //! nothing to receive it.
 
+use super::base::SyncBase;
 use super::client::Client;
 use crate::core::db::{DbEngine, SqlClient};
 use crate::core::wordpress;
 use crate::error::{Error, Result};
 use crate::platform::traits::Platform;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 /// Paths a pull never asks for (plan §5 — rexenv's list, in ONE place): caches,
@@ -60,15 +74,25 @@ pub struct LocalSite<'a> {
 /// What a pull did.
 #[derive(Debug, Clone, Default)]
 pub struct PullReport {
+    /// Tables exported from live.
     pub tables: usize,
+    /// Tables unchanged on live, kept from the local copy.
+    pub tables_kept: usize,
     pub rows: u64,
+    /// Files fetched from live.
     pub files: usize,
+    /// Files unchanged on live, left as they are here.
+    pub files_kept: usize,
+    /// Files gone from live, removed here (untouched here since the last sync).
+    pub files_deleted: Vec<String>,
+    /// Files gone from live but edited here since the last sync — kept, named.
+    pub files_kept_edited: Vec<String>,
     pub refused_files: Vec<String>,
     pub replacements: u64,
     /// The database now holding the local site as it was before this pull.
     pub backup_db: String,
-    /// What the live site looked like — the next push's base (§2.6).
-    pub base: super::base::SyncBase,
+    /// What both sides look like now — the next pull's and push's base (§2.6).
+    pub base: SyncBase,
 }
 
 /// The host of `https://host[:port][/path]` — what the copied database says.
@@ -84,8 +108,7 @@ fn exec(local: &LocalSite, sql: &str, what: &str) -> Result<()> {
     crate::core::database::mysql_exec(local.client, local.port, sql, what)
 }
 
-/// Pull everything the live site has into `local`. `on_line` gets one line per step.
-/// What a pull leaves out (§11 Q3).
+/// What a pull leaves out (§11 Q3), and whether it is a FULL one.
 #[derive(Debug, Clone, Default)]
 pub struct PullOptions {
     /// Extra `exclude` globs beside [`DEFAULT_EXCLUDES`].
@@ -93,11 +116,83 @@ pub struct PullOptions {
     /// Skip files under `uploads/` older than this Unix time — a big media
     /// library's history stays on live.
     pub uploads_since: Option<i64>,
+    /// Replace EVERY table and fetch EVERY file, base or not — "Pull everything again".
+    pub full: bool,
 }
 
+/// `*`-only glob on a `/` path, the way the plugin's `fnmatch` reads the list.
+pub fn glob_ish(pattern: &str, path: &str) -> bool {
+    fn m(p: &[u8], s: &[u8]) -> bool {
+        match (p.first(), s.first()) {
+            (None, None) => true,
+            (Some(b'*'), _) => m(&p[1..], s) || (!s.is_empty() && m(p, &s[1..])),
+            (Some(a), Some(b)) if a == b => m(&p[1..], &s[1..]),
+            _ => false,
+        }
+    }
+    m(pattern.as_bytes(), path.as_bytes())
+}
+
+/// Is `rel` (wp-content-relative) one a sync leaves alone — rexenv's excludes, the
+/// mail mu-plugin, the companion plugin's own folder?
+pub fn skipped_locally(rel: &str) -> bool {
+    DEFAULT_EXCLUDES.iter().any(|g| glob_ish(g, rel)) || rel.starts_with("mu-plugins/rexenv-") || rel.starts_with("plugins/rexenv-sync")
+}
+
+/// Every file under `content` (wp-content) a sync considers: `(relative path,
+/// size, mtime)`, sorted by path. The ONE walk the push, the status and the
+/// pull's delete rule share.
+pub fn walk_local(content: &Path) -> Result<Vec<(String, u64, i64)>> {
+    let mut out = Vec::new();
+    let mut stack = vec![content.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            let rel = p.strip_prefix(content).map(|r| r.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+            if skipped_locally(&rel) || rel.starts_with(".rexsync-incoming-") {
+                continue;
+            }
+            let ft = e.file_type()?;
+            if ft.is_dir() {
+                stack.push(p);
+            } else if ft.is_file() {
+                let md = e.metadata()?;
+                let mtime = md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+                out.push((rel, md.len(), mtime));
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// The delete rule, pure (ledger #861): of the files the base saw on live that live
+/// no longer lists, which may go here — those that exist, are not excluded by a
+/// current glob, and were NOT touched here since the base. The rest are named as
+/// kept. `local` = `(path, mtime)` of the local files now.
+pub fn gone_on_live<'a>(base: &'a SyncBase, live_now: &BTreeMap<&str, String>, local: &BTreeMap<&str, i64>, excludes: &[&str]) -> (Vec<&'a str>, Vec<&'a str>) {
+    let mut delete = Vec::new();
+    let mut keep = Vec::new();
+    for p in base.files.keys() {
+        if live_now.contains_key(p.as_str()) || excludes.iter().any(|g| glob_ish(g, p)) {
+            continue;
+        }
+        match local.get(p.as_str()) {
+            None => {}
+            Some(m) if *m > base.at => keep.push(p.as_str()),
+            Some(_) => delete.push(p.as_str()),
+        }
+    }
+    (delete, keep)
+}
+
+/// Pull the live site into `local`. `prior` = the base from the last sync (None, or
+/// `options.full`: everything is replaced). `on_line` gets one line per step.
 pub async fn pull_into(
     client: &Client,
     local: &LocalSite<'_>,
+    prior: Option<&SyncBase>,
     options: &PullOptions,
     on_line: &mut (dyn FnMut(&str) + Send),
 ) -> Result<PullReport> {
@@ -108,20 +203,26 @@ pub async fn pull_into(
     if m.multisite {
         return Err(Error::Other("pulling a multisite network is not supported yet (plan S5)".into()));
     }
-    on_line(&format!("live: {} — WordPress {}, {} tables", m.site_url, m.wp, m.tables.len()));
+    let prior = if options.full { None } else { prior };
+    on_line(&format!("live: {} — WordPress {}, {} tables{}", m.site_url, m.wp, m.tables.len(), if prior.is_some() { " (only what changed since the last sync)" } else { "" }));
     let stage = format!("{}_pull", local.db_name);
     let backup = format!("{}_prepull", local.db_name);
     crate::core::database::validate_db_name(&stage)?;
     crate::core::database::validate_db_name(&backup)?;
     std::fs::create_dir_all(local.scratch)?;
 
-    // ── 1. tables → staging ─────────────────────────────────────────────
+    // ── 1. tables → staging: changed ones from live, the rest from here ────
+    let local_now = local.engine.list_tables(local.client, local.port, local.db_name)?;
+    let (changed, kept): (Vec<&super::client::RemoteTable>, Vec<&super::client::RemoteTable>) = m.tables.iter().partition(|t| match prior {
+        Some(b) => b.tables.get(&t.name) != Some(&t.checksum) || !local_now.contains(&t.name),
+        None => true,
+    });
     local.engine.drop_database(local.client, local.port, &stage)?;
     local.engine.create_database(local.client, local.port, &stage)?;
-    let mut report = PullReport { backup_db: backup.clone(), ..Default::default() };
+    let mut report = PullReport { backup_db: backup.clone(), tables_kept: kept.len(), ..Default::default() };
     report.base.tables = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
     let staged: Result<()> = async {
-        for t in &m.tables {
+        for t in &changed {
             let file = local.scratch.join(format!("pull-{}.sql", t.name));
             let rows = client.export_table(&t.name, &file).await?;
             // Data from a machine rexenv does not control: under a user that can
@@ -132,6 +233,21 @@ pub async fn pull_into(
             report.rows += rows;
             report.tables += 1;
             on_line(&format!("  {} — {}", t.name, super::count(rows as usize, "row", "rows")));
+        }
+        for t in &kept {
+            // Unchanged on live since the base: the local copy IS that table — copied
+            // server-side, nothing crosses the wire. The session's SQL mode first: a
+            // strict MySQL 8 refuses WordPress's '0000-00-00 00:00:00' defaults even in
+            // a `CREATE TABLE … LIKE` ("Invalid default value for 'comment_date'" — the
+            // first incremental run, 14 Oct 2026), exactly as the export's header says.
+            exec(
+                local,
+                &format!("SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO'; CREATE TABLE {s}.{t} LIKE {d}.{t}; INSERT INTO {s}.{t} SELECT * FROM {d}.{t}", s = q(&stage), d = q(local.db_name), t = q(&t.name)),
+                &format!("keeping {}", t.name),
+            )?;
+        }
+        if !kept.is_empty() {
+            on_line(&format!("  {} unchanged on live, kept from here", super::count(kept.len(), "table", "tables")));
         }
         let have = local.engine.list_tables(local.client, local.port, &stage)?;
         let missing: Vec<&str> = m.tables.iter().map(|t| t.name.as_str()).filter(|n| !have.iter().any(|h| h == n)).collect();
@@ -196,8 +312,14 @@ pub async fn pull_into(
     // ── 4. files ────────────────────────────────────────────────────────
     let mut excludes: Vec<&str> = DEFAULT_EXCLUDES.to_vec();
     excludes.extend(options.excludes.iter().map(String::as_str));
-    let mut files = client.list_files(&excludes, options.uploads_since).await?;
-    report.base.files = files.iter().map(|f| (f.path.clone(), format!("{}:{}", f.size, f.mtime))).collect();
+    let listed = client.list_files(&excludes, options.uploads_since).await?;
+    report.base.files = listed.iter().map(|f| (f.path.clone(), format!("{}:{}", f.size, f.mtime))).collect();
+    let live_now: BTreeMap<&str, String> = listed.iter().map(|f| (f.path.as_str(), format!("{}:{}", f.size, f.mtime))).collect();
+    let mut files: Vec<&super::client::RemoteFile> = match prior {
+        Some(b) => listed.iter().filter(|f| b.files.get(&f.path) != live_now.get(f.path.as_str())).collect(),
+        None => listed.iter().collect(),
+    };
+    report.files_kept = listed.len() - files.len();
     // Ceilings (#837): a file the frame parser would refuse anyway is left on
     // live and reported, not fetched; the whole list must fit the disk with
     // room to spare, measured BEFORE the first byte lands.
@@ -222,15 +344,21 @@ pub async fn pull_into(
     if let Some(since) = options.uploads_since {
         on_line(&format!("uploads older than {since} (Unix time) left on live"));
     }
+    if prior.is_some() {
+        on_line(&format!("files: {} changed on live since the last sync, {} unchanged", files.len(), report.files_kept));
+    }
     let incoming_dir: PathBuf = content.join(format!(".rexsync-incoming-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
     let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
     let sized: Vec<(String, u64)> = files.iter().map(|f| (f.path.clone(), f.size)).collect();
-    let fetched = client.read_files(&sized, &incoming_dir, &excludes).await;
-    let refused = match fetched {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&incoming_dir); // ours: a fresh random name
-            return Err(e);
+    let refused = if sized.is_empty() {
+        Vec::new()
+    } else {
+        match client.read_files(&sized, &incoming_dir, &excludes).await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&incoming_dir); // ours: a fresh random name
+                return Err(e);
+            }
         }
     };
     report.refused_files = refused.iter().map(|r| r.path.clone()).chain(too_big).collect();
@@ -251,14 +379,41 @@ pub async fn pull_into(
         report.files += 1;
     }
     let _ = std::fs::remove_dir_all(&incoming_dir);
+    // Gone from live since the base: removed here only when untouched here since
+    // (ledger #861). Never with `uploads_since`, which leaves old uploads unlisted —
+    // they are not gone, just not asked for.
+    if let (Some(b), None) = (prior, options.uploads_since) {
+        let local_files = walk_local(&content)?;
+        let local_mtimes: BTreeMap<&str, i64> = local_files.iter().map(|(p, _, m)| (p.as_str(), *m)).collect();
+        let (delete, keep) = gone_on_live(b, &live_now, &local_mtimes, &excludes);
+        for rel in delete {
+            let mut p = content.clone();
+            for seg in rel.split('/') {
+                p.push(seg);
+            }
+            if std::fs::remove_file(&p).is_ok() {
+                report.files_deleted.push(rel.to_string());
+            }
+        }
+        report.files_kept_edited = keep.iter().map(|s| s.to_string()).collect();
+        if !report.files_deleted.is_empty() {
+            on_line(&format!("  {} gone from live, removed here", super::count(report.files_deleted.len(), "file", "files")));
+        }
+        if !report.files_kept_edited.is_empty() {
+            on_line(&format!("  {} gone from live but edited here since the last sync — kept: {}", super::count(report.files_kept_edited.len(), "file", "files"), report.files_kept_edited.join(", ")));
+        }
+    }
     on_line(&format!("files: {} in place, {} refused by the site", report.files, report.refused_files.len()));
-    // The sync moment is the END of the pull (#841): every file it wrote is now no
-    // newer than this, so the next push sends only what is edited from here on.
-    report.base.at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
 
     // The plugin came along with the files; a local copy answering as a sync
-    // endpoint means nothing (plan §2.8).
+    // endpoint means nothing (plan §2.8). BEFORE the local stamps: deactivating
+    // writes `active_plugins`, and the stamp must be of the copy as it is left.
     let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["plugin", "deactivate", "rexenv-sync", "--skip-plugins", "--skip-themes"]);
+    report.base.local_tables = super::stamps::local_stamps(local, &m.prefix)?;
+    report.base.kind = "pull".into();
+    // The sync moment is the END of the pull (#841): every file it wrote is now no
+    // newer than this, so the next push sends only what is edited from here on.
+    report.base.at = super::base::now();
     Ok(report)
 }
 
@@ -271,5 +426,30 @@ mod tests {
         assert_eq!(host_of("https://example.com"), "example.com");
         assert_eq!(host_of("https://example.com/blog"), "example.com");
         assert_eq!(host_of("https://shop.example.com:8443/"), "shop.example.com:8443");
+    }
+
+    #[test]
+    fn the_glob_and_the_local_skip_list() {
+        assert!(glob_ish("uploads/rexsync-*", "uploads/rexsync-abc/x") && !glob_ish("*.log", "a.php") && glob_ish("*/cache/*", "plugins/x/cache/y"));
+        assert!(skipped_locally("plugins/rexenv-sync/rexenv-sync.php") && skipped_locally("mu-plugins/rexenv-mail.php") && skipped_locally("cache/x"));
+        assert!(!skipped_locally("plugins/akismet/akismet.php"));
+    }
+
+    /// **A pull deletes here only a file live dropped AND nobody touched here since
+    /// the base** (ledger #861): still on live → stays; edited here after the base →
+    /// kept and named; excluded by a current glob → never considered; absent here →
+    /// nothing to do. Plant: drop the mtime test → the edited file is deleted.
+    #[test]
+    fn gone_on_live_spares_local_edits() {
+        let base = SyncBase {
+            at: 1000,
+            files: ["a.txt", "b.txt", "c.txt", "d.txt", "cache/e.txt"].into_iter().map(|p| (p.to_string(), "1:1".to_string())).collect(),
+            ..Default::default()
+        };
+        let live_now: BTreeMap<&str, String> = [("a.txt", "1:1".to_string())].into_iter().collect();
+        let local: BTreeMap<&str, i64> = [("a.txt", 900), ("b.txt", 900), ("c.txt", 1500), ("cache/e.txt", 900)].into_iter().collect();
+        let (delete, keep) = gone_on_live(&base, &live_now, &local, &DEFAULT_EXCLUDES);
+        assert_eq!(delete, vec!["b.txt"]);
+        assert_eq!(keep, vec!["c.txt"]);
     }
 }

@@ -3,8 +3,13 @@
 **Status:** BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a
 live site, `rex live`, the MCP `live` tool, the security review's fixes; proven on macOS, the
 Dell's Windows 10 and the Ubuntu VM (fixture L1), and on a REAL host (live-sync.rex.bd) through
-the real app on the macOS VM (#824–#847). Open: real hosts 2–3 (L14), S3 (resume, anonymise,
-uploads on demand, per-item conflict choice), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
+the real app on the macOS VM (#824–#847). **14 Oct 2026 (L16, #859–#862): the sync STATUS**
+(up to date / behind / ahead / diverged, per table and file — `core/live_sync/status.rs`, the
+Live tab's Check status, `rex live … status`, the MCP `live` status), **incremental pull** (only
+the tables and files that moved on live; a table live did not touch keeps what it holds here;
+"Pull everything again" is the old whole pull), **incremental push by default** (only the tables
+changed here), the sync **history**, the plugin's admin page rewritten (0.1.3). Open: real hosts
+2–3 (L14), S3 (resume, anonymise, uploads on demand, per-item conflict choice), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
 recommendation waiting for the owner's yes (the open questions are §11). **Owner answered
 9 Oct 2026:** the plugin ships as an in-app zip only for v1, and a push always needs a
@@ -98,7 +103,12 @@ a cursor; rexenv loops. A dropped request is retried from the cursor, never from
    plugins/theme, every table with row count + size + a cheap checksum
    (`CHECKSUM TABLE` where the host allows it, else `max(id)` + row count + `UPDATE_TIME`),
    and a file manifest of `wp-content/` (path, size, mtime) streamed by cursor.
-2. rexenv diffs against the **sync base** (§2.6): which tables and files changed.
+2. rexenv diffs against the **sync base** (§2.6): which tables and files changed. **Built 14
+   Oct 2026** (until then every pull exported every table and fetched every file): a table whose
+   live stamp equals the base's is copied into the staging database from the LOCAL copy,
+   server-side (`INSERT … SELECT`, so the staging copy is whole and WordPress boots against it
+   for the URL move); only the moved ones are exported. A file whose `size:mtime` equals the
+   base's is left alone. `PullOptions::full` ("Pull everything again") replaces everything.
 3. **DB**: `GET /db/export?table=…&cursor=…` — the plugin writes SQL (`INSERT` batches via
    `$wpdb`, `SHOW CREATE TABLE`) in bounded chunks; rexenv appends to a `.partial` file,
    renamed only when the last chunk's sha256 matches the plugin's running hash. Restored
@@ -108,7 +118,9 @@ a cursor; rexenv loops. A dropped request is retried from the cursor, never from
 4. **Files**: `POST /files/read` with a list of paths → a framed stream (JSON header +
    bytes per file). Only changed files. Written to a staging folder beside the docroot,
    moved into place after all arrive. Deleted-on-live files are deleted locally only inside
-   `wp-content/` and only if they were in the previous base (never a local-only file).
+   `wp-content/` and only if they were in the previous base (never a local-only file) — **and
+   only if untouched here since the base** (mtime not after `at`; built 14 Oct 2026, #861): a
+   file edited here that live dropped is kept and named in the log.
 5. Scope defaults: whole DB; `wp-content/{themes,plugins,mu-plugins,uploads}`. WordPress
    core is **not** transferred — rexenv installs the same core version locally (cheaper,
    and core is checksum-verifiable). `wp-config.php` is never transferred (it holds live
@@ -146,7 +158,16 @@ size+mtime+hash) in SQLite, and before every pull or push shows a three-column l
 | Item | Changed on live since base | Changed locally since base |
 |---|---|---|
 
-and the user picks, per table / per folder, which side wins. Defaults that protect live:
+and the user picks, per table / per folder, which side wins. **The base has two halves** (14 Oct
+2026): LIVE's stamps (the plugin's manifest + file list) and the LOCAL copy's own stamps
+(`core/live_sync/stamps.rs`: `CHECKSUM TABLE` per table, the content stamp for `wp_options`),
+each compared only with its own earlier value — never across. That is what the **status**
+(`core/live_sync/status.rs::judge`) reads: live moved → *behind* (pull); here moved → *ahead*
+(push); both → *diverged* (pull first — live wins on a table both changed, the previous local
+tables are one step back — then push); neither → *up to date*. A live-owned table changed here
+is listed but never makes the copy "ahead": a push leaves it out by default. The base is
+`<app data>/live-sync/<site id>.base.json`; the last 20 syncs are `<site id>.history.json`
+beside it. Defaults that protect live:
 on push, **tables that only live writes** (`wc_orders*`, `woocommerce_*` sessions,
 `comments`, form-plugin entries, `users`/`usermeta`) are **unticked** and carry a line
 ("orders placed on live since your last pull would be lost"). The list of
@@ -174,9 +195,11 @@ Multisite: **refused in v1** with the reason (domain mapping, per-blog uploads);
 
 - **New Site dialog**: a "From a live site" source (key paste, preview, scope).
 - **SiteDetail → a "Live" tab** (only on a connected site): connection status, last
-  pull/push, Pull, Push (diff list, then a typed confirmation of the live domain), Roll
-  back, Disconnect. History of syncs.
-- **CLI**: `rex live <domain> status | pull [--db-only|--files-only] | push --confirm <live-host> | rollback | disconnect`.
+  pull/push, **Check status** (the verdict card with Pull / Push… on it, "Show what moved"),
+  Pull (a menu: everything again, recent uploads only), Push (the picker — tables changed here
+  ticked and badged, unchanged ones unticked, live-owned ones unticked — then a typed
+  confirmation of the live domain), Roll back, Disconnect. History of syncs (built 14 Oct 2026).
+- **CLI**: `rex live <domain> status | diff | history | pull [--recent-uploads] [--full] | push --confirm <live-host> | rollback | disconnect` — `status` prints the verdict and what moved.
 - **MCP**: `live` action — `status`/`diff` (Read), `pull` (Full — overwrites the local
   site), `push`/`rollback`: **never exposed** (owner, 9 Oct 2026). A push is the only operation in
   rexenv that can damage something outside this machine, so it stays a human click plus a
@@ -300,6 +323,7 @@ Stages, each shippable on its own:
 | L13 | Security review of plugin + client (security-auditor pass + owner) | findings closed — agent pass ✓ 10 Oct 2026 (read-only security-auditor over the plugin, `core/live_sync`, `commands/live_sync.rs`, the protocol): 1 critical (export stream imported as root → scoped throwaway user, #837), 1 high (no size/disk ceilings → 1 GiB per file, disk pre-check), 2 medium fixed (`now` on every 401 + skew before signature → signature first, `now` on `clock_skew` only; host charset in `parse_key`), 1 low fixed (conflict list filtered to what was asked), 3 accepted-and-documented (pulled code runs locally — it is the site; pairing file plaintext behind the ACL; probabilistic nonce GC). All in #837. **Owner's half still open:** read #837 and the three accepted postures |
 | L14 | Real-host smoke (3 hosts) + per-OS proof; SMOKE / ARCHITECTURE / MAP / TESTING / INSTALL updated | SMOKE section green with host names — host 1 = `https://live-sync.rex.bd` (owner, 10 Oct 2026); `live_sync_real_host_check` (system tier): run 10 Oct 2026 — pull ✓, nothing-changed-after-pull ✓ (#841 holds on a real MySQL), probe push ✓ (post at the live domain, file served), rollback ✓ by the site's own file list; on the fourth run the host reset every connection from this Mac for some minutes, then recovered (cause not established; NOT an IP block — the owner browsed the site; a pull is ~25 requests). The client now names a reset plainly (#842) and retries READS with backoff (#843). Owed: hosts 2 and 3. Per-OS: the fixture L1 (`live_sync_pull_into_check`) ALL PASS on macOS, the Dell's Windows 10 and the Ubuntu 22.04 VM |
 | L15 | Multisite (S5) | own plan section, own sign-off |
+| L16 | Status + incremental (14 Oct 2026, owner: "a status button … up to date, behind, ahead; pull/push incremental, never everything again") | ✓ 14 Oct 2026: the base's local half (`stamps.rs`, `CHECKSUM TABLE` + the options content stamp shared with plugin 0.1.3, #859), `status.rs::judge` + `live_sync_status` + the Live tab's Check status card + `rex live … status` + the MCP `live` status's verdict (#860), the incremental pull with the delete rule (#861), the push's default = what changed here, the rollback keeping the local half (#862), the history (`<id>.history.json`, 20), the plugin's Tools page rewritten (connection / how it works / this site; last contact, last pull/push, the kept backup's size; Copy key; confirms). L0 plants ×6, L1 `live_sync_pull_into_check` legs 12–12d + 6, `live_sync_plugin_check` §9, L2 `livetab.js` legs 10–13 |
 
 ## 11. Open questions for the owner
 

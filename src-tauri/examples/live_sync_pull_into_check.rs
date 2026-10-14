@@ -149,6 +149,10 @@ async fn main() -> std::process::ExitCode {
     let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=LIVE-ONLY", "--post_status=publish"]);
     std::fs::create_dir_all(live_root.join("wp-content/uploads/2026")).unwrap();
     std::fs::write(live_root.join("wp-content/uploads/2026/rexsync-probe.txt"), "from live").unwrap();
+    // Two more for the incremental legs (12): one live will drop, one live will drop AFTER
+    // the local copy edited it.
+    std::fs::write(live_root.join("wp-content/uploads/2026/gone.txt"), "will go").unwrap();
+    std::fs::write(live_root.join("wp-content/uploads/2026/local-edit.txt"), "from live").unwrap();
     let key = sign::parse_key(wordpress::wp_run(&php, &wp, &live_root, &["eval", "echo Rexenv_Sync_Pairing::create();"]).unwrap_or_default().trim()).expect("a key");
     // The local site: a post only it has.
     let local_root = local.served_root();
@@ -191,7 +195,7 @@ async fn main() -> std::process::ExitCode {
     }).unwrap()).unwrap().with_base_url(&format!("http://127.0.0.1:{PORT}"));
     let before = query(&mysql, &local.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LOCAL-ONLY'");
     let mut sink = |l: &str| println!("  | {l}");
-    let failed = pull::pull_into(&stale, &target, &pull::PullOptions::default(), &mut sink).await;
+    let failed = pull::pull_into(&stale, &target, None, &pull::PullOptions::default(), &mut sink).await;
     let after = query(&mysql, &local.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LOCAL-ONLY'");
     check(failed.is_err() && before == "1" && after == "1", "5. a pull refused by the site leaves the local site as it was");
 
@@ -199,7 +203,7 @@ async fn main() -> std::process::ExitCode {
     // The base the pull RECORDS is the one leg 6 pushes against — exactly what the app
     // keeps (#841). Until 10 Oct 2026 leg 6 built its own base ("a moment ago"), and so
     // never saw that a real pull's base made every pulled file look edited locally.
-    let pulled_base = match pull::pull_into(&client, &target, &pull::PullOptions::default(), &mut sink).await {
+    let mut pulled_base = match pull::pull_into(&client, &target, None, &pull::PullOptions::default(), &mut sink).await {
         Ok(r) => {
             println!("pulled: {} tables, {} rows, {} files, {} replacements", r.tables, r.rows, r.files, r.replacements);
             Some(r.base)
@@ -228,8 +232,63 @@ async fn main() -> std::process::ExitCode {
     let cron = wordpress::wp_run(&php, &wp, &local_root, &["config", "get", "DISABLE_WP_CRON", "--type=constant"]).unwrap_or_default();
     check(cron.trim() == "1" || cron.trim().eq_ignore_ascii_case("true"), &format!("4b. WP-Cron is off in the pulled copy's wp-config.php (DISABLE_WP_CRON = {:?})", cron.trim()));
 
+    // ── INCREMENTAL PULL + STATUS (14 Oct 2026) ─────────────────────────────
+    use rexenv_lib::core::live_sync::{base, push, stamps, status};
+    async fn status_now(client: &Client, target: &pull::LocalSite<'_>, b: Option<&base::SyncBase>) -> status::SyncStatus {
+        let m = client.manifest().await.expect("manifest");
+        let lf = client.list_files(&pull::DEFAULT_EXCLUDES, None).await.expect("files");
+        let ls = stamps::local_stamps(target, &m.prefix).expect("local stamps");
+        let lfiles: Vec<(String, i64)> = pull::walk_local(&target.docroot.join("wp-content")).unwrap().into_iter().map(|(p, _, m)| (p, m)).collect();
+        status::judge("live", b, &m, &lf, &ls, &lfiles, base::now())
+    }
+    // 12. Straight after a pull the verdict is "up to date": nothing moved on either side.
+    let s0 = status_now(&client, &target, pulled_base.as_ref()).await;
+    check(s0.verdict == status::Verdict::UpToDate, &format!("12. right after a pull: up to date (got {:?}; behind {} ahead {}; files live {} local {})", s0.verdict, s0.tables_behind, s0.tables_ahead, s0.files.live_changed.len(), s0.files.local_changed.len()));
+    // 12a. live moves ONE post + one file and drops two files; here a comment is added
+    //      (a table live does not touch) and one of the dropped files is edited.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=LIVE-SECOND", "--post_status=publish"]);
+    std::fs::write(live_root.join("wp-content/uploads/2026/rexsync-probe.txt"), "from live v2").unwrap();
+    std::fs::remove_file(live_root.join("wp-content/uploads/2026/gone.txt")).unwrap();
+    std::fs::remove_file(live_root.join("wp-content/uploads/2026/local-edit.txt")).unwrap();
+    let _ = wordpress::wp_run(&php, &wp, &local_root, &["comment", "create", "--comment_post_ID=1", "--comment_content=LOCALCOMMENT", "--comment_approved=1"]);
+    std::fs::write(local_root.join("wp-content/uploads/2026/local-edit.txt"), "edited here").unwrap();
+    let s1 = status_now(&client, &target, pulled_base.as_ref()).await;
+    let posts_live = s1.tables.iter().find(|t| t.name == "wp_posts").map(|t| t.live);
+    let comments_local = s1.tables.iter().find(|t| t.name == "wp_comments").map(|t| (t.local, t.live_owned));
+    check(
+        s1.verdict == status::Verdict::Diverged && posts_live == Some(status::Change::Changed) && comments_local == Some((status::Change::Changed, true))
+            && s1.files.live_changed == vec!["uploads/2026/rexsync-probe.txt".to_string()] && s1.files.live_gone == vec!["uploads/2026/gone.txt".to_string(), "uploads/2026/local-edit.txt".to_string()]
+            && s1.files.local_changed == vec!["uploads/2026/local-edit.txt".to_string()] && s1.files.both == vec!["uploads/2026/local-edit.txt".to_string()],
+        &format!("12a. status: diverged — posts changed on live, comments (live-owned) changed here, the files on each side named ({:?}, posts {:?}, comments {:?}, files {:?})", s1.verdict, posts_live, comments_local, s1.files),
+    );
+    // 12b. the incremental pull: only what moved on live crosses the wire; the local
+    //      comment survives; the dropped file goes; the edited one stays.
+    let second = pull::pull_into(&client, &target, pulled_base.as_ref(), &pull::PullOptions::default(), &mut sink).await;
+    match second {
+        Ok(r) => {
+            check(
+                r.tables < 12 && r.tables_kept >= 5 && r.tables + r.tables_kept == 12 && r.files == 1 && r.files_kept > 100
+                    && r.files_deleted == vec!["uploads/2026/gone.txt".to_string()] && r.files_kept_edited == vec!["uploads/2026/local-edit.txt".to_string()],
+                &format!("12b. incremental pull: {} tables exported + {} kept, {} file fetched + {} kept, deleted {:?}, kept-edited {:?}", r.tables, r.tables_kept, r.files, r.files_kept, r.files_deleted, r.files_kept_edited),
+            );
+            check(
+                query(&mysql, db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-SECOND'") == "1"
+                    && query(&mysql, db, "SELECT COUNT(*) FROM wp_comments WHERE comment_content='LOCALCOMMENT'") == "1"
+                    && std::fs::read_to_string(local_root.join("wp-content/uploads/2026/rexsync-probe.txt")).ok().as_deref() == Some("from live v2")
+                    && !local_root.join("wp-content/uploads/2026/gone.txt").exists()
+                    && std::fs::read_to_string(local_root.join("wp-content/uploads/2026/local-edit.txt")).ok().as_deref() == Some("edited here")
+                    && !r.base.local_tables.is_empty() && r.base.kind == "pull",
+                "12c. the live post arrived, the local comment survived, the file is live's v2, gone.txt is gone, the local edit kept; the base carries local stamps",
+            );
+            pulled_base = Some(r.base);
+        }
+        Err(e) => check(false, &format!("12b. the incremental pull: {e}")),
+    }
+    let s2 = status_now(&client, &target, pulled_base.as_ref()).await;
+    check(s2.verdict == status::Verdict::UpToDate, &format!("12d. after the incremental pull: up to date (got {:?}; behind {} ahead {}; files live {:?} gone {:?} local {:?})", s2.verdict, s2.tables_behind, s2.tables_ahead, s2.files.live_changed, s2.files.live_gone, s2.files.local_changed));
+
     // ── PUSH (L10): a local change goes to live; rollback; a conflict stops it. ──
-    use rexenv_lib::core::live_sync::{base, push};
     let _ = wordpress::wp_run(&php, &wp, &local_root, &["post", "create", "--post_title=PUSHED-FROM-LOCAL", "--post_status=publish"]);
     let fresh: base::SyncBase = pulled_base.clone().unwrap_or_default();
     tokio::time::sleep(Duration::from_millis(1100)).await; // the edit lands a second after the pull
@@ -245,8 +304,9 @@ async fn main() -> std::process::ExitCode {
                     && std::fs::read_to_string(live_root.join("wp-content/uploads/2026/from-local.txt")).ok().as_deref() == Some("from local")
                     && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_options WHERE option_name='rexsync_pairing'") == "1"
                     && !r.tables.iter().any(|t| t.ends_with("users"))
+                    && r.tables.iter().any(|t| t == "wp_posts") && !r.tables.iter().any(|t| t == "wp_terms") && r.tables_unchanged > 0
                     && r.files == 1,
-                &format!("6. push: the local post and ONLY the changed file ({}) are on live, siteurl is LIVE's, the pairing row survived, users was not pushed", r.files),
+                &format!("6. push: the local post and ONLY the changed file ({}) are on live, siteurl is LIVE's, the pairing row survived, users was not pushed; only the tables changed here went ({:?}, {} unchanged left out)", r.files, r.tables, r.tables_unchanged),
             );
             check(query(&mysql, live_db, "SELECT COUNT(*) FROM rxbak_wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0", "7. the backup holds live's previous posts");
             match client.push_rollback(&r.backup_id).await {
@@ -267,7 +327,10 @@ async fn main() -> std::process::ExitCode {
         Err(e) => println!("  live post create FAILED: {e}"),
     }
     let stale_base = fresh.clone();
-    let again = push::push_from(&client, &target, Some(&stale_base), &opts, &mut sink).await;
+    // Named table: with none named a push sends what changed HERE since the base, and
+    // nothing has — the conflict is the PLUGIN's verdict on the table asked for.
+    let opts9 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec![] };
+    let again = push::push_from(&client, &target, Some(&stale_base), &opts9, &mut sink).await;
     match again {
         Err(push::PushStop::Conflicts(list)) => check(
             list.iter().any(|t| t.ends_with("posts")) && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0",
