@@ -5,6 +5,7 @@
 //! Submodules start as files and grow into folders as each Phase 1 task lands.
 
 pub mod adminer;
+pub mod dbconsole_proxy;
 pub mod phpmyadmin;
 pub mod app_info;
 pub mod app_update;

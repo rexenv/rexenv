@@ -74,55 +74,19 @@ pub fn run() {
                 }
             }
         })
-        // Database Browser: `rexdb://localhost/…` proxies the embedded Adminer
-        // through Rust with a native cookie jar — WebKit withholds third-party
-        // cookies in cross-site iframes (ITP), which silently killed every
-        // Adminer login. See `core::adminer::forward`.
+        // Database Browser: `rexdb://localhost/…` (Adminer) and `rexpma://localhost/…`
+        // (phpMyAdmin) proxy each console through Rust with a native cookie jar —
+        // WebKit withholds third-party cookies in cross-site iframes (ITP), which
+        // silently killed every console login. One registration per console, the
+        // same handler; see `core::dbconsole_proxy::forward`. Both ends of the
+        // policy: `tauri.conf.json`'s `frame-src` names every scheme here (#699/#703).
         .register_asynchronous_uri_scheme_protocol(
-            core::adminer::PROXY_SCHEME,
-            |_ctx, request, responder| {
-                let (parts, body) = request.into_parts();
-                let method = parts.method.as_str().to_string();
-                let path_and_query = parts
-                    .uri
-                    .path_and_query()
-                    .map(|pq| pq.as_str().to_string())
-                    .unwrap_or_else(|| "/".to_string());
-                let content_type = parts
-                    .headers
-                    .get(tauri::http::header::CONTENT_TYPE)
-                    .and_then(|v| v.to_str().ok())
-                    .map(str::to_string);
-                tauri::async_runtime::spawn(async move {
-                    let result = core::adminer::forward(
-                        &method,
-                        &path_and_query,
-                        content_type.as_deref(),
-                        body,
-                    )
-                    .await;
-                    let response = match result {
-                        Ok(r) => {
-                            let mut builder = tauri::http::Response::builder().status(r.status);
-                            for (name, value) in r.headers {
-                                builder = builder.header(name, value);
-                            }
-                            builder.body(r.body).unwrap_or_else(|e| {
-                                tauri::http::Response::builder()
-                                    .status(500)
-                                    .body(format!("rexenv db proxy: {e}").into_bytes())
-                                    .expect("static 500")
-                            })
-                        }
-                        Err(e) => tauri::http::Response::builder()
-                            .status(502)
-                            .header("content-type", "text/plain; charset=utf-8")
-                            .body(format!("rexenv db proxy: {e}").into_bytes())
-                            .expect("static 502"),
-                    };
-                    responder.respond(response);
-                });
-            },
+            core::dbconsole_proxy::Console::Adminer.scheme(),
+            |_ctx, request, responder| db_console_request(core::dbconsole_proxy::Console::Adminer, request, responder),
+        )
+        .register_asynchronous_uri_scheme_protocol(
+            core::dbconsole_proxy::Console::PhpMyAdmin.scheme(),
+            |_ctx, request, responder| db_console_request(core::dbconsole_proxy::Console::PhpMyAdmin, request, responder),
         )
         .setup(move |app| {
             let platform = platform::current();
@@ -2611,6 +2575,58 @@ fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
         }
     });
     Ok(())
+}
+
+/// One Database Browser request, for either console: forwarded through
+/// `core::dbconsole_proxy` and answered to the webview's responder. Shared by the
+/// two scheme registrations so the handling cannot differ per console.
+fn db_console_request(
+    console: core::dbconsole_proxy::Console,
+    request: tauri::http::Request<Vec<u8>>,
+    responder: tauri::UriSchemeResponder,
+) {
+    let (parts, body) = request.into_parts();
+    let method = parts.method.as_str().to_string();
+    let path_and_query = parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str().to_string())
+        .unwrap_or_else(|| "/".to_string());
+    let content_type = parts
+        .headers
+        .get(tauri::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    tauri::async_runtime::spawn(async move {
+        let result = core::dbconsole_proxy::forward(
+            console,
+            &method,
+            &path_and_query,
+            content_type.as_deref(),
+            body,
+        )
+        .await;
+        let response = match result {
+            Ok(r) => {
+                let mut builder = tauri::http::Response::builder().status(r.status);
+                for (name, value) in r.headers {
+                    builder = builder.header(name, value);
+                }
+                builder.body(r.body).unwrap_or_else(|e| {
+                    tauri::http::Response::builder()
+                        .status(500)
+                        .body(format!("rexenv db proxy: {e}").into_bytes())
+                        .expect("static 500")
+                })
+            }
+            Err(e) => tauri::http::Response::builder()
+                .status(502)
+                .header("content-type", "text/plain; charset=utf-8")
+                .body(format!("rexenv db proxy: {e}").into_bytes())
+                .expect("static 502"),
+        };
+        responder.respond(response);
+    });
 }
 
 #[cfg(test)]

@@ -17,42 +17,42 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 - `TODO.md:203` A public tunnel for `mstest.rex` was running that this session never started
 - `TODO.md:230` Private-window flags for Arc, ChatGPT Atlas, Orion
 - `TODO.md:239` Database console: "Open in browser" on the Databases rows + phpMyAdmin as a second console
-- `TODO.md:311` Radicle-hosted repos are unverified
-- `TODO.md:313` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:316` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:317` Radicle-hosted repos are unverified
+- `TODO.md:319` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:322` Windows `setup.exe /S` over a running app + agent sometimes exits 2
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:336` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:342` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:400` The in-app update's remaining human rows (macOS)
-- `TODO.md:410` Release 5.4 — clean-Mac smoke test
-- `TODO.md:416` Tunnel probe session
-- `TODO.md:420` Intel spot-run
-- `TODO.md:425` In-app verifies owed
-- `TODO.md:441` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:453` The live pool swap is still L3
-- `TODO.md:457` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:465` Install WordPress into an empty LINKED folder
-- `TODO.md:472` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:406` The in-app update's remaining human rows (macOS)
+- `TODO.md:416` Release 5.4 — clean-Mac smoke test
+- `TODO.md:422` Tunnel probe session
+- `TODO.md:426` Intel spot-run
+- `TODO.md:431` In-app verifies owed
+- `TODO.md:447` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:459` The live pool swap is still L3
+- `TODO.md:463` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:471` Install WordPress into an empty LINKED folder
+- `TODO.md:478` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:479` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:518` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:529` Xdebug on PHP 8.0
-- `TODO.md:534` SMAppService privileged helper
-- `TODO.md:536` Developer ID signing + notarization
+- `TODO.md:485` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:524` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:535` Xdebug on PHP 8.0
+- `TODO.md:540` SMAppService privileged helper
+- `TODO.md:542` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:541` WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows, each needs its…
+- `TODO.md:547` WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows, each needs its…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 723 · ◐ 123 · 🔨 5 · 🚫 17** of 868 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 725 · ◐ 123 · 🔨 5 · 🚫 17** of 870 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

@@ -1188,6 +1188,9 @@ export interface PlatformWords {
    *  `rexdb://localhost`, Windows `http://rexdb.localhost`. The Database
    *  Browser's iframe src is built from it (#703). */
   dbBrowserOrigin: string;
+  /** The same for the second console — macOS `rexpma://localhost`, Windows
+   *  `http://rexpma.localhost`; phpMyAdmin's absolute paths cannot share Adminer's origin. */
+  phpmyadminOrigin: string;
   /** The browsers here that search a typed bare `name.rex` — "Chrome and Safari" / "Chrome and Edge". */
   searchingBrowsers: string;
   /** Why OpenLiteSpeed cannot be chosen here — shown only where it is not offered (Windows). */

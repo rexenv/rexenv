@@ -13,14 +13,15 @@ use rusqlite::Connection;
 use std::path::PathBuf;
 
 /// Custom webview scheme the in-app Database Browser loads Adminer through
-/// (`rexdb://localhost/…`). The scheme handler proxies to the stack over
-/// loopback with a RUST-SIDE cookie jar ([`forward`]) because WebKit withholds
-/// third-party cookies inside a cross-site `<iframe>` (ITP): the session cookie
-/// never survived the login POST, so every login — auto or manual — bounced
-/// straight back to the form. With the jar in Rust, browser cookie policy is
-/// out of the picture entirely. (Windows webviews expect `http://rexdb.localhost/`
-/// instead — Phase 4.)
-pub const PROXY_SCHEME: &str = "rexdb";
+/// (`rexdb://localhost/…`; `http://rexdb.localhost/` on WebView2). The scheme
+/// handler proxies to the stack over loopback with a RUST-SIDE cookie jar
+/// (`core::dbconsole_proxy::forward`) because WebKit withholds third-party
+/// cookies inside a cross-site `<iframe>` (ITP): the session cookie never
+/// survived the login POST, so every login — auto or manual — bounced straight
+/// back to the form. With the jar in Rust, browser cookie policy is out of the
+/// picture entirely. Since 15 Oct 2026 the proxy serves TWO consoles, one origin
+/// and one jar each (`dbconsole_proxy::Console`); this constant is Adminer's.
+pub const PROXY_SCHEME: &str = crate::core::dbconsole_proxy::Console::Adminer.scheme();
 
 /// Internal host Adminer is served on (resolved by the embedded DNS (backbone `.rex` resolver)).
 /// NEVER a public tunnel origin (§9) — it isn't a site.
@@ -730,168 +731,6 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
     Ok(dir)
 }
 
-/// Build the upstream Adminer URL from a request's path+query. Guard: it MUST
-/// start with `/`. Otherwise a value like `@evil.com/` would parse the host as
-/// `evil.com` (with `ADMINER_HOST` demoted to userinfo), and because the proxy
-/// client pins ONLY `ADMINER_HOST` to loopback AND disables cert checks, that
-/// would be an SSRF to an arbitrary host. Requests always arrive as
-/// `rexdb://localhost/…`, so a legit path always starts with `/` — a `//path`
-/// still resolves to the pinned host (the authority ends at the first `/`). B8,
-/// defense-in-depth (not reachable today).
-fn proxy_url(path_and_query: &str) -> Result<reqwest::Url> {
-    if !path_and_query.starts_with('/') {
-        return Err(Error::Other(format!(
-            "adminer proxy: refusing non-absolute request path {path_and_query:?}"
-        )));
-    }
-    reqwest::Url::parse(&format!("https://{ADMINER_HOST}{path_and_query}"))
-        .map_err(|e| Error::Other(format!("adminer proxy: bad url: {e}")))
-}
-
-/// A response ready to hand back to the webview's custom-scheme responder.
-pub struct ProxiedResponse {
-    pub status: u16,
-    /// Pass-through headers (hop-by-hop, cookie and length headers already stripped).
-    pub headers: Vec<(String, String)>,
-    pub body: Vec<u8>,
-}
-
-/// Shared client for the Database Browser proxy: pinned to the loopback edge
-/// (no DNS), with a persistent RUST-SIDE cookie jar so Adminer's session
-/// survives the login POST no matter what cookie policy the webview applies to
-/// cross-site iframes. Redirect policy is `none` so [`forward`] can resolve
-/// Adminer's POST-redirect-GET itself — WKWebView does NOT follow redirects
-/// returned by a custom-scheme handler (`WKURLSchemeTask` has no redirect
-/// mechanism), so a passed-through 302 dead-ends as a blank frame. The jar
-/// lives for the app run, so the session persists across iframe remounts.
-fn proxy_client() -> &'static reqwest::Client {
-    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .cookie_store(true)
-            // Loopback-pinned; our local-CA leaf won't chain for reqwest's
-            // store (same trade-off as `proxy::edge_answers_as_ours`).
-            .danger_accept_invalid_certs(true)
-            .resolve(
-                ADMINER_HOST,
-                std::net::SocketAddr::from(([127, 0, 0, 1], crate::core::proxy::DEFAULT_HTTPS_PORT)),
-            )
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .expect("adminer proxy client")
-    })
-}
-
-/// Response headers that must NOT be replayed to the webview: cookies stay in
-/// the Rust jar (the whole point), and framing/length headers are rebuilt by
-/// the responder.
-const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
-    "set-cookie",
-    "content-length",
-    "transfer-encoding",
-    "connection",
-    "keep-alive",
-    "alt-svc",
-];
-
-/// Forward one Database Browser request (`rexdb://localhost<path_and_query>`)
-/// to the Adminer vhost through the edge and return the response for the
-/// webview. `content_type` is the request's Content-Type (form POSTs).
-///
-/// Redirects are followed HERE (≤5 hops, same-vhost only): Adminer is strictly
-/// POST-redirect-GET, and WKWebView never follows a redirect returned by a
-/// custom-scheme handler — replaying the 302 to the webview leaves the iframe
-/// on a dead blank frame (observed live as "Save does nothing" / blank first
-/// open). Per browser form semantics 301/302/303 become a body-less GET;
-/// 307/308 keep the method + body.
-pub async fn forward(
-    method: &str,
-    path_and_query: &str,
-    content_type: Option<&str>,
-    body: Vec<u8>,
-) -> Result<ProxiedResponse> {
-    let mut url = proxy_url(path_and_query)?;
-    let mut method = reqwest::Method::from_bytes(method.as_bytes())
-        .map_err(|e| Error::Other(format!("adminer proxy: bad method: {e}")))?;
-    let mut content_type = content_type.map(str::to_string);
-    let mut body = body;
-
-    let mut hops = 0u8;
-    let resp = loop {
-        let mut req = proxy_client().request(method.clone(), url.clone());
-        if let Some(ct) = &content_type {
-            req = req.header(reqwest::header::CONTENT_TYPE, ct);
-        }
-        if !body.is_empty() {
-            req = req.body(body.clone());
-        }
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| Error::Other(format!("adminer proxy: {e}")))?;
-
-        if resp.status().is_redirection() && hops < 5 {
-            let target = resp
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|loc| url.join(loc).ok())
-                // Never follow OFF the vhost — anything else replays to the
-                // webview below (where frame policy applies).
-                .filter(|next| next.host_str() == Some(ADMINER_HOST));
-            if let Some(next) = target {
-                hops += 1;
-                url = next;
-                let s = resp.status();
-                if s != reqwest::StatusCode::TEMPORARY_REDIRECT
-                    && s != reqwest::StatusCode::PERMANENT_REDIRECT
-                {
-                    method = reqwest::Method::GET;
-                    body = Vec::new();
-                    content_type = None;
-                }
-                continue;
-            }
-        }
-        break resp;
-    };
-
-    let status = resp.status().as_u16();
-    let mut headers = Vec::new();
-    for (name, value) in resp.headers() {
-        let n = name.as_str().to_ascii_lowercase();
-        if STRIPPED_RESPONSE_HEADERS.contains(&n.as_str()) {
-            continue;
-        }
-        let Ok(v) = value.to_str() else { continue };
-        // The webview frames this document from the APP's origin, which is not
-        // the one the wrapper's baked list names on every platform (see
-        // `PROXY_FRAME_ANCESTORS`). Everything else in the CSP is replayed
-        // untouched — the script nonce is in there.
-        if n == "content-security-policy" {
-            headers.push((n, rewrite_frame_ancestors(v)));
-            continue;
-        }
-        // Absolute self-redirects must stay on the proxy origin; relative ones
-        // (Adminer's norm) already resolve against `rexdb://localhost`.
-        if n == "location" {
-            let v = v
-                .strip_prefix(&format!("https://{ADMINER_HOST}"))
-                .unwrap_or(v);
-            headers.push((n, v.to_string()));
-            continue;
-        }
-        headers.push((n, v.to_string()));
-    }
-    let body = resp
-        .bytes()
-        .await
-        .map_err(|e| Error::Other(format!("adminer proxy: read body: {e}")))?
-        .to_vec();
-    Ok(ProxiedResponse { status, headers, body })
-}
-
 #[cfg(test)]
 mod tests {
     /// Ledger #788 — **Adminer's import cap reaches a php-cgi group through `.user.ini`**: the same
@@ -1109,23 +948,6 @@ mod tests {
         assert!(!rendered.contains("http://localhost:1420"));
     }
 
-    #[test]
-    fn proxy_url_requires_an_absolute_path_and_pins_the_host() {
-        // Legit paths always arrive as rexdb://localhost/… → host stays pinned.
-        assert_eq!(
-            proxy_url("/index.php?server=127.0.0.1").unwrap().host_str(),
-            Some(ADMINER_HOST)
-        );
-        assert_eq!(proxy_url("/").unwrap().host_str(), Some(ADMINER_HOST));
-        // A `//path` is still on the pinned host (authority ends at the first
-        // `/`) — a legit-looking shape the guard must NOT reject.
-        assert_eq!(proxy_url("//evil.com/x").unwrap().host_str(), Some(ADMINER_HOST));
-        // The SSRF shape (`@evil.com/` would smuggle a host via userinfo) and any
-        // other non-absolute lead are refused before a request is ever built.
-        assert!(proxy_url("@evil.com/").is_err());
-        assert!(proxy_url("evil.com").is_err());
-        assert!(proxy_url("*").is_err());
-    }
 
     #[test]
     fn relative_locations_resolve_on_the_vhost() {

@@ -2596,6 +2596,12 @@ IPC surface — which is how a reader ends up designing against a system with on
     takes the origin from `PlatformWords::db_browser_origin` rather than spelling one. Building
     the macOS shape everywhere left the Windows iframe pointing at nothing — no request reached
     the handler at all, which is why two correct CSP fixes changed nothing (#703).
+    **Two consoles, two origins, two jars** (15 Oct 2026, `core/dbconsole_proxy.rs`): phpMyAdmin
+    frames through its own `rexpma:` scheme (`PlatformWords::phpmyadmin_origin`, all three OSes)
+    because its pages use absolute paths and cannot share Adminer's origin; each console has its
+    own reqwest client, so one `PHPSESSID` can never ride to the other host (#870). The proxy
+    drops `X-Frame-Options` and swaps `frame-ancestors` on the REPLAYED copy only — an origin no
+    browser can load — while the direct https vhosts keep their `DENY` (#865, #869).
   - **The Database Browser needs BOTH CSPs to name the same frame.** The app's own
     `frame-src` (tauri.conf.json) must list the proxy scheme as the WEBVIEW serves it —
     `rexdb:` on macOS, `http://rexdb.localhost` on Windows — and Adminer's replayed

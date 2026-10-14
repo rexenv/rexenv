@@ -2,7 +2,7 @@
 //!
 //! WebKit withholds third-party cookies inside the app's cross-site Adminer
 //! `<iframe>` (ITP), so the login POST used to lose its session and bounce back
-//! to the form. `core::adminer::forward` proxies with a RUST-SIDE cookie jar —
+//! to the form. `core::dbconsole_proxy::forward` proxies with a RUST-SIDE cookie jar —
 //! this check replays the exact webview flow against the LIVE stack:
 //!   1. GET the deep-link → Adminer login form + our auto-submit script;
 //!   2. POST the form — WITH the CSRF token carried out of it, which is what the
@@ -13,7 +13,7 @@
 //! Needs the real stack running (edge :443 + MySQL :13306) — it does NOT
 //! start/stop anything. Run: `cargo run --example adminer_proxy_check`
 
-use rexenv_lib::core::adminer;
+use rexenv_lib::core::dbconsole_proxy::{forward, Console};
 
 /// Percent-encode the few bytes an Adminer token can contain (`id:hash`).
 /// Deliberately tiny — pulling a crate in for one colon would be the larger change.
@@ -33,7 +33,7 @@ async fn main() {
     let deep_link = "/?server=127.0.0.1:13306&username=root&rexenv_auto=1";
 
     // 1. Login form with the auto-submit script (what the iframe first loads).
-    let form = adminer::forward("GET", deep_link, None, Vec::new())
+    let form = forward(Console::Adminer, "GET", deep_link, None, Vec::new())
         .await
         .expect("GET login form through the proxy (is the stack running?)");
     let html = String::from_utf8_lossy(&form.body).to_string();
@@ -53,7 +53,7 @@ async fn main() {
     //    "replays the exact webview flow" replaying something else.
     //
     //    The token is session-bound (`id:hash`), which is exactly why it has to
-    //    come from THIS response: `adminer::forward`'s Rust-side cookie jar is
+    //    come from THIS response: `dbconsole_proxy::forward`'s Rust-side cookie jar is
     //    what makes the GET and the POST the same session, and that jar is the
     //    thing this check exists to prove.
     let token = html
@@ -68,7 +68,8 @@ async fn main() {
         urlencode(&token)
     )
     .into_bytes();
-    let post = adminer::forward(
+    let post = forward(
+        Console::Adminer,
         "POST",
         deep_link,
         Some("application/x-www-form-urlencoded"),

@@ -98,6 +98,11 @@ pub struct PlatformWords {
     /// Database Browser was an empty panel (#703). A fact about the OS belongs
     /// here, next to its path separator, not in a `navigator` sniff.
     pub db_browser_origin: &'static str,
+    /// The same, for the SECOND console: phpMyAdmin's pages use absolute paths, so
+    /// it cannot share Adminer's origin and gets its own scheme (`rexpma`) — the
+    /// same per-OS spelling rule as `db_browser_origin`, filled for every OS
+    /// (`docs/PLAN-db-console-open-and-phpmyadmin.md` §3.3).
+    pub phpmyadmin_origin: &'static str,
     /// What to do when rexenv is running from somewhere it was not installed to, so an
     /// update has nothing it may safely replace. macOS: drag the bundle into Applications;
     /// Windows: run the installer again. The refusal in `core::app_update` says this
@@ -158,6 +163,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
+    phpmyadmin_origin: "rexpma://localhost",
     reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv.app",
@@ -196,6 +202,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "\\",
     db_browser_origin: "http://rexdb.localhost",
+    phpmyadmin_origin: "http://rexpma.localhost",
     reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
     take_ownership: "takeown /R /F",
     update_replaces: "rexenv's program files (your data folder is not touched)",
@@ -248,6 +255,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
+    phpmyadmin_origin: "rexpma://localhost",
     reinstall_to_home: "Install rexenv from its .deb (sudo apt install ./rexenv_<version>_<arch>.deb) or run it as the AppImage from a folder you own, then update from there.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv's program files",
@@ -466,6 +474,26 @@ mod tests {
         );
         // Windows' must be a URL a webview can resolve, not a custom scheme.
         assert!(WINDOWS.db_browser_origin.starts_with("http://"), "{}", WINDOWS.db_browser_origin);
+        // The second console: the same rule, its own scheme, and never Adminer's origin
+        // (phpMyAdmin's absolute paths would collide).
+        use crate::core::dbconsole_proxy::Console;
+        for (w, scheme_shape, http_shape) in [
+            (&MACOS, true, false),
+            (&WINDOWS, false, true),
+            (&LINUX, true, false),
+        ] {
+            let a = Console::Adminer.scheme();
+            let p = Console::PhpMyAdmin.scheme();
+            if scheme_shape {
+                assert_eq!(w.db_browser_origin, format!("{a}://localhost"));
+                assert_eq!(w.phpmyadmin_origin, format!("{p}://localhost"));
+            }
+            if http_shape {
+                assert_eq!(w.db_browser_origin, format!("http://{a}.localhost"));
+                assert_eq!(w.phpmyadmin_origin, format!("http://{p}.localhost"));
+            }
+            assert_ne!(w.db_browser_origin, w.phpmyadmin_origin);
+        }
     }
 
     #[test]
@@ -512,6 +540,7 @@ mod tests {
         assert!(LINUX.git_install.contains("apt install git"), "{}", LINUX.git_install);
         assert!(LINUX.routes_label.contains("/etc/rexenv/dns.d"), "{}", LINUX.routes_label);
         assert_eq!(LINUX.db_browser_origin, MACOS.db_browser_origin, "webkitgtk serves custom schemes as scheme://localhost, as WebKit does");
+        assert_eq!(LINUX.phpmyadmin_origin, MACOS.phpmyadmin_origin, "the second console's origin follows the same rule");
         assert!(LINUX.reinstall_to_home.contains(".deb") && LINUX.reinstall_to_home.contains("AppImage"), "the two install shapes the Linux updater can replace (L7): {}", LINUX.reinstall_to_home);
         let (imports, controls) = (LINUX.imports_other_tools, LINUX.window_controls_in_content);
         assert!(!imports, "Valet/Herd/Local layouts on Linux are not known yet");

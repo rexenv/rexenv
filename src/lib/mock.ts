@@ -9,6 +9,7 @@ import type { AdminerStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, Ma
 export const mockPlatformWords: PlatformWords = {
   reveal: "Show in Finder",
   dbBrowserOrigin: "rexdb://localhost",
+  phpmyadminOrigin: "rexpma://localhost",
   fileManager: "Finder",
   loginItem: "rexenv opens in the menu bar when you sign in to your Mac (a macOS login item) and runs Start all — your sites come back after a reboot without a click. Never downloads or prompts at login.",
   gitInstall: "On macOS it ships with the Xcode Command Line Tools — install them, then hit Re-detect:\n$ xcode-select --install",

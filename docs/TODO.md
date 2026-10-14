@@ -291,11 +291,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     ✓ **15 Oct 2026:** `sites::console_vhosts` (one rule for both consoles) + the staged gate read
     once for the nginx block and the edge route; the CA-rotation reissue covers the host while
     staged; ledger #867 (◐, plant-proven L0) and #868 (✅). Live rebuild legs → T7.
-  - [ ] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
+  - [x] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
     `X-Frame-Options` stripped on the replayed copy only, the `rexpma` scheme in `lib.rs` (+ a
     `PLAN-linux-port.md` §1.1 row), `PlatformWords` origin filled for macOS/Windows/Linux,
     `tauri.conf.json` `frame-src` in `csp` AND `devCsp` — both ends, every OS (#699/#702/#703).
     Proof: the frame renders on all three (GUI), the `SameSite=Strict` cookie measurement (plan §7).
+    ✓ **15 Oct 2026:** the module (`Console::{Adminer,PhpMyAdmin}`, `forward`, the pure
+    `replay_headers`), `lib.rs` registers both schemes through one `db_console_request`, no new
+    `cfg(target_os)` (so no §1.1 row), `phpmyadmin_origin` in all three word sets with the
+    scheme-shape test, `frame-src` in `csp` + `devCsp`, the TS type + mock. Ledger #869, #870
+    (plant-proven). The GUI render on each OS and the `SameSite=Strict` jar behaviour are T6's
+    rows (nothing frames `rexpma:` until the UI exists).
   - [ ] **T6** the `db_console` setting + IPC (`db_console_get` / `db_console_set` = download → probe →
     stage → rebuild → reload, the button holding the sentence), the console card's segmented control
     + phpMyAdmin version line, `src/lib/dbconsole.ts` choosing URLs, Browse / Open in browser / the
