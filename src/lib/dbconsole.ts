@@ -1,6 +1,6 @@
 /**
  * ONE place that answers "which console, and at what URL" for an engine, so no screen
- * switches on the console name itself (`docs/PLAN-db-console-open-and-phpmyadmin.md`
+ * switches on the console name itself (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md`
  * §3.2). The choice is the backend's effective answer (`db_console_status`: phpMyAdmin
  * only when chosen AND staged); PostgreSQL always gets Adminer — phpMyAdmin has no
  * driver for it — whatever the setting says.

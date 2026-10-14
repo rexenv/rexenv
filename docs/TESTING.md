@@ -1154,6 +1154,13 @@ builds are for EXAMPLES; the app itself comes from the Dell.
 
 ## Proving a Linux claim
 
+**A GUI binary from the Mac without a deb** (15 Oct 2026): build in the `linux-check` container —
+`docker run … -e 'TAURI_CONFIG={"build":{"devUrl":null}}' -w /work/src-tauri rexenv-linux-check:ubuntu22
+cargo build --release --bin rexenv` with `dist/` already built — and `sudo install -m 755` it over
+`/usr/bin/rexenv` on the VM. WITHOUT that env the binary keeps `build.devUrl` and the window says
+"Could not connect to localhost" (the same trap as a bare `cargo xwin` build on Windows); only
+`tauri build` strips it by itself. Examples and `rex` from the same container run on the VM as-is.
+
 **A power cut, on purpose** (29 Sep 2026, #740): `utmctl stop Ubuntu --kill` is a cut, not a
 shutdown. A root file written by a plain `cp` and killed 10 s later reliably comes back ZERO bytes
 (ext4 delalloc — the inode is journaled at the 5 s commit, the data is not written until ~30 s);

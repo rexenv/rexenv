@@ -110,7 +110,7 @@ const MAILPIT_VERSION: &str = "1.30.3";
 const ADMINER_VERSION: &str = "6.1.1";
 /// Pinned phpMyAdmin version — a whole PHP application tree (`index.php`, `vendor/`,
 /// `js/`, `themes/`), run via the bundled PHP like Adminer, OS-agnostic. The second
-/// database console (`docs/PLAN-db-console-open-and-phpmyadmin.md`); MySQL/MariaDB only.
+/// database console (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md`); MySQL/MariaDB only.
 /// **Measured before it was pinned** (14 Oct 2026, plan §3.4 / T7): 5.2.3 renders logged
 /// in against the real MySQL 8.4.6 and MariaDB on PHP 8.3.32 (the pool pin), 8.4.23 and
 /// 8.5.8 — no fatal, no deprecation on the page. A pin nobody has run is superstition
@@ -1804,7 +1804,7 @@ fn adminer_spec(version: &str) -> Option<BinarySpec> {
 }
 
 /// phpMyAdmin: the pinned release zip, and NOTHING else — no catalog arm yet
-/// (`docs/PLAN-db-console-open-and-phpmyadmin.md` §9: a third `updates::Family` is its
+/// (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §9: a third `updates::Family` is its
 /// own row, after v1 is measured). `updates::nameable("phpmyadmin")` is false today, so a
 /// manifest entry under that name is refused by the same allowlist that guards Adminer.
 fn phpmyadmin_spec(version: &str) -> Option<BinarySpec> {

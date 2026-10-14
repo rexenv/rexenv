@@ -1,9 +1,12 @@
 # PLAN — "Open in browser" on the Databases rows, and phpMyAdmin as a second console
 
-**Status: PLANNED 14 Oct 2026** — designed against `1269fb8f` (v0.8.13 + 77 commits), nothing
-built. The task list is §10; the open rows live in `docs/TODO.md` ("Database console: open in
-browser + phpMyAdmin"). This file is the reasoning, so the build starts from facts rather than
-from memory.
+**Status: SHIPPED 15 Oct 2026** — designed 14 Oct against `1269fb8f`, built the same night
+(T1 `ed85a0f7`, T2 `665d4a69`, T3 `f4bddaac`, T4 `53016c98`, T5 `95a0b268`, T6+T7 `64ca4a57`, the
+framing + refresh fixes `ee38cbb7`), proven on the macOS 15.8 VM, the Dell (Win10) and the Ubuntu
+22.04 VM — GUI rows in `docs/SMOKE-TEST.md`, `phpmyadmin_check` on each. Two findings the design
+missed, both in §3.2/§7 now: `AllowThirdPartyFraming` must be `'sameorigin'` (`false` ships a
+frame-hiding script), and a rebuild must re-render a staged config. §9's follow-ups are a TODO row.
+This file is the reasoning.
 
 Two owner asks (14 Oct 2026, with a screenshot of the Databases page):
 

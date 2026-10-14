@@ -236,11 +236,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
-- [ ] **Database console: "Open in browser" on the Databases rows + phpMyAdmin as a second console** —
+- [x] **Database console: "Open in browser" on the Databases rows + phpMyAdmin as a second console** —
+  ✓ **SHIPPED 15 Oct 2026** (`ed85a0f7` … the T8 commit): T1–T8 all ticked below, proven on the macOS
+  VM, the Dell and the Ubuntu VM (GUI + `phpmyadmin_check` on each); the plan archived. —
   owner asks, 14 Oct 2026: (1) beside each Browse button (which opens Adminer INSIDE the app) a control
   that opens the same console in a real browser, in the app-wide shape — the preferred browser's icon,
   the chevron listing every installed browser, each with its private-window target; (2) phpMyAdmin,
-  "onekei chachchhe". The design is `docs/PLAN-db-console-open-and-phpmyadmin.md` (planned against
+  "onekei chachchhe". The design is `docs/archive/PLAN-db-console-open-and-phpmyadmin.md` (planned against
   `1269fb8f`, nothing built): (1) is frontend-only — `SplitButton` + `useBrowserMenu` + `openExternal`
   already carry the preference and the per-OS private flags on all three OSes; (2) = a second internal
   vhost `phpmyadmin.rexenv.rex` on the shared stack for **MySQL + MariaDB only** (no PostgreSQL driver
@@ -280,6 +282,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     renders inside the app, logged in, and "Open in browser" opened it in Safari. Ubuntu VM (22.04
     arm64, the container-built binary swapped into `/usr/bin`): `rex db console phpmyadmin` 2.6 s,
     `SAMEORIGIN`, the logged-in title, `0600` secret, the example green incl. the real-stack leg.
+    Dell (Win10 22H2, the installer built there): `rex db console phpmyadmin` 64 s, `SAMEORIGIN`,
+    forward-slash `TempDir`, no Mark-of-the-Web stream, the secret's ACL owner-only, phpMyAdmin
+    inside the app at `http://rexpma.localhost`, Firefox's private target launched with
+    `-private-window`; `phpmyadmin_check` cross-built and green there too. GUI rows ticked in SMOKE
+    ×3; ledger #864–#867, #869 → ✅ naming the three hosts.
   - [x] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
     in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
     `notices-check.py` decides whether its vendored composer tree needs per-package rows).
@@ -327,11 +334,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `rex db browse` following it. SMOKE rows written for macOS, Windows, Linux — **GUI runs owed
     on each OS** (the macOS dev Mac's running app holds a live tunnel, so the macOS GUI run is the
     VM's).
-  - [ ] **T8** docs with each commit: ARCHITECTURE (§Adminer → "Database consoles"), MAP, PLATFORMS §3,
+  - [x] **T8** docs with each commit: ARCHITECTURE (§Adminer → "Database consoles"), MAP, PLATFORMS §3,
     SMOKE main + § Windows + § Linux, DESIGN, TESTING + `live-checks.sh`, the ledger verdicts naming
     the OS each proof came from; then the plan header → SHIPPED and its move to `docs/archive/`.
+    ✓ **15 Oct 2026:** every doc landed with its commit; the plan is `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`
+    (SHIPPED), its README row added, citations repointed.
   Follow-ups, NOT this row (plan §9): phpMyAdmin as a third `updates::Family`; its palette following
-  the app; a `rex db console` verb.
+  the app (`rex db console` shipped with T6).
+
+- [ ] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): (1) a third
+  `updates::Family` so the console updates through the signed manifest like Adminer (the probe
+  `phpmyadmin::verify_tree` is the gate; one afternoon on the Adminer plan's shape — today the pin is
+  the only version and a newer release means a rexenv release); (2) its palette following the app
+  (5.2 ships no dark theme — a vendored one would be needed); (3) the ~52 MB tree is never swept
+  (one copy; fine until a second version exists).
 
 ### Open work that was living inside ticked rows
 

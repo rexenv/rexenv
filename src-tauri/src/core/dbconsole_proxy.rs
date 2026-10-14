@@ -13,7 +13,7 @@
 //! Two consoles, two origins, two jars. phpMyAdmin's pages use absolute paths
 //! (`/index.php`, `/js/…`, `/themes/…`), so it cannot live under a path prefix of
 //! Adminer's origin; and two `PHPSESSID`s on two hosts must never share a jar
-//! (`docs/PLAN-db-console-open-and-phpmyadmin.md` §3.3, ledger #870).
+//! (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §3.3, ledger #870).
 
 use crate::core::adminer;
 use crate::core::phpmyadmin;

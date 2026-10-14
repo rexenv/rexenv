@@ -1,4 +1,4 @@
-//! phpMyAdmin, the second database console (`docs/PLAN-db-console-open-and-phpmyadmin.md`,
+//! phpMyAdmin, the second database console (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md`,
 //! T7): the staging path end to end, in a SANDBOX app-data root, against the real pinned
 //! phpMyAdmin tree (downloaded into the shared binary cache — the one deliberate real
 //! write, see `common`) and the real pinned PHP.

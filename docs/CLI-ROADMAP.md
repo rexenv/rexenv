@@ -112,7 +112,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 | `db import <domain> <file.sql> [--yes]` | `wp_db_import` | ✓ | shipped 16 Jul — confirm + backup-first tip; path canonicalized client-side; round-trip live-verified (site 200 after) |
 | `db reset <domain>` | `wp_site_reset` | ✓ | shipped 16 Jul — TYPED domain confirmation (--confirm <domain> for scripts); wrong-confirm abort live |
 | `db versions [--set <engine> <version>]` | `databases_status` + `db_engine_versions` / `set_db_engine_version` | ✓ | shipped 16 Jul — matrix live; --set passthrough |
-| `db console [adminer\|phpmyadmin]` | `db_console_status` / `db_console_set` | ✓ | shipped 15 Oct 2026 — the Databases screen's dial; choosing phpMyAdmin IS the install (download → probe → stage → reload), so the first call takes a while and prints what the docroot really serves (`docs/PLAN-db-console-open-and-phpmyadmin.md`) |
+| `db console [adminer\|phpmyadmin]` | `db_console_status` / `db_console_set` | ✓ | shipped 15 Oct 2026 — the Databases screen's dial; choosing phpMyAdmin IS the install (download → probe → stage → reload), so the first call takes a while and prints what the docroot really serves (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md`) |
 | `db browse` | `db_console_status` + `open https://<console host>` | ✓ | shipped 16 Jul; since 15 Oct 2026 opens the EFFECTIVE console (phpMyAdmin when chosen and installed, else Adminer) |
 
 ## WordPress

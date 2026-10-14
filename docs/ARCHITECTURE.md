@@ -1987,7 +1987,7 @@ words (the browser shell's mock and two dev review pages excepted).
   `OpenInBrowserSplit` (`open-in.tsx`): icon + label + chevron + private rows,
   primary through `open_external`. The Databases rows (beside Browse) and the bar
   above the in-app console render it (14 Oct 2026, T1 of
-  `docs/PLAN-db-console-open-and-phpmyadmin.md`); before that the console's bar had a
+  `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`); before that the console's bar had a
   plain button with no chooser — the 13 Sep drift class, one surface at a time.
 - **Each row of that menu has a SECOND target: the same url in that browser's
   private window** (`open -na <app> --args --incognito|-private-window <url>`) —
@@ -2917,7 +2917,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   (`adminer_object()` hook): passwordless login for loopback servers only, auto-submits
   Adminer's own CSRF-tokened + CSP-nonced form on `?rexenv_auto`.
 - **phpMyAdmin — the SECOND console, MySQL/MariaDB only** (`core/phpmyadmin.rs`, 15 Oct 2026,
-  `docs/PLAN-db-console-open-and-phpmyadmin.md`): asked for by users; phpMyAdmin has no
+  `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): asked for by users; phpMyAdmin has no
   PostgreSQL driver, so a PostgreSQL row keeps Adminer whatever the choice. ONE app-wide dial
   (`db_console` — the owner's one-dial ruling, never a second button per row) on the Databases
   page's console card; Browse, Open in browser and the site Database tab follow it

@@ -101,7 +101,7 @@ pub struct PlatformWords {
     /// The same, for the SECOND console: phpMyAdmin's pages use absolute paths, so
     /// it cannot share Adminer's origin and gets its own scheme (`rexpma`) — the
     /// same per-OS spelling rule as `db_browser_origin`, filled for every OS
-    /// (`docs/PLAN-db-console-open-and-phpmyadmin.md` §3.3).
+    /// (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §3.3).
     pub phpmyadmin_origin: &'static str,
     /// What to do when rexenv is running from somewhere it was not installed to, so an
     /// update has nothing it may safely replace. macOS: drag the bundle into Applications;

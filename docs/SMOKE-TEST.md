@@ -922,7 +922,7 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   the OS appearance: the console follows that too. **Open: no run recorded** (`adminer_check`
   proves the head Adminer emits per theme, ledger #375; not the reload).
 - [ ] **Open a database console in a real browser** (14 Oct 2026, T1 of
-  `docs/PLAN-db-console-open-and-phpmyadmin.md`): Databases → beside MySQL's Browse, the
+  `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): Databases → beside MySQL's Browse, the
   **Open in browser** control wears the icon of the browser a click will use and carries a
   chevron. A plain click opens `https://adminer.rexenv.rex/?…&rexenv_auto=1` in that browser,
   logged in with no prompt. The chevron lists every installed browser (the default marked),
@@ -930,7 +930,10 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   in there too (auto-login is first-party). The same control sits in the bar above the in-app
   console (Databases → Browse, and a site's Database tab). Needs a Mac with two browsers for the
   chevron (one browser = no chevron, by design). L2: `openin.js` asserts the shape and the
-  `open_external` target. **Open: no run recorded.**
+  `open_external` target. ✓ **15 Oct 2026 (macOS 15.8 UTM VM, the release build of `64ca4a57`):**
+  the control wears Safari's icon beside Browse; a click opened Safari on
+  `phpmyadmin.rexenv.rex` logged in as root@localhost (the VM has Safari only, so no chevron —
+  the chevron + private rows were seen on the Dell and the Ubuntu VM, their sections).
 - [ ] **phpMyAdmin as the console** (15 Oct 2026, T6 of the same plan): Databases → the
   "Database console" card below the engines → **phpMyAdmin**. The button reads "Installing
   phpMyAdmin 5.2.3…" while it downloads (the hub shows the bytes), probes and stages; then a
@@ -947,7 +950,12 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   said `false`) or a CSP end is missing (#703's class). Back to **Adminer**: a toast, Browse opens Adminer again, phpMyAdmin
   stays installed (the line keeps its version). `rex db console` prints the same; `rex db
   console phpmyadmin` is the same install. L1 `phpmyadmin_check` (sandbox legs + the real-stack
-  leg through the proxy). **Open: no GUI run recorded.**
+  leg through the proxy). ✓ **15 Oct 2026 (macOS 15.8 UTM VM, release build):** chosen through
+  `rex db console phpmyadmin` (4.5 s); the card shows phpMyAdmin selected + `phpMyAdmin 5.2.3`;
+  Browse on MySQL → "Browsing MySQL · phpMyAdmin", the console inside the app logged in with the
+  database tree (after #865's `'sameorigin'` fix — the first run was the empty-frame TELL below);
+  the bar's Open in browser → Safari; `curl -sI` → `SAMEORIGIN`; `phpmyadmin_check` green incl. the
+  real-stack leg. The flip back to Adminer and the PostgreSQL row were seen on the Ubuntu VM.
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
@@ -3039,14 +3047,26 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       Windows differences: the chevron's rows come from `app_catalog.rs` (Chrome/Edge/Brave/
       Vivaldi/Chromium `--incognito`/`--inprivate`, Firefox `-private-window`), and the browser is
       started as the detected executable with its arguments — no shell. The Dell has Edge + Chrome,
-      so the chevron renders there. **Open: no run recorded.**
+      so the chevron renders there. ✓ **15 Oct 2026 (Dell, Win10 22H2, the installer built there
+      from HEAD):** the row shows Browse + Open in browser + chevron; the menu lists Google Chrome
+      (default), Firefox, Brave, Microsoft Edge each with the private icon; Firefox's private target
+      started `firefox.exe -private-window https://phpmyadmin.rexenv.rex/index.php?server=1`
+      (read off `Win32_Process`; a private Firefox window does not CopyFromScreen — the taskbar
+      showed the masked icon).
 - [ ] **phpMyAdmin as the console** (T6, 15 Oct 2026): the main body's row. Windows differences:
       the frame loads `http://rexpma.localhost/index.php?server=1` (WebView2's spelling of the
       `rexpma` scheme — `PlatformWords::phpmyadmin_origin`; an empty panel = #703's class, check
       both CSP ends); the tree is prepared by `prepare_script_dir` (Mark-of-the-Web stripped, no
       `.exe` required — `check_tree` would refuse it); the import cap reaches the php-cgi group
       through the docroot's `.user.ini` (#788); `config.inc.php` carries forward-slash paths
-      (`C:/Users/…/AppData/Local/rexenv/rexenv/phpmyadmin-tmp`). **Open: no run recorded.**
+      (`C:/Users/…/AppData/Local/rexenv/rexenv/phpmyadmin-tmp`). ✓ **15 Oct 2026 (Dell):** `rex db
+      console phpmyadmin` 64 s (download + the 52 MB copy + probe + reload); `SAMEORIGIN`, the
+      logged-in title, 0 frame-hiding hits; the config's `TempDir` =
+      `C:/Users/DELL/AppData/Local/rexenv/rexenv/data/phpmyadmin-tmp`, both hosts `127.0.0.1`; the
+      `.user.ini` carries the 8 GB cap + the error policy; the marker `5.2.3`; `index.php` has only
+      the `:$DATA` stream (no Mark of the Web); the secret's ACL is `DELL FullControl` alone. GUI:
+      Browse → phpMyAdmin INSIDE the app at `http://rexpma.localhost`, logged in, the database tree.
+      `phpmyadmin_check` (cross-built, `windows-example.sh`) green incl. the real-stack leg.
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
       adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
@@ -3687,12 +3707,20 @@ rexenv0 <name>` and read `Current Scopes:`.
 - [ ] **Open a database console in a real browser** (T1, 14 Oct 2026): the main body's row.
       Linux differences: the chevron's rows come from `platform/linux/desktop.rs` (seven browsers
       with a private flag); the Ubuntu VM has Firefox only unless a second browser is installed
-      first (`snap install chromium`) — one browser = no chevron, by design. **Open: no run
-      recorded.**
+      first (`snap install chromium`) — one browser = no chevron, by design. ✓ **15 Oct 2026
+      (Ubuntu 22.04 arm64 UTM VM, the container-built binary):** the chevron lists Firefox
+      (default) and Chromium, each with the private icon.
 - [ ] **phpMyAdmin as the console** (T6, 15 Oct 2026): the main body's row. Linux: the frame
       loads `rexpma://localhost/…` (webkitgtk, the macOS shape); the secret is `0600` under
       `~/.local/share/rexenv/phpmyadmin.secret`; the tree under `~/.local/share/rexenv/phpmyadmin`.
-      **Open: no run recorded.**
+      ✓ **15 Oct 2026 (Ubuntu VM):** `rex db console phpmyadmin` 2.6 s; `SAMEORIGIN`, the logged-in
+      title, 0 frame-hiding hits, the secret `-rw-------`; GUI: Browse on MySQL → phpMyAdmin inside
+      the app with the database tree, the bar's chevron menu, Browse on PostgreSQL → "PostgreSQL ·
+      Adminer" with the tooltip "phpMyAdmin has no PostgreSQL driver"; `rex db console adminer` →
+      Adminer, back to phpMyAdmin (still installed); `phpmyadmin_check` green incl. the real-stack
+      leg. **The binary must not be a bare cargo build** — that one opened "Could not connect to
+      localhost" (the dev URL); built with `TAURI_CONFIG={"build":{"devUrl":null}}` instead
+      (`docs/TESTING.md` § Proving a Linux claim).
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
       upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the

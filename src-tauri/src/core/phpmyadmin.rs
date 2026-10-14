@@ -1,5 +1,5 @@
 //! core::phpmyadmin — the SECOND database console, served as an internal vhost
-//! (`docs/PLAN-db-console-open-and-phpmyadmin.md`).
+//! (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md`).
 //!
 //! phpMyAdmin is a whole PHP application tree (`binaries` pins the release zip,
 //! `Shape::Dir`). Like Adminer it is served through the shared stack on a fixed

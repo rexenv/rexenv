@@ -59,6 +59,7 @@ is why a header is checked against the code before it is believed.
 | `PLAN-webview-dialog-proofs.md` | Why the WebKit/wry dialog (#166) and custom-scheme redirect (#40) claims are NOT L2-provable, and where each leg lives instead. |
 | `PLAN-binary-updates.md` | Signed-manifest in-app PHP patch updates (17–18 Aug 2026): the trust model, the key ceremony, the serial/replay gate. |
 | `PLAN-adminer-updates.md` | Adminer as the SECOND manifest family (18 Aug 2026): `updates::Family`, the binding probe. |
+| `PLAN-db-console-open-and-phpmyadmin.md` | The Databases rows' "Open in browser" split button and phpMyAdmin as the SECOND console (14–15 Oct 2026): one dial, the generated config as the passwordless gate, its own `rexpma` proxy origin, the staging probe; `'sameorigin'` not `false`, and why a rebuild re-renders the config. |
 | `PLAN-mcp-server.md` | MCP server M1/M2a/M2b/M3 (30 Jul – 25 Aug 2026): scratch sites, capability tiers, `db_query`; the honest "not a sandbox" guarantee (§6.0). |
 | `PLAN-mcp-parity.md` | MCP parity P1–P7 (3 Sep 2026): every app function agent-drivable on real sites; scopes, the global Agent access dial (D15–D17). |
 | `PLAN-menubar-tray.md` | The menu-bar app (31 Aug – 1 Sep 2026): why the CLI/MCP sockets died with the window, the no-dock-icon ruling, what Accessory costs, the second-instance guard. |
