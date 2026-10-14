@@ -236,6 +236,50 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Firefox, Brave and Safari are). So this is not "nobody got round to it" — it cannot be
   tested here at all, and the honest `None` stands until someone with one of those
   browsers runs the flag.
+- [ ] **Database console: "Open in browser" on the Databases rows + phpMyAdmin as a second console** —
+  owner asks, 14 Oct 2026: (1) beside each Browse button (which opens Adminer INSIDE the app) a control
+  that opens the same console in a real browser, in the app-wide shape — the preferred browser's icon,
+  the chevron listing every installed browser, each with its private-window target; (2) phpMyAdmin,
+  "onekei chachchhe". The design is `docs/PLAN-db-console-open-and-phpmyadmin.md` (planned against
+  `1269fb8f`, nothing built): (1) is frontend-only — `SplitButton` + `useBrowserMenu` + `openExternal`
+  already carry the preference and the per-OS private flags on all three OSes; (2) = a second internal
+  vhost `phpmyadmin.rexenv.rex` on the shared stack for **MySQL + MariaDB only** (no PostgreSQL driver
+  exists; Postgres keeps Adminer), chosen by ONE `db_console` setting on the console card, downloaded
+  on demand when chosen, `auth_type = config` naming only the two loopback engines, the direct vhost
+  never frameable, the in-app frame through its own `rexpma` proxy origin (words + both CSP ends, all
+  three OSes). Tasks, in build order (plan §10) — each its own commit, docs in the same commit:
+  - [ ] **T1** Databases row: "Open in browser" `SplitButton` (icon + chevron + private rows) beside
+    Browse; the same split button replaces `AdminerFrame`'s plain button. Proof: `wk-checks/openin.js`
+    row; GUI on macOS, the Dell (`tauri build`) and the Ubuntu VM (deb); SMOKE rows ×3.
+  - [ ] **T7 (before T2)** `examples/phpmyadmin_check.rs` (stack tier, `all`): stage → GET through the
+    loopback edge → 200 + title, on the pinned PHP (8.5.8), run on macOS + Dell + Ubuntu VM — the
+    measurement that fixes the version to pin, and plan §7's fallback (the 8.4 pool for the vhost) if
+    phpMyAdmin 5.2.x fatals on 8.5.
+  - [ ] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
+    in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
+    `notices-check.py` decides whether its vendored composer tree needs per-package rows).
+  - [ ] **T3** `core/phpmyadmin.rs`: docroot + marker + rename-publish staging, the `config.inc.php`
+    generator (pure, tested: loopback-only servers, forward-slash paths with a space AND a backslash,
+    `AllowThirdPartyFraming = false`), the blowfish secret file owner-only via `permissions()`,
+    `.user.ini` (#788 shape), the `verify_tree` probe BEFORE publish (plant: a fatal tree never
+    becomes the docroot). Ledger rows plan §5.1, §5.2, §5.5.
+  - [ ] **T4** the vhost in `sites::rebuild` emitted only for a staged docroot, cert, the
+    `tunnels.rs` tunnel-origin assertion widened to both hosts. Ledger rows §5.3, §5.6.
+  - [ ] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
+    `X-Frame-Options` stripped on the replayed copy only, the `rexpma` scheme in `lib.rs` (+ a
+    `PLAN-linux-port.md` §1.1 row), `PlatformWords` origin filled for macOS/Windows/Linux,
+    `tauri.conf.json` `frame-src` in `csp` AND `devCsp` — both ends, every OS (#699/#702/#703).
+    Proof: the frame renders on all three (GUI), the `SameSite=Strict` cookie measurement (plan §7).
+  - [ ] **T6** the `db_console` setting + IPC (`db_console_get` / `db_console_set` = download → probe →
+    stage → rebuild → reload, the button holding the sentence), the console card's segmented control
+    + phpMyAdmin version line, `src/lib/dbconsole.ts` choosing URLs, Browse / Open in browser / the
+    site Database tab following it, Postgres rows pinned to Adminer with the tooltip. GUI ×3; SMOKE ×3.
+  - [ ] **T8** docs with each commit: ARCHITECTURE (§Adminer → "Database consoles"), MAP, PLATFORMS §3,
+    SMOKE main + § Windows + § Linux, DESIGN, TESTING + `live-checks.sh`, the ledger verdicts naming
+    the OS each proof came from; then the plan header → SHIPPED and its move to `docs/archive/`.
+  Follow-ups, NOT this row (plan §9): phpMyAdmin as a third `updates::Family`; its palette following
+  the app; a `rex db console` verb.
+
 ### Open work that was living inside ticked rows
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
