@@ -180,7 +180,7 @@ pub fn gone_on_live<'a>(base: &'a SyncBase, live_now: &BTreeMap<&str, String>, l
         }
         match local.get(p.as_str()) {
             None => {}
-            Some(m) if *m > base.at => keep.push(p.as_str()),
+            Some(m) if base.file_changed_here(p, *m) => keep.push(p.as_str()),
             Some(_) => delete.push(p.as_str()),
         }
     }
@@ -409,7 +409,29 @@ pub async fn pull_into(
     // endpoint means nothing (plan §2.8). BEFORE the local stamps: deactivating
     // writes `active_plugins`, and the stamp must be of the copy as it is left.
     let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["plugin", "deactivate", "rexenv-sync", "--skip-plugins", "--skip-themes"]);
-    report.base.local_tables = super::stamps::local_stamps(local, &m.prefix)?;
+    // The LOCAL half (ledger #863): what the pull REPLACED is stamped fresh (live's
+    // version is what is here now); what it KEPT keeps the prior base's stamp, so a
+    // local edit made before the pull is still "ahead" after it. The Dell run
+    // (14 Oct 2026) read "up to date" right after an incremental pull with a title
+    // edited here that live never had: a fresh snapshot of everything had made the
+    // edit the base. No prior / a full pull: everything fresh.
+    let fresh_tables = super::stamps::local_stamps(local, &m.prefix)?;
+    let exported: std::collections::BTreeSet<&str> = changed.iter().map(|t| t.name.as_str()).collect();
+    report.base.local_tables = fresh_tables
+        .into_iter()
+        .map(|(t, s)| match prior.and_then(|b| b.local_tables.get(&t)) {
+            Some(was) if !exported.contains(t.as_str()) => (t, was.clone()),
+            _ => (t, s),
+        })
+        .collect();
+    let fetched: std::collections::BTreeSet<&str> = paths.iter().map(String::as_str).collect();
+    report.base.local_files = walk_local(&content)?
+        .into_iter()
+        .map(|(p, _, mtime)| match prior.and_then(|b| b.local_files.get(&p)) {
+            Some(was) if !fetched.contains(p.as_str()) && !report.files_deleted.contains(&p) => (p, *was),
+            _ => (p, mtime),
+        })
+        .collect();
     report.base.kind = "pull".into();
     // The sync moment is the END of the pull (#841): every file it wrote is now no
     // newer than this, so the next push sends only what is edited from here on.
@@ -451,5 +473,25 @@ mod tests {
         let (delete, keep) = gone_on_live(&base, &live_now, &local, &DEFAULT_EXCLUDES);
         assert_eq!(delete, vec!["b.txt"]);
         assert_eq!(keep, vec!["c.txt"]);
+        // With per-file local mtimes (a base since 14 Oct 2026) the recorded mtime decides,
+        // not `at`: b.txt recorded at 900 and still 900 → delete; c.txt recorded 900, now 1500 → keep;
+        // d.txt recorded 2000 (after `at`) and still 2000 → untouched → delete.
+        let mut base2 = base.clone();
+        base2.local_files = [("b.txt", 900), ("c.txt", 900), ("d.txt", 2000)].into_iter().map(|(p, m)| (p.to_string(), m)).collect();
+        let local2: BTreeMap<&str, i64> = [("b.txt", 900), ("c.txt", 1500), ("d.txt", 2000)].into_iter().collect();
+        let (delete, keep) = gone_on_live(&base2, &live_now, &local2, &DEFAULT_EXCLUDES);
+        assert_eq!(delete, vec!["b.txt", "d.txt"]);
+        assert_eq!(keep, vec!["c.txt"]);
+    }
+
+    /// **An incremental pull keeps the prior local stamp of what it did not replace**
+    /// (ledger #863) — the pure half: the keep rule over tables and files. Plant: stamp
+    /// everything fresh → the kept table's stamp is the fresh one, red.
+    #[test]
+    fn the_kept_half_keeps_its_prior_stamp() {
+        let src = include_str!("pull.rs");
+        let body = &src[src.find("let fresh_tables =").expect("the local half")..];
+        assert!(body.contains("Some(was) if !exported.contains(t.as_str()) => (t, was.clone())"), "kept tables no longer keep their prior stamp");
+        assert!(body.contains("Some(was) if !fetched.contains(p.as_str()) && !report.files_deleted.contains(&p) => (p, *was)"), "kept files no longer keep their prior mtime");
     }
 }

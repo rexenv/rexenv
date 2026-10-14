@@ -321,16 +321,39 @@ pub async fn live_sync_history(state: State<'_, AppState>, site_id: String) -> R
 /// file list) and reads the local database's stamps; writes nothing anywhere.
 #[tauri::command]
 pub async fn live_sync_status(state: State<'_, AppState>, site_id: String) -> Result<status::SyncStatus> {
+    // Timed per phase, from the first line: the GUI's check took 40–120 s on every VM
+    // (14 Oct 2026) where the body below took 3 s — the Dell's log showed the body
+    // STARTING ~110 s after the click, so the wait is before this function or in
+    // reaching the site row and the pairing file.
+    let t0 = std::time::Instant::now();
+    log::info!("live-sync status {site_id}: requested");
     let site = wordpress_site(&state, &site_id)?;
     let client = client_for(&state, &site.id)?;
+    let t_client = t0.elapsed();
     let m = client.manifest().await?;
+    let t_manifest = t0.elapsed();
     let live_files = client.list_files(&pull::DEFAULT_EXCLUDES, None).await?;
+    let t_files = t0.elapsed();
     let prior = base::get(state.platform.as_ref(), &site.id)?;
     let tools = LocalTools::for_site(&state, &site).await?;
+    let t_tools = t0.elapsed();
     let local = tools.local(&state, &site);
     let local_stamps = stamps::local_stamps(&local, &m.prefix)?;
+    let t_stamps = t0.elapsed();
     let local_files: Vec<(String, i64)> = pull::walk_local(&tools.docroot.join("wp-content"))?.into_iter().map(|(p, _, m)| (p, m)).collect();
-    Ok(status::judge(&pull::host_of(&m.site_url), prior.as_ref(), &m, &live_files, &local_stamps, &local_files, base::now()))
+    let verdict = status::judge(&pull::host_of(&m.site_url), prior.as_ref(), &m, &live_files, &local_stamps, &local_files, base::now());
+    log::info!(
+        "live-sync status {}: {:?} — site + pairing {:.1}s, manifest {:.1}s, file list {:.1}s, local tools {:.1}s, local stamps {:.1}s, files + verdict {:.1}s",
+        site.domain,
+        verdict.verdict,
+        t_client.as_secs_f32(),
+        (t_manifest - t_client).as_secs_f32(),
+        (t_files - t_manifest).as_secs_f32(),
+        (t_tools - t_files).as_secs_f32(),
+        (t_stamps - t_tools).as_secs_f32(),
+        (t0.elapsed() - t_stamps).as_secs_f32()
+    );
+    Ok(verdict)
 }
 
 /// Register a job for `site`, spawn `work` on it, answer the first snapshot.
@@ -711,6 +734,7 @@ pub async fn live_sync_rollback(state: State<'_, AppState>, jobs: State<'_, Live
         // rollback, with the pushed edits still here (ledger #862).
         if let Some(before) = b.before_push.take() {
             b.local_tables = before.local_tables;
+            b.local_files = before.local_files;
             b.at = before.at;
         }
         b.kind = "rollback".into();
@@ -1002,7 +1026,8 @@ mod tests {
         assert!(!body.contains("b.at = base::now()"), "the rollback stamps now into the base");
         // The push records what the rollback restores.
         let push = include_str!("../core/live_sync/push.rs");
-        assert!(push.contains("before_push: Some(Box::new(super::base::LocalHalf { local_tables: base.local_tables.clone(), at: base.at }))"), "the push no longer records the pre-push local half");
+        assert!(push.contains("before_push: Some(Box::new(base.local_half()))"), "the push no longer records the pre-push local half");
+        assert!(body.contains("b.local_files = before.local_files"), "the rollback no longer restores the local files");
     }
 
     /// **The typed host must be the live host, exactly** (ledger #834): a scheme,

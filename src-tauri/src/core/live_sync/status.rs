@@ -177,7 +177,7 @@ pub fn judge(
     let live_now: BTreeMap<&str, String> = live_files.iter().map(|f| (f.path.as_str(), format!("{}:{}", f.size, f.mtime))).collect();
     let mut live_changed: Vec<String> = live_now.iter().filter(|(p, s)| b.files.get(**p) != Some(*s)).map(|(p, _)| p.to_string()).collect();
     let mut live_gone: Vec<String> = b.files.keys().filter(|p| !live_now.contains_key(p.as_str())).cloned().collect();
-    let mut local_changed: Vec<String> = local_files.iter().filter(|(_, m)| *m > b.at).map(|(p, _)| p.clone()).collect();
+    let mut local_changed: Vec<String> = local_files.iter().filter(|(p, m)| b.file_changed_here(p, *m)).map(|(p, _)| p.clone()).collect();
     live_changed.sort();
     live_gone.sort();
     local_changed.sort();
@@ -242,6 +242,7 @@ mod tests {
             files: map(&[("themes/x/style.css", "10:100"), ("uploads/a.jpg", "5:50")]),
             at: 1000,
             local_tables: map(&[("wp_posts", "ck:1"), ("wp_options", "opt:9:7"), ("wp_users", "ck:3")]),
+            local_files: BTreeMap::new(),
             kind: "pull".into(),
             before_push: None,
         }
@@ -295,6 +296,15 @@ mod tests {
         let s = judge("example.com", None, &live_same, &lf, &local_same, &local_files, 2000);
         assert_eq!(s.verdict, Verdict::NeverSynced);
         assert!(s.tables.iter().all(|t| t.live == Change::New && t.local == Change::Unknown));
+
+        // per-file local mtimes (a base since 14 Oct 2026): a file whose mtime differs from
+        // the RECORDED one is changed here even when it is older than `at` — the shape an
+        // incremental pull leaves (#863).
+        let mut dated = b.clone();
+        dated.local_files = [("themes/x/style.css", 500), ("uploads/a.jpg", 900)].into_iter().map(|(p, m)| (p.to_string(), m)).collect();
+        let s = judge("example.com", Some(&dated), &live_same, &lf, &local_same, &local_files, 2000);
+        assert_eq!(s.verdict, Verdict::Ahead, "{:?}", s.files);
+        assert_eq!(s.files.local_changed, vec!["themes/x/style.css"]);
 
         // an old base without local stamps: local unknown, never "ahead" from tables alone
         let mut old = b.clone();

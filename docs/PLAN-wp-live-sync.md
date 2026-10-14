@@ -161,7 +161,9 @@ size+mtime+hash) in SQLite, and before every pull or push shows a three-column l
 and the user picks, per table / per folder, which side wins. **The base has two halves** (14 Oct
 2026): LIVE's stamps (the plugin's manifest + file list) and the LOCAL copy's own stamps
 (`core/live_sync/stamps.rs`: `CHECKSUM TABLE` per table, the content stamp for `wp_options`),
-each compared only with its own earlier value — never across. That is what the **status**
+each compared only with its own earlier value — never across; local files by their mtime
+against the mtime recorded at the sync (`local_files`), and an incremental pull keeps the
+prior stamp of everything it did not replace (#863). That is what the **status**
 (`core/live_sync/status.rs::judge`) reads: live moved → *behind* (pull); here moved → *ahead*
 (push); both → *diverged* (pull first — live wins on a table both changed, the previous local
 tables are one step back — then push); neither → *up to date*. A live-owned table changed here

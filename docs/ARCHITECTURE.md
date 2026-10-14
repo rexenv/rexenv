@@ -1489,7 +1489,10 @@ honest footer —
   copy server-side (so WordPress still boots against a whole copy for the URL move) and only
   the moved tables are exported; a file whose `size:mtime` equals the base's stays; a file
   live dropped is removed here only when untouched here since the base. "Pull everything
-  again" is the old whole pull. **The base has two halves** (`core/live_sync/base.rs`): live's
+  again" is the old whole pull. The local half the pull records covers what it REPLACED;
+  what it kept keeps the prior stamps, and a file's "changed here" is its mtime against
+  the one recorded at the sync (#863) — so an edit made here before a pull is still
+  "ahead" after it. **The base has two halves** (`core/live_sync/base.rs`): live's
   stamps from the plugin, and the LOCAL copy's own (`stamps.rs` — `CHECKSUM TABLE`, and for
   `wp_options` a content stamp over the non-volatile rows, the same list the plugin uses on
   live, #859). **The status** (`status.rs::judge`, #860) reads each side against its own

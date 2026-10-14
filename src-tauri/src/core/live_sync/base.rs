@@ -26,6 +26,13 @@ pub struct SyncBase {
     /// here" (the old behaviour: push every table).
     #[serde(default)]
     pub local_tables: BTreeMap<String, String>,
+    /// The LOCAL copy's files at the sync, `path → mtime` (14 Oct 2026). A file whose
+    /// mtime differs from this, or is not in it, changed here. Replaces the "mtime
+    /// after `at`" rule, which an incremental pull broke: a file edited here BEFORE
+    /// the pull was older than the pull's `at`, so the edit vanished from "ahead".
+    /// Absent in an older base → the `at` rule still applies.
+    #[serde(default)]
+    pub local_files: BTreeMap<String, i64>,
     /// "pull" | "push" | "rollback" — what recorded it.
     #[serde(default)]
     pub kind: String,
@@ -41,6 +48,25 @@ pub struct SyncBase {
 pub struct LocalHalf {
     pub local_tables: BTreeMap<String, String>,
     pub at: i64,
+    #[serde(default)]
+    pub local_files: BTreeMap<String, i64>,
+}
+
+impl SyncBase {
+    /// Has a local file changed since this base? By the recorded per-file mtime when the
+    /// base has them; by "after `at`" for a base from before 14 Oct 2026. ONE rule for the
+    /// push, the status and the pull's delete guard.
+    pub fn file_changed_here(&self, path: &str, mtime: i64) -> bool {
+        if self.local_files.is_empty() {
+            return mtime > self.at;
+        }
+        self.local_files.get(path) != Some(&mtime)
+    }
+
+    /// The local half this base keeps, for a push to remember.
+    pub fn local_half(&self) -> LocalHalf {
+        LocalHalf { local_tables: self.local_tables.clone(), at: self.at, local_files: self.local_files.clone() }
+    }
 }
 
 /// Unix seconds now.

@@ -143,10 +143,11 @@ pub async fn push_from(
     if options.files {
         for (rel, _size, mtime) in super::pull::walk_local(&content)? {
             total_files += 1;
-            // Changed LOCALLY since the last sync: a local mtime after `base.at`. (The
-            // base's own file stamps are LIVE's — the plugin's conflict check reads
-            // those; a local file's mtime never matches them.)
-            if prior.is_none() || mtime > base.at {
+            // Changed LOCALLY since the last sync (`SyncBase::file_changed_here`: the
+            // recorded local mtime, or "after `at`" on an older base). The base's own
+            // file stamps are LIVE's — the plugin's conflict check reads those; a local
+            // file's mtime never matches them.
+            if prior.is_none() || base.file_changed_here(&rel, mtime) {
                 files.push(rel);
             }
         }
@@ -250,9 +251,10 @@ pub async fn push_from(
         at: super::base::now(),
         // The local copy is what was just sent: its stamps now are the new local base.
         local_tables: super::stamps::local_stamps(local, &m.prefix)?,
+        local_files: super::pull::walk_local(&content)?.into_iter().map(|(p, _, m)| (p, m)).collect(),
         kind: "push".into(),
         // What a rollback of THIS push puts back as the local half (#862).
-        before_push: Some(Box::new(super::base::LocalHalf { local_tables: base.local_tables.clone(), at: base.at })),
+        before_push: Some(Box::new(base.local_half())),
     };
     // The files just pushed now carry LIVE mtimes we did not read; re-list them.
     if options.files {

@@ -1283,6 +1283,29 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   Seen, not a defect: the VM's disk filled during the deb build (the first build linked into "No space
   left on device"); `target/debug/{incremental,deps,build}` and a fixture site were removed. The plugin
   page row ran on macOS only (the page is the plugin's, not the OS's).
+  ✓ **Windows** — the Dell (Windows 10 22H2), this tree's debug build (`windows-app-build.sh`), 14 Oct
+  2026, against live-sync.rex.bd (plugin 0.1.2), `l14w.rex` on its 11 Oct base: Check status → "Live
+  has changes you do not have here — 3 tables, 0 files" + the old-base line; Pull from the card → the
+  incremental confirm → "Pulled 3 tables (205 rows) and 0 files — 9 tables and 1055 files unchanged on
+  live were kept as they are here."; the post 200. A title and `twentytwentyfive/style.css` edited here
+  → the CLI "ahead — 1 table and 1 file"; Check status → "Both sides changed — live: 1 table, 0 files;
+  here: 1 table, 1 file." (live's `wpcs_options` had moved — 0.1.2's transient noise), Show what moved
+  listed `wpcs_options` changed on live / `wpcs_posts` changed here / the file. Pull from the card →
+  "1 tables" pulled → **Found:** Check status then read "up to date" with the title and the CSS line
+  still here and live without them — the pull had stamped the whole local copy fresh (#863, fixed: the
+  kept half keeps its prior stamps, files by recorded mtime). On the FIXED build: new edits → an
+  incremental pull that replaced nothing ("Pulled 0 tables (0 rows) and 0 files — 12 tables and 1055
+  files unchanged on live were kept") → Check status "This site is ahead of live — 1 table, 1 file
+  changed here." → Push… → the picker (`wpcs_posts` ticked "changed here", "(7 unchanged tables start
+  unticked)", four "live writes here") → `live-sync.rex.bd` typed → Push → "Pushed 1 table and 1 file …
+  as `07295cfe…`", live's title changed → Roll back → asks naming the id → live's title back → the CLI
+  "ahead — 1 table and 1 file" again (#862) → Pull everything again → the confirm → "Pulled 12 tables and
+  1055 files" — title and CSS back to live's → History (7 syncs) in the GUI and `rex live … history`.
+  Also found: the app embeds the `rex` sidecar beside `rexenv.exe` and copies it into `bin\` on launch,
+  so a hand-copied `bin\rex.exe` is overwritten at the next relaunch — replace `%LOCALAPPDATA%\rexenv\rex.exe`
+  too. The GUI's Check status: the new entry log line shows the command body starting 7 s / 20 s /
+  110 s after the click on three tries (the body itself 3–11 s) — the wait is before dispatch, not in
+  the command; left open in TODO.
 - [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
       password → Connect works; without them, the firewall/401 sentence.
 - **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's

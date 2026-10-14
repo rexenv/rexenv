@@ -471,9 +471,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows,
   each needs its own live host), S3's remainder (resume, anonymise, uploads on demand, per-item
   conflict choice), MariaDB's row-estimate behaviour after a RENAME (#857 is ◐ for it), the owner's
-  read of L13's agent pass, the Windows GUI run of the 14 Oct rows (status, incremental pull; macOS and
-  Linux ran them), and the GUI's Check status taking ~40–60 s on both VMs where `rex live … status`
-  takes 2–3 s through the same command (the cause is not found; no log line covers the gap).** Everything else — pull (incremental since 14 Oct 2026), push with backup
+  read of L13's agent pass, and the GUI's Check status: the command body takes 3–11 s (the per-phase
+  log line, 14 Oct 2026) but on the Dell it STARTED 7 s / 20 s / 110 s after the click on three tries
+  ("requested" is logged at entry), and 40–60 s on both VMs — the wait is between the webview's invoke
+  and the command's first line, not in the command; cause not found.** The 14 Oct rows (status,
+  incremental pull, picker, history, rollback) ran on all three OSes. Everything else — pull (incremental since 14 Oct 2026), push with backup
   + Roll back (only the tables changed here by default), the per-table conflict stop, the status
   verdict + history, New site → From a live site, `rex live`, the MCP `live` tool, plugin 0.1.3 —
   is built; proven on macOS, Windows and Linux against the real host up to 0.1.2 (#824–#847,

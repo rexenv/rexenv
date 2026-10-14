@@ -285,8 +285,15 @@ async fn main() -> std::process::ExitCode {
         }
         Err(e) => check(false, &format!("12b. the incremental pull: {e}")),
     }
+    // 12d. After the incremental pull what was edited HERE before it is still ahead (#863):
+    //      the local comment (live-owned: listed, not counted) and the kept-edited file.
     let s2 = status_now(&client, &target, pulled_base.as_ref()).await;
-    check(s2.verdict == status::Verdict::UpToDate, &format!("12d. after the incremental pull: up to date (got {:?}; behind {} ahead {}; files live {:?} gone {:?} local {:?})", s2.verdict, s2.tables_behind, s2.tables_ahead, s2.files.live_changed, s2.files.live_gone, s2.files.local_changed));
+    let comments_after = s2.tables.iter().find(|t| t.name == "wp_comments").map(|t| t.local);
+    check(
+        s2.verdict == status::Verdict::Ahead && s2.tables_behind == 0 && s2.tables_ahead == 0 && s2.tables_ahead_live_owned == 1 && comments_after == Some(status::Change::Changed)
+            && s2.files.local_changed == vec!["uploads/2026/local-edit.txt".to_string()] && s2.files.live_changed.is_empty() && s2.files.live_gone.is_empty(),
+        &format!("12d. after the incremental pull: ahead by the kept-edited file only, the local comment still changed (got {:?}; behind {} ahead {} live-owned {}; comments {:?}; files live {:?} gone {:?} local {:?})", s2.verdict, s2.tables_behind, s2.tables_ahead, s2.tables_ahead_live_owned, comments_after, s2.files.live_changed, s2.files.live_gone, s2.files.local_changed),
+    );
 
     // ── PUSH (L10): a local change goes to live; rollback; a conflict stops it. ──
     let _ = wordpress::wp_run(&php, &wp, &local_root, &["post", "create", "--post_title=PUSHED-FROM-LOCAL", "--post_status=publish"]);
@@ -305,8 +312,8 @@ async fn main() -> std::process::ExitCode {
                     && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_options WHERE option_name='rexsync_pairing'") == "1"
                     && !r.tables.iter().any(|t| t.ends_with("users"))
                     && r.tables.iter().any(|t| t == "wp_posts") && !r.tables.iter().any(|t| t == "wp_terms") && r.tables_unchanged > 0
-                    && r.files == 1,
-                &format!("6. push: the local post and ONLY the changed file ({}) are on live, siteurl is LIVE's, the pairing row survived, users was not pushed; only the tables changed here went ({:?}, {} unchanged left out)", r.files, r.tables, r.tables_unchanged),
+                    && r.files == 2 && live_root.join("wp-content/uploads/2026/local-edit.txt").exists(),
+                &format!("6. push: the local post and ONLY the changed files ({}: the new one and the one edited before the pull, #863) are on live, siteurl is LIVE's, the pairing row survived, users was not pushed; only the tables changed here went ({:?}, {} unchanged left out)", r.files, r.tables, r.tables_unchanged),
             );
             check(query(&mysql, live_db, "SELECT COUNT(*) FROM rxbak_wp_posts WHERE post_title='PUSHED-FROM-LOCAL'") == "0", "7. the backup holds live's previous posts");
             match client.push_rollback(&r.backup_id).await {
