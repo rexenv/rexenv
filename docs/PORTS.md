@@ -54,6 +54,7 @@ below, then the Windows and Linux artifact tables). Ports are common except wher
 | OpenLiteSpeed | **1.9.3 — OURS** (macOS + Linux; no Windows build exists) | `rexenv/runtimes` release `openlitespeed-1.9.3-1`, immutable: `openlitespeed-1.9.3-{macos,linux}-{aarch64,x86_64}.tar.gz` (`TarGzTree`, no top dir → `openlitespeed` + `mime.properties` at the cache dir's root), built by `scripts/build-openlitespeed.sh` from pinned sources with six patches (`LSWS_TMP_DIR`, `noRemoteFetch`, the macOS uninitialised-pointer crash …). macOS `minos 12.0` on both slices; closure `libSystem` + `libc++`. GPL-3.0 makes rexenv the distributor: `licenses-openlitespeed-1.9.3-<os>-<arch>.tar.gz` rides it and the corresponding source (every tarball + the patch set) is on the same release. Per-site loopback override; `.php` → the site's shared pool over FastCGI (`core/openlitespeed.rs`) |
 | Mailpit | 1.30.3 | |
 | Adminer | 6.1.1 | single `.php`, OS-agnostic. sha256 `d2cbf80d…3dc865` (`ADMINER_6_1_1_SHA256`). Re-pinned 6.1.0 → 6.1.1 on 27 Sep 2026 (rexenv/runtimes#8, manifest serial 8). Re-pinned from 5.4.2 on 21 Sep 2026 (rexenv/runtimes#5); that row still read 5.4.2 until the 0.8.6 release commit, because the re-pin commit changed the code and its fixtures but not this table |
+| phpMyAdmin | **5.2.3** | the project's own built release zip (`files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-english.zip`, english UI, 10.8 MB → 52 MB tree), `ZipTree { strip: 1 }` → `index.php`, OS-agnostic (`PHPMYADMIN_5_2_3_SHA256`). The SECOND database console, MySQL/MariaDB only (no PostgreSQL driver exists) — `docs/PLAN-db-console-open-and-phpmyadmin.md`. **Pinned only after a run** (14 Oct 2026, macOS): renders logged in against the real MySQL 8.4.6 and MariaDB on PHP 8.3.32 (the pool pin), 8.4.23 and 8.5.8 with no fatal or deprecation; the Windows and Linux runs are the plan's T7. A script tree, not a binary one: prepared by `prepare_script_dir` (Windows strips Mark-of-the-Web and requires no `.exe`). No update family yet — pin only |
 | cloudflared | 2026.6.1 | |
 
 ### Legacy tiers — what a macOS 13 / 14 host resolves instead (`PinSet::for_tier`, 23 Sep 2026)
@@ -101,7 +102,7 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 | PostgreSQL 18.6.0 · 17.11.0 · 16.15.0 | theseus-rs `postgresql-<v>-x86_64-pc-windows-msvc.tar.gz` | `TarGzTree` → `bin/postgres.exe` | SHA-256, the project's published `.sha256`, **matched by our own full download on 13 Sep 2026** (the macOS rows' rule: a publisher digest is pinned only once our hash agrees) |
 | Mailpit 1.30.3 | GitHub release `mailpit-windows-amd64.zip` | `Zip` → `mailpit.exe` | SHA-256 of our download — no checksums file for this release |
 | cloudflared 2026.6.1 | GitHub release `cloudflared-windows-amd64.exe` | `Raw` → `cloudflared.exe` | SHA-256 of our download |
-| WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |
+| WP-CLI · Composer · Adminer · phpMyAdmin | as above — OS-agnostic | unchanged (phpMyAdmin: `ZipTree { strip: 1 }` → `index.php`, prepared by `prepare_script_dir`: Mark-of-the-Web stripped, no PE required) | unchanged |
 
 ### Linux artifacts (`manifest(…, "linux", …)`, port L2 — 24 Sep 2026)
 
@@ -126,7 +127,7 @@ builds for each arch.
 | OpenLiteSpeed 1.9.3 | OURS — `rexenv/runtimes` `openlitespeed-1.9.3-1`, `openlitespeed-1.9.3-linux-{x86_64,aarch64}.tar.gz`, built on Ubuntu 22.04 (glibc floor 2.35, highest symbol used 2.34; `NEEDED` = glibc + `libcrypt.so.1`, libstdc++/libgcc/libaio/libatomic static) — the SAME recipe and patches as macOS, not upstream's tarball | `TarGzTree` → `openlitespeed` | SHA-256 from the release's `SHA256SUMS`, matched by the app's own verified resolve |
 | Mailpit 1.30.3 | GitHub release `mailpit-linux-{amd64,arm64}.tar.gz` | `TarGz` → `mailpit` | SHA-256 of our download |
 | cloudflared 2026.6.1 | GitHub release `cloudflared-linux-{amd64,arm64}` | `Raw` → `cloudflared` | SHA-256 of our download |
-| WP-CLI · Composer · Adminer | as above — OS-agnostic | unchanged | unchanged |
+| WP-CLI · Composer · Adminer · phpMyAdmin | as above — OS-agnostic | unchanged | unchanged |
 
 Runtime dependencies the `.deb` must declare for these (D-L1; measured against the tarballs'
 `ldd` on the Dell's WSL, 26 Sep 2026): MySQL's generic build needs `libaio.so.1` and `libnuma1`; the

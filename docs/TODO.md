@@ -257,12 +257,24 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     the preference route and the per-OS private flags were already shared. GUI runs owed: SMOKE
     rows in the main body, § Windows and § Linux (all "no run recorded").
   - [ ] **T7 (before T2)** `examples/phpmyadmin_check.rs` (stack tier, `all`): stage → GET through the
-    loopback edge → 200 + title, on the pinned PHP (8.5.8), run on macOS + Dell + Ubuntu VM — the
-    measurement that fixes the version to pin, and plan §7's fallback (the 8.4 pool for the vhost) if
-    phpMyAdmin 5.2.x fatals on 8.5.
-  - [ ] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
+    loopback edge → 200 + title, on the pinned PHP (8.3.32 — the plan said 8.5.8; the pool pin is
+    `PHP_VERSION`), run on macOS + Dell + Ubuntu VM — the measurement that fixes the version to pin,
+    and plan §7's fallback (an older pool for the vhost) if phpMyAdmin 5.2.x fatals.
+    ✓ **The measurement, 14 Oct 2026 (macOS, by hand, before T2's pin):** 5.2.3 through `php -S` on
+    the bundled 8.3.32, 8.4.23 and 8.5.8, `auth_type = config` against the real MySQL 8.4.6 (13306)
+    and MariaDB (13307): `index.php?server=1`, `?server=2` and `?route=/database/structure&db=mysql`
+    all 200 with the logged-in title, zero fatal/deprecation on the page. Headers measured for T5:
+    `X-Frame-Options: DENY`, a CSP with no `frame-ancestors`, cookies `SameSite=Strict`. **Open for
+    the example itself and its Windows + Linux runs.**
+  - [x] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
     in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
     `notices-check.py` decides whether its vendored composer tree needs per-package rows).
+    ✓ **14 Oct 2026:** `PHPMYADMIN_VERSION` 5.2.3 + `PHPMYADMIN_5_2_3_SHA256`, `phpmyadmin_spec`
+    (pin only, `files.phpmyadmin.net`, `ZipTree { strip: 1 }` → `index.php`), `Shape::Dir`, the
+    `PinSet` field; a PHP tree is prepared by the new `prepare_script_dir` trait method (Windows:
+    MotW stripped, no PE required — `check_tree` would have refused it), default no-op on macOS/Linux.
+    NOTICES: a downloaded runtime, not distributed by us — the prose list, no table (the checker
+    walks only the compiled-in composer tree). PORTS rows ×3 tables; PLATFORMS §3.
   - [ ] **T3** `core/phpmyadmin.rs`: docroot + marker + rename-publish staging, the `config.inc.php`
     generator (pure, tested: loopback-only servers, forward-slash paths with a space AND a backslash,
     `AllowThirdPartyFraming = false`), the blowfish secret file owner-only via `permissions()`,

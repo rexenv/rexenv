@@ -987,6 +987,15 @@ pub trait BinaryProvider: Send + Sync {
     fn prepare_binary_dir(&self, _root: &std::path::Path) -> Result<()> {
         Ok(())
     }
+    /// Prepare an extracted directory that is a PHP APPLICATION (phpMyAdmin —
+    /// `core::binaries::is_script_tree`): no executable in it, run by the pool's PHP.
+    /// Default: nothing, as `prepare_binary_dir` — there is no quarantine on a reqwest
+    /// download and nothing to sign. Windows strips the Mark of the Web from every file
+    /// and requires NO runnable image, where `prepare_binary_dir` refuses a tree without
+    /// one (#598) — the right rule for MySQL, the wrong one for a tree of `.php`.
+    fn prepare_script_dir(&self, _root: &std::path::Path) -> Result<()> {
+        Ok(())
+    }
     /// A system runtime the downloaded servers need that this machine lacks — asked BEFORE any
     /// start, so a user learns it on the Services screen and in `rex doctor` rather than from a
     /// failed provision (user report, 8 Oct 2026). Windows: the Microsoft Visual C++

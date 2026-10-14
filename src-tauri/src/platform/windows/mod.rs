@@ -794,6 +794,17 @@ impl BinaryProvider for WindowsBinaryProvider {
     fn prepare_binary_dir(&self, root: &Path) -> Result<()> {
         check_tree(root)
     }
+    /// A PHP tree (phpMyAdmin): every file loses its Mark of the Web — PHP reads a
+    /// zone-marked file fine, but a stray `.exe` in a later release would not run —
+    /// and no image is required, because none exists.
+    fn prepare_script_dir(&self, root: &Path) -> Result<()> {
+        let mut files = Vec::new();
+        collect_files(root, &mut files)?;
+        for file in &files {
+            strip_mark_of_the_web(file)?;
+        }
+        Ok(())
+    }
     /// The Visual C++ Redistributable php.net's PHP and Oracle's MySQL link (`vc_runtime.rs`).
     fn runtime_problem(&self) -> Option<RuntimeProblem> {
         vc_runtime::problem()

@@ -108,6 +108,14 @@ const MAILPIT_VERSION: &str = "1.30.3";
 /// Pinned Adminer version (a single `adminer.php`, all drivers, run via the bundled
 /// PHP — OS-agnostic, like WP-CLI). Phase 3 §5.1.
 const ADMINER_VERSION: &str = "6.1.1";
+/// Pinned phpMyAdmin version — a whole PHP application tree (`index.php`, `vendor/`,
+/// `js/`, `themes/`), run via the bundled PHP like Adminer, OS-agnostic. The second
+/// database console (`docs/PLAN-db-console-open-and-phpmyadmin.md`); MySQL/MariaDB only.
+/// **Measured before it was pinned** (14 Oct 2026, plan §3.4 / T7): 5.2.3 renders logged
+/// in against the real MySQL 8.4.6 and MariaDB on PHP 8.3.32 (the pool pin), 8.4.23 and
+/// 8.5.8 — no fatal, no deprecation on the page. A pin nobody has run is superstition
+/// with a constant name (the Adminer plan's lesson).
+const PHPMYADMIN_VERSION: &str = "5.2.3";
 /// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
 const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
@@ -209,6 +217,7 @@ pub struct PinSet {
     pub postgres: &'static str,
     pub mailpit: &'static str,
     pub adminer: &'static str,
+    pub phpmyadmin: &'static str,
     pub cloudflared: &'static str,
     pub redis: &'static str,
     pub mariadb: &'static str,
@@ -239,6 +248,7 @@ const STANDARD_PINS: PinSet = PinSet {
     postgres: POSTGRES_VERSION,
     mailpit: MAILPIT_VERSION,
     adminer: ADMINER_VERSION,
+    phpmyadmin: PHPMYADMIN_VERSION,
     cloudflared: CLOUDFLARED_VERSION,
     redis: REDIS_VERSION,
     mariadb: MARIADB_VERSION,
@@ -812,6 +822,13 @@ const COMPOSER_2_10_2_SHA256: &str =
 // itself before it landed here. 27 Sep 2026: 6.1.0 → 6.1.1, the same way — runtimes
 // manifest serial 8 (rexenv/runtimes#8) and `curl | shasum` on the release agree.
 const ADMINER_6_1_1_SHA256: &str = "d2cbf80da00f7630304477b4a09f1bd2212bc6c4a53c71df1520a8afce3dc865";
+
+// phpMyAdmin release zip SHA-256 (`files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-english.zip`,
+// the project's own built release — english UI, 10.8 MB, 52 MB extracted; same on every
+// OS/arch, a PHP tree). `curl | shasum -a 256` on 14 Oct 2026, cross-checked against the
+// `.sha256` the project publishes beside it. The zip carries ONE top-level directory
+// (`phpMyAdmin-5.2.3-english/`), hence `ZipTree { strip: 1 }`.
+const PHPMYADMIN_5_2_3_SHA256: &str = "a59e54436489a9676edc0a8b2294ade4092bdad1c25919f857b20ec96b944920";
 
 // cloudflared static Go binary SHA-256 (computed at pin time from the GitHub
 // release `.tgz`). De-quarantined + ad-hoc signed by prepare_binary (no relink).
@@ -1786,6 +1803,33 @@ fn adminer_spec(version: &str) -> Option<BinarySpec> {
     })
 }
 
+/// phpMyAdmin: the pinned release zip, and NOTHING else — no catalog arm yet
+/// (`docs/PLAN-db-console-open-and-phpmyadmin.md` §9: a third `updates::Family` is its
+/// own row, after v1 is measured). `updates::nameable("phpmyadmin")` is false today, so a
+/// manifest entry under that name is refused by the same allowlist that guards Adminer.
+fn phpmyadmin_spec(version: &str) -> Option<BinarySpec> {
+    if version != PHPMYADMIN_VERSION {
+        return None;
+    }
+    Some(BinarySpec {
+        url: format!(
+            "https://files.phpmyadmin.net/phpMyAdmin/{version}/phpMyAdmin-{version}-english.zip"
+        ),
+        checksum: Checksum::Sha256(PHPMYADMIN_5_2_3_SHA256.to_string()),
+        archive: Archive::ZipTree { strip: 1 },
+        member: "index.php",
+    })
+}
+
+/// A directory distribution that is a PHP APPLICATION, not binaries: no executable in
+/// it, run by the pool's PHP. `resolve_dir` prepares such a tree with
+/// `prepare_script_dir` instead of `prepare_binary_dir` — Windows' binary check refuses
+/// a tree with no `.exe`/`.dll` ("not a Windows binary tree", #598), which is exactly
+/// right for MySQL and exactly wrong here.
+pub fn is_script_tree(name: &str) -> bool {
+    name == "phpmyadmin"
+}
+
 /// The download URL for a pinned PHP build, from whichever source publishes it.
 ///
 /// **This branch must exist BEFORE any checksum is pinned.** `manifest`'s PHP arms
@@ -2622,6 +2666,8 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // Adminer is a single PHP file (run via the bundled PHP), identical on every OS.
         ("adminer", _, v) => adminer_spec(v),
+        // phpMyAdmin is a PHP tree (run via the bundled PHP), identical on every OS.
+        ("phpmyadmin", _, v) => phpmyadmin_spec(v),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
             url: format!(
@@ -3055,7 +3101,7 @@ pub fn shape_of(name: &str) -> Shape {
 /// Windows resolve looking for `dir/php` inside a tree (docs/PLAN-windows-port.md W2).
 pub fn shape_of_on(name: &str, os: &str) -> Shape {
     match name {
-        "mysql" | "postgres" | "openlitespeed" => Shape::Dir,
+        "mysql" | "postgres" | "openlitespeed" | "phpmyadmin" => Shape::Dir,
         "php" | "nginx" if os == "windows" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,
@@ -3666,7 +3712,11 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         stage_addons(name, version, os, &staging, &id).await?;
         // Inside the staged block, so a tree that fails it is removed with the
         // staging dir and never becomes the cached tree.
-        platform.binaries().prepare_binary_dir(&staging)?;
+        if is_script_tree(name) {
+            platform.binaries().prepare_script_dir(&staging)?;
+        } else {
+            platform.binaries().prepare_binary_dir(&staging)?;
+        }
         stage_licenses(&spec, name, version, arch, &staging, &id).await?;
         write_pin_marker(&staging, &spec.checksum);
         publish(&staging, &dir, spec.member)
@@ -4954,6 +5004,12 @@ mod tests {
         for n in ["wp-cli", "adminer"] {
             assert_eq!(shape_of(n), Shape::File);
         }
+        // phpMyAdmin: a zip TREE of PHP, published whole under its `index.php`.
+        assert_eq!(shape_of("phpmyadmin"), Shape::Dir);
+        assert!(is_script_tree("phpmyadmin"), "a PHP tree is prepared as scripts, not binaries");
+        for n in ["mysql", "postgres", "openlitespeed", "php", "nginx"] {
+            assert!(!is_script_tree(n), "{n} is a binary tree");
+        }
         // Tree distributions, and the bundles (which have no plain manifest).
         for n in ["mysql", "postgres"] {
             assert_eq!(shape_of(n), Shape::Dir);
@@ -6119,6 +6175,7 @@ mod tests {
             ("composer".into(), one(COMPOSER_VERSION)),
             ("wp-cli".into(), one(WP_CLI_VERSION)),
             ("adminer".into(), one(ADMINER_VERSION)),
+            ("phpmyadmin".into(), one(PHPMYADMIN_VERSION)),
             ("cloudflared".into(), one(CLOUDFLARED_VERSION)),
         ];
         let all = |vs: &[&str]| vs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -6967,6 +7024,28 @@ mod tests {
         assert!(matches!(a.checksum, Checksum::Sha256(_)));
         // Same artifact on every OS/arch.
         assert_eq!(checksum_hex(&a.checksum), checksum_hex(&b.checksum));
+    }
+
+    /// phpMyAdmin: the same pinned zip on every OS/arch, a stripped tree published
+    /// under `index.php`, and ONLY the pin — there is no catalog family for it yet, so
+    /// any other version must be unresolvable rather than guessed at.
+    #[test]
+    fn manifest_pins_phpmyadmin_os_agnostic_and_pin_only() {
+        let v = PHPMYADMIN_VERSION;
+        let a = manifest("phpmyadmin", v, "macos", Arch::Arm64).unwrap();
+        let b = manifest("phpmyadmin", v, "windows", Arch::X86_64).unwrap();
+        let c = manifest("phpmyadmin", v, "linux", Arch::Arm64).unwrap();
+        assert!(a.url.ends_with(&format!("/phpMyAdmin/{v}/phpMyAdmin-{v}-english.zip")), "{}", a.url);
+        assert!(a.url.starts_with("https://files.phpmyadmin.net/"), "{}", a.url);
+        assert_eq!(a.member, "index.php");
+        assert_eq!(a.archive, Archive::ZipTree { strip: 1 });
+        for other in [&b, &c] {
+            assert_eq!(checksum_hex(&a.checksum), checksum_hex(&other.checksum));
+            assert_eq!(a.url, other.url);
+        }
+        assert!(manifest("phpmyadmin", "5.2.2", "macos", Arch::Arm64).is_none(), "pin only");
+        assert!(!crate::core::updates::nameable("phpmyadmin"), "no update family yet (plan §9)");
+        assert!(!is_self_distributed(&a.url), "the project's own download, not ours");
     }
 
     /// W2 — the Windows arms: source, archive kind and member per artifact, and
