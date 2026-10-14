@@ -1264,6 +1264,25 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       this site…" + Not connected. The "last contact / last pull / last push / backup kept" lines
       with real values need the live host on 0.1.3 (their data is proven by the plugin's own test §9).
       Then the local copy was pulled again whole, which put plugin 0.1.2 back and deactivated it.
+  ✓ **Linux** — the Ubuntu 22.04 VM (GNOME, WebKitGTK), this tree's debug deb, 14 Oct 2026, against
+  live-sync.rex.bd (plugin 0.1.2 there), `l14lx.rex` on its 11 Oct base: Check status → "Live has
+  changes you do not have here — 3 tables, 0 files. Pull to bring them." + the old-base line ("What
+  changed here cannot be told yet…"); `rex live l14lx.rex status` the same in 2.6 s (`wpcs_options`,
+  `wpcs_posts`, `wpcs_usermeta` changed on live, every *here* "unknown"). Pull from the card → the
+  incremental confirm → "Pulled 3 tables (193 rows) and 0 files — 9 tables and 1055 files unchanged on
+  live were kept as they are here." + the toast; the post at `/2008/06/21/html/` 200. A title and
+  `twentytwentyfive/style.css` edited here → the CLI "ahead — 1 table and 1 file changed here: push" →
+  Check status → "This site is ahead of live — 1 table, 1 file changed here. Push to send them." with
+  Push… → the picker: `wpcs_posts` ticked "changed here", "(7 unchanged tables start unticked)", the
+  live-owned ones "live writes here" → host typed → "Pushed 1 table and 1 file … as `098df2be…`", live's
+  title changed → Roll back → asks naming the id → live's title back, "Rolled back.", "Last sync: rolled
+  back just now" → the CLI "ahead — 1 table and 1 file" again (#862) → the Pull menu → "Pull everything
+  again" → the confirm → "Pulled 12 tables (220 rows) and 1055 files." — title and CSS back to live's →
+  History (4 syncs): pull / rollback / push / pull, `rex live … history` the same four lines; the history
+  file `<id>.history.json` beside the base. The GUI's Check status took ~45–60 s here too (the CLI 2.6 s).
+  Seen, not a defect: the VM's disk filled during the deb build (the first build linked into "No space
+  left on device"); `target/debug/{incremental,deps,build}` and a fixture site were removed. The plugin
+  page row ran on macOS only (the page is the plugin's, not the OS's).
 - [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
       password → Connect works; without them, the firewall/401 sentence.
 - **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's
