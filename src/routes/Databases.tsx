@@ -8,6 +8,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { AdminerFrame } from "@/components/database/AdminerFrame";
 import { confirm } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { OpenInBrowserSplit } from "@/components/ui/open-in";
 import { toast, toastBackendError } from "@/lib/toast";
 import {
   adminerStatus,
@@ -57,6 +58,7 @@ function DbRow({
   versions,
   onSwitchVersion,
   onBrowse,
+  browserUrl,
   onGoServices,
 }: {
   db: DbStatus;
@@ -64,6 +66,8 @@ function DbRow({
   versions: string[];
   onSwitchVersion: (v: string) => void;
   onBrowse: () => void;
+  /** The console's first-party URL for a real browser (`adminerUrl`). */
+  browserUrl: string;
   /** Engine lifecycle lives on the Services page (P2-7) — link, never a dead button. */
   onGoServices: () => void;
 }) {
@@ -106,14 +110,28 @@ function DbRow({
       <StatusPill status={db.running ? "running" : "stopped"} />
       {db.running ? (
         BROWSABLE.has(db.key) ? (
-          <button
-            onClick={onBrowse}
-            title="Open in database browser"
-            className="flex items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 py-1.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
-          >
-            <TableProperties className="h-3.5 w-3.5" />
-            Browse
-          </button>
+          <>
+            <button
+              onClick={onBrowse}
+              title="Open in the in-app database browser"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-rex-border bg-rex-surface-2 px-2.5 text-[0.75rem] text-rex-text transition-colors hover:border-brand"
+            >
+              <TableProperties className="h-3.5 w-3.5" />
+              Browse
+            </button>
+            {/* The same console in a REAL browser, in the app-wide shape: the
+                preferred browser's icon, the chevron listing every installed
+                browser with its private-window target (owner, 14 Oct 2026).
+                Unlike the Sites rows this row reserves no fixed quick-action
+                column, so the chevron fits. The URL is the first-party https
+                deep link — auto-login works there too (first-party cookies). */}
+            <OpenInBrowserSplit
+              url={browserUrl}
+              title={`Open ${db.label} in your browser`}
+              chevronLabel={`Open ${db.label} in another browser`}
+              probe="db-open-in-browser"
+            />
+          </>
         ) : (
           <span
             title={`No browser for ${db.label} — connect with redis-cli -p ${db.port}`}
@@ -368,6 +386,9 @@ export function Databases() {
                     label: db.label,
                   })
                 }
+                browserUrl={adminerUrl({
+                  engine: db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql",
+                })}
                 onGoServices={() => navigate("/services")}
               />
             ))}

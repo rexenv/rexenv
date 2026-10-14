@@ -70,7 +70,7 @@ import { QuickTile } from "@/routes/SiteDetail";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplitButton } from "@/components/ui/split-button";
-import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, OpenInBrowserSplit, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { usePreferredEditor } from "@/lib/useEditor";
 import { Code, ExternalLink, Globe } from "lucide-react";
@@ -921,6 +921,16 @@ function OpenInView() {
           onClick={() => {}}
           menu={editorMenu}
           menuLabel="Open this project in another editor"
+        />
+      </div>
+      {/* The database console's control (Databases row + the AdminerFrame bar):
+          the SAME shape — icon, label, chevron, private rows — for a url that
+          is not a site's. Rendered from the shipping component. */}
+      <div data-probe="console" className="flex items-center gap-[9px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
+        <OpenInBrowserSplit
+          url="https://adminer.rexenv.rex/?server=127.0.0.1%3A13306&username=root&rexenv_auto=1"
+          chevronLabel="Open MySQL in another browser"
+          probe="db-open-in-browser"
         />
       </div>
     </div>

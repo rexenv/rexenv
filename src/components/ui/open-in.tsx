@@ -3,6 +3,10 @@ import { Code, Globe, TerminalSquare } from "lucide-react";
 import { AppIcon } from "@/components/ui/app-icon";
 import { IncognitoIcon } from "@/components/common/IncognitoIcon";
 import { MenuItem } from "@/components/ui/menu";
+import { SplitButton } from "@/components/ui/split-button";
+import type { ButtonProps } from "@/components/ui/button";
+import { openExternal } from "@/lib/ipc";
+import { toastBackendError } from "@/lib/toast";
 import { openUrlIn, useBrowsers, usePreferredBrowser } from "@/lib/useBrowser";
 import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEditor";
 import { usePlatformWords } from "@/lib/usePlatformWords";
@@ -91,6 +95,55 @@ export function useBrowserMenu(
       )}
     </MenuItem>
   ));
+}
+
+/**
+ * The whole "Open in browser" control in one piece: the preferred browser's
+ * icon, the label, and the chevron whose rows are every installed browser with
+ * its private-window second target — for a url that is NOT a site's (a
+ * database console, a tool page). The site header composes the same parts
+ * itself because its button also carries the serving-state rule; everything
+ * else should render THIS, so a third spelling (an arrow, a globe, a plain
+ * button with no chooser — the 13 Sep 2026 drift) cannot come back. The
+ * primary half goes through `openExternal`, so the stored preference is
+ * applied in the backend like every other link.
+ */
+export function OpenInBrowserSplit({
+  url,
+  chevronLabel = "Open in another browser",
+  title,
+  size = "sm",
+  variant = "secondary",
+  className,
+  probe,
+}: {
+  url: string;
+  chevronLabel?: string;
+  title?: string;
+  size?: ButtonProps["size"];
+  variant?: ButtonProps["variant"];
+  className?: string;
+  /** `data-probe` for the wk-checks / smoke scripts. */
+  probe?: string;
+}) {
+  const menu = useBrowserMenu(url);
+  return (
+    <span data-probe={probe} className="inline-flex">
+      <SplitButton
+        size={size}
+        variant={variant}
+        title={title}
+        onClick={() => void openExternal(url).catch(toastBackendError)}
+        menu={menu}
+        menuWidth={BROWSER_MENU_WIDTH}
+        chevronLabel={chevronLabel}
+        className={className}
+      >
+        <PreferredBrowserIcon className="h-[15px] w-[15px]" />
+        Open in browser
+      </SplitButton>
+    </span>
+  );
 }
 
 export function useEditorMenu(path: string): ReactNode | undefined {

@@ -1983,6 +1983,12 @@ words (the browser shell's mock and two dev review pages excepted).
   wrong row costs a command typed in the wrong directory.
 - **The chevron next to "Open in browser" is one-time.** It opens THIS url
   elsewhere and changes no setting — the default moves in Settings only.
+- **A url that is not a site's gets the SAME control, from one component** —
+  `OpenInBrowserSplit` (`open-in.tsx`): icon + label + chevron + private rows,
+  primary through `open_external`. The Databases rows (beside Browse) and the bar
+  above the in-app console render it (14 Oct 2026, T1 of
+  `docs/PLAN-db-console-open-and-phpmyadmin.md`); before that the console's bar had a
+  plain button with no chooser — the 13 Sep drift class, one surface at a time.
 - **Each row of that menu has a SECOND target: the same url in that browser's
   private window** (`open -na <app> --args --incognito|-private-window <url>`) —
   a logged-out look at the site without signing out of the session you are

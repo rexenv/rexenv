@@ -45,9 +45,21 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
   }
 
   const chevrons = () => page.getByRole("button", { name: /another browser|another editor/ });
-  // 2 header (browser + Magic Login) + 3 tiles (browser, Magic Login, editor).
-  if ((await chevrons().count()) !== 5)
-    fails.push(`expected 5 chevrons, saw ${await chevrons().count()}`);
+  // 2 header (browser + Magic Login) + 3 tiles (browser, Magic Login, editor)
+  // + 1 database console (`OpenInBrowserSplit`, the Databases row's control).
+  if ((await chevrons().count()) !== 6)
+    fails.push(`expected 6 chevrons, saw ${await chevrons().count()}`);
+
+  // The console control is the app-wide shape, not a third spelling: its
+  // primary half goes through `open_external` (the backend applies the
+  // preference), with the console's own https url — never the site's.
+  await page.evaluate(() => { window.__rexOpens = []; });
+  await page.locator('[data-probe="db-open-in-browser"] button').first().click();
+  await page.waitForTimeout(250);
+  const consoleOpens = await page.evaluate(() => window.__rexOpens ?? []);
+  const c = consoleOpens[0];
+  if (consoleOpens.length !== 1 || !c || c.cmd !== "open_external" || !/^https:\/\/adminer\.rexenv\.rex\//.test(c.args?.target ?? ""))
+    fails.push(`console primary sent ${JSON.stringify(consoleOpens)} — expected one open_external of the adminer url`);
 
   // EVERY chevron must carry a visible seam. Without it the arrow reads as
   // decoration on one wide button and "click there for what?" has no answer —

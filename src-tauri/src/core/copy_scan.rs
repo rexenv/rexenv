@@ -909,7 +909,11 @@ const LINK = "https://example.test/a//b";
             ("components/wordpress/WordPressManager.tsx", "onClick={onLoginAs}", wordpress),
             ("routes/Tunnels.tsx", "title=\"Open public URL\"", browser),
             ("routes/Mail.tsx", "Open Mailpit", browser),
-            ("components/database/AdminerFrame.tsx", "Open in browser", browser),
+            // The console's control moved INTO `OpenInBrowserSplit` (14 Oct 2026):
+            // the label and the icon live in the component once, and its
+            // consumers (the Databases rows, `AdminerFrame`'s bar) are checked
+            // below to render it rather than a stand-in.
+            ("components/ui/open-in.tsx", "        Open in browser\n      </SplitButton>", browser),
         ];
         for (rel, needle, icon) in controls {
             let text = strip_ts_comments(
@@ -932,6 +936,12 @@ const LINK = "https://example.test/a//b";
                     );
                 }
             }
+        }
+        // The surfaces that hand a non-site url to the browser render the ONE
+        // component, so the icon/chevron/private rows cannot drift per surface.
+        for rel in ["routes/Databases.tsx", "components/database/AdminerFrame.tsx"] {
+            let text = std::fs::read_to_string(src.join(rel)).unwrap_or_else(|_| panic!("{rel} exists"));
+            assert!(text.contains("<OpenInBrowserSplit"), "{rel}: must render OpenInBrowserSplit, not its own open-in-browser control");
         }
     }
 

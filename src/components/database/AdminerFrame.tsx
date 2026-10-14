@@ -1,10 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Check, Copy, Database } from "lucide-react";
-import { PreferredBrowserIcon } from "@/components/ui/open-in";
+import { OpenInBrowserSplit } from "@/components/ui/open-in";
 import { Placeholder } from "@/components/common/Placeholder";
-import { adminerSetTheme, isTauri, openExternal } from "@/lib/ipc";
+import { adminerSetTheme, isTauri } from "@/lib/ipc";
 import { currentTheme, subscribeTheme } from "@/lib/theme";
-import { toastBackendError } from "@/lib/toast";
 
 /** Embeds the stack-served Adminer (framed; its palette follows the APP's theme,
  *  written to the console's docroot before the frame loads — Adminer's own
@@ -74,14 +73,16 @@ export function AdminerFrame({ src, externalUrl }: { src: string; externalUrl?: 
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Copied" : "Copy"}
           </button>
-          <button
-            onClick={() => void openExternal(externalUrl).catch(toastBackendError)}
-            title="Open this database in your default browser"
-            className="flex h-7 flex-none items-center gap-1.5 rounded-md px-2 text-[0.71875rem] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
-          >
-            <PreferredBrowserIcon className="h-3.5 w-3.5" />
-            Open in browser
-          </button>
+          {/* The same control as the Databases row: icon + chevron + private
+              targets, never a plain button beside a split one (consistency,
+              13 Sep / 14 Oct 2026). */}
+          <OpenInBrowserSplit
+            url={externalUrl}
+            variant="ghost"
+            title="Open this database in your browser"
+            chevronLabel="Open this database in another browser"
+            probe="db-frame-open-in-browser"
+          />
         </div>
       )}
       {/* The iframe fills ABSOLUTELY: percentage heights through flex chains

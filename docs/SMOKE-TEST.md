@@ -921,6 +921,16 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   is the case a query parameter would have lost). Then set the app to **System** and flip
   the OS appearance: the console follows that too. **Open: no run recorded** (`adminer_check`
   proves the head Adminer emits per theme, ledger #375; not the reload).
+- [ ] **Open a database console in a real browser** (14 Oct 2026, T1 of
+  `docs/PLAN-db-console-open-and-phpmyadmin.md`): Databases → beside MySQL's Browse, the
+  **Open in browser** control wears the icon of the browser a click will use and carries a
+  chevron. A plain click opens `https://adminer.rexenv.rex/?…&rexenv_auto=1` in that browser,
+  logged in with no prompt. The chevron lists every installed browser (the default marked),
+  and each row's second icon opens the same console in that browser's **private window** — logged
+  in there too (auto-login is first-party). The same control sits in the bar above the in-app
+  console (Databases → Browse, and a site's Database tab). Needs a Mac with two browsers for the
+  chevron (one browser = no chevron, by design). L2: `openin.js` asserts the shape and the
+  `open_external` target. **Open: no run recorded.**
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
@@ -3008,6 +3018,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       app's own `frame-src` (#702) and Adminer's replayed `frame-ancestors` (#699). **Tell:** a
       blank frame with the URL bar above it filled in — the CSP refused the app's origin (#699),
       and nothing in any log says so.
+- [ ] **Open a database console in a real browser** (T1, 14 Oct 2026): the main body's row.
+      Windows differences: the chevron's rows come from `app_catalog.rs` (Chrome/Edge/Brave/
+      Vivaldi/Chromium `--incognito`/`--inprivate`, Firefox `-private-window`), and the browser is
+      started as the detected executable with its arguments — no shell. The Dell has Edge + Chrome,
+      so the chevron renders there. **Open: no run recorded.**
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
       adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
@@ -3645,6 +3660,11 @@ rexenv0 <name>` and read `Current Scopes:`.
       **✓ 28 Sep 2026 (VM, 0.8.9):** Browse on MySQL → "Browsing MySQL", Adminer 6.1.1 inside the
       panel, "MySQL version: 8.4.6 through PHP extension MySQLi", the `wp_lm_rex` database
       listed; the address bar carries the `adminer.rexenv.rex` URL with Copy / Open in browser.
+- [ ] **Open a database console in a real browser** (T1, 14 Oct 2026): the main body's row.
+      Linux differences: the chevron's rows come from `platform/linux/desktop.rs` (seven browsers
+      with a private flag); the Ubuntu VM has Firefox only unless a second browser is installed
+      first (`snap install chromium`) — one browser = no chevron, by design. **Open: no run
+      recorded.**
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
       upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the

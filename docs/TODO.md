@@ -248,9 +248,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on demand when chosen, `auth_type = config` naming only the two loopback engines, the direct vhost
   never frameable, the in-app frame through its own `rexpma` proxy origin (words + both CSP ends, all
   three OSes). Tasks, in build order (plan §10) — each its own commit, docs in the same commit:
-  - [ ] **T1** Databases row: "Open in browser" `SplitButton` (icon + chevron + private rows) beside
+  - [x] **T1** Databases row: "Open in browser" `SplitButton` (icon + chevron + private rows) beside
     Browse; the same split button replaces `AdminerFrame`'s plain button. Proof: `wk-checks/openin.js`
     row; GUI on macOS, the Dell (`tauri build`) and the Ubuntu VM (deb); SMOKE rows ×3.
+    ✓ **14 Oct 2026:** `OpenInBrowserSplit` in `open-in.tsx`, rendered by the Databases row
+    (`data-probe="db-open-in-browser"`) and `AdminerFrame`'s bar; `openin.js` ALL PASS in WebKit
+    (6 chevrons, the console primary sends `open_external` with the adminer url). Frontend only —
+    the preference route and the per-OS private flags were already shared. GUI runs owed: SMOKE
+    rows in the main body, § Windows and § Linux (all "no run recorded").
   - [ ] **T7 (before T2)** `examples/phpmyadmin_check.rs` (stack tier, `all`): stage → GET through the
     loopback edge → 200 + title, on the pinned PHP (8.5.8), run on macOS + Dell + Ubuntu VM — the
     measurement that fixes the version to pin, and plan §7's fallback (the 8.4 pool for the vhost) if
