@@ -1306,6 +1306,14 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
   too. The GUI's Check status: the new entry log line shows the command body starting 7 s / 20 s /
   110 s after the click on three tries (the body itself 3–11 s) — the wait is before dispatch, not in
   the command; left open in TODO.
+  ✓ **Live host on plugin 0.1.3** (the owner uploaded the zip, 14 Oct 2026, evening): from the Dell,
+  `rex live l14w.rex status` → "behind — live changed 3 tables and 8 files" naming the plugin's seven
+  files changed and its `README.md` gone (the zip leaves the README out) plus `wpcs_options`/`posts`/
+  `postmeta` (the upload and the owner's session) → `rex live l14w.rex pull` → "files: 7 changed on
+  live since the last sync, 1047 unchanged … pulled 3 tables (193 rows) and 7 files" → "up to date", and
+  STILL "up to date" on six checks over the next four minutes — on 0.1.2 `wpcs_options` read "changed on
+  live" within minutes of any sync (its transients); the content stamp (#859) ends that. The plugin
+  page's "last contact / last pull" lines with real values are the owner's to read on the live site.
 - [ ] A site behind HTTP basic auth: "The live site is behind an HTTP password…" → user +
       password → Connect works; without them, the firewall/401 sentence.
 - **Windows and Linux**: the same rows (the pulling machine). The plugin side ran on macOS's
