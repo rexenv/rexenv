@@ -116,7 +116,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   have none). Also found: a background check (launch sweep / 6 h poller, `lib.rs` `check_for_app_update`) emits
   nothing to the window, so the badge and the toast lag until About is opened. Plan: `docs/PLAN-update-notice.md`
   — TopBar pill on every screen, sidebar pill that links to About, a tray "Check for Updates…" on all three OSes,
-  the `app-update` push. **T1 (the push) and T2 (the pills) landed 15 Oct 2026** (ledger #884, #885); T3–T4 open.
+  the `app-update` push. **T1 (the push), T2 (the pills) and T3 (the tray Check item) landed 15 Oct 2026** (ledger #884,
+  #885, #535 widened); T4 open.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

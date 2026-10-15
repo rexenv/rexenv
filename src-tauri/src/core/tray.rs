@@ -56,6 +56,11 @@ pub struct TrayModel {
     /// §3), and a menu that fetched would do both a centimetre from the user's
     /// cursor.
     pub update: Option<String>,
+    /// A release-signing key is pinned in this build (`app_update::enabled`), so
+    /// there is something to check against. False in a dev build: the
+    /// **Check for Updates…** item is then OMITTED rather than greyed — a door to
+    /// a card that renders nothing.
+    pub update_enabled: bool,
     /// The `mcp_enabled` setting, for the checkmark.
     pub mcp_on: bool,
     /// True when the services lock was busy and this model repeats the previous
@@ -139,6 +144,13 @@ pub enum TrayAction {
     /// a menu item that skipped them would be a second path to the one action
     /// in this app that replaces the app.
     UpdateTo(String),
+    /// **Check for Updates…** — show the window and raise the SAME
+    /// `menu://check-updates` event the macOS app menu raises, so one frontend
+    /// handler decides what "the user asked" does on every OS. Windows and Linux
+    /// have no app menu at all, so on those two this item is the ONLY menu path
+    /// to the check (`docs/PLAN-update-notice.md` S3). Like `UpdateTo`, it never
+    /// fetches and never installs (ledger #535): it opens a door.
+    CheckUpdates,
 }
 
 impl TrayAction {
@@ -155,6 +167,7 @@ impl TrayAction {
             TrayAction::StopAll => "tray:stop-all".into(),
             TrayAction::ToggleMcp => "tray:mcp".into(),
             TrayAction::About => "tray:about".into(),
+            TrayAction::CheckUpdates => "tray:check-updates".into(),
             TrayAction::OpenSite(d) => format!("tray:site:{d}"),
             TrayAction::Route(r) => format!("tray:route:{}", r.slug()),
             TrayAction::UpdateTo(v) => format!("tray:update:{v}"),
@@ -172,6 +185,7 @@ impl TrayAction {
             "stop-all" => TrayAction::StopAll,
             "mcp" => TrayAction::ToggleMcp,
             "about" => TrayAction::About,
+            "check-updates" => TrayAction::CheckUpdates,
             other => {
                 if let Some(version) = other.strip_prefix("update:") {
                     // An empty version would render "Update to …" naming
@@ -379,6 +393,20 @@ pub fn build(m: &TrayModel) -> MenuSpec {
             enabled: true,
             checked: None,
         });
+    }
+    // Beside the offer, or where it would be. Always present while a key is
+    // pinned — the question "is there a newer rexenv?" is worth asking on a day
+    // nothing is offered, and on Windows and Linux there is no app menu to ask it
+    // from. Omitted in a dev build, which has nothing to check against.
+    if m.update_enabled {
+        entries.push(MenuEntry::Item {
+            title: "Check for Updates…".into(),
+            action: TrayAction::CheckUpdates,
+            enabled: true,
+            checked: None,
+        });
+    }
+    if m.update.is_some() || m.update_enabled {
         entries.push(MenuEntry::Separator);
     }
 
@@ -491,6 +519,9 @@ mod tests {
             // users see, and a fixture that always offers an update would make
             // every "no update item" assertion below vacuous.
             update: None,
+            // A release build pins a key, so the ordinary menu carries the
+            // Check item; the dev-build menu is its own test.
+            update_enabled: true,
             stale: false,
         }
     }
@@ -543,6 +574,7 @@ mod tests {
             TrayAction::StopAll,
             TrayAction::ToggleMcp,
             TrayAction::About,
+            TrayAction::CheckUpdates,
             TrayAction::OpenSite("blog.rex".into()),
             TrayAction::OpenSite("my.long.sub.domain.test".into()),
             TrayAction::Route(TrayRoute::Sites),
@@ -573,6 +605,8 @@ mod tests {
             "tray:route:",       // empty route
             "tray:route:settings", // a real screen, but not one the tray offers
             "tray:update:",      // empty version → an item naming nothing
+            "tray:check-update", // near miss of the check item
+            "tray:check-updates:now", // the check takes no payload
             "TRAY:OPEN",         // ids are not case-folded
         ] {
             assert_eq!(TrayAction::parse(bad), None, "must not parse: {bad:?}");
@@ -856,7 +890,11 @@ mod tests {
 
         let mut added = model();
         added.update = Some("0.7.0".into());
-        assert!(!base.same_shape(&build(&added)), "an update offer adds two rows");
+        assert!(!base.same_shape(&build(&added)), "an update offer adds a row");
+
+        let mut dev = model();
+        dev.update_enabled = false;
+        assert!(!base.same_shape(&build(&dev)), "a build without a key drops the Check row");
 
         let mut site = model();
         site.sites.push(TraySite { domain: "shop.rex".into() });
@@ -921,5 +959,66 @@ mod tests {
             };
             assert!(r.path().starts_with('/'), "{id} → {}", r.path());
         }
+    }
+
+    /// **Check for Updates… is in the tray exactly when a key is pinned, beside
+    /// the offer or where it would be** (`docs/PLAN-update-notice.md` S3).
+    ///
+    /// Windows and Linux have no app menu, so without this item the check had no
+    /// menu path at all on two of the three OSes. A dev build pins no key and has
+    /// nothing to check against, so the item is omitted — and the separator that
+    /// fenced the update group goes with it, rather than leaving two in a row.
+    #[test]
+    fn the_check_item_is_offered_iff_a_key_is_pinned_next_to_the_offer() {
+        fn titles(spec: &MenuSpec) -> Vec<String> {
+            spec.entries
+                .iter()
+                .filter_map(|e| match e {
+                    MenuEntry::Item { title, .. } => Some(title.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn no_double_separators(spec: &MenuSpec) {
+            for w in spec.entries.windows(2) {
+                assert!(
+                    !matches!(w, [MenuEntry::Separator, MenuEntry::Separator]),
+                    "two separators in a row: {:?}",
+                    spec.entries
+                );
+            }
+        }
+
+        // Nothing offered: the check is the first item, enabled, not a toggle.
+        let plain = build(&model());
+        assert_eq!(titles(&plain).first().map(String::as_str), Some("Check for Updates…"));
+        let (_, enabled, checked) = item(&plain, &TrayAction::CheckUpdates);
+        assert!(enabled);
+        assert_eq!(checked, None);
+        no_double_separators(&plain);
+
+        // An offer: the update first, the check right under it, one group.
+        let mut m = model();
+        m.update = Some("0.6.0".into());
+        let offered = build(&m);
+        assert_eq!(&titles(&offered)[..2], ["Update to 0.6.0…", "Check for Updates…"]);
+        no_double_separators(&offered);
+
+        // A dev build: no Check item, with or without an offer, and no stray
+        // separator where the group was.
+        for update in [None, Some("0.6.0".to_string())] {
+            let mut dev = model();
+            dev.update_enabled = false;
+            dev.update = update;
+            let spec = build(&dev);
+            assert!(!spec.ids().contains(&TrayAction::CheckUpdates.id()), "{:?}", spec.ids());
+            no_double_separators(&spec);
+        }
+        let mut dev = model();
+        dev.update_enabled = false;
+        assert!(
+            matches!(build(&dev).entries.get(2), Some(MenuEntry::Item { action: TrayAction::StartAll, .. })),
+            "no update group at all: status, separator, then Start all"
+        );
     }
 }

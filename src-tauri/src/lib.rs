@@ -2213,6 +2213,8 @@ fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
         // The snapshot, never a read of the descriptor: drawing a menu must not
         // verify a signature, and the tray may not block (#437/#438).
         update: core::app_update::current_offer().map(|o| o.version),
+        // A compiled-in constant, not a read: is there a key to check against.
+        update_enabled: core::app_update::enabled(),
         stale: !fresh,
     })
 }
@@ -2473,6 +2475,17 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
                 log::warn!("tray: could not route to the update card: {e}");
             }
         }
+        // "Check for Updates…" — the SAME event the macOS app menu raises, so
+        // one frontend handler (`CheckUpdatesMenuWatch`) decides what asking
+        // does on every OS; on Windows and Linux, which have no app menu, this
+        // is the only menu path to it. Show first: the event needs a webview to
+        // land in. It fetches nothing and installs nothing (ledger #535).
+        core::tray::TrayAction::CheckUpdates => {
+            show_main_window(app);
+            if let Err(e) = app.emit(CHECK_UPDATES_MENU_EVENT, ()) {
+                log::warn!("tray: could not ask for an update check: {e}");
+            }
+        }
         // The app menu's About, reachable without the app menu: with the
         // window closed rexenv is Accessory and has no menu bar of its own, so
         // the tray is the ONLY way to the version and the licences. Same event
@@ -2571,11 +2584,13 @@ pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 /// two ways in must not become two About screens.
 pub const ABOUT_MENU_EVENT: &str = "menu://about";
 
-/// The app menu's "Check for Updates…" — id and event.
+/// "Check for Updates…" — the macOS app menu's id, and the event it raises.
 ///
 /// Separate from the About item because it does something as well as going
-/// somewhere: the frontend navigates to the card AND runs a check, so a user who
-/// came to the menu bar asking gets an answer rather than a screen.
+/// somewhere: the frontend navigates to the card AND re-reads its state, so a
+/// user who came to the menu bar asking gets an answer rather than a screen.
+/// The event is not macOS-gated: the TRAY's **Check for Updates…** raises it
+/// on all three OSes (the only menu path on Windows and Linux).
 #[cfg(target_os = "macos")]
 const CHECK_UPDATES_MENU_ID: &str = "rex-check-updates";
 pub const CHECK_UPDATES_MENU_EVENT: &str = "menu://check-updates";
@@ -3327,6 +3342,9 @@ mod tests {
             "commands::services::stop_services",
             "commands::system::open_external",
             "commands::mcp::mcp_set_enabled",
+            // The Check item raises the app menu's OWN event — one handler for
+            // both doors, on every OS (PLAN-update-notice S3).
+            "emit(CHECK_UPDATES_MENU_EVENT",
         ] {
             assert!(body.contains(must), "the tray must act through {must}");
         }
@@ -3337,6 +3355,10 @@ mod tests {
             // that tells a user what pressing it costs.
             "app_update_apply",
             "app_update_restart",
+            // Nor does it CHECK: the tray's Check item emits the menu event and
+            // the card owns the check — a fetch on the menu path is the thing
+            // #437/#535 forbid.
+            "app_update_check",
             // The browser preference lives in open_external, once.
             "shell().open",
             // The MCP flag without the bind: the toggle would read "on" while

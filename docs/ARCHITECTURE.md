@@ -2085,6 +2085,14 @@ words (the browser shell's mock and two dev review pages excepted).
   frontend invalidates rather than calling the check itself — the card owns that mutation
   and its failure copy, and a second caller would be a second place deciding what a failed
   check looks like.
+- **The tray's "Check for Updates…"** (`TrayAction::CheckUpdates`, `tray:check-updates`, 15 Oct
+  2026, `docs/PLAN-update-notice.md` S3) sits right under the update item, or first when there
+  is no offer, whenever a release key is pinned (`TrayModel::update_enabled` =
+  `app_update::enabled()`, a compiled-in constant — a dev build omits it). Its click shows the
+  window and raises the SAME `menu://check-updates` event as the macOS app menu, so one handler
+  decides what asking does; on Windows and Linux, which have no app menu, it is the ONLY menu
+  path to the check. Like the update item, it fetches nothing, takes no lock and installs
+  nothing (#535).
 - **The update item is the ONE thing in the menu about the app itself** (ledger #535). It
   appears only when a verified offer exists, reads `Update to 0.6.0…`, and OPENS Settings →
   About — the ellipsis is the promise. It never installs: the consent sentence and the button
