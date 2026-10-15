@@ -1964,7 +1964,16 @@ Two settings pick the app rexenv hands things to: `preferred_editor` ("Open in
 editor" → `open -a <editor> <site folder>`, so the folder lands as a PROJECT) and
 `preferred_browser` (every `http(s)` link). Both are stored ids over
 `ShellRunner::detect_editors` / `detect_browsers`, whose macOS impls scan
-`/Applications` + `~/Applications` for a fixed table of bundles. **On Windows** (`platform/windows/
+`/Applications` + `~/Applications` (+ the two `/System` folders) for a fixed table of bundles — and
+then **ask Spotlight** (`mdfind kMDItemContentType == 'com.apple.application-bundle'`, ONE query for
+every bundle, kept 10 s so the three detections on a Settings mount share it; a copy under
+/Applications or the home folder wins over a stray on another disk; the Trash, Time Machine and
+Xcode's tree are not "installed"). A client's VS Code in a sub-folder of /Applications read "No code
+editor detected" until then (16 Oct 2026, ledger #888). Every detection is a FRESH scan — nothing is
+stored — and Settings → General's **Re-detect** button refetches editors, browsers and terminals
+together, because the answer a user sees is a snapshot of one scan and a snapshot needs a "look
+again" (a relaunch was the only other way). The found bundle's PATH is what `open -a` gets, so a
+bundle Spotlight located opens where it is. **On Windows** (`platform/windows/
 app_catalog.rs` over `app_registry.rs`, W7 S3, ledger #622) the tables carry the SAME ids, so a stored
 preference names the same app on both OSes, and detection reads what installers register — App Paths, the
 uninstall entries (`DisplayIcon`, `InstallLocation`), `StartMenuInternet` — before a known install folder,
@@ -1972,7 +1981,16 @@ keeping only executables that exist on disk; the default browser is the `https` 
 ProgId matched by prefix (Firefox's carries an install hash). Every open starts the detected executable
 with its arguments and no shell in between; a browser gets `http(s)` only (`app_catalog::web_url_only`,
 checked before the lookup), a private window only with a known flag, a terminal only an existing folder.
-Icons are `None` for now — the UI draws its glyph.
+**Icons are each app's OWN on all three OSes** (ledger #887): macOS reads `CFBundleIconFile` through
+`sips`; Windows reads the executable's `RT_GROUP_ICON`/`RT_ICON` resources and wraps the best 64 px
+image in a one-image `.ico` (`platform/windows/exe_icon.rs` — pure bytes over the headers and the
+`.rsrc` section only, so a 170 MB `Code.exe` is never read whole; tested on every host against a
+synthetic PE and the cross-built `rexenv.exe`); Linux reads the app's `.desktop` file (deb, snap,
+flatpak dirs) for its `Icon=`, a `hicolor` theme name or a snap's absolute path (`desktop.rs`,
+PNG/SVG). Each caches per process. `None` — the UI's monochrome glyph — is for an app whose icon
+cannot be read, which is what "honest fallback" meant; until 16 Oct 2026 Windows and Linux had
+`icon: None` on every row, so Chrome, Firefox and VS Code wore the same grey glyph there while the
+macOS pickers showed each app (owner, 16 Oct 2026).
 **The words around them are the platform's too** (`platform/words.rs`, W7 S7, owner's ruling Q3, ledger
 #626): "Show in Finder" / "Show in Explorer", the file manager's name, the login item's description, and the
 fix a missing git, Node, Bun or native compiler gets. `PlatformWords` holds `MACOS` and `WINDOWS` as data on

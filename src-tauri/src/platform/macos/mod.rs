@@ -1804,12 +1804,13 @@ impl ShellRunner for MacosShell {
             .iter()
             .find(|(id, _, _)| *id == editor_id)
             .ok_or_else(|| Error::Other(format!("unknown editor: {editor_id}")))?;
-        if !Self::app_installed(app) {
-            return Err(Error::Other(format!("{name} is not installed anymore")));
-        }
-        // `open -a <App> <folder>` opens the folder as a project/workspace in
-        // every editor on the list (VS Code window, PhpStorm project, …).
-        let status = std::process::Command::new("open").args(["-a", app, path]).status()?;
+        let bundle = Self::app_bundle_path(app).ok_or_else(|| Error::Other(format!("{name} is not installed anymore")))?;
+        // `open -a <App.app path> <folder>` opens the folder as a project/workspace
+        // in every editor on the list (VS Code window, PhpStorm project, …). The
+        // bundle PATH, not the name: a bundle Spotlight found outside the four
+        // folders opens where it is, and LaunchServices is never asked to guess
+        // between two copies.
+        let status = std::process::Command::new("open").arg("-a").arg(&bundle).arg(path).status()?;
         if status.success() {
             Ok(())
         } else {
@@ -2157,9 +2158,77 @@ impl MacosShell {
                 return Some(candidate);
             }
         }
-        directories::BaseDirs::new()
+        if let Some(p) = directories::BaseDirs::new()
             .map(|b| b.home_dir().join("Applications").join(&bundle))
             .filter(|p| p.exists())
+        {
+            return Some(p);
+        }
+        // Not in the four folders: ask Spotlight, which knows every application
+        // bundle the Finder does, wherever it was dragged. A client's VS Code
+        // lived in a sub-folder of /Applications and rexenv said "No code editor
+        // detected" (16 Oct 2026). One `mdfind` for every app, cached briefly,
+        // not one per catalog row.
+        Self::spotlight_bundle(&bundle)
+    }
+
+    /// Every application bundle Spotlight knows, as one `mdfind` whose answer is
+    /// kept for [`Self::SPOTLIGHT_TTL`]: the three detections (editors, browsers,
+    /// terminals) run back to back on a Settings mount and share it, and a
+    /// "Re-detect" a user presses after installing something is always later
+    /// than that. Empty when Spotlight is off or the query fails — the four
+    /// folders above still answer. Paths in the Trash, a Time Machine volume or
+    /// Xcode's own tree are not "installed".
+    fn spotlight_apps() -> Vec<PathBuf> {
+        use std::sync::{Mutex, OnceLock};
+        use std::time::Instant;
+        type Answer = Option<(Instant, Vec<PathBuf>)>;
+        static CACHE: OnceLock<Mutex<Answer>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| Mutex::new(None));
+        if let Ok(c) = cache.lock() {
+            if let Some((at, apps)) = c.as_ref() {
+                if at.elapsed() < Self::SPOTLIGHT_TTL {
+                    return apps.clone();
+                }
+            }
+        }
+        let apps: Vec<PathBuf> = std::process::Command::new("mdfind")
+            .arg("kMDItemContentType == 'com.apple.application-bundle'")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter(|l| l.ends_with(".app"))
+                    .filter(|l| !l.contains("/.Trash/") && !l.contains(".backupdb/") && !l.contains("/Library/Developer/") && !l.contains("/Backups.backupdb/"))
+                    .map(PathBuf::from)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if let Ok(mut c) = cache.lock() {
+            *c = Some((Instant::now(), apps.clone()));
+        }
+        apps
+    }
+
+    /// How long one Spotlight answer serves the detections.
+    const SPOTLIGHT_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+    /// The bundle named `bundle` (`Visual Studio Code.app`) among Spotlight's
+    /// applications — a copy under /Applications or the home folder first, so a
+    /// stray duplicate on an external disk never wins over the installed one.
+    fn spotlight_bundle(bundle: &str) -> Option<PathBuf> {
+        let home = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf());
+        let hits: Vec<PathBuf> = Self::spotlight_apps()
+            .into_iter()
+            .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some(bundle))
+            .filter(|p| p.is_dir())
+            .collect();
+        hits.iter()
+            .find(|p| p.starts_with("/Applications") || home.as_ref().is_some_and(|h| p.starts_with(h)))
+            .or_else(|| hits.first())
+            .cloned()
     }
 
     /// An app bundle exists in one of the searched application folders.
@@ -2851,6 +2920,24 @@ mod tests {
     /// Terminal.app lives on the sealed system volume since macOS 11. The
     /// two-folder search this file used for editors and browsers reported "no
     /// terminal installed" on a stock Mac; every Mac must detect at least it.
+    /// Spotlight is the fifth place an app may be: a bundle dragged into a
+    /// sub-folder of /Applications is still "installed" to its owner. The dev
+    /// Mac's own VS Code is the fixture (it sits in /Applications, so the folder
+    /// scan finds it first — the test asks the Spotlight half directly).
+    #[test]
+    fn spotlight_lists_application_bundles_and_names_a_bundle_by_file_name() {
+        let apps = MacosShell::spotlight_apps();
+        if apps.is_empty() {
+            eprintln!("Spotlight answered nothing (indexing off?) — the Spotlight leg did not run");
+            return;
+        }
+        assert!(apps.iter().all(|p| p.extension().is_some_and(|e| e == "app")), "only .app bundles");
+        assert!(apps.iter().all(|p| !p.to_string_lossy().contains("/.Trash/")), "nothing from the Trash");
+        let safari = MacosShell::spotlight_bundle("Safari.app").expect("every Mac has Safari");
+        assert!(safari.starts_with("/Applications") || safari.starts_with("/System/Applications"), "{}", safari.display());
+        assert_eq!(MacosShell::spotlight_bundle("No Such Editor 9000.app"), None);
+    }
+
     #[test]
     fn detect_terminals_finds_the_stock_terminal_app() {
         let found = MacosShell.detect_terminals();

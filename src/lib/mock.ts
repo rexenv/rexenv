@@ -26,7 +26,7 @@ export const mockPlatformWords: PlatformWords = {
   elevationNote: "macOS will also ask for your password",
   host: "this Mac",
   trayHome: "menu bar",
-  appSearch: "/Applications and ~/Applications",
+  appSearch: "/Applications, ~/Applications and Spotlight",
   routesLabel: "file under /etc/resolver",
   homePrefix: "~",
   importSearch: "~/.config/valet and in Herd's and Local's application-support folders",

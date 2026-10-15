@@ -30,6 +30,7 @@ mod cert_rules;
 mod cert_store;
 mod elevation;
 mod elevation_rules;
+mod exe_icon;
 mod firefox_root;
 mod handles;
 mod ipc_rules;
@@ -604,11 +605,12 @@ impl ShellRunner for WindowsShell {
     }
 
     /// The editors `app_catalog.rs` finds from what installers registered, each executable existing on
-    /// disk (ledger #622). Read fresh on every call — an app can be uninstalled any day. Icons are `None`.
+    /// disk (ledger #622). Read fresh on every call — an app can be uninstalled any day. The icon is the
+    /// executable's own (`exe_icon.rs`), cached per process like macOS's.
     fn detect_editors(&self) -> Vec<EditorApp> {
         app_catalog::editors(&app_registry::installed(), &|p| p.is_file())
             .into_iter()
-            .map(|f| EditorApp { id: f.id.into(), name: f.name.into(), icon: None })
+            .map(|f| EditorApp { id: f.id.into(), name: f.name.into(), icon: app_icon_data_uri(&f.exe) })
             .collect()
     }
 
@@ -629,7 +631,7 @@ impl ShellRunner for WindowsShell {
             .map(|(f, system_default, supports_private)| BrowserApp {
                 id: f.id.into(),
                 name: f.name.into(),
-                icon: None,
+                icon: app_icon_data_uri(&f.exe),
                 system_default,
                 supports_private,
             })
@@ -650,7 +652,7 @@ impl ShellRunner for WindowsShell {
     fn detect_terminals(&self) -> Vec<TerminalApp> {
         app_catalog::terminals(&app_registry::installed(), &|p| p.is_file())
             .into_iter()
-            .map(|f| TerminalApp { id: f.id.into(), name: f.name.into(), icon: None })
+            .map(|f| TerminalApp { id: f.id.into(), name: f.name.into(), icon: app_icon_data_uri(&f.exe) })
             .collect()
     }
 
@@ -691,6 +693,33 @@ impl ShellRunner for WindowsShell {
 /// the same Chrome still held the pipe open, silently, and the run still never ended (measured the same day).
 /// So every handle's inherit flag is cleared at process start, as for a service spawn (ledger #600): an
 /// editor or a browser can never pin a pipe, a log or a socket of rexenv's for as long as it stays open.
+/// A program's own icon as a `data:image/x-icon;base64,…` URI, read out of its
+/// `.exe` resources (`exe_icon.rs`) — or the `.ico` the catalog named. Cached for
+/// the life of the process, as macOS caches its `sips` conversion: an app's icon
+/// does not change under a running rexenv, and the pickers ask on every mount.
+/// `None` is honest (no icon group, a stub launcher like `wt.exe`) and the UI
+/// draws its monochrome glyph.
+fn app_icon_data_uri(exe: &Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, Option<String>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(c) = cache.lock() {
+        if let Some(hit) = c.get(exe) {
+            return hit.clone();
+        }
+    }
+    let icon = if exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("ico")) {
+        std::fs::read(exe).ok().and_then(|b| exe_icon::data_uri_for_file(exe, &b))
+    } else {
+        exe_icon::ico_from_file(exe).map(|ico| exe_icon::ico_data_uri(&ico))
+    };
+    if let Ok(mut c) = cache.lock() {
+        c.insert(exe.to_path_buf(), icon.clone());
+    }
+    icon
+}
+
 fn start(launch: app_catalog::Launch) -> Result<()> {
     if launch.new_console {
         return start_in_new_console(&launch);

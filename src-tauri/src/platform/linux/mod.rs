@@ -932,6 +932,44 @@ impl LinuxShell {
     fn installed(app: &desktop::DesktopApp) -> Option<PathBuf> {
         app.bins.iter().find_map(|b| which(b))
     }
+
+    /// An app's own icon as a `data:` URI, found the way the desktop finds it: its
+    /// `.desktop` file (deb, snap or flatpak — `desktop::desktop_file_dirs`) names an
+    /// `Icon=`, which is a theme name under `hicolor` or, for a snap, an absolute path
+    /// (`desktop::icon_candidates`). PNG or SVG, the webview draws both. Cached per process
+    /// as the other two OSes cache theirs; `None` — the UI's monochrome glyph — when no
+    /// `.desktop` file or no drawable icon exists. Until 16 Oct 2026 every Linux row said
+    /// `None` and the pickers wore the fallback for Firefox and Chromium alike.
+    fn app_icon_data_uri(desktop_ids: &[&str]) -> Option<String> {
+        use base64::Engine;
+        use std::collections::HashMap;
+        use std::sync::{Mutex, OnceLock};
+        static CACHE: OnceLock<Mutex<HashMap<String, Option<String>>>> = OnceLock::new();
+        let key = desktop_ids.join("|");
+        let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        if let Ok(c) = cache.lock() {
+            if let Some(hit) = c.get(&key) {
+                return hit.clone();
+            }
+        }
+        let home = home_dir().unwrap_or_else(|_| PathBuf::from("/"));
+        let icon = desktop::desktop_file_dirs(&home)
+            .iter()
+            .flat_map(|dir| desktop_ids.iter().map(move |id| dir.join(id)))
+            .filter_map(|f| std::fs::read_to_string(f).ok())
+            .filter_map(|text| desktop::icon_name_in(&text))
+            .flat_map(|name| desktop::icon_candidates(&name, &home))
+            .find(|p| p.is_file())
+            .and_then(|p| {
+                let media = desktop::icon_media_type(&p)?;
+                let bytes = std::fs::read(&p).ok().filter(|b| !b.is_empty() && b.len() <= 2 * 1024 * 1024)?;
+                Some(format!("data:{media};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+            });
+        if let Ok(mut c) = cache.lock() {
+            c.insert(key, icon.clone());
+        }
+        icon
+    }
     fn default_browser_id() -> Option<&'static str> {
         let out = crate::platform::command("xdg-settings").args(["get", "default-web-browser"]).output().ok()?;
         desktop::browser_for_desktop_id(&String::from_utf8_lossy(&out.stdout)).map(|b| b.id)
@@ -978,7 +1016,7 @@ impl ShellRunner for LinuxShell {
         desktop::EDITORS
             .iter()
             .filter(|a| Self::installed(a).is_some())
-            .map(|a| EditorApp { id: a.id.into(), name: a.name.into(), icon: None })
+            .map(|a| EditorApp { id: a.id.into(), name: a.name.into(), icon: Self::app_icon_data_uri(a.desktop_ids) })
             .collect()
     }
     fn open_in_editor(&self, editor_id: &str, path: &str) -> Result<()> {
@@ -994,7 +1032,7 @@ impl ShellRunner for LinuxShell {
             .map(|a| BrowserApp {
                 id: a.id.into(),
                 name: a.name.into(),
-                icon: None,
+                icon: Self::app_icon_data_uri(a.desktop_ids),
                 system_default: default == Some(a.id),
                 supports_private: a.private_flag.is_some(),
             })
@@ -1025,7 +1063,7 @@ impl ShellRunner for LinuxShell {
         desktop::TERMINALS
             .iter()
             .filter(|t| t.bins.iter().any(|b| which(b).is_some()))
-            .map(|t| TerminalApp { id: t.id.into(), name: t.name.into(), icon: None })
+            .map(|t| TerminalApp { id: t.id.into(), name: t.name.into(), icon: Self::app_icon_data_uri(t.desktop_ids) })
             .collect()
     }
     fn open_in_terminal(&self, terminal_id: &str, path: &Path) -> Result<()> {

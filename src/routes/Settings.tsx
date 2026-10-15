@@ -11,7 +11,7 @@ import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverConsentFor, ResolverHandBackRow } from "@/routes/Import";
 import { agoLabel } from "@/routes/Sites";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpCircle, ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, Download, FileText, FolderOpen, Github, Globe, Info, Lock, ScrollText, Server, Settings as SettingsIcon, Settings2, Shield, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
+import { ArrowUpCircle, ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, Download, FileText, FolderOpen, Github, Globe, Info, Lock, RefreshCw, ScrollText, Server, Settings as SettingsIcon, Settings2, Shield, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
@@ -60,7 +60,7 @@ import {
   scanValetImport,
   uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
-import type { AppInfo, Blueprint, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
+import type { AppInfo, Blueprint, EditorApp, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 
@@ -165,7 +165,30 @@ function GeneralPrefsCard() {
   });
 
   // "Open in editor" target (Sites row menu). Auto = first detected editor.
-  const { data: editors = [] } = useQuery({ queryKey: ["editors"], queryFn: listEditors });
+  const { data: editors = [], isFetching: editorsFetching } = useQuery({ queryKey: ["editors"], queryFn: listEditors });
+  // Re-detect: the backend looks again, fresh, for editors AND the browsers and
+  // terminals the other two rows show — one press after installing anything.
+  // A client with VS Code installed read "No code editor detected" and had no
+  // way to ask again short of relaunching (16 Oct 2026); the row's answer is a
+  // snapshot of one scan, and a snapshot needs a "look again".
+  const [redetecting, setRedetecting] = useState(false);
+  const redetectApps = async () => {
+    setRedetecting(true);
+    try {
+      await Promise.all([
+        qc.refetchQueries({ queryKey: ["editors"] }),
+        qc.refetchQueries({ queryKey: ["browsers"] }),
+        qc.refetchQueries({ queryKey: ["terminals"] }),
+      ]);
+      const found = qc.getQueryData<EditorApp[]>(["editors"]) ?? [];
+      if (found.length === 0) toast.info(`Still no code editor found. rexenv looked in ${words.appSearch}.`);
+      else toast.success(found.length === 1 ? `Found ${found[0].name}.` : `Found ${found.length} editors: ${found.map((e) => e.name).join(", ")}.`);
+    } catch (e) {
+      toastBackendError(e);
+    } finally {
+      setRedetecting(false);
+    }
+  };
   const { data: preferredEditor } = useQuery({
     queryKey: ["setting", "preferred_editor"],
     queryFn: () => getSetting("preferred_editor"),
@@ -267,6 +290,17 @@ function GeneralPrefsCard() {
             fallbackIcon={<Code className="h-4 w-4 text-rex-text-muted" />}
           />
         )}
+        <button
+          type="button"
+          onClick={() => void redetectApps()}
+          disabled={redetecting || editorsFetching}
+          data-probe="redetect-apps"
+          title={`Look again for editors, browsers and terminals — in ${words.appSearch}.`}
+          className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[11px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", (redetecting || editorsFetching) && "animate-rex-spin motion-reduce:animate-none")} strokeWidth={1.9} />
+          {redetecting ? "Looking…" : "Re-detect"}
+        </button>
       </div>
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">
         <div className="flex-1">

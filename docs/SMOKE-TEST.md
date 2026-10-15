@@ -947,6 +947,24 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   Light → Browse MySQL → pmahomme (file `light`, curl → `themes/pmahomme/`); Settings → Dark →
   Browse → BooDark inside the frame (dark panels, cyan links, the tree dark; file `dark`, curl
   → `themes/boodark/`, 0 "not found"); click into `mysql` → still dark; no picker anywhere.
+- [x] **Re-detect finds an editor outside the four folders** (16 Oct 2026, ledger #888). With no
+  editor in /Applications or ~/Applications, Settings → General → Code editor reads "No code editor
+  detected" beside a **Re-detect** button. Put a bundle somewhere else Spotlight indexes — a
+  sub-folder of /Applications (`/Applications/Dev/Visual Studio Code.app`), or the Desktop — wait a
+  few seconds, press Re-detect: the button reads "Looking…", a toast says "Found VS Code.", the
+  picker shows it with its icon, and "Open in editor" on a site opens THAT bundle. Remove it,
+  Re-detect → "Still no code editor found. rexenv looked in /Applications, ~/Applications and
+  Spotlight." **Tell:** a relaunch needed to see a new install; a bundle in the Trash counted.
+  ✓ **16 Oct 2026, macOS 15.8 UTM VM** (this tree's release build): a bundle planted at
+  `/Applications/Dev/Visual Studio Code.app` (Info.plist with `com.microsoft.VSCode`, an `.icns`),
+  Spotlight listed it within seconds; Settings → General showed **VS Code** with that bundle's icon
+  and the Re-detect button; the bundle moved away → Re-detect → "No code editor detected" and the
+  toast "Still no code editor found. rexenv looked in /Applications, ~/Applications and Spotlight.";
+  moved back → Re-detect → VS Code in the picker again.
+- [x] **The pickers wear each app's own icon** (ledger #887): Settings → General's Code editor, Web
+  browser and the Open-in-browser chevron show the real icons — on macOS this has always been so
+  (✓ 16 Oct 2026, the planted bundle's own `.icns` in the picker); the Windows and Linux rows in
+  their sections are the ones that changed.
 - [ ] **Open a database console in a real browser** (14 Oct 2026, T1 of
   `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): Databases → beside MySQL's Browse, the
   **Open in browser** control wears the icon of the browser a click will use and carries a
@@ -3355,7 +3373,18 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       (1,009,152 B), `rex status` answered; the card then reads "Installed — … Reinstall".
 
 ### In-app self-update — replaces the macOS section
-- [ ] **The tray is the ONLY menu path to "Check for Updates…" here** (Windows draws no app menu;
+- [x] **App icons are the apps' own** (ledger #887, `exe_icon.rs`): Settings → General → Web
+      browser shows Chrome's / Edge's / Firefox's icon (read out of each `.exe`), Code editor shows
+      VS Code's / PhpStorm's, Terminal the terminal's; the site header's Open-in-browser chevron the
+      same. Before 16 Oct 2026 every row wore the grey fallback glyph here. A stub launcher with no
+      icon group (`wt.exe`) may still show the glyph — that is the honest case. Re-detect looks
+      again. ✓ **16 Oct 2026, the Dell (Win10 22H2)**, the installer built there from this tree:
+      Code editor wore Visual Studio Code's icon (read out of `Code.exe`), Web browser Chrome's, its
+      menu "System default · Google Chrome / Google Chrome / Firefox / Brave / Microsoft Edge" each
+      with its own icon; a site's Open in browser control Chrome's, Quick links "Open in Visual
+      Studio Code" VS Code's; Terminal kept the glyph (Windows Terminal's `wt.exe` is an alias stub
+      with no icon group — the honest case). Re-detect present.
+- [x] **The tray is the ONLY menu path to "Check for Updates…" here** (Windows draws no app menu;
       `docs/PLAN-update-notice.md` S3, ledger #535). Right-click the notification-area icon →
       **Check for Updates…** → the window comes forward on Settings → About. Then the main body's
       notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
@@ -3951,7 +3980,16 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
-- [ ] **The tray is the ONLY menu path to "Check for Updates…" here** (GTK has no app menu;
+- [x] **App icons are the apps' own** (ledger #887, `desktop.rs`): Settings → General → Web browser
+      shows Firefox's and Chromium's icons (the snaps' — read through `/var/lib/snapd/desktop/
+      applications/*.desktop` → `Icon=/snap/<pkg>/current/….png`), Terminal shows GNOME Terminal's
+      (`org.gnome.Terminal.desktop` → the `hicolor` theme); the Open-in-browser chevron the same.
+      Before 16 Oct 2026 every row wore the grey fallback glyph here. ✓ **16 Oct 2026, Ubuntu 22.04
+      arm64 UTM VM** (container-built binary over `/usr/bin/rexenv`): Web browser's trigger wore
+      Firefox's icon, its menu "System default · Firefox / Firefox / Chromium" each with the snap's
+      icon; a site's Open in browser control and the Quick-links "Open in Firefox" the same; Re-detect
+      present ("No code editor detected" — the VM has none).
+- [x] **The tray is the ONLY menu path to "Check for Updates…" here** (GTK has no app menu;
       `docs/PLAN-update-notice.md` S3, ledger #535). From the appindicator menu choose **Check for
       Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
       Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`

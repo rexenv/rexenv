@@ -153,7 +153,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     elevation_note: "macOS will also ask for your password",
     host: "this Mac",
     tray_home: "menu bar",
-    app_search: "/Applications and ~/Applications",
+    app_search: "/Applications, ~/Applications and Spotlight",
     routes_label: "file under /etc/resolver",
     home_prefix: "~",
     import_search: "~/.config/valet and in Herd's and Local's application-support folders",
@@ -429,7 +429,7 @@ mod tests {
         // sentences already read on a Mac.
         assert_eq!(MACOS.host, "this Mac");
         assert_eq!(MACOS.tray_home, "menu bar");
-        assert_eq!(MACOS.app_search, "/Applications and ~/Applications");
+        assert_eq!(MACOS.app_search, "/Applications, ~/Applications and Spotlight");
         // The path words, moved here by W9 S4 (#640).
         assert_eq!(MACOS.routes_label, "file under /etc/resolver");
         assert_eq!(MACOS.home_prefix, "~");

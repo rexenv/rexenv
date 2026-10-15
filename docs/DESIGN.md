@@ -32,6 +32,13 @@ the shipped UI toward one.
 ## Honest-UI rules (design-level, enforced in code)
 
 - Status derives from reality (ownership AND liveness) — no fake per-site toggles.
+- **An app picker wears the app's OWN icon; the monochrome glyph is for an icon that cannot be
+  read, never for an operating system.** Windows and Linux shipped with `icon: None` on every
+  editor, browser and terminal row — Chrome, Firefox and VS Code all wore the same grey glyph
+  there while the macOS pickers showed each app — and the owner saw it as the OS being
+  second-class (16 Oct 2026). Now each OS reads the icon the way its desktop does (ledger #887,
+  `docs/PLATFORMS.md` §3). The same honesty cuts the other way: a detection is a snapshot, so the
+  row that says "No code editor detected" sits beside a **Re-detect** that looks again (#888).
 - **A bare value is not a badge.** The only always-visible sign of a new rexenv was a mono
   `0.6.0` beside Settings in the sidebar, styled like the Sites/Services counts — and the
   people it was meant to alert read it as the version they were RUNNING (owner, 15 Oct 2026).

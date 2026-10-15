@@ -94,6 +94,11 @@ mod windows_job_guard_rules;
 #[allow(dead_code)]
 #[path = "windows/pe.rs"]
 mod windows_pe;
+// And the icon read out of a program's `.exe` resources — pure bytes, same reason.
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/exe_icon.rs"]
+mod windows_exe_icon;
 // And the port gate's pure half: socket-table rows, netsh's excluded ranges, the
 // holder wording (ledger #599).
 #[cfg(all(test, not(target_os = "windows")))]

@@ -58,7 +58,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   tested on every host) (ledger #621); editors, browsers and terminals — `WindowsShell::detect_*` /
   `open_in_*` and `start` over `windows/app_registry.rs` (App Paths, uninstall entries, `StartMenuInternet`,
   the `https` ProgId) and `windows/app_catalog.rs` (the catalog, detection, the default browser, each open's
-  process — tested on every host) (ledger #622); the login item — `WindowsAutostart` over
+  process — tested on every host) (ledger #622) + `windows/exe_icon.rs` (an app's icon out of its `.exe`'s
+  resources, pure bytes, tested on every host, #887); the login item — `WindowsAutostart` over
   `windows/autostart.rs` (the per-user Run value and Task Manager's `StartupApproved` value) and
   `windows/autostart_rules.rs` (the value, Task Manager's disable, a dev build, the refresh decision — tested on
   every host) (ledger #623); the Windows tray — `lib.rs` `install_tray`'s `cfg(windows)` branch
@@ -81,7 +82,8 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   there), NSS + system-store CA trust; in-app update in `app_bundle.rs` — `.deb` via `dpkg -i`
   in the polkit step, AppImage via `renameat2` exchange, `run_relauncher` on a pidfd, ledger
   #729/#730), with the pure
-  halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs`, `trust.rs`, `app_bundle_rules.rs` — mounted as
+  halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs` (the catalog + each app's `.desktop`
+  ids and the `Icon=` → theme-file rules, #887), `trust.rs`, `app_bundle_rules.rs` — mounted as
   `platform::linux_pure` in every non-Linux test build (ledger #716–#719); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
   `src-tauri/linux/dev.rexenv.rexenv.policy` (#723), and the in-app update's own door —
