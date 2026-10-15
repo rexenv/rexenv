@@ -6,7 +6,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 ### Now — actionable code/test work — 14
 
-- `TODO.md:113` The update notice — built 15 Oct 2026 (`claude/update-notice`), open ONLY for its per-OS GUI proof
+- `TODO.md:113` The update notice — built 15 Oct 2026 (`claude/update-notice`, on master), open ONLY for its per-OS GUI proof
 - `TODO.md:127` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
 - `TODO.md:144` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
 - `TODO.md:194` PostgreSQL self-build for macOS 13/14
@@ -60,7 +60,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 |---|---|
 | `docs/PLAN-linux-port.md` | SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open ro… |
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
-| `docs/PLAN-update-notice.md` | T1–T4 BUILT 15 Oct 2026 on branch `claude/update-notice` (not merged): the `app-update` |
+| `docs/PLAN-update-notice.md` | T1–T4 BUILT 15 Oct 2026 on branch `claude/update-notice`, on master since `3f611ee1`: the `app-update` |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 

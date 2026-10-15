@@ -1,13 +1,13 @@
 # PLAN — Making an app update impossible to miss (and "Check for Updates" reachable from any screen)
 
-**Status:** T1–T4 BUILT 15 Oct 2026 on branch `claude/update-notice` (not merged): the `app-update`
+**Status:** T1–T4 BUILT 15 Oct 2026 on branch `claude/update-notice`, on master since `3f611ee1`: the `app-update`
 push (ledger #884), the TopBar + sidebar pills (#885), the tray "Check for Updates…" (#535
 widened), docs + SMOKE rows. §7 resolved as recommended (toast "Show update"; icon-only idle
 control; rail pill kept — on its own line above Settings, since beside the label it overlapped
-it at 220 px). **Proven:** L0 tests (plant-proven), `verify.sh` green on a Linux sandbox
-(windows-check SKIPPED; macOS not compiled there), and `appupdate.js` run + plant-proven in
-**Chromium only**. **Owed:** the WebKit run (`verify-full.sh` on the Mac) and every §6 row below
-on its OS — none has run.
+it at 220 px). **Proven:** L0 tests (plant-proven); `verify.sh` all green on the dev Mac, 16 Oct 2026, with
+windows-check AND linux-check green (compile gates); `appupdate.js` + `appupdaterestart.js` PASS in
+WebKit on the dev Mac, 16 Oct 2026 (plant-proven in Chromium on 15 Oct). **Owed:** every §6 row
+below on its OS — none has run.
 **Builds on:** `docs/archive/PLAN-self-update.md` (the update machinery, D3 "how loud"),
 `docs/archive/PLAN-menubar-tray.md` (the tray's rules, ledger #534).
 
