@@ -197,7 +197,15 @@ it can:
   PHP + publish. "Nothing newer than the pin" is a legitimate end; the floor legs run
   either way. What it does NOT prove: that the updated console renders logged in
   through the proxy — `phpmyadmin_check`'s real-stack leg after `rex db console
-  phpmyadmin`, and SMOKE's row.
+  phpmyadmin`, and SMOKE's row. **`phpmyadmin_check` gained the palette legs the same
+  day (#875/#876)**: the vendored dark theme is staged beside the tree and declares the
+  tree's series; the generated config is run through the REAL PHP (`php -r … include`)
+  with the palette file saying `dark`, `light`, absent, and with a stale `pma_theme`
+  cookie — `ThemeDefault` resolves to `boodark` / `pmahomme` / `pmahomme` / `boodark`,
+  the cookie is gone, the picker is off; and a PLANT: a theme whose `theme.json`
+  declares another series is refused by the probe with the docroot untouched. Read as
+  text these would have been a regex over a PHP expression; run, they are what
+  phpMyAdmin's `Config::load` sees. The render (BooDark in a dark app) is SMOKE's.
 
   **A gate is only as good as the thing it compares** (ledger #553, 10 Sep 2026).
   The PHP builds rexenv publishes are gated on extension parity with the upstream

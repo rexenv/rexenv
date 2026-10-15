@@ -2319,7 +2319,7 @@ export async function wpInstallJob(
   return invoke<WpInstallState>("wp_install_job", { siteId, kind, source, slugs, activate, force });
 }
 
-/** Point the embedded Adminer at the app's palette ("dark" | "light" — resolve
+/** Point the embedded consoles (Adminer AND phpMyAdmin) at the app's palette ("dark" | "light" — resolve
  *  "system" first). The console reads it per request, so its own links keep the
  *  scheme; without it the console follows the OS and can sit in the opposite
  *  theme from the app around it. No-op outside Tauri. */

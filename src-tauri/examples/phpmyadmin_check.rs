@@ -95,6 +95,41 @@ async fn main() -> std::process::ExitCode {
     assert_eq!(again, dir);
     assert_eq!(std::fs::read_to_string(dir.join(phpmyadmin::CONFIG_FILE)).unwrap(), cfg, "the config is stable across ensures");
 
+    // (2b) The palette follows the APP (15 Oct 2026): the dark theme is staged beside the
+    // tree and declares this series; the generated config resolves the palette file per
+    // request — run through the REAL PHP, not read as text: `dark` → the vendored theme,
+    // `light` / absent → phpMyAdmin's default, and a stale picker cookie cannot outrank it.
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
+    let theme_json = dir.join("themes").join(phpmyadmin::DARK_THEME).join("theme.json");
+    assert!(theme_json.is_file(), "the dark theme is not staged beside the tree");
+    let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&theme_json).unwrap()).unwrap();
+    let series: String = {
+        let v = std::fs::read_to_string(dir.join("libraries/classes/Version.php")).unwrap();
+        v.lines().find(|l| l.contains("const SERIES")).and_then(|l| l.split('\'').nth(1)).unwrap().to_string()
+    };
+    assert!(meta["supports"].as_array().unwrap().iter().any(|s| s == series.as_str()), "theme.json {meta} does not support series {series}");
+    let resolved = |palette: Option<&str>, cookie: Option<&str>| -> String {
+        let file = dir.join(".rexenv-theme");
+        match palette {
+            Some(p) => phpmyadmin::set_theme(&*plat, p).unwrap(),
+            None => { let _ = std::fs::remove_file(&file); }
+        }
+        let script = format!(
+            "$_COOKIE['pma_theme'] = {}; $cfg = []; include {}; echo $cfg['ThemeDefault'], '|', isset($_COOKIE['pma_theme']) ? 'cookie' : 'nocookie', '|', var_export($cfg['ThemeManager'], true);",
+            cookie.map(|c| format!("'{c}'")).unwrap_or_else(|| "null".into()),
+            phpmyadmin::php_path_literal(&dir.join(phpmyadmin::CONFIG_FILE)),
+        );
+        let out = std::process::Command::new(&php).arg("-d").arg("display_errors=stderr").arg("-r").arg(&script).output().unwrap();
+        assert!(out.status.success(), "php -r failed: {}{}", String::from_utf8_lossy(&out.stderr), String::from_utf8_lossy(&out.stdout));
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+    assert_eq!(resolved(Some("dark"), None), format!("{}|nocookie|false", phpmyadmin::DARK_THEME));
+    assert_eq!(resolved(Some("light"), None), format!("{}|nocookie|false", phpmyadmin::LIGHT_THEME));
+    assert_eq!(resolved(None, None), format!("{}|nocookie|false", phpmyadmin::LIGHT_THEME), "no palette file → the default");
+    assert_eq!(resolved(Some("dark"), Some("original")), format!("{}|nocookie|false", phpmyadmin::DARK_THEME), "a stale picker cookie is dropped");
+    assert!(phpmyadmin::set_theme(&*plat, "neon").is_err(), "only dark/light");
+    println!("✓ the palette follows the app: {} when the file says dark, {} otherwise, the picker off, the cookie dropped; theme.json supports {series}", phpmyadmin::DARK_THEME, phpmyadmin::LIGHT_THEME);
+
     // (3) Staged → block and route, with the shared cap.
     let after = rebuild(&*plat);
     let nginx_after = std::fs::read_to_string(&after.nginx_conf).unwrap();
@@ -116,14 +151,13 @@ async fn main() -> std::process::ExitCode {
     println!("✓ a rebuild re-renders the staged config.inc.php from this build's generator");
 
     // (4) PLANT: a tree whose autoloader is a parse error never becomes the docroot.
-    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let src = binaries::resolve_dir(&*plat, "phpmyadmin", version).await.unwrap();
     let planted = plat.paths().app_data_dir().unwrap().join("planted-tree");
     copy_dir(&src, &planted);
     std::fs::write(planted.join("vendor/autoload.php"), "<?php function x(").unwrap();
     let marker_before = std::fs::read_to_string(dir.join(".phpmyadmin-version")).unwrap();
     let index_before = std::fs::read(dir.join("index.php")).unwrap();
-    let err = phpmyadmin::ensure_from(&*plat, "9.9.9-planted", &planted, &php).unwrap_err().to_string();
+    let err = phpmyadmin::ensure_from(&*plat, "9.9.9-planted", &planted, None, &php).unwrap_err().to_string();
     assert!(err.contains("does not run on the bundled PHP"), "{err}");
     assert!(err.contains("REXENV-PROBE-FAIL"), "the probe's verdict is named: {err}");
     assert_eq!(std::fs::read_to_string(dir.join(".phpmyadmin-version")).unwrap(), marker_before, "the marker moved");
@@ -142,6 +176,20 @@ async fn main() -> std::process::ExitCode {
     let err = phpmyadmin::verify_tree(&php, &planted2).unwrap_err().to_string();
     assert!(err.contains("not a loopback config-auth server"), "{err}");
     println!("✓ PLANT: a remote server in the loaded config is refused by the probe");
+
+    // (5b) PLANT: a dark theme that does not declare this series is refused by the probe —
+    // the gate that catches a tree bump outrunning the theme pin — and the docroot is
+    // untouched. Through `ensure_from`, so the theme goes in BEFORE the probe as it does
+    // for real.
+    let theme_src = binaries::resolve_dir(&*plat, "phpmyadmin-theme", binaries::pins().phpmyadmin_theme).await.unwrap();
+    let planted_theme = plat.paths().app_data_dir().unwrap().join("planted-theme");
+    copy_dir(&theme_src, &planted_theme);
+    std::fs::write(planted_theme.join("theme.json"), r#"{"name":"BooDark","version":"0.0.1","supports":["4.9"]}"#).unwrap();
+    let err = phpmyadmin::ensure_from(&*plat, "9.9.9-theme", &src, Some(&planted_theme), &php).unwrap_err().to_string();
+    assert!(err.contains("does not support phpMyAdmin"), "{err}");
+    assert_eq!(phpmyadmin::staged_version(&*plat).as_deref(), Some(version), "the docroot moved");
+    assert!(!dir.parent().unwrap().join("phpmyadmin.new").exists());
+    println!("✓ PLANT: a theme that does not support this series is refused by the probe ({err})");
 
     // (6) The real stack, if it is up and has phpMyAdmin staged.
     let real = rexenv_lib::platform::current();

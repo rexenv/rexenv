@@ -44,6 +44,31 @@ const SECRET_LEN: usize = 32;
 /// recompiles its templates (slow) and the console warns on each load.
 const TEMP_DIR: &str = "phpmyadmin-tmp";
 
+/// The palette file — `dark` or `light`, written by rexenv whenever the app's own theme
+/// resolves or changes (the frame writes it BEFORE it loads), read by the generated
+/// `config.inc.php` on EVERY request. Adminer's mechanism and Adminer's file name
+/// (`adminer::THEME_FILE`), in this console's docroot: a dotfile, so `NGINX_DOTFILE_DENY`
+/// keeps it unservable. A file rather than a query parameter for Adminer's reason — the
+/// console's own links carry nothing of ours, so one click would have snapped the page
+/// back.
+const THEME_FILE: &str = ".rexenv-theme";
+/// The vendored dark theme's directory name under `themes/` — BooDark
+/// (`binaries::PHPMYADMIN_THEME_VERSION`), staged by [`ensure`] beside the tree.
+pub const DARK_THEME: &str = "boodark";
+/// phpMyAdmin's own default — the light palette.
+pub const LIGHT_THEME: &str = "pmahomme";
+
+/// Record which palette the console must render in — `dark` or `light` only, the app
+/// having resolved "system" first so the two can never disagree about what the OS meant.
+/// A no-op before the console is staged: there is no docroot to write into, and creating
+/// one would be an empty directory with a palette file and no tree.
+pub fn set_theme(platform: &dyn Platform, theme: &str) -> Result<()> {
+    if staged_version(platform).is_none() {
+        return Ok(());
+    }
+    crate::core::adminer::write_theme(&docroot(platform)?, theme)
+}
+
 /// Where the user's console choice is stored — a settings ROW, `adminer` or
 /// `phpmyadmin`. Absent means Adminer. Postgres rows ignore it (no driver).
 pub const CONSOLE_KEY: &str = "db_console";
@@ -195,6 +220,14 @@ pub const SERVER_MARIADB: usize = 2;
 ///
 /// No `PmaAbsoluteUri`: both the https vhost and the proxy origin serve this same
 /// tree, and every link must stay relative to whichever origin loaded it.
+///
+/// **The palette follows the APP** (15 Oct 2026): the file reads [`THEME_FILE`] per
+/// request and names [`DARK_THEME`] only when it says `dark` AND the theme directory is
+/// there (a docroot staged by an older app has no theme yet; naming a missing theme makes
+/// phpMyAdmin print a warning box on every page). The theme picker is off
+/// (`ThemeManager = false`) — the app decides, as for Adminer — and a `pma_theme` cookie
+/// a user set while the picker was on (v1 shipped with it) is dropped before phpMyAdmin
+/// reads it, or it would outrank the app forever.
 pub fn config_inc_php(secret: &str, temp_dir: &Path) -> String {
     debug_assert_eq!(secret.len(), SECRET_LEN);
     let mut out = String::new();
@@ -224,6 +257,17 @@ pub fn config_inc_php(secret: &str, temp_dir: &Path) -> String {
          $cfg['CheckConfigurationPermissions'] = false;\n\
          $cfg['VersionCheck'] = false;\n",
     );
+    out.push_str(&format!(
+        "\n\
+         // Palette: rexenv writes the app's RESOLVED scheme (dark/light) to {THEME_FILE} beside\n\
+         // this file and reloads the console on change. The dark theme is {DARK_THEME} (vendored\n\
+         // beside the tree); the picker is off because the app decides, and a cookie the picker\n\
+         // once set must not outrank it.\n\
+         unset($_COOKIE['pma_theme']);\n\
+         $cfg['ThemeManager'] = false;\n\
+         $cfg['ThemeDefault'] = (is_dir(__DIR__ . '/themes/{DARK_THEME}') && is_file(__DIR__ . '/{THEME_FILE}')\n\
+         \x20   && trim((string) file_get_contents(__DIR__ . '/{THEME_FILE}')) === 'dark') ? '{DARK_THEME}' : '{LIGHT_THEME}';\n"
+    ));
     out
 }
 
@@ -343,6 +387,20 @@ foreach ($servers as $s) {
 if (($cfg->settings['AllowThirdPartyFraming'] ?? true) !== 'sameorigin') {
     fwrite(STDERR, "REXENV-PROBE-FAIL: AllowThirdPartyFraming is not 'sameorigin'\n"); exit(1);
 }
+// The palette is the app's: no picker, and the vendored dark theme (when staged) must
+// declare support for THIS tree's series, or phpMyAdmin drops it with a warning box on
+// every page — the gate that catches a tree bump outrunning the theme pin.
+if (($cfg->settings['ThemeManager'] ?? true) !== false) {
+    fwrite(STDERR, "REXENV-PROBE-FAIL: ThemeManager is not off\n"); exit(1);
+}
+$themeJson = $root . '/themes/boodark/theme.json';
+if (is_dir($root . '/themes/boodark')) {
+    $meta = json_decode((string) @file_get_contents($themeJson), true);
+    $supports = is_array($meta) && isset($meta['supports']) && is_array($meta['supports']) ? $meta['supports'] : [];
+    if (!in_array(\PhpMyAdmin\Version::SERIES, $supports, true)) {
+        fwrite(STDERR, "REXENV-PROBE-FAIL: the dark theme does not support phpMyAdmin " . \PhpMyAdmin\Version::SERIES . " (supports: " . implode(',', $supports) . ")\n"); exit(1);
+    }
+}
 fwrite(STDERR, "REXENV-PROBE-OK\n");
 "#;
 const PROBE_OK: &str = "REXENV-PROBE-OK";
@@ -407,19 +465,48 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
     let marker = dir.join(STAGED_VERSION);
     let staged = std::fs::read_to_string(&marker).ok();
     if !needs_restage(staged.as_deref().map(str::trim), dir.join("index.php").is_file(), version) {
+        ensure_theme(platform, &dir).await?;
         write_config(platform, &dir)?;
         return Ok(dir);
     }
 
     let src = binaries::resolve_dir(platform, "phpmyadmin", version).await?;
+    let theme = binaries::resolve_dir(platform, "phpmyadmin-theme", binaries::pins().phpmyadmin_theme).await?;
     let php = binaries::resolve_program(platform, "php", binaries::pins().php).await?;
-    ensure_from(platform, version, &src, &php)
+    ensure_from(platform, version, &src, Some(&theme), &php)
 }
 
-/// The stage itself, from an explicit source tree and PHP — the seam the live example
-/// uses to PLANT a tree that fails the probe and assert the docroot is untouched
-/// (ledger #866). `ensure` is this with the resolved cache tree and the pinned PHP.
-pub fn ensure_from(platform: &dyn Platform, version: &str, src: &Path, php: &Path) -> Result<PathBuf> {
+/// The dark theme into a docroot that lacks it — a tree staged before the theme existed
+/// (the generated config names the theme only when its directory is there, so such a
+/// docroot renders light until this runs). Called when the user CHOOSES the console
+/// (`ensure`'s idempotent path), never by a start: it may download. Staged by rename.
+async fn ensure_theme(platform: &dyn Platform, dir: &Path) -> Result<()> {
+    if dir.join("themes").join(DARK_THEME).join("theme.json").is_file() {
+        return Ok(());
+    }
+    let theme = binaries::resolve_dir(platform, "phpmyadmin-theme", binaries::pins().phpmyadmin_theme).await?;
+    stage_theme_into(dir, &theme)
+}
+
+/// Copy the resolved theme tree to `themes/<DARK_THEME>` under `dir`, by rename.
+fn stage_theme_into(dir: &Path, theme_src: &Path) -> Result<()> {
+    let themes = dir.join("themes");
+    std::fs::create_dir_all(&themes)?;
+    let fresh = themes.join(format!(".{DARK_THEME}.new"));
+    let _ = std::fs::remove_dir_all(&fresh);
+    copy_dir_recursive(theme_src, &fresh)?;
+    let target = themes.join(DARK_THEME);
+    let _ = std::fs::remove_dir_all(&target);
+    std::fs::rename(&fresh, &target)?;
+    Ok(())
+}
+
+/// The stage itself, from an explicit source tree, an optional theme tree and PHP — the
+/// seam the live example uses to PLANT a tree that fails the probe and assert the docroot
+/// is untouched (ledger #866). `ensure` is this with the resolved cache trees and the
+/// pinned PHP. The theme goes into the copy BEFORE the probe, which checks it supports
+/// the tree's series.
+pub fn ensure_from(platform: &dyn Platform, version: &str, src: &Path, theme: Option<&Path>, php: &Path) -> Result<PathBuf> {
     let dir = docroot(platform)?;
     let marker = dir.join(STAGED_VERSION);
 
@@ -431,6 +518,9 @@ pub fn ensure_from(platform: &dyn Platform, version: &str, src: &Path, php: &Pat
     let _ = std::fs::remove_dir_all(&fresh);
     let build: Result<()> = (|| {
         copy_dir_recursive(src, &fresh)?;
+        if let Some(theme) = theme {
+            stage_theme_into(&fresh, theme)?;
+        }
         write_config(platform, &fresh)?;
         verify_tree(php, &fresh)
     })();
@@ -533,6 +623,30 @@ mod tests {
         assert_eq!(php_path_literal(Path::new("/o'brien/x")), "'/o\\'brien/x'");
         let cfg = config_inc_php(SECRET, Path::new(r"C:\Users\d e\tmp"));
         assert!(cfg.contains("$cfg['TempDir'] = 'C:/Users/d e/tmp';"), "{cfg}");
+    }
+
+    /// **The palette is the app's, read per request from the dotfile, and the dark theme
+    /// is named only when it is THERE.** Text properties: the picker is off, the stale
+    /// cookie is dropped before phpMyAdmin reads it, the expression guards on the theme
+    /// directory, and the two names are the vendored dark theme and phpMyAdmin's default.
+    fn tail_has_at(cfg: &str) -> bool {
+        cfg.lines().skip_while(|l| !l.contains("ThemeDefault")).any(|l| l.contains('@'))
+    }
+
+    #[test]
+    fn the_config_follows_the_app_palette_through_the_dotfile_and_guards_on_the_theme_dir() {
+        let cfg = config_inc_php(SECRET, Path::new("/tmp/x"));
+        assert!(cfg.contains("$cfg['ThemeManager'] = false;"), "{cfg}");
+        assert!(cfg.contains("unset($_COOKIE['pma_theme']);"), "{cfg}");
+        let line = cfg.lines().find(|l| l.contains("$cfg['ThemeDefault'] =")).expect("ThemeDefault");
+        assert!(line.contains(&format!("is_dir(__DIR__ . '/themes/{DARK_THEME}') && is_file(__DIR__ . '/{THEME_FILE}')")), "{line}");
+        // No `@`: the probe's error handler fires on a suppressed warning too (PHP 8), and a
+        // missing palette file is the ORDINARY state before the frame first loads.
+        assert!(!line.contains('@') && !tail_has_at(&cfg), "{cfg}");
+        let tail = cfg.lines().skip_while(|l| !l.contains("$cfg['ThemeDefault'] =")).collect::<Vec<_>>().join("\n");
+        assert!(tail.contains(&format!("'/{THEME_FILE}')) === 'dark') ? '{DARK_THEME}' : '{LIGHT_THEME}';")), "{tail}");
+        assert_eq!(THEME_FILE, ".rexenv-theme", "Adminer's file name — one mechanism, one name");
+        assert!(THEME_FILE.starts_with('.'), "a dotfile, or nginx serves it");
     }
 
     /// The choice is honoured only over a staged tree; anything else — junk,

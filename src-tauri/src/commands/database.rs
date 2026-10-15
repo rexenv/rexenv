@@ -213,17 +213,22 @@ pub struct AdminerStatus {
     pub pinned: String,
 }
 
-/// Point the console at the app's palette. `dark` or `light` — the frontend
+/// Point BOTH consoles at the app's palette. `dark` or `light` — the frontend
 /// resolves "system" first, so the console matches what rexenv is RENDERING
 /// rather than re-asking the OS and disagreeing with it (which is exactly the
 /// bug: the app in light, the console in dark).
 ///
 /// Written before the frame loads, and re-written whenever the theme changes;
-/// the wrapper reads it per request, so the console's own links keep the
-/// scheme too.
+/// Adminer's wrapper and phpMyAdmin's generated config each read their docroot's
+/// file per request, so the consoles' own links keep the scheme too. The name
+/// predates the second console (15 Oct 2026) and stays: the MCP `stack` action,
+/// the parity row and the frontend wrapper all name it, and the fact it writes is
+/// "the consoles' palette" — one write, one palette, never two files disagreeing.
+/// phpMyAdmin's half is a no-op until that console is staged.
 #[tauri::command]
 pub fn adminer_set_theme(state: State<'_, AppState>, theme: String) -> Result<()> {
-    crate::core::adminer::set_theme(state.platform.as_ref(), &theme)
+    crate::core::adminer::set_theme(state.platform.as_ref(), &theme)?;
+    crate::core::phpmyadmin::set_theme(state.platform.as_ref(), &theme)
 }
 
 /// Read the Adminer row. Cheap: a settings read, a marker read, a catalog look.

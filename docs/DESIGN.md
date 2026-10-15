@@ -229,7 +229,10 @@ the shipped UI toward one.
   as a broken embed rather than a third-party default. The app writes its RESOLVED
   palette where that surface can read it, and reloads it on change. Resolved, never the
   preference: passing "system" through would leave two processes each asking the OS,
-  which is not the same as agreeing.
+  which is not the same as agreeing. The rule covers both consoles (15 Oct 2026): phpMyAdmin
+  5.2 has no dark theme, so one is vendored (BooDark) and the app picks it the same way —
+  and phpMyAdmin's own theme picker is OFF, because a second dial inside the frame would
+  be a second answer to a question the app already settled.
 - **A search box searches what the row SHOWS.** The installed-plugin filter matched
   the slug while every row is labelled with its title, so typing "loopback" against a
   list plainly reading "rexenv loopback DNS" (slug `rexenv-dns`) answered "No plugins

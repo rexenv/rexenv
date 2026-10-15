@@ -1298,7 +1298,11 @@ pub fn plan_for_adminer(platform: &dyn Platform, version: &str) -> Vec<PlannedBi
 /// phpMyAdmin is fetched only when the user CHOOSES it (`db_console_set`), never by a
 /// start — so it is deliberately absent from `plan_for_start_*`.
 pub fn plan_for_phpmyadmin(platform: &dyn Platform, version: &str) -> Vec<PlannedBinary> {
-    vec![PlannedBinary::new(platform, "phpmyadmin", version)]
+    vec![
+        PlannedBinary::new(platform, "phpmyadmin", version),
+        // The dark theme staged beside it (a pin; the tree's version is the manifest's).
+        PlannedBinary::new(platform, "phpmyadmin-theme", binaries::pins().phpmyadmin_theme),
+    ]
 }
 
 pub fn plan_for_start_pinned(

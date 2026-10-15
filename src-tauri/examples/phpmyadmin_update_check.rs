@@ -138,7 +138,17 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match phpmyadmin::ensure_from(&*plat, &target, &tree, &php) {
+    // The pinned dark theme goes in beside it, as `ensure` does — and the probe checks
+    // it still supports the OFFERED tree's series (the gate that catches a tree bump
+    // outrunning the theme pin).
+    let theme = match binaries::resolve_dir(&*plat, "phpmyadmin-theme", binaries::pins().phpmyadmin_theme).await {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("resolving the dark theme FAILED: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match phpmyadmin::ensure_from(&*plat, &target, &tree, Some(&theme), &php) {
         Ok(dir) => {
             checks.is(
                 &format!("phpMyAdmin {target} runs on the bundled PHP with rexenv's generated config"),

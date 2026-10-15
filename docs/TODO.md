@@ -342,8 +342,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Follow-ups, NOT this row (plan §9): phpMyAdmin as a third `updates::Family`; its palette following
   the app (`rex db console` shipped with T6).
 
-- [ ] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`;
-  the design record is `docs/PLAN-phpmyadmin-followups.md`):
+- [x] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`;
+  the design record is `docs/archive/PLAN-phpmyadmin-followups.md`). ✓ **15 Oct 2026** — all three
+  below; still owed outside the app: the `rexenv/runtimes` PR #24 (owner merges) and, after the first
+  published phpMyAdmin row, the SMOKE update rows on each OS:
   - [x] (1) a third `updates::Family` so the console updates through the signed manifest like
     Adminer. ✓ **15 Oct 2026** — `Family::PhpMyAdmin` (`arch: any`, `files.phpmyadmin.net/phpMyAdmin/`
     only, `PHPMYADMIN_MAX_MAJOR` = 5), `phpmyadmin_spec` pin-first/catalog-second,
@@ -352,7 +354,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     `phpmyadmin_update_check` (network tier), L2 `dbconsole-*` ×6; ledger #871–#873. **Open half:**
     the publisher — `rexenv/runtimes` PR (`PHPMYADMIN_PIN`/`_MAX_MAJOR`, discovery, `arch: any`,
     `manifest-guard.py`), owner merges; the first published row is SMOKE's first run (×3 OSes).
-  - [ ] (2) its palette following the app (5.2 ships no dark theme — a vendored one is needed).
+  - [x] (2) its palette following the app (5.2 ships no dark theme — a vendored one is needed).
+    ✓ **15 Oct 2026** — BooDark 1.2.0 pinned as `phpmyadmin-theme` (MIT, `supports 5.2`, from the
+    project's theme mirror, never a manifest row), staged into `themes/boodark/` by `ensure`; the
+    generated config reads `.rexenv-theme` per request (Adminer's file and mechanism), picker off,
+    stale cookie dropped; `adminer_set_theme` writes both docroots; the probe refuses a theme not
+    declaring the tree's series; `phpmyadmin_check` runs the resolution through the real PHP;
+    ledger #875/#876. GUI render = SMOKE rows ×3.
   - [x] (3) the ~52 MB tree is never swept. ✓ **15 Oct 2026** — `gc_outdated_phpmyadmin_caches` at
     launch keeps the pin + the effective version, refuses an empty keep-set, never touches the
     theme dir; ledger #874.

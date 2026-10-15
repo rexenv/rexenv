@@ -2973,7 +2973,22 @@ IPC surface — which is how a reader ends up designing against a system with on
   a `<link>` for whatever key `css()` returns and a 404 in the console's own head is a
   defect report waiting to happen. The frame writes the file BEFORE it loads and is
   `key`ed on the palette, since the console is a separate document that read the file at
-  request time and re-reads nothing.
+  request time and re-reads nothing. **phpMyAdmin follows the same file, the same way**
+  (15 Oct 2026, `phpmyadmin::set_theme`, #875/#876): `adminer_set_theme` writes BOTH
+  docroots' `.rexenv-theme` (one write, one palette — the name predates the second
+  console and every caller names it). phpMyAdmin 5.2 ships no dark theme and its
+  `bootstrap` theme's compiled CSS has no colour modes, so the dark palette is a VENDORED
+  theme — BooDark 1.2.0 (`adorade/boodark`, MIT, `supports: ["5.2"]`), a compiled-in pin
+  (`phpmyadmin-theme`, from the project's own theme mirror; never a manifest row — a
+  theme is matched to the tree's SERIES by hand) staged by `ensure` into
+  `themes/boodark/` beside the tree, into an older docroot the next time the console is
+  chosen. The generated `config.inc.php` reads the file per request and names `boodark`
+  only when it says `dark` AND the directory is there (naming a missing theme is a warning
+  box on every page); the picker is off (`ThemeManager = false` — the app decides) and a
+  `pma_theme` cookie the picker once set is dropped before phpMyAdmin reads it, or it would
+  outrank the app forever. The probe refuses a theme whose `theme.json` does not declare
+  the tree's `Version::SERIES` — the gate that catches a tree bump outrunning the theme
+  pin. The frame's write covers both consoles and the `key` reloads whichever is framed.
 - **Blueprints** (`core/blueprints.rs`): reusable presets (plugins/themes/WP_DEBUG/
   multisite) applied AFTER the one-click install.
 - **Plugin/theme lists are TWO passes** (`useWpPlugins`/`useWpThemes`): an instant

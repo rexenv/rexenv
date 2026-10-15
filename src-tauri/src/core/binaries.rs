@@ -116,6 +116,16 @@ const ADMINER_VERSION: &str = "6.1.1";
 /// 8.5.8 — no fatal, no deprecation on the page. A pin nobody has run is superstition
 /// with a constant name (the Adminer plan's lesson).
 const PHPMYADMIN_VERSION: &str = "5.2.3";
+/// Pinned phpMyAdmin DARK theme — BooDark (`adorade/boodark`, MIT, `supports: ["5.2"]`,
+/// Bootstrap 5.3.8 like the 5.2.3 tree), from the project's own theme mirror
+/// (`files.phpmyadmin.net/themes/boodark/<v>/boodark-<v>.zip`). phpMyAdmin 5.2 ships no
+/// dark theme and its `bootstrap` theme's compiled CSS has no colour modes (one
+/// `data-bs-theme` occurrence, checked 15 Oct 2026), so following the app's palette needs
+/// a vendored theme; this is it. A PIN, never a manifest row: a theme is matched to the
+/// tree's SERIES by hand (`phpmyadmin::verify_tree` checks `theme.json`'s `supports`),
+/// and nothing a catalog row could say would tie it to the tree it goes with. Bumping the
+/// tree past 5.2 means re-checking this pin first.
+const PHPMYADMIN_THEME_VERSION: &str = "1.2.0";
 /// Pinned cloudflared version (one static Go binary; quick-tunnel public sharing). Phase 3 §9.1.
 const CLOUDFLARED_VERSION: &str = "2026.6.1";
 /// Pinned Redis version — the FIRST Homebrew-bottle BUNDLE (no portable static
@@ -218,6 +228,7 @@ pub struct PinSet {
     pub mailpit: &'static str,
     pub adminer: &'static str,
     pub phpmyadmin: &'static str,
+    pub phpmyadmin_theme: &'static str,
     pub cloudflared: &'static str,
     pub redis: &'static str,
     pub mariadb: &'static str,
@@ -249,6 +260,7 @@ const STANDARD_PINS: PinSet = PinSet {
     mailpit: MAILPIT_VERSION,
     adminer: ADMINER_VERSION,
     phpmyadmin: PHPMYADMIN_VERSION,
+    phpmyadmin_theme: PHPMYADMIN_THEME_VERSION,
     cloudflared: CLOUDFLARED_VERSION,
     redis: REDIS_VERSION,
     mariadb: MARIADB_VERSION,
@@ -829,6 +841,12 @@ const ADMINER_6_1_1_SHA256: &str = "d2cbf80da00f7630304477b4a09f1bd2212bc6c4a53c
 // `.sha256` the project publishes beside it. The zip carries ONE top-level directory
 // (`phpMyAdmin-5.2.3-english/`), hence `ZipTree { strip: 1 }`.
 const PHPMYADMIN_5_2_3_SHA256: &str = "a59e54436489a9676edc0a8b2294ade4092bdad1c25919f857b20ec96b944920";
+
+// BooDark 1.2.0 zip SHA-256 (`files.phpmyadmin.net/themes/boodark/1.2.0/boodark-1.2.0.zip`,
+// 657 KB, 328 files, one top-level `boodark/` dir → `ZipTree { strip: 1 }` → `theme.json`).
+// `curl | shasum -a 256` on 15 Oct 2026, equal to the `.sha256` beside it AND to the
+// `data-sha256` the project's themes page prints for the file.
+const PHPMYADMIN_THEME_1_2_0_SHA256: &str = "28bc5fd187727a2800cd6e1ee9f82a59ba28a54301696fa1ef068ecf27d9d9de";
 
 // cloudflared static Go binary SHA-256 (computed at pin time from the GitHub
 // release `.tgz`). De-quarantined + ad-hoc signed by prepare_binary (no relink).
@@ -1893,13 +1911,28 @@ pub fn gc_outdated_phpmyadmin_caches(platform: &dyn Platform, keep: &[String]) -
     removed
 }
 
-/// A directory distribution that is a PHP APPLICATION, not binaries: no executable in
-/// it, run by the pool's PHP. `resolve_dir` prepares such a tree with
+/// phpMyAdmin's dark theme: the pin, and NOTHING else — not a manifest family (see
+/// `PHPMYADMIN_THEME_VERSION`), so `updates::nameable("phpmyadmin-theme")` is false and a
+/// row under that name is refused by the allowlist. A zip of CSS/JS/images, OS-agnostic.
+fn phpmyadmin_theme_spec(version: &str) -> Option<BinarySpec> {
+    if version != PHPMYADMIN_THEME_VERSION {
+        return None;
+    }
+    Some(BinarySpec {
+        url: format!("https://files.phpmyadmin.net/themes/boodark/{version}/boodark-{version}.zip"),
+        checksum: Checksum::Sha256(PHPMYADMIN_THEME_1_2_0_SHA256.to_string()),
+        archive: Archive::ZipTree { strip: 1 },
+        member: "theme.json",
+    })
+}
+
+/// A directory distribution that is a PHP APPLICATION (or a theme of one), not binaries:
+/// no executable in it, run by the pool's PHP. `resolve_dir` prepares such a tree with
 /// `prepare_script_dir` instead of `prepare_binary_dir` — Windows' binary check refuses
 /// a tree with no `.exe`/`.dll` ("not a Windows binary tree", #598), which is exactly
 /// right for MySQL and exactly wrong here.
 pub fn is_script_tree(name: &str) -> bool {
-    name == "phpmyadmin"
+    name == "phpmyadmin" || name == "phpmyadmin-theme"
 }
 
 /// The download URL for a pinned PHP build, from whichever source publishes it.
@@ -2740,6 +2773,8 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         ("adminer", _, v) => adminer_spec(v),
         // phpMyAdmin is a PHP tree (run via the bundled PHP), identical on every OS.
         ("phpmyadmin", _, v) => phpmyadmin_spec(v),
+        // Its dark theme: a zip of CSS, identical on every OS, pin only.
+        ("phpmyadmin-theme", _, v) => phpmyadmin_theme_spec(v),
         // WP-CLI is a PHP .phar (run via the bundled PHP), identical on every OS.
         ("wp-cli", _, "2.12.0") => Some(BinarySpec {
             url: format!(
@@ -3173,7 +3208,7 @@ pub fn shape_of(name: &str) -> Shape {
 /// Windows resolve looking for `dir/php` inside a tree (docs/PLAN-windows-port.md W2).
 pub fn shape_of_on(name: &str, os: &str) -> Shape {
     match name {
-        "mysql" | "postgres" | "openlitespeed" | "phpmyadmin" => Shape::Dir,
+        "mysql" | "postgres" | "openlitespeed" | "phpmyadmin" | "phpmyadmin-theme" => Shape::Dir,
         "php" | "nginx" if os == "windows" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,
@@ -5076,9 +5111,12 @@ mod tests {
         for n in ["wp-cli", "adminer"] {
             assert_eq!(shape_of(n), Shape::File);
         }
-        // phpMyAdmin: a zip TREE of PHP, published whole under its `index.php`.
+        // phpMyAdmin: a zip TREE of PHP, published whole under its `index.php`; its dark
+        // theme a zip tree of CSS under `theme.json`. Both prepared as scripts.
         assert_eq!(shape_of("phpmyadmin"), Shape::Dir);
         assert!(is_script_tree("phpmyadmin"), "a PHP tree is prepared as scripts, not binaries");
+        assert_eq!(shape_of("phpmyadmin-theme"), Shape::Dir);
+        assert!(is_script_tree("phpmyadmin-theme"), "a theme tree has no executable to check either");
         for n in ["mysql", "postgres", "openlitespeed", "php", "nginx"] {
             assert!(!is_script_tree(n), "{n} is a binary tree");
         }
@@ -6248,6 +6286,7 @@ mod tests {
             ("wp-cli".into(), one(WP_CLI_VERSION)),
             ("adminer".into(), one(ADMINER_VERSION)),
             ("phpmyadmin".into(), one(PHPMYADMIN_VERSION)),
+            ("phpmyadmin-theme".into(), one(PHPMYADMIN_THEME_VERSION)),
             ("cloudflared".into(), one(CLOUDFLARED_VERSION)),
         ];
         let all = |vs: &[&str]| vs.iter().map(|s| s.to_string()).collect::<Vec<_>>();
@@ -7143,6 +7182,30 @@ mod tests {
         assert_eq!(offered.member, "index.php");
         assert_eq!(manifest("phpmyadmin", "5.2.4", "windows", Arch::X86_64).unwrap().url, offered.url, "arch- and OS-free");
         install_catalog(Default::default());
+    }
+
+    /// The dark theme beside the phpMyAdmin tree: the pin resolves on every OS from the
+    /// project's theme mirror under `/themes/`, NO other version resolves, and it is
+    /// not a manifest family — the host prefix the family admits is `/phpMyAdmin/`, so
+    /// even a signed row could not name this zip (`updates` tests the `/themes/` URL).
+    #[test]
+    fn manifest_pins_the_phpmyadmin_theme_os_agnostic_and_pin_only() {
+        let v = PHPMYADMIN_THEME_VERSION;
+        let a = manifest("phpmyadmin-theme", v, "macos", Arch::Arm64).unwrap();
+        let b = manifest("phpmyadmin-theme", v, "windows", Arch::X86_64).unwrap();
+        let c = manifest("phpmyadmin-theme", v, "linux", Arch::Arm64).unwrap();
+        assert_eq!(a.url, format!("https://files.phpmyadmin.net/themes/boodark/{v}/boodark-{v}.zip"));
+        assert_eq!(a.member, "theme.json");
+        assert_eq!(a.archive, Archive::ZipTree { strip: 1 });
+        assert_eq!(checksum_hex(&a.checksum), PHPMYADMIN_THEME_1_2_0_SHA256);
+        for other in [&b, &c] {
+            assert_eq!(a.url, other.url);
+            assert_eq!(checksum_hex(&a.checksum), checksum_hex(&other.checksum));
+        }
+        assert!(manifest("phpmyadmin-theme", "1.1.0", "macos", Arch::Arm64).is_none(), "pin only");
+        assert!(!crate::core::updates::nameable("phpmyadmin-theme"), "a theme is never a manifest row");
+        assert!(!is_self_distributed(&a.url));
+        assert_eq!(pins().phpmyadmin_theme, v);
     }
 
     /// The phpMyAdmin sweep keeps the pin and the effective version, touches only

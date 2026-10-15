@@ -5,9 +5,10 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { adminerSetTheme, isTauri } from "@/lib/ipc";
 import { currentTheme, subscribeTheme } from "@/lib/theme";
 
-/** Embeds the stack-served Adminer (framed; its palette follows the APP's theme,
- *  written to the console's docroot before the frame loads — Adminer's own
- *  prefers-color-scheme default is what left it in the opposite theme).
+/** Embeds the stack-served console — Adminer or phpMyAdmin (framed; its palette
+ *  follows the APP's theme, written to the console's docroot before the frame
+ *  loads — Adminer's own prefers-color-scheme default is what left it in the
+ *  opposite theme, and phpMyAdmin 5.2 has no dark theme of its own at all).
  *  Off-Tauri the `rexdb://` proxy scheme doesn't exist, so we show a placeholder.
  *
  *  `externalUrl` (the `adminerUrl(...)` deep-link) adds a slim bar above the
@@ -21,8 +22,8 @@ export function AdminerFrame({
 }: {
   src: string;
   externalUrl?: string;
-  /** Which console `src` is: the palette file is Adminer's wrapper's (phpMyAdmin keeps
-   *  its own look in v1), and the frame's title names what it shows. */
+  /** Which console `src` is: the frame's title names what it shows, and the `key` below
+   *  reloads the right document on a palette change. */
   console?: "adminer" | "phpmyadmin";
 }) {
   const [copied, setCopied] = useState(false);
@@ -34,12 +35,12 @@ export function AdminerFrame({
   const [applied, setApplied] = useState<"dark" | "light" | null>(null);
   useEffect(() => {
     let live = true;
-    // A failure still loads the console: it would render in the OS scheme,
-    // which is exactly what it did before this existed — worse than matching,
-    // better than a blank panel. phpMyAdmin has no palette file to write — the
-    // frame loads straight away.
-    const write = console === "adminer" ? adminerSetTheme(theme) : Promise.resolve();
-    void write
+    // A failure still loads the console: it would render in its own default
+    // scheme, which is exactly what it did before this existed — worse than
+    // matching, better than a blank panel. One write covers BOTH consoles
+    // (`adminer_set_theme` writes each docroot's palette file; phpMyAdmin's
+    // generated config reads it per request since 15 Oct 2026).
+    void adminerSetTheme(theme)
       .catch(() => {})
       .then(() => {
         if (live) setApplied(theme);

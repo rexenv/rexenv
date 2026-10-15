@@ -1,8 +1,8 @@
 # PLAN — phpMyAdmin follow-ups: the third update family, the dark palette, the sweep
 
-**Status: in progress (15 Oct 2026)** — (1) the family and (3) the sweep shipped in the app
-(`feat(phpmyadmin)` commits of 15 Oct 2026); the publisher half is a `rexenv/runtimes` PR
-the owner merges; (2) the palette is the next commit. Parent: `docs/archive/
+**Status: SHIPPED 15 Oct 2026** — (1) the family and (3) the sweep in `b0a68e66`, (2) the
+palette in the commit after it; the publisher half is `rexenv/runtimes` PR #24 (the owner
+merges; until then `check-php-pins.sh` says MISSING by design). Parent: `docs/archive/
 PLAN-db-console-open-and-phpmyadmin.md` §9. Owner's ask, 15 Oct 2026: "phpMyAdmin
 follow-ups gulo o kore felo".
 
@@ -57,7 +57,7 @@ copied. Each point was checked against the files:
   bytes a user receives must be the ones the project signed off); `arch: any`;
   `manifest-guard.py` learns the family; `check-php-pins.sh` compares both pairs.
 
-## 2. The palette — decided
+## 2. The palette — decided (and what the build found)
 
 - phpMyAdmin 5.2 ships `pmahomme`, `bootstrap`, `metro`, `original`; none dark, and
   `bootstrap`'s compiled `theme.css` has no `data-bs-theme` color modes (one occurrence,
@@ -76,6 +76,12 @@ copied. Each point was checked against the files:
 - The theme is staged by `ensure` beside the tree (`themes/boodark/`), and the probe
   checks `theme.json`'s `supports` contains the tree's `Version::SERIES` — the gate that
   catches a 5.3/6.0 bump outrunning the vendored theme.
+- **Found by the example, not the text test:** the first config read the palette with
+  `@file_get_contents`, and the probe refused every fresh stage — PHP 8 still calls the
+  error handler for a suppressed warning, and a missing palette file is the ORDINARY state
+  before the frame first loads. The read is `is_file(...) && trim(file_get_contents(...))`
+  now, and the L0 test asserts no `@` in the expression. `php -r` takes code without
+  `<?php` — the second thing the run taught.
 
 ## 3. The sweep — decided
 

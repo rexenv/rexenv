@@ -5,7 +5,7 @@ This file covers the software DISTRIBUTED with rexenv: the app bundle
 its npm dependencies and fonts, and **two vendored PHP packages** — see below)
 and the `rex` CLI sidecar. For MOST of the server binaries rexenv downloads onto
 your machine at runtime (MySQL, MariaDB, PostgreSQL, Redis, nginx, Caddy,
-FrankenPHP, Apache httpd, Mailpit, Adminer, phpMyAdmin, cloudflared, WP-CLI, Composer,
+FrankenPHP, Apache httpd, Mailpit, Adminer, phpMyAdmin and its BooDark theme (MIT), cloudflared, WP-CLI, Composer,
 Xdebug, and PHP **8.0–8.5**) rexenv is not the distributor: those are fetched
 from their own distributors, checksum-pinned, and carry their own licences; the
 pinned versions and sources are listed in `docs/PORTS.md`.
