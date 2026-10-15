@@ -3794,7 +3794,13 @@ rexenv0 <name>` and read `Current Scopes:`.
       waits on the first published phpMyAdmin row**. ◐ **15 Oct 2026 (Ubuntu VM):**
       `phpmyadmin_update_check` built in the 22.04 container with the 5.2.2 TEST pin, PASS
       against manifest serial 10 (download, digest, extract, probe, stage into the sandbox).
-      **The GUI press is still owed** (a test-pinned binary; the chain is the example's).
+      ✓ **GUI, the same day (Ubuntu VM, a 5.2.2-pinned TEST binary swapped in, the stack
+      stopped):** `rex db console` → `update offered: 5.2.3`; **Update to 5.2.3** → the toast
+      "phpMyAdmin is now on 5.2.3", marker `5.2.3`, **Back to 5.2.2** with its tooltip; pressed
+      → the hub downloading `phpmyadmin 5.2.2`, marker `5.2.2`, `Version.php` 5.2.2, the theme
+      beside it, both trees in `~/.local/share/rexenv/bin`, **Update to 5.2.3** offered again;
+      the real binary put back, and its pin-moved Update (5.2.3 above the 5.2.2 docroot, no
+      manifest involved) pressed to leave the VM at 5.2.3.
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half; the theme under `~/.local/share/rexenv/phpmyadmin/themes/boodark`.
       ✓ **15 Oct 2026 (Ubuntu 22.04 VM, container-built 2e3cb72b over a docroot staged without the
