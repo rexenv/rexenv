@@ -2587,8 +2587,9 @@ pub const ABOUT_MENU_EVENT: &str = "menu://about";
 /// "Check for Updates…" — the macOS app menu's id, and the event it raises.
 ///
 /// Separate from the About item because it does something as well as going
-/// somewhere: the frontend navigates to the card AND re-reads its state, so a
-/// user who came to the menu bar asking gets an answer rather than a screen.
+/// somewhere: the frontend navigates to the card with `check=1` and the card
+/// runs its own check, so a user who came to the menu bar asking gets an answer
+/// rather than a screen (ledger #886).
 /// The event is not macOS-gated: the TRAY's **Check for Updates…** raises it
 /// on all three OSes (the only menu path on Windows and Linux).
 #[cfg(target_os = "macos")]

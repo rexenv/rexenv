@@ -2662,12 +2662,15 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   → About; back on Sites, click the sidebar pill → About; click **Settings** itself → General (not
   About). Narrow the window to its minimum: the pill's label may truncate, the version must not.
   With nothing offered, the TopBar shows only an icon button titled "Check for Updates…" that
-  lands on About. **Tell:** a bare `0.6.0` beside Settings, a Settings click hijacked to About, a
+  lands on About AND runs a check: the button shows "Checking…" and the footer's "checked … ago"
+  moves to "just now" (ledger #886); the URL keeps no `check=1` (reload About: no second check). **Tell:** a bare `0.6.0` beside Settings, a Settings click hijacked to About, a
   pill that starts an install. **Open: owed — run on the macOS VM (release build).**
 - [ ] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
   item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise
   the first item): the window comes forward on Settings → About. The app menu's own "Check for
-  Updates…" still does the same. **Tell:** a menu that hangs while opening, an item that installs.
+  Updates…" still does the same — each runs a check on arrival (the footer timestamp moves).
+  **Tell:** a menu that hangs while opening, an item that installs, a landing with an
+  unchanged timestamp.
   **Open: owed — run on the macOS VM.**
 - [ ] **The push** (S4, ledger #884). Leave the window OPEN on Sites across a background check
   that finds a release (a test-pinned manifest published while the app runs, then wait for the

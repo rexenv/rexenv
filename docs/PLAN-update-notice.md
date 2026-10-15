@@ -116,7 +116,7 @@ told, they do not poll. **Without S4, S1–S3 show yesterday's answer; S4 is not
 | `src/components/shell/UpdatePill.tsx` **(new)** | `UpdatePill({variant: "bar" \| "rail"})` — reads `["app-update"]` + `["app-update-readiness"]` from cache, renders the S1/S2 table, `data-probe="update-pill"` with `data-phase` |
 | `src/components/shell/TopBar.tsx` | mount `<UpdatePill variant="bar" />` after `{action}`; idle = the check button |
 | `src/components/shell/Sidebar.tsx` | drop `"/settings": { badge: … }`; footer row renders `NavButton` + sibling `<UpdatePill variant="rail" />` |
-| `src/lib/useCheckForUpdates.ts` **(new)** | the navigate-and-invalidate pair; used by `CheckUpdatesMenuWatch`, S1 idle button |
+| `src/lib/useCheckForUpdates.ts` **(new)** | the navigate-and-invalidate pair; used by `CheckUpdatesMenuWatch`, S1 idle button. **Changed 15 Oct 2026 (owner ruling):** the invalidate re-read stored state and fetched nothing, so the hook now navigates to About with `check=1` and the card runs its own check (ledger #886) |
 | `src/App.tsx` | `AppUpdateEventWatch` (S4 listener); `UpdateWatch` label (S5) |
 | `src/lib/ipc/index.ts` | `onAppUpdate(cb)` listener wrapper for the `app-update` event |
 | `src-tauri/src/lib.rs` | emit `app-update` + `refresh_tray` after accept in `check_for_app_update`; tray handler arm for `TrayAction::CheckUpdates` (show, focus, emit `menu://check-updates`) |

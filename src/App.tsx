@@ -187,7 +187,7 @@ function UpdateWatch() {
 /** "Check for Updates…" from a menu — the macOS app menu's item and, on all
  *  three OSes, the tray's: both emit `menu://check-updates`, and this is the
  *  ONE place that decides what that does (`useCheckForUpdates`, which the
- *  TopBar's idle button calls too). Mounted at the app root so it fires from
+ *  TopBar's idle button calls too): open About and have the card run its check. Mounted at the app root so it fires from
  *  any screen; the window is already shown by the time the event arrives. */
 function CheckUpdatesMenuWatch() {
   const checkForUpdates = useCheckForUpdates();

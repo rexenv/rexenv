@@ -1130,10 +1130,11 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   `?section=about`, while Settings stays plain `/settings`; no bare version anywhere in the
   sidebar; no `<a>` inside an `<a>`; the pill showing the CARD's check in flight with exactly
   one check run; and S4 — no state re-reads without an event, then an `app-update` event
-  flips both pills. **Plant-proven in Chromium, not WebKit** (15 Oct 2026, authoring sandbox
+  flips both pills; and (#886) About opened with `check=1` runs exactly one check from the card
+  and drops the flag, while About without it runs none. **Plant-proven in Chromium, not WebKit** (15 Oct 2026, authoring sandbox
   with no WebKit): restoring the `0.6.0` badge, dropping the event's invalidation, and a
-  500 ms `refetchInterval` on the pill each fail by name. The WebKit run is owed
-  (`verify-full.sh` on the Mac). Ledger #884, #885.
+  500 ms `refetchInterval` on the pill, and a card that ignores `check=1`, each fail by name. The
+  WebKit run is owed (`verify-full.sh` on the Mac). Ledger #884, #885, #886.
 - `appupdaterestart.js` (WebKit, `verify-full.sh`) — the self-update's restart. The apply
   and the restart are two commands; the check proves the order (install → dialog → nothing
   restarted yet → OK → exactly one restart), that there is no Cancel to give, and that the

@@ -34,13 +34,14 @@ export function updatePillPhase(
  * S1/S2): `bar` sits at the right of every TopBar, `rail` beside Settings in the
  * sidebar.
  *
- * **A door to About, never an installer and never a checker** (ledger #885). It
- * reads `["app-update"]` / `["app-update-readiness"]` from the cache — kept fresh
- * by the backend's `app-update` push (#884), the card and the menu item — and its
- * clicks only NAVIGATE (plus, for the idle door, the same invalidate the app
- * menu's item does). The card owns the check mutation and its failure copy, and
- * the consent sentence in front of the one Install button; a pill that did either
- * would be a second place deciding what they look like.
+ * **A door to About, never an installer and never a checker itself** (ledger
+ * #885). It reads `["app-update"]` / `["app-update-readiness"]` from the cache —
+ * kept fresh by the backend's `app-update` push (#884) and the card — and its
+ * clicks only NAVIGATE. The idle "Check for Updates…" door goes to About with
+ * `check=1`, and it is the CARD that then runs the check (owner ruling, 15 Oct
+ * 2026). The card owns the check mutation and its failure copy, and the consent
+ * sentence in front of the one Install button; a pill that did either would be
+ * a second place deciding what they look like.
  *
  * Why it exists: the only always-visible notice used to be a bare mono `0.6.0`
  * beside Settings, and the people it was meant to alert read it as the RUNNING

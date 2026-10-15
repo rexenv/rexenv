@@ -1224,8 +1224,9 @@ honest footer —
   `/settings?section=about` as a SIBLING of the Settings link (a link inside a link is dead in
   WKWebView); Settings itself keeps going to General. **It replaced a bare mono `0.6.0` badge
   on Settings**, which users read as the running version. Both pills only navigate: the idle
-  button calls `useCheckForUpdates` — the same navigate-to-About-and-invalidate the menu event
-  runs — and the card stays the one place that checks and the one place that installs. The
+  button calls `useCheckForUpdates` — the same door the menu event uses, About with `check=1`,
+  where the CARD runs its check (#886) — and the card stays the one place that checks and the
+  one place that installs. The
   update toast's action reads "Show update" (it navigates; it does not install).
   **A cancelled quit is a state, not a non-event** (7 Sep 2026, found by §M): the swap has
   already happened when the quit gate asks, so choosing "Keep sharing" leaves the new bundle
@@ -2080,11 +2081,14 @@ words (the browser shell's mock and two dev review pages excepted).
   the default menu, and nothing else in the app provides them. macOS-only, since
   the app submenu is macOS's; other platforms keep the default menu untouched.
 - **"Check for Updates…" sits under About**, where every Mac app puts it, and does two
-  things: navigates to the card AND re-checks. Someone who chose that item is ASKING, so
-  landing them on yesterday's answer would be a menu item that technically worked. The
-  frontend invalidates rather than calling the check itself — the card owns that mutation
-  and its failure copy, and a second caller would be a second place deciding what a failed
-  check looks like.
+  things: navigates to the card AND runs a check (ledger #886). Someone who chose that item is
+  ASKING, so landing them on yesterday's answer would be a menu item that technically worked —
+  and until 15 Oct 2026 that is exactly what it did: the door invalidated `["app-update"]`,
+  whose query is `app_update_state`, a pure read, so nothing was fetched. Now every door (this
+  item, the tray's, the TopBar's idle button) navigates to `/settings?section=about&check=1`
+  and the CARD runs its own "Check now" mutation once and drops the flag — the card stays the
+  only caller of the check, with its own failure copy and 6 s deadline (owner ruling, 15 Oct
+  2026).
 - **The tray's "Check for Updates…"** (`TrayAction::CheckUpdates`, `tray:check-updates`, 15 Oct
   2026, `docs/PLAN-update-notice.md` S3) sits right under the update item, or first when there
   is no offer, whenever a release key is pinned (`TrayModel::update_enabled` =

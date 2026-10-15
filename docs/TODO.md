@@ -119,13 +119,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the Mac); SMOKE-TEST "In-app self-update" notice / tray / push rows — run on the macOS VM; its Windows
   section's tray row — run on the Dell; its Linux section's tray row — run on the Ubuntu VM.
 
-- [ ] **"Check for Updates…" re-reads the stored answer; it does not fetch** (found 15 Oct 2026 building the
-  update notice). `useCheckForUpdates` (the app menu, the tray item, the TopBar idle button) navigates to About
-  and invalidates `["app-update"]`, whose query is `app_update_state` — a pure read; the only network check is
-  the card's "Check now". So those doors land on the last stored answer unless the poller ran since, which the
-  menu item's own comment says it avoids, and the plan's T3 "footer timestamp refreshed" does not hold from
-  them. Left as is: the plan forbids the pills from checking. The fix belongs to the CARD (e.g. a `?check=1`
-  arrival it answers with its own mutation) and needs the owner's call.
+- [x] **"Check for Updates…" re-reads the stored answer; it does not fetch** ✓ 15 Oct 2026 — owner ruling: the
+  click opens About AND runs the check. `useCheckForUpdates` (app menu, tray, TopBar idle button) now navigates to
+  `/settings?section=about&check=1` and `AppUpdateCard` runs its own check once and drops the flag (ledger #886;
+  `appupdate.js` leg 6, Chromium, plant-proven; the WebKit run and the per-OS clicks are owed with the row above).
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

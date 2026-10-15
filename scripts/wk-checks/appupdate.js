@@ -13,7 +13,9 @@
 //   3. no <a> inside an <a> (WKWebView makes the inner one dead);
 //   4. the pill shows the CARD's check in flight, without running one;
 //   5. S4: an `app-update` event flips both pills within one tick, with no
-//      refetch loop of their own.
+//      refetch loop of their own;
+//   6. "Check for Updates…" lands on About with `check=1`: the CARD runs
+//      exactly one check and drops the flag; no flag, no check.
 const { webkit } = require("playwright");
 const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
 const view = (state) => `${BASE}/dev/ui-review?view=updatenotice&state=${state}`;
@@ -120,6 +122,18 @@ const STATES = [
     const after = await bar().first().getAttribute("data-phase").catch(() => null);
     if (after !== "offered") fails.push(`${width}/event: after app-update the pill is ${after}, expected offered`);
     if ((await rail().count()) === 0) fails.push(`${width}/event: the rail pill did not appear after app-update`);
+
+    // 6. "Check for Updates…" arrives at About as `?check=1`, and the CARD runs
+    // its own check exactly once — then drops the flag, so a reload does not
+    // check again. Without the flag, opening About checks nothing.
+    for (const [q, want] of [["&check=1", 1], ["", 0]]) {
+      await page.goto(`${BASE}/dev/ui-review?view=appupdate&state=none${q}`, { waitUntil: "networkidle" });
+      await page.waitForSelector('[data-probe="appupdate-view"]', { timeout: 5000 });
+      await page.waitForTimeout(600);
+      const n = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "app_update_check").length);
+      if (n !== want) fails.push(`${width}/arrival${q || " (no flag)"}: ${n} checks ran, expected ${want}`);
+      if (new URL(page.url()).searchParams.has("check")) fails.push(`${width}/arrival${q}: the check flag stayed in the URL`);
+    }
 
     await page.screenshot({ path: `shot-appupdate-${width}.png`, fullPage: true });
     await page.close();

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   appUpdateApply,
@@ -13,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { acknowledge } from "@/components/ui/dialog";
 import { toastBackendError } from "@/lib/toast";
 import { agoLabel } from "@/routes/Sites";
-import { APP_UPDATE_CHECK_MUTATION } from "@/lib/useCheckForUpdates";
+import { APP_UPDATE_CHECK_MUTATION, CHECK_FLAG } from "@/lib/useCheckForUpdates";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
 import type { DownloadsSnapshot } from "@/types";
 
@@ -72,6 +73,34 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       toastBackendError(e);
     },
   });
+
+  // "Check for Updates…" (app menu, tray, TopBar) arrives as `?check=1`: run
+  // THIS card's check once — the same mutation, copy and deadline as "Check
+  // now" — then drop the flag so a reload or a back-navigation does not check
+  // again. The ref absorbs StrictMode's double effect; a later arrival with the
+  // flag (the user asks again from the menu) is a new request and runs again.
+  const [params, setParams] = useSearchParams();
+  const asked = params.get(CHECK_FLAG) === "1";
+  const answered = useRef(false);
+  const enabled = st?.enabled;
+  const { mutate: runCheck, isPending: checking } = check;
+  useEffect(() => {
+    if (!asked) {
+      answered.current = false;
+      return;
+    }
+    if (enabled === undefined || answered.current) return;
+    answered.current = true;
+    if (enabled && !checking) runCheck();
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        next.delete(CHECK_FLAG);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [asked, enabled, checking, runCheck, setParams]);
 
   const autoCheck = useMutation({
     mutationFn: appUpdateSetAutoCheck,
