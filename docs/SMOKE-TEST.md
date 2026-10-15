@@ -932,7 +932,13 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   the config guards on the directory); a light console in a dark app = the frame did not
   write the file before loading (check `.rexenv-theme` in the docroot). L1 `phpmyadmin_check`
   proves the resolved `ThemeDefault` per palette through the real PHP and the plant
-  (a theme not declaring the series is refused); the RENDER is this row's.
+  (a theme not declaring the series is refused); the RENDER is this row's. ✓ **15 Oct 2026
+  (macOS 15.8 UTM VM, build 2e3cb72b swapped in over a docroot staged WITHOUT the theme):**
+  `rex db console phpmyadmin` staged `themes/boodark/` into the existing docroot (the
+  idempotent path's `ensure_theme`), the config re-rendered with the palette block; app in
+  Light → Browse MySQL → pmahomme (file `light`, curl → `themes/pmahomme/`); Settings → Dark →
+  Browse → BooDark inside the frame (dark panels, cyan links, the tree dark; file `dark`, curl
+  → `themes/boodark/`, 0 "not found"); click into `mysql` → still dark; no picker anywhere.
 - [ ] **Open a database console in a real browser** (14 Oct 2026, T1 of
   `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): Databases → beside MySQL's Browse, the
   **Open in browser** control wears the icon of the browser a click will use and carries a
@@ -3107,7 +3113,12 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half. Windows: the theme zip is prepared by `prepare_script_dir`
       (Mark-of-the-Web stripped) and staged into `…\rexenv\rexenv\data\phpmyadmin\themes\boodark`;
-      `.rexenv-theme` beside `config.inc.php`. **Open: no run recorded.**
+      `.rexenv-theme` beside `config.inc.php`. ✓ **15 Oct 2026 (Dell, installer built there from
+      2e3cb72b, over a docroot staged without the theme):** `rex db console phpmyadmin` staged
+      `themes\boodark` (cache `bin\phpmyadmin-theme-1.2.0`), the config says `ThemeManager = false`;
+      Light → Browse MySQL → pmahomme; Settings → Dark → Browse → BooDark inside the frame at
+      `http://rexpma.localhost` (file `dark`, the served page's only theme path `themes/boodark/`);
+      back to System.
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
       adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
@@ -3768,7 +3779,11 @@ rexenv0 <name>` and read `Current Scopes:`.
       22.04 container and run on the Ubuntu VM, and the GUI press.
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half; the theme under `~/.local/share/rexenv/phpmyadmin/themes/boodark`.
-      **Open: no run recorded.**
+      ✓ **15 Oct 2026 (Ubuntu 22.04 VM, container-built 2e3cb72b over a docroot staged without the
+      theme):** `rex db console phpmyadmin` 1.4 s staged `themes/boodark/`; Light → Browse MySQL →
+      pmahomme (file `light`, curl → `themes/pmahomme/`); Dark → BooDark inside the frame (file
+      `dark`, curl → `themes/boodark/`); `phpmyadmin_check` green on the VM incl. the palette legs,
+      the theme plant and the real-stack leg.
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
       upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the
