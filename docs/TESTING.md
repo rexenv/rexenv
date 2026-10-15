@@ -1021,7 +1021,8 @@ one table (the fixture's `mu-plugins/rexsync-cut.php` answers 500 to the one req
 `uploads/rexsync-cut/cut.json`) leaves its staging copy and record, and the next pull reuses
 the staged table (15–15b); a push the site cuts on its second file leaves the open push on live
 and a record here, and the next push continues it without sending the first file again
-(16–16b). The plugin's own test §10 holds the resume answer (`db_done` only after the LAST
+(16–16b) — ALL PASS on macOS and on the Ubuntu 22.04 VM (15 Oct 2026; the Dell run is owed —
+its tunnel was down that evening). The plugin's own test §10 holds the resume answer (`db_done` only after the LAST
 chunk; `received` by bytes; `no_push` for a widened set; a fresh begin aborts the open push).
 The pure halves are L0: `anonymise::rules_apply_by_prefixed_name_to_present_tables_only`,
 `uploads_on_demand::the_plugin_is_bounded_to_uploads`,
