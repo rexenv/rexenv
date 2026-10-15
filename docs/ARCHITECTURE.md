@@ -2211,9 +2211,10 @@ IPC surface — which is how a reader ends up designing against a system with on
   are shared and clearing one empties every site's lines; and `repo` `watch_log`, only for
   a watch running on THAT site, lines scrubbed. The last eleven (#564) are `stack` actions
   scoped per action: reads `adminer`, `downloads`, `edge_conflict`; manage
-  `adminer_update_check`, `adminer_theme`, `prefetch`, `retry_download`; system
+  `adminer_update_check`, `phpmyadmin_update_check` (15 Oct 2026), `adminer_theme`, `prefetch`,
+  `retry_download`; system
   `set_engine_version` (a running engine restarts and every site on it is offline meanwhile),
-  `adminer_update_apply`, `autostart`; with `stack_status.engines` naming the offered and
+  `adminer_update_apply`, `phpmyadmin_update_apply`, `autostart`; with `stack_status.engines` naming the offered and
   selected versions. The table has no `Gap` row since. `init_error` and `startup_notices` were re-ruled `Never`: with no
   AppState the server answers "still starting", and reading the notices drains the
   person's toasts.
@@ -2937,9 +2938,25 @@ IPC surface — which is how a reader ends up designing against a system with on
   (#865); the in-app frame goes through its own `rexpma:` proxy origin (#869/#870). Its vhost `phpmyadmin.rexenv.rex` exists only while staged
   (`sites::console_vhosts`, #867), shares Adminer's import cap and 24 h timeout, and can never be
   a tunnel origin (#868). The blowfish secret is born owner-only OUTSIDE the docroot. Pinned
-  5.2.3, measured on PHP 8.3.32/8.4.23/8.5.8 before the pin; no update family yet (plan §9).
+  5.2.3, measured on PHP 8.3.32/8.4.23/8.5.8 before the pin.
   `rex db console [adminer|phpmyadmin]` is the same command; `rex db browse` opens the effective
-  console.
+  console. **It updates through the signed manifest as the THIRD `updates::Family`**
+  (15 Oct 2026, plan §9's follow-up): `PhpMyAdmin` rows are arch-free (`any`), from
+  `files.phpmyadmin.net/phpMyAdmin/` only, at or below `PHPMYADMIN_MAX_MAJOR` (5 — the tree
+  layout the probe loads and the config keys the generator writes are what a major moves;
+  raised only after `phpmyadmin_check` runs green on the new major); `phpmyadmin_spec` is
+  pin-first/catalog-second with the extractor derived from the NAME (#871). ONE answer to
+  "which version": `phpmyadmin::effective_version` = the stored choice, floored by the pin,
+  vouched on read through `binaries::manifest` (#872) — choosing the console installs THAT
+  version, never the bare pin. The apply (`phpmyadmin_update_apply`, the console card's
+  "Update to X" / "Back to <pin>") downloads with nothing written, then `ensure` copies +
+  generates + PROBES + publishes, and only THEN records the choice, so the setting never
+  names a version the docroot does not hold (#873). An app release that moves the pin above
+  the docroot shows the same button with the effective version. The launch sweep removes
+  `phpmyadmin-<v>` cache trees that are neither the pin nor the effective version (~52 MB
+  each; the pin stays so "Back to" works offline; an empty keep-set sweeps nothing, #874).
+  Published by `rexenv/runtimes`' `publish-manifest.sh` (`PHPMYADMIN_PIN` / `_MAX_MAJOR`,
+  checked against the app by `scripts/check-php-pins.sh`).
 - **The console's palette follows the APP, not the OS** (`adminer::set_theme` +
   the wrapper's `css()` · `adminer_set_theme` · 20 Aug 2026). Adminer decides its
   scheme from what `css()` returns — values naming only `dark` make it load

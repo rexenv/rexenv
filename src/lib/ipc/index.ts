@@ -870,6 +870,21 @@ export async function dbConsoleSet(console: DbConsole): Promise<DbConsoleStatus>
   return invoke<DbConsoleStatus>("db_console_set", { console });
 }
 
+/** Refresh the signed manifest and return the fresh console row (phpMyAdmin's offer is
+ *  read off the same document Adminer's is). Best-effort, as `adminerUpdateCheck`. */
+export async function phpmyadminUpdateCheck(): Promise<DbConsoleStatus> {
+  if (!isTauri()) return mockDbConsoleStatus;
+  return invoke<DbConsoleStatus>("phpmyadmin_update_check");
+}
+
+/** Move phpMyAdmin onto `version` (a manifest offer, or the pin for "Back to"): download →
+ *  copy → generated config → PROBE on rexenv's PHP → publish → the choice recorded; a
+ *  failure leaves the console exactly where it was. Returns the RE-MEASURED row. */
+export async function phpmyadminUpdateApply(version: string): Promise<DbConsoleStatus> {
+  if (!isTauri()) return { ...mockDbConsoleStatus, phpmyadminStaged: version, phpmyadminEffective: version, phpmyadminUpdatable: null };
+  return invoke<DbConsoleStatus>("phpmyadmin_update_apply", { version });
+}
+
 export async function adminerUpdateApply(version: string): Promise<AdminerStatus> {
   if (!isTauri()) return { staged: version, effective: version, updatable: null, pinned: mockAdminerStatus.pinned };
   return invoke<AdminerStatus>("adminer_update_apply", { version });

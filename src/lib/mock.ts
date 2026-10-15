@@ -202,6 +202,8 @@ export const mockDbConsoleStatus: DbConsoleStatus = {
   console: "adminer",
   phpmyadminStaged: null,
   phpmyadminPinned: "5.2.3",
+  phpmyadminEffective: "5.2.3",
+  phpmyadminUpdatable: null,
 };
 
 export const mockAdminerStatus: AdminerStatus = {

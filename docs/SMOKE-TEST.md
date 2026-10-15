@@ -956,6 +956,25 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   database tree (after #865's `'sameorigin'` fix — the first run was the empty-frame TELL below);
   the bar's Open in browser → Safari; `curl -sI` → `SAMEORIGIN`; `phpmyadmin_check` green incl. the
   real-stack leg. The flip back to Adminer and the PostgreSQL row were seen on the Ubuntu VM.
+- [ ] **phpMyAdmin updates through the signed manifest** (15 Oct 2026, the third
+  `updates::Family`, ledger #871–#874). Only runs once a manifest carrying a phpMyAdmin
+  version above the pin is published (`rexenv/runtimes`, `phpmyadmin:X.Y.Z`). With
+  phpMyAdmin installed, the Databases console card shows `phpMyAdmin 5.2.3` and an
+  **Update to X** button; its tooltip names the probe ("check it runs on rexenv's PHP with
+  the generated config"). Press it: the button keeps its sentence ("Updating to X…", a
+  spinner, same width), the hub shows the zip, then a toast "phpMyAdmin is now on X", the
+  line reads `phpMyAdmin X`, **Back to 5.2.3** appears. Browse on MySQL → phpMyAdmin
+  inside the app, logged in, and its own footer/About says X. `curl -sI
+  https://phpmyadmin.rexenv.rex/index.php?server=1 | grep -i x-frame-options` →
+  `SAMEORIGIN` still (the generated config was re-rendered into the new tree). **Back to
+  5.2.3** → the same apply on the pin, offline (its tree is kept by the sweep); the line
+  reads `phpMyAdmin 5.2.3`, no "Back to". **Tell:** a toast naming X while the line still
+  says 5.2.3 = the stage published without the marker, or the row was not re-read.
+  Relaunch the app: `~/Library/Application Support/dev.rexenv.rexenv/bin/` keeps
+  `phpmyadmin-5.2.3` and the chosen version's tree and nothing else named
+  `phpmyadmin-<v>`. **Open: no manifest carries a phpMyAdmin row yet (the runtimes PR
+  adds the discovery; the first publish is the first run).** L1 `phpmyadmin_update_check`
+  covers the chain up to the stage; L2 `dbconsole-*` the card's six states.
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
@@ -3067,6 +3086,12 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       the `:$DATA` stream (no Mark of the Web); the secret's ACL is `DELL FullControl` alone. GUI:
       Browse → phpMyAdmin INSIDE the app at `http://rexpma.localhost`, logged in, the database tree.
       `phpmyadmin_check` (cross-built, `windows-example.sh`) green incl. the real-stack leg.
+- [ ] **phpMyAdmin updates through the signed manifest** (15 Oct 2026): the main body's row.
+      Windows differences: none in the flow — the zip is OS-agnostic and the tree is prepared
+      by `prepare_script_dir` (Mark-of-the-Web stripped); the cache is
+      `%LOCALAPPDATA%\rexenv\rexenv\bin\phpmyadmin-<v>`. **Open: waits on the first
+      published phpMyAdmin row**, then run `phpmyadmin_update_check` cross-built on the Dell
+      and the GUI press.
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `%LOCALAPPDATA%\rexenv\rexenv\data\mysql\data`. The flag rides the common `core/` argv (Windows
       adds only `--no-monitor`); the cleanup's `remove_file` must work on an NTFS datadir while
@@ -3721,6 +3746,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       leg. **The binary must not be a bare cargo build** — that one opened "Could not connect to
       localhost" (the dev URL); built with `TAURI_CONFIG={"build":{"devUrl":null}}` instead
       (`docs/TESTING.md` § Proving a Linux claim).
+- [ ] **phpMyAdmin updates through the signed manifest** (15 Oct 2026): the main body's row.
+      Linux differences: none — the cache is `~/.local/share/rexenv/bin/phpmyadmin-<v>`. **Open:
+      waits on the first published phpMyAdmin row**, then `phpmyadmin_update_check` built in the
+      22.04 container and run on the Ubuntu VM, and the GUI press.
 - [ ] **MySQL writes no binary log** (ledger #858): the main body's row, with the datadir at
       `~/.local/share/rexenv/mysql/data`. Same common `core/` argv as macOS; the
       upgrade leg (a datadir carrying `binlog.*` from 0.8.13 or earlier, Stop → Start) is the

@@ -22,7 +22,7 @@ import {
 import { CONSOLE_LABEL, DB_CONSOLE_QUERY, consoleFor, consoleFrameSrc, consoleUrl, useDbConsole } from "@/lib/dbconsole";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { DbConsole, DbStatus } from "@/types";
-import { dbConsoleSet } from "@/lib/ipc";
+import { dbConsoleSet, phpmyadminUpdateApply, phpmyadminUpdateCheck } from "@/lib/ipc";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
@@ -194,7 +194,29 @@ export function DbConsoleCard() {
     },
     onError: (e) => toastBackendError(e),
   });
+  // The manifest refresh, its own query and `retry: false`, as the Adminer card: a
+  // fetch that fails must not fail the row, and a poll nobody asked for must not hammer.
+  useQuery({
+    queryKey: ["phpmyadmin-update-check"],
+    queryFn: async () => {
+      const fresh = await phpmyadminUpdateCheck();
+      qc.setQueryData(DB_CONSOLE_QUERY, fresh);
+      return fresh;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const update = useMutation({
+    mutationFn: (version: string) => phpmyadminUpdateApply(version),
+    onSuccess: (fresh) => {
+      qc.setQueryData(DB_CONSOLE_QUERY, fresh);
+      // MEASURED: the backend re-reads the marker after the restage.
+      toast.success(`phpMyAdmin is now on ${fresh.phpmyadminStaged ?? fresh.phpmyadminEffective}`);
+    },
+    onError: (e) => toastBackendError(e),
+  });
   if (!status) return null;
+  const busy = choose.isPending || update.isPending;
   const pending = choose.isPending ? choose.variables : null;
   const option = (console: DbConsole, hint: string) => {
     const active = status.console === console;
@@ -204,7 +226,7 @@ export function DbConsoleCard() {
         type="button"
         role="radio"
         aria-checked={active}
-        disabled={choose.isPending}
+        disabled={busy}
         aria-busy={pending === console}
         data-probe={`db-console-${console}`}
         onClick={() => !active && choose.mutate(console)}
@@ -214,15 +236,25 @@ export function DbConsoleCard() {
         }`}
       >
         {pending === console && <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />}
-        {pending === console && console === "phpmyadmin" ? `Installing phpMyAdmin ${status.phpmyadminPinned}…` : CONSOLE_LABEL[console]}
+        {pending === console && console === "phpmyadmin" ? `Installing phpMyAdmin ${status.phpmyadminEffective}…` : CONSOLE_LABEL[console]}
       </button>
     );
   };
+  // The version controls exist only for an INSTALLED phpMyAdmin — a console nobody
+  // chose has nothing to update, and the install button already names the version it
+  // would fetch. Three facts, as the Adminer row: what is staged, what the next stage
+  // produces (the pin moved under it after an app release), what a manifest offers.
+  const staged = status.phpmyadminStaged;
+  // A manifest offer, else the effective version when the docroot is behind it.
+  const target = status.phpmyadminUpdatable ?? (staged && staged !== status.phpmyadminEffective ? status.phpmyadminEffective : null);
   return (
     <div
       data-probe="db-console"
       data-console={status.console}
-      data-phpmyadmin-staged={status.phpmyadminStaged ?? ""}
+      data-phpmyadmin-staged={staged ?? ""}
+      data-phpmyadmin-effective={status.phpmyadminEffective}
+      data-phpmyadmin-updatable={status.phpmyadminUpdatable ?? ""}
+      data-phpmyadmin-pinned={status.phpmyadminPinned}
       className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-rex-border bg-rex-surface-1 px-4 py-3"
     >
       <span className="text-[0.84375rem] font-semibold text-rex-text">Database console</span>
@@ -231,14 +263,55 @@ export function DbConsoleCard() {
         {option("adminer", "Adminer — the single-file console rexenv ships for every engine")}
         {option(
           "phpmyadmin",
-          status.phpmyadminStaged
-            ? `phpMyAdmin ${status.phpmyadminStaged} is installed — open MySQL and MariaDB in it`
-            : `Download phpMyAdmin ${status.phpmyadminPinned} (about 11 MB), check it runs on rexenv's PHP, and open MySQL and MariaDB in it`,
+          staged
+            ? `phpMyAdmin ${staged} is installed — open MySQL and MariaDB in it`
+            : `Download phpMyAdmin ${status.phpmyadminEffective} (about 11 MB), check it runs on rexenv's PHP, and open MySQL and MariaDB in it`,
         )}
       </div>
       <span className="w-full font-mono text-[0.6875rem] text-rex-text-muted sm:w-auto">
-        phpMyAdmin {status.phpmyadminStaged ?? "not installed yet"}
+        phpMyAdmin {staged ?? "not installed yet"}
       </span>
+      {staged && (target || status.phpmyadminEffective !== status.phpmyadminPinned) && (
+        <div className="flex items-center gap-2">
+          {target && (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              aria-busy={update.isPending}
+              onClick={() => update.mutate(target)}
+              title={
+                update.isPending
+                  ? `Downloading phpMyAdmin ${target} and checking it runs on rexenv's PHP with the generated config.`
+                  : `Download phpMyAdmin ${target}, check it runs on rexenv's PHP with the generated config, and replace the console with it. The ${staged} tree keeps serving until the new one passes.`
+              }
+              className="gap-2 text-brand-light hover:text-brand-light"
+            >
+              {/* The running state keeps the SENTENCE (the Adminer card's lesson, #542). */}
+              {update.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-rex-spin" />
+                  Updating to {target}…
+                </>
+              ) : (
+                `Update to ${target}`
+              )}
+            </Button>
+          )}
+          {/* The revert is a second press: the pin is a floor and its tree is kept by
+              the cache sweep, so going back is the same apply on the pinned version. */}
+          {status.phpmyadminEffective !== status.phpmyadminPinned && (
+            <Button
+              variant="ghost"
+              disabled={busy}
+              onClick={() => update.mutate(status.phpmyadminPinned)}
+              title={`Go back to phpMyAdmin ${status.phpmyadminPinned}, the version this rexenv ships — its files are still on disk; the console restages onto it.`}
+              className="gap-2"
+            >
+              {`Back to ${status.phpmyadminPinned}`}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

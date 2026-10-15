@@ -622,7 +622,12 @@ The comps predate the real architecture. Correct as shipped:
   2026) is a card BELOW the table — a segmented control, one dial for the app, never a
   second button on every row — and it is honest about state: "phpMyAdmin not installed yet"
   is a sentence, the installing button keeps its sentence ("Installing phpMyAdmin 5.2.3…"),
-  and a PostgreSQL row's Browse says why it ignores the dial. The comp's per-schema re-model (schema rows,
+  and a PostgreSQL row's Browse says why it ignores the dial. Since 15 Oct 2026 the same card
+  carries phpMyAdmin's version controls — an **Update to X** button only when a verified
+  manifest offers one (or an app release moved the pin above the docroot), **Back to <pin>**
+  only while above the pin, nothing before an install, the running label keeping its
+  sentence and width (the Adminer card's rules, one fact per row, no "up to date"); not a
+  third card, because the version of the thing the dial chooses belongs beside the dial. The comp's per-schema re-model (schema rows,
   per-row export/import/drop) was **deliberately not adopted** (decision recorded
   in the design burndown §6): it needs a schema-enumeration backend and a larger
   UI for little gain, and the engine view matches the Services grouping.

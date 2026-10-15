@@ -140,6 +140,14 @@ const SCENARIOS = [
   ["adminer-pending", "view=adminer&adminer=pending", []],
   ["adminer-fresh", "view=adminer&adminer=fresh", []],
   ["adminer-updating", "view=adminer&adminer=updating", []],
+  // The console card, in every state its version controls can be in. Same reason as
+  // the Adminer card: the one control that installs bytes this build did not ship with.
+  ["dbconsole-fresh", "view=dbconsole", []],
+  ["dbconsole-installed", "view=dbconsole&console=installed", []],
+  ["dbconsole-offer", "view=dbconsole&console=offer", []],
+  ["dbconsole-pin-moved", "view=dbconsole&console=pin-moved", []],
+  ["dbconsole-above-pin", "view=dbconsole&console=above-pin", []],
+  ["dbconsole-updating", "view=dbconsole&console=updating", []],
   // The app-update card, in every state it can be in. It carries the one
   // control in this app that replaces the app itself, and what it SAYS is most
   // of the check: the three states that must be right — never checked, checked
@@ -548,6 +556,72 @@ const PROBES = {
             problems.push(
               `the button collapsed from ${Math.round(before.w)}px ("${before.text}") to ${Math.round(now)}px ("${label}")`
             );
+        }
+      }
+      return problems;
+    }, before);
+  },
+  // The console card's version controls: a button IF AND ONLY IF something is offered
+  // (a manifest version, or the pin moved under the docroot), "Back to" IF AND ONLY IF
+  // the effective version is above the pin, nothing at all before an install, and the
+  // running control keeps its sentence and its width (the Adminer card's #542).
+  dbConsole: async (page, name) => {
+    let before = null;
+    if (name === "dbconsole-updating") {
+      before = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('[data-probe="db-console"] button')].find((x) => /^Update to /.test(x.textContent.trim()));
+        return b ? { w: b.getBoundingClientRect().width, text: b.textContent.trim() } : null;
+      });
+      await page.evaluate(() => {
+        const b = [...document.querySelectorAll('[data-probe="db-console"] button')].find((x) => /^Update to /.test(x.textContent.trim()));
+        if (b) b.click();
+      });
+      await page
+        .waitForFunction(
+          () => {
+            const b = [...document.querySelectorAll('[data-probe="db-console"] button')].find((x) => /^Updat(e|ing) to /.test(x.textContent.trim()));
+            return !!b && b.disabled;
+          },
+          { timeout: 4000 }
+        )
+        .catch(() => {});
+    }
+    return page.evaluate((before) => {
+      const problems = [];
+      const card = document.querySelector('[data-probe="db-console"]');
+      if (!card) return ["the console card rendered nothing"];
+      const text = (card.innerText || "").replace(/\s+/g, " ");
+      const staged = card.dataset.phpmyadminStaged;
+      const effective = card.dataset.phpmyadminEffective;
+      const updatable = card.dataset.phpmyadminUpdatable;
+      const pinned = card.dataset.phpmyadminPinned;
+      const buttons = [...card.querySelectorAll("button")];
+      const update = buttons.find((b) => /^Updat(e|ing) to /.test((b.textContent || "").trim()));
+      const back = buttons.find((b) => /^Back to /.test((b.textContent || "").trim()));
+      const expectTarget = updatable || (staged && staged !== effective ? effective : "");
+      if (!staged) {
+        if (update || back) problems.push(`nothing installed, yet the card offers a version control: "${text}"`);
+        if (!/not installed yet/.test(text)) problems.push(`nothing installed and the card does not say so: "${text}"`);
+      } else {
+        if (!text.includes(staged)) problems.push(`serving ${staged}, and the card does not say so: "${text}"`);
+        if (expectTarget && !update) problems.push(`offers ${expectTarget} but has no Update button`);
+        if (!expectTarget && update) problems.push(`an Update button with nothing offered — "${text}"`);
+        if (update && !update.textContent.includes(expectTarget))
+          problems.push(`the button says "${update.textContent.trim()}" but the card offers ${expectTarget}`);
+        if (effective !== pinned && !back) problems.push(`on ${effective} above the pin ${pinned}, and no "Back to" is offered`);
+        if (effective === pinned && back) problems.push(`"Back to" offered while already on the pin: "${text}"`);
+      }
+      if (/up to date|latest/i.test(text)) problems.push(`the card promises a currency it cannot know: "${text}"`);
+      if (before) {
+        if (!update) {
+          problems.push(`the update button vanished mid-update — the card now reads "${text}"`);
+        } else {
+          const label = update.textContent.trim();
+          const now = update.getBoundingClientRect().width;
+          if (!update.disabled) problems.push("the update button is still clickable while updating");
+          if (!label.includes(expectTarget)) problems.push(`updating ${expectTarget}, and the button does not name it: "${label}"`);
+          if (!update.querySelector("svg")) problems.push("the running button has no spinner");
+          if (now < before.w * 0.8) problems.push(`the button collapsed from ${Math.round(before.w)}px to ${Math.round(now)}px ("${label}")`);
         }
       }
       return problems;
@@ -1144,6 +1218,7 @@ function probeFor(name) {
   // sweep six times per width.
   if (name === "appupdate-never-checked") return PROBES["appupdate-never-checked"];
   if (name.startsWith("adminer-")) return PROBES.adminerVersion;
+  if (name.startsWith("dbconsole-")) return PROBES.dbConsole;
   if (name.startsWith("tunnels-")) return PROBES.tunnelsFilter;
   if (name === "themes-titles") return PROBES.themeTitles;
   return null;

@@ -1803,22 +1803,94 @@ fn adminer_spec(version: &str) -> Option<BinarySpec> {
     })
 }
 
-/// phpMyAdmin: the pinned release zip, and NOTHING else — no catalog arm yet
-/// (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §9: a third `updates::Family` is its
-/// own row, after v1 is measured). `updates::nameable("phpmyadmin")` is false today, so a
-/// manifest entry under that name is refused by the same allowlist that guards Adminer.
+/// phpMyAdmin: the pinned release zip, else the verified catalog — the third family on
+/// the signed manifest (15 Oct 2026, the follow-up of
+/// `docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §9), with [`adminer_spec`]'s
+/// precedence for the same reason: a signed document may ADD a version this build was
+/// made before, never re-point the one it pins.
+///
+/// **`archive` and `member` are derived from the NAME here, never carried by the
+/// document** — a manifest that could name them would choose which extractor runs,
+/// and `ZipTree { strip: 1 }` is a fact about how the project packages its zip (one
+/// top-level directory), not a per-version choice.
 fn phpmyadmin_spec(version: &str) -> Option<BinarySpec> {
-    if version != PHPMYADMIN_VERSION {
+    if version == PHPMYADMIN_VERSION {
+        return Some(BinarySpec {
+            url: format!(
+                "https://files.phpmyadmin.net/phpMyAdmin/{version}/phpMyAdmin-{version}-english.zip"
+            ),
+            checksum: Checksum::Sha256(PHPMYADMIN_5_2_3_SHA256.to_string()),
+            archive: Archive::ZipTree { strip: 1 },
+            member: "index.php",
+        });
+    }
+    // Not pinned: ask the verified catalog. The name is asserted against the
+    // manifest's own allowlist HERE rather than trusting `updates` to have
+    // filtered — the guard belongs where the value is used.
+    if !crate::core::updates::nameable("phpmyadmin") {
         return None;
     }
+    let guard = CATALOG.read().ok()?;
+    let a = guard.as_ref()?.artifact("phpmyadmin", version, crate::core::updates::ANY_ARCH)?;
     Some(BinarySpec {
-        url: format!(
-            "https://files.phpmyadmin.net/phpMyAdmin/{version}/phpMyAdmin-{version}-english.zip"
-        ),
-        checksum: Checksum::Sha256(PHPMYADMIN_5_2_3_SHA256.to_string()),
+        url: a.url.clone(),
+        checksum: Checksum::Sha256(a.sha256.clone()),
         archive: Archive::ZipTree { strip: 1 },
         member: "index.php",
     })
+}
+
+/// Whether a binary-cache dir name holds a phpMyAdmin tree nothing needs any more —
+/// `phpmyadmin-5.2.3/` once an update moved the console to 5.2.4, or the reverse.
+///
+/// `keep` is the pin AND the effective version (the one the next stage would copy);
+/// a version in it is never outdated. The pin stays so "Back to <pin>" is a second
+/// press that works offline (the Adminer card's rule, #759); the effective one stays
+/// because a restage copies from it. Pure (name + set) so the rule is testable without
+/// a `Platform`, and narrow on purpose: only `phpmyadmin-x.y.z`, never the dark theme
+/// beside it (`phpmyadmin-theme-…` — a pin, swept by nothing) and never a staging dir.
+///
+/// A sweep is worth having here where it was not for Adminer: an Adminer version is
+/// 324 KB, a phpMyAdmin tree is ~52 MB, and every update leaves one behind.
+pub fn is_outdated_phpmyadmin_cache(dir_name: &str, keep: &[String]) -> bool {
+    let Some(version) = dir_name.strip_prefix("phpmyadmin-") else {
+        return false;
+    };
+    let parts: Vec<&str> = version.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty() || !p.bytes().all(|b| b.is_ascii_digit())) {
+        return false; // `phpmyadmin-theme-1.2.0`, a staging name, anything else
+    }
+    !keep.iter().any(|k| k == version)
+}
+
+/// Remove phpMyAdmin cache trees left behind by an update (the manifest family moves
+/// the console; the old `phpmyadmin-<v>/` tree would otherwise stay, ~52 MB each).
+/// Best-effort — a dir that can't be removed is skipped, never an error. Returns the
+/// removed dir names.
+///
+/// `keep` is the caller's — the pin and `phpmyadmin::effective_version` — and an
+/// EMPTY keep-set means "skip", never "keep nothing": the sweep deletes what is NOT
+/// in the set, so not-knowing must cost a skipped sweep and never the tree the user
+/// is about to restage from (the PHP sweep's rule, `php_caches_to_keep`).
+pub fn gc_outdated_phpmyadmin_caches(platform: &dyn Platform, keep: &[String]) -> Vec<String> {
+    if keep.is_empty() {
+        log::warn!("phpmyadmin: skipped the outdated-cache sweep — an empty keep-set deletes every tree");
+        return Vec::new();
+    }
+    let Ok(bin_dir) = platform.paths().bin_dir() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&bin_dir) else {
+        return Vec::new();
+    };
+    let mut removed = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_outdated_phpmyadmin_cache(&name, keep) && std::fs::remove_dir_all(entry.path()).is_ok() {
+            removed.push(name);
+        }
+    }
+    removed
 }
 
 /// A directory distribution that is a PHP APPLICATION, not binaries: no executable in
@@ -6284,7 +6356,7 @@ mod tests {
     /// until 5 Oct 2026. Scans the test modules of every file that installs one.
     #[test]
     fn every_test_that_installs_a_catalog_holds_the_catalog_lock() {
-        let files = [("binaries.rs", include_str!("binaries.rs")), ("adminer.rs", include_str!("adminer.rs"))];
+        let files = [("binaries.rs", include_str!("binaries.rs")), ("adminer.rs", include_str!("adminer.rs")), ("phpmyadmin.rs", include_str!("phpmyadmin.rs"))];
         let mut checked = 0;
         for (name, src) in files {
             let tests = &src[src.find("\n#[cfg(test)]\nmod tests {\n").expect("a test module")..];
@@ -7027,25 +7099,75 @@ mod tests {
     }
 
     /// phpMyAdmin: the same pinned zip on every OS/arch, a stripped tree published
-    /// under `index.php`, and ONLY the pin — there is no catalog family for it yet, so
-    /// any other version must be unresolvable rather than guessed at.
+    /// under `index.php`; an unpinned version resolves only through a VERIFIED catalog
+    /// (the third family, 15 Oct 2026) — never guessed at.
     #[test]
-    fn manifest_pins_phpmyadmin_os_agnostic_and_pin_only() {
+    fn manifest_pins_phpmyadmin_os_agnostic_and_the_pin_outranks_the_catalog() {
         let v = PHPMYADMIN_VERSION;
+        let _catalog = catalog_test_lock();
+        install_catalog(Default::default());
         let a = manifest("phpmyadmin", v, "macos", Arch::Arm64).unwrap();
         let b = manifest("phpmyadmin", v, "windows", Arch::X86_64).unwrap();
         let c = manifest("phpmyadmin", v, "linux", Arch::Arm64).unwrap();
         assert!(a.url.ends_with(&format!("/phpMyAdmin/{v}/phpMyAdmin-{v}-english.zip")), "{}", a.url);
-        assert!(a.url.starts_with("https://files.phpmyadmin.net/"), "{}", a.url);
+        assert!(a.url.starts_with("https://files.phpmyadmin.net/phpMyAdmin/"), "{}", a.url);
         assert_eq!(a.member, "index.php");
         assert_eq!(a.archive, Archive::ZipTree { strip: 1 });
         for other in [&b, &c] {
             assert_eq!(checksum_hex(&a.checksum), checksum_hex(&other.checksum));
             assert_eq!(a.url, other.url);
         }
-        assert!(manifest("phpmyadmin", "5.2.2", "macos", Arch::Arm64).is_none(), "pin only");
-        assert!(!crate::core::updates::nameable("phpmyadmin"), "no update family yet (plan §9)");
+        assert!(manifest("phpmyadmin", "5.2.2", "macos", Arch::Arm64).is_none(), "unpinned, no catalog → nothing");
+        assert!(crate::core::updates::nameable("phpmyadmin"), "the third family");
         assert!(!is_self_distributed(&a.url), "the project's own download, not ours");
+
+        // A catalog that ALSO tries to re-point the pinned version: the pin wins, the
+        // new version resolves, and archive/member come from the NAME.
+        let evil = "b".repeat(64);
+        install_catalog(crate::core::updates::catalog_for_tests(&[
+            ("phpmyadmin", v, crate::core::updates::ANY_ARCH, "https://files.phpmyadmin.net/phpMyAdmin/0/x.zip", &evil),
+            (
+                "phpmyadmin",
+                "5.2.4",
+                crate::core::updates::ANY_ARCH,
+                "https://files.phpmyadmin.net/phpMyAdmin/5.2.4/phpMyAdmin-5.2.4-english.zip",
+                &"c".repeat(64),
+            ),
+        ]));
+        let still = manifest("phpmyadmin", v, "macos", Arch::Arm64).unwrap();
+        assert_eq!(checksum_hex(&still.checksum), PHPMYADMIN_5_2_3_SHA256, "a signed manifest moved the pinned version onto other bytes");
+        assert_eq!(still.url, a.url);
+        let offered = manifest("phpmyadmin", "5.2.4", "macos", Arch::Arm64).expect("a catalogued version must resolve");
+        assert_eq!(checksum_hex(&offered.checksum), "c".repeat(64));
+        assert_eq!(offered.archive, Archive::ZipTree { strip: 1 });
+        assert_eq!(offered.member, "index.php");
+        assert_eq!(manifest("phpmyadmin", "5.2.4", "windows", Arch::X86_64).unwrap().url, offered.url, "arch- and OS-free");
+        install_catalog(Default::default());
+    }
+
+    /// The phpMyAdmin sweep keeps the pin and the effective version, touches only
+    /// `phpmyadmin-x.y.z` names, and refuses an empty keep-set.
+    #[test]
+    fn the_phpmyadmin_sweep_keeps_the_pin_and_the_effective_tree_and_nothing_else_shaped() {
+        let keep = vec![PHPMYADMIN_VERSION.to_string(), "5.2.9".to_string()];
+        assert!(is_outdated_phpmyadmin_cache("phpmyadmin-5.2.2", &keep));
+        assert!(is_outdated_phpmyadmin_cache("phpmyadmin-5.3.0", &keep));
+        assert!(!is_outdated_phpmyadmin_cache(&format!("phpmyadmin-{PHPMYADMIN_VERSION}"), &keep), "the pin");
+        assert!(!is_outdated_phpmyadmin_cache("phpmyadmin-5.2.9", &keep), "the effective version");
+        for not_ours in ["phpmyadmin-theme-1.2.0", "phpmyadmin", "phpmyadmin-5.2", "phpmyadmin-5.2.x", ".phpmyadmin-5.2.2.staging", "adminer-6.1.1", "php-8.3.31"] {
+            assert!(!is_outdated_phpmyadmin_cache(not_ours, &keep), "{not_ours}");
+        }
+        // An empty keep-set sweeps nothing, whatever is on disk — asserted against
+        // files, as the PHP sweep's test is.
+        let (plat, bin) = cache_fixture("pma-gc");
+        std::fs::create_dir_all(bin.join("phpmyadmin-5.2.2")).unwrap();
+        std::fs::create_dir_all(bin.join("phpmyadmin-theme-1.2.0")).unwrap();
+        assert!(gc_outdated_phpmyadmin_caches(&plat, &[]).is_empty());
+        assert!(bin.join("phpmyadmin-5.2.2").is_dir(), "an empty keep-set deleted a tree");
+        let removed = gc_outdated_phpmyadmin_caches(&plat, &keep);
+        assert_eq!(removed, ["phpmyadmin-5.2.2"]);
+        assert!(bin.join("phpmyadmin-theme-1.2.0").is_dir(), "the theme is not the sweep's");
+        let _ = std::fs::remove_dir_all(&bin);
     }
 
     /// W2 — the Windows arms: source, archive kind and member per artifact, and

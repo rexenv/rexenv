@@ -186,6 +186,19 @@ it can:
   entitled to delete must say so when it goes: the phase gate now names the sweep
   instead of dying inside somebody else's subprocess.
 
+  **`phpmyadmin_update_check` (network tier, 15 Oct 2026, ledger #871–#874) is the
+  third family's `adminer_update_check`**: the REAL published manifest against the
+  COMPILED-IN key, what the phpMyAdmin family offers (arch-free, never another
+  family's rows), the floor and the vouch against a sandbox database, and — when
+  something is offered — `resolve_dir` of a version this build was never made with
+  (the digest gate on a number that arrived over the network, the script-tree
+  extraction) followed by the step a digest cannot answer: `phpmyadmin::ensure_from`
+  into the sandbox app data, i.e. copy + generated config + the CLI probe on the pinned
+  PHP + publish. "Nothing newer than the pin" is a legitimate end; the floor legs run
+  either way. What it does NOT prove: that the updated console renders logged in
+  through the proxy — `phpmyadmin_check`'s real-stack leg after `rex db console
+  phpmyadmin`, and SMOKE's row.
+
   **A gate is only as good as the thing it compares** (ledger #553, 10 Sep 2026).
   The PHP builds rexenv publishes are gated on extension parity with the upstream
   artifact each replaces — and that gate compared `php -m`, a list of NAMES. Our

@@ -906,6 +906,29 @@ pub fn run() {
                                  not be identified, and the sweep deletes what it cannot see"
                             ),
                         }
+
+                        // phpMyAdmin's trees, the same way: keep the pin (so "Back
+                        // to <pin>" works offline) and the effective version (what
+                        // the next stage copies from); an update leaves the previous
+                        // ~52 MB tree behind otherwise. No "running" half — nothing
+                        // executes out of these trees, the docroot is a COPY. A failed
+                        // db read gives an empty keep-set, which the sweep refuses.
+                        let keep: Vec<String> = state
+                            .db
+                            .lock()
+                            .ok()
+                            .map(|conn| {
+                                let mut k = vec![core::binaries::pins().phpmyadmin.to_string()];
+                                let eff = core::phpmyadmin::effective_version(platform, &conn);
+                                if !k.contains(&eff) {
+                                    k.push(eff);
+                                }
+                                k
+                            })
+                            .unwrap_or_default();
+                        for dir in core::binaries::gc_outdated_phpmyadmin_caches(platform, &keep) {
+                            log::info!("phpmyadmin: removed outdated binary cache {dir}");
+                        }
                     });
 
                     // Login-start: the ONE "Start rexenv at login" toggle installs
@@ -1321,6 +1344,8 @@ pub fn run() {
             commands::database::adminer_update_apply,
             commands::database::db_console_status,
             commands::database::db_console_set,
+            commands::database::phpmyadmin_update_check,
+            commands::database::phpmyadmin_update_apply,
             commands::php::get_php_settings,
             commands::php::apply_php_settings,
             commands::system::setup_edge_conflict,

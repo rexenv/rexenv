@@ -365,19 +365,129 @@ pub struct DbConsoleStatus {
     /// What phpMyAdmin's docroot is serving, or `None` before it was ever chosen — a
     /// state, not a zero value ("not installed" vs "installed, 5.2.3").
     pub phpmyadmin_staged: Option<String>,
-    /// The phpMyAdmin version this build ships (pin only — no update family yet).
+    /// The phpMyAdmin version this build ships — the floor, and what "Back to …" returns
+    /// to (the Adminer row's rule, #759).
     pub phpmyadmin_pinned: String,
+    /// What a stage WILL produce: the choice, floored by the pin, vouched by the verified
+    /// catalog (`phpmyadmin::effective_version`). Differs from `staged` after an app
+    /// release moved the pin above what the docroot holds — the card then offers it.
+    pub phpmyadmin_effective: String,
+    /// A newer phpMyAdmin a VERIFIED manifest offers (the third `updates::Family`), or `None`.
+    pub phpmyadmin_updatable: Option<String>,
 }
 
 fn db_console_row(
     platform: &dyn crate::platform::traits::Platform,
     conn: &rusqlite::Connection,
 ) -> DbConsoleStatus {
+    let effective = crate::core::phpmyadmin::effective_version(platform, conn);
     DbConsoleStatus {
         console: crate::core::phpmyadmin::effective_console(platform, conn).to_string(),
         phpmyadmin_staged: crate::core::phpmyadmin::staged_version(platform),
         phpmyadmin_pinned: crate::core::binaries::pins().phpmyadmin.to_string(),
+        // The machine's arch even though the family maps it to `ANY_ARCH` — the
+        // Adminer row's reasoning: a placeholder would be a lie the day `row_arch`
+        // stops ignoring it.
+        phpmyadmin_updatable: crate::core::updates::cached(conn).newer_than(
+            crate::core::updates::Family::PhpMyAdmin,
+            &effective,
+            crate::core::updates::catalog_arch(platform.binaries().arch()),
+        ),
+        phpmyadmin_effective: effective,
     }
+}
+
+/// Refresh the signed manifest, then report the console row — `adminer_update_check`'s
+/// shape (fetch UNLOCKED, verify + persist under one brief lock). The same document
+/// carries every family, so a second refresh at the same serial writes nothing (#360).
+#[tauri::command]
+pub async fn phpmyadmin_update_check(state: State<'_, AppState>) -> Result<DbConsoleStatus> {
+    let (doc, sig) = crate::core::updates::fetch().await?;
+    {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        let cat = crate::core::updates::accept(&conn, &doc, &sig)?;
+        crate::core::binaries::install_catalog(cat);
+    }
+    db_console_status(state)
+}
+
+/// Move phpMyAdmin onto `version` — a manifest offer, or the pin ("Back to") — or fail
+/// leaving the console exactly where it was.
+///
+/// The order is Adminer's (`adminer_update_apply`), with the probe INSIDE the stage:
+/// 1. refuse anything the catalog does not vouch for (`binaries::manifest`: the pin
+///    first, then the VERIFIED catalog);
+/// 2. download with no lock held and nothing written;
+/// 3. `phpmyadmin::ensure` — copy into `phpmyadmin.new`, generate the config, PROBE
+///    on the pinned PHP, publish by rename, marker last (#866): a tree that fails never
+///    becomes the docroot, and the old one keeps serving;
+/// 4. only THEN persist the selection, so the setting never names a version the docroot
+///    does not hold. (The reverse order would leave "5.2.4 chosen, 5.2.3 staged" after
+///    a probe refusal, with nothing to restage it — `ensure` is never run by a start.)
+///
+/// No revert leg: the pin's tree stays cached (the sweep keeps it, `is_outdated_
+/// phpmyadmin_cache`), so going back is a second press that works offline.
+#[tauri::command]
+pub async fn phpmyadmin_update_apply(
+    state: State<'_, AppState>,
+    version: String,
+) -> Result<DbConsoleStatus> {
+    let _flight = crate::commands::php::InFlight::claim("phpmyadmin")?;
+    let platform = state.platform.as_ref();
+    if crate::core::binaries::manifest(
+        "phpmyadmin",
+        &version,
+        std::env::consts::OS,
+        platform.binaries().arch(),
+    )
+    .is_none()
+    {
+        return Err(Error::Other(format!(
+            "phpMyAdmin {version} is not this build's pin and is not in a verified update manifest"
+        )));
+    }
+    let was_staged = crate::core::phpmyadmin::staged_version(platform).is_some();
+    let plan = crate::core::downloads::plan_for_phpmyadmin(platform, &version);
+    crate::core::downloads::prefetch(platform, &format!("Update phpMyAdmin {version}"), &plan).await?;
+    crate::core::phpmyadmin::ensure(platform, &version).await?;
+    {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::core::phpmyadmin::set_selected_version(&conn, Some(&version))?;
+    }
+    // A docroot that did not exist before this apply has no vhost yet (#867): the
+    // same regenerate + reload the first choice of the console runs.
+    if !was_staged {
+        reload_console_vhosts(&state).await?;
+    }
+    db_console_status(state)
+}
+
+/// Regenerate the web tier so a newly staged console docroot gets its vhost and edge
+/// route (`sites::console_vhosts`, staged-only, #867) — a running stack now, a stopped
+/// one at its next start (the rebuild reads the marker).
+async fn reload_console_vhosts(state: &State<'_, AppState>) -> Result<()> {
+    let sites = {
+        let conn = state
+            .db
+            .lock()
+            .map_err(|_| Error::Other("database lock poisoned".into()))?;
+        crate::state::store::list_sites(&conn)?
+    };
+    let checks = {
+        let mut mgr = state.services.lock().await;
+        if mgr.is_running() {
+            mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+        } else {
+            Vec::new()
+        }
+    };
+    crate::core::service_manager::await_ready(checks).await
 }
 
 /// Read the console row. Cheap: a settings read and a marker read.
@@ -408,10 +518,19 @@ pub async fn db_console_set(state: State<'_, AppState>, console: String) -> Resu
         "phpmyadmin" => {
             // One install at a time — the same claim set as PHP and Adminer applies.
             let _flight = crate::commands::php::InFlight::claim("phpmyadmin")?;
-            let version = crate::core::binaries::pins().phpmyadmin;
-            let plan = crate::core::downloads::plan_for_phpmyadmin(platform, version);
+            // The EFFECTIVE version (the choice floored by the pin and vouched), never
+            // the pin: a console updated through the manifest and then flipped away
+            // must come back at the version the user chose.
+            let version = {
+                let conn = state
+                    .db
+                    .lock()
+                    .map_err(|_| Error::Other("database lock poisoned".into()))?;
+                crate::core::phpmyadmin::effective_version(platform, &conn)
+            };
+            let plan = crate::core::downloads::plan_for_phpmyadmin(platform, &version);
             crate::core::downloads::prefetch(platform, "Install phpMyAdmin", &plan).await?;
-            crate::core::phpmyadmin::ensure(platform, version).await?;
+            crate::core::phpmyadmin::ensure(platform, &version).await?;
         }
         other => {
             return Err(Error::Other(format!(
@@ -419,26 +538,16 @@ pub async fn db_console_set(state: State<'_, AppState>, console: String) -> Resu
             )))
         }
     }
-    let sites = {
+    {
         let conn = state
             .db
             .lock()
             .map_err(|_| Error::Other("database lock poisoned".into()))?;
         crate::state::store::set_setting(&conn, crate::core::phpmyadmin::CONSOLE_KEY, &console)?;
-        crate::state::store::list_sites(&conn)?
-    };
+    }
     // The vhost is emitted only for a staged docroot, so the first choice of phpMyAdmin
-    // needs a regenerate + reload for it to exist; a running stack gets it now, a stopped
-    // one at its next start (the rebuild reads the marker).
-    let checks = {
-        let mut mgr = state.services.lock().await;
-        if mgr.is_running() {
-            mgr.reload(platform, &state.ca, &sites, false).await?
-        } else {
-            Vec::new()
-        }
-    };
-    crate::core::service_manager::await_ready(checks).await?;
+    // needs a regenerate + reload for it to exist.
+    reload_console_vhosts(&state).await?;
     db_console_status(state)
 }
 

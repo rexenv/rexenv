@@ -479,17 +479,19 @@ static REGISTRY: &[UserTool] = &[
                       any update), `downloads` (the binaries a start needs, which are cached, and \
                       what is downloading), `edge_conflict` (what, if anything, answers :443 in \
                       front of rexenv, and the command that frees it). Under `manage`: \
-                      `adminer_update_check`, `adminer_theme` {theme: dark / light}, `prefetch` \
-                      (download everything a start needs), `retry_download` {name, version}. \
+                      `adminer_update_check`, `phpmyadmin_update_check` (the console row: what is \
+                      staged, what a verified manifest offers), `adminer_theme` {theme: dark / light}, \
+                      `prefetch` (download everything a start needs), `retry_download` {name, version}. \
                       Under `system`: `set_engine_version` {service, version — offered versions are \
                       in stack_status `engines`; a running engine restarts and its sites are \
-                      offline meanwhile}, `adminer_update_apply` {version}, `autostart` {enabled}.",
+                      offline meanwhile}, `adminer_update_apply` {version}, `phpmyadmin_update_apply` \
+                      {version — probed on rexenv's PHP before it replaces the console}, `autostart` {enabled}.",
         input_schema: || json!({
             "type": "object",
             "properties": {
-                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites", "catch_mail", "stop_catching_mail", "set_engine_version", "adminer", "adminer_update_check", "adminer_update_apply", "adminer_theme", "downloads", "prefetch", "retry_download", "autostart", "edge_conflict"] },
+                "action": { "type": "string", "enum": ["start", "stop", "restart", "start_database", "stop_database", "start_mail", "stop_mail", "start_sites", "stop_sites", "catch_mail", "stop_catching_mail", "set_engine_version", "adminer", "adminer_update_check", "adminer_update_apply", "phpmyadmin_update_check", "phpmyadmin_update_apply", "adminer_theme", "downloads", "prefetch", "retry_download", "autostart", "edge_conflict"] },
                 "service": { "type": "string", "description": "restart: nginx / edge / php-<minor>; start_database / stop_database / set_engine_version: mysql / mariadb / postgres." },
-                "version": { "type": "string", "description": "set_engine_version, adminer_update_apply, retry_download." },
+                "version": { "type": "string", "description": "set_engine_version, adminer_update_apply, phpmyadmin_update_apply, retry_download." },
                 "name": { "type": "string", "description": "retry_download: the binary's name." },
                 "theme": { "type": "string", "enum": ["dark", "light"] },
                 "enabled": { "type": "boolean", "description": "autostart." }
@@ -1163,6 +1165,10 @@ pub trait StackOps: Send + Sync {
     fn adminer_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>>;
     fn adminer_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::AdminerStatus>>;
     fn adminer_set_theme<'a>(&'a self, theme: String) -> OpFuture<'a, Result<()>>;
+    /// phpMyAdmin's update pair — the third manifest family, the Adminer shape; the
+    /// console row (`DbConsoleStatus`) is what both return.
+    fn phpmyadmin_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::DbConsoleStatus>>;
+    fn phpmyadmin_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::DbConsoleStatus>>;
     /// The core binary plan (what a start needs, and what is cached) and the
     /// download hub's live state.
     fn downloads<'a>(&'a self) -> OpFuture<'a, Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>>;
@@ -3009,10 +3015,10 @@ pub(crate) fn stack_scope(action: &str) -> Option<Scope> {
         // Reads that run nothing and change nothing.
         "adminer" | "downloads" | "edge_conflict" => Scope::Read,
         // User-level, reversible, no service a site depends on goes down.
-        "adminer_update_check" | "adminer_theme" | "prefetch" | "retry_download" => Scope::Manage,
-        // Machine-wide: an engine's version restarts every site on it; Adminer's
-        // version and start-at-login are the app's own configuration.
-        "set_engine_version" | "adminer_update_apply" | "autostart" => Scope::System,
+        "adminer_update_check" | "phpmyadmin_update_check" | "adminer_theme" | "prefetch" | "retry_download" => Scope::Manage,
+        // Machine-wide: an engine's version restarts every site on it; the consoles'
+        // versions and start-at-login are the app's own configuration.
+        "set_engine_version" | "adminer_update_apply" | "phpmyadmin_update_apply" | "autostart" => Scope::System,
         // `start_sites` / `stop_sites` touch no service and raise no password
         // dialog — they are the Sites page's bulk switch, so they sit with the
         // other `manage` arms and NOT with the stack's own start/stop.
@@ -3060,6 +3066,8 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "adminer" => "read Adminer's version and any update".to_string(),
             "adminer_update_check" => "check for an Adminer update".to_string(),
             "adminer_update_apply" => format!("update Adminer to {}", str_field(args, "version", action)?),
+            "phpmyadmin_update_check" => "check for a phpMyAdmin update".to_string(),
+            "phpmyadmin_update_apply" => format!("update phpMyAdmin to {}", str_field(args, "version", action)?),
             "adminer_theme" => {
                 let t = str_field(args, "theme", action)?;
                 if !matches!(t, "dark" | "light") {
@@ -3110,6 +3118,8 @@ fn stack<'a>(ctx: UserCtx<'a>, args: &'a Value, _acted: &'a super::feed::ActedTa
             "adminer" => to_json(st.adminer_status().await?)?,
             "adminer_update_check" => to_json(st.adminer_update_check().await?)?,
             "adminer_update_apply" => to_json(st.adminer_update_apply(str_field(args, "version", action)?.to_string()).await?)?,
+            "phpmyadmin_update_check" => to_json(st.phpmyadmin_update_check().await?)?,
+            "phpmyadmin_update_apply" => to_json(st.phpmyadmin_update_apply(str_field(args, "version", action)?.to_string()).await?)?,
             "adminer_theme" => {
                 let theme = str_field(args, "theme", action)?.to_string();
                 st.adminer_set_theme(theme.clone()).await?;
@@ -4425,6 +4435,14 @@ pub(crate) mod tests {
             Box::pin(async move { Ok(crate::commands::database::AdminerStatus { pinned: "5.4.2".into(), staged: Some(version.clone()), effective: version, updatable: None }) })
         }
         fn adminer_set_theme<'a>(&'a self, theme: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("adminer theme {theme}")); Box::pin(async { Ok(()) }) }
+        fn phpmyadmin_update_check<'a>(&'a self) -> OpFuture<'a, Result<crate::commands::database::DbConsoleStatus>> {
+            self.calls.lock().unwrap().push("phpmyadmin check".into());
+            Box::pin(async { Ok(crate::commands::database::DbConsoleStatus { console: "phpmyadmin".into(), phpmyadmin_staged: Some("5.2.3".into()), phpmyadmin_pinned: "5.2.3".into(), phpmyadmin_effective: "5.2.3".into(), phpmyadmin_updatable: Some("5.2.4".into()) }) })
+        }
+        fn phpmyadmin_update_apply<'a>(&'a self, version: String) -> OpFuture<'a, Result<crate::commands::database::DbConsoleStatus>> {
+            self.calls.lock().unwrap().push(format!("phpmyadmin apply {version}"));
+            Box::pin(async move { Ok(crate::commands::database::DbConsoleStatus { console: "phpmyadmin".into(), phpmyadmin_staged: Some(version.clone()), phpmyadmin_pinned: "5.2.3".into(), phpmyadmin_effective: version, phpmyadmin_updatable: None }) })
+        }
         fn downloads<'a>(&'a self) -> OpFuture<'a, Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>> {
             Box::pin(async {
                 Ok((
@@ -5290,8 +5308,8 @@ pub(crate) mod tests {
         // The engines, Adminer, downloads, autostart and the edge conflict (#564).
         for (a, s) in [
             ("adminer", Scope::Read), ("downloads", Scope::Read), ("edge_conflict", Scope::Read),
-            ("adminer_update_check", Scope::Manage), ("adminer_theme", Scope::Manage), ("prefetch", Scope::Manage), ("retry_download", Scope::Manage),
-            ("set_engine_version", Scope::System), ("adminer_update_apply", Scope::System), ("autostart", Scope::System),
+            ("adminer_update_check", Scope::Manage), ("phpmyadmin_update_check", Scope::Manage), ("adminer_theme", Scope::Manage), ("prefetch", Scope::Manage), ("retry_download", Scope::Manage),
+            ("set_engine_version", Scope::System), ("adminer_update_apply", Scope::System), ("phpmyadmin_update_apply", Scope::System), ("autostart", Scope::System),
         ] {
             assert_eq!(stack_scope(a), Some(s), "{a}");
         }
@@ -5355,6 +5373,9 @@ pub(crate) mod tests {
         let v = stack(ctx, &json!({ "action": "adminer_update_apply", "version": "5.4.5" }), &acted).await.unwrap();
         assert_eq!(v["result"]["effective"], "5.4.5");
         stack(ctx, &json!({ "action": "adminer_update_check" }), &acted).await.unwrap();
+        let v = stack(ctx, &json!({ "action": "phpmyadmin_update_apply", "version": "5.2.4" }), &acted).await.unwrap();
+        assert_eq!(v["result"]["phpmyadminEffective"], "5.2.4");
+        stack(ctx, &json!({ "action": "phpmyadmin_update_check" }), &acted).await.unwrap();
         stack(ctx, &json!({ "action": "adminer_theme", "theme": "dark" }), &acted).await.unwrap();
         stack(ctx, &json!({ "action": "prefetch" }), &acted).await.unwrap();
         stack(ctx, &json!({ "action": "retry_download", "name": "mysql", "version": "8.4.6" }), &acted).await.unwrap();

@@ -342,12 +342,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Follow-ups, NOT this row (plan §9): phpMyAdmin as a third `updates::Family`; its palette following
   the app (`rex db console` shipped with T6).
 
-- [ ] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`): (1) a third
-  `updates::Family` so the console updates through the signed manifest like Adminer (the probe
-  `phpmyadmin::verify_tree` is the gate; one afternoon on the Adminer plan's shape — today the pin is
-  the only version and a newer release means a rexenv release); (2) its palette following the app
-  (5.2 ships no dark theme — a vendored one would be needed); (3) the ~52 MB tree is never swept
-  (one copy; fine until a second version exists).
+- [ ] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`;
+  the design record is `docs/PLAN-phpmyadmin-followups.md`):
+  - [x] (1) a third `updates::Family` so the console updates through the signed manifest like
+    Adminer. ✓ **15 Oct 2026** — `Family::PhpMyAdmin` (`arch: any`, `files.phpmyadmin.net/phpMyAdmin/`
+    only, `PHPMYADMIN_MAX_MAJOR` = 5), `phpmyadmin_spec` pin-first/catalog-second,
+    `phpmyadmin::effective_version` (choice → floor → vouch), `phpmyadmin_update_check`/`_apply`
+    (stage THEN record), the console card's Update / Back to, MCP `stack` actions, L1
+    `phpmyadmin_update_check` (network tier), L2 `dbconsole-*` ×6; ledger #871–#873. **Open half:**
+    the publisher — `rexenv/runtimes` PR (`PHPMYADMIN_PIN`/`_MAX_MAJOR`, discovery, `arch: any`,
+    `manifest-guard.py`), owner merges; the first published row is SMOKE's first run (×3 OSes).
+  - [ ] (2) its palette following the app (5.2 ships no dark theme — a vendored one is needed).
+  - [x] (3) the ~52 MB tree is never swept. ✓ **15 Oct 2026** — `gc_outdated_phpmyadmin_caches` at
+    launch keeps the pin + the effective version, refuses an empty keep-set, never touches the
+    theme dir; ledger #874.
 
 ### Open work that was living inside ticked rows
 

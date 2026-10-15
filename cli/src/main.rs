@@ -4055,6 +4055,11 @@ fn cmd_db_console(words: &[String], json_output: bool) {
         "console: {console}  (MySQL and MariaDB; PostgreSQL always opens in Adminer)\nphpMyAdmin: {}",
         staged.map(|v| format!("installed, {v}")).unwrap_or_else(|| format!("not installed (pinned {})", data["phpmyadminPinned"].as_str().unwrap_or("?")))
     );
+    // A verified manifest's offer, read off the same row — the apply is the Databases
+    // page's button (no verb, as Adminer's update has none).
+    if let Some(offer) = data["phpmyadminUpdatable"].as_str() {
+        outln!("update offered: {offer} — press Update on the Databases page");
+    }
 }
 
 fn cmd_db_versions(words: &[String], json_output: bool) {

@@ -17,42 +17,42 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 - `TODO.md:203` A public tunnel for `mstest.rex` was running that this session never started
 - `TODO.md:230` Private-window flags for Arc, ChatGPT Atlas, Orion
 - `TODO.md:345` phpMyAdmin follow-ups
-- `TODO.md:354` Radicle-hosted repos are unverified
-- `TODO.md:356` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:359` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:362` Radicle-hosted repos are unverified
+- `TODO.md:364` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:367` Windows `setup.exe /S` over a running app + agent sometimes exits 2
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:379` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:387` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:443` The in-app update's remaining human rows (macOS)
-- `TODO.md:453` Release 5.4 — clean-Mac smoke test
-- `TODO.md:459` Tunnel probe session
-- `TODO.md:463` Intel spot-run
-- `TODO.md:468` In-app verifies owed
-- `TODO.md:484` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:496` The live pool swap is still L3
-- `TODO.md:500` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:508` Install WordPress into an empty LINKED folder
-- `TODO.md:515` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:451` The in-app update's remaining human rows (macOS)
+- `TODO.md:461` Release 5.4 — clean-Mac smoke test
+- `TODO.md:467` Tunnel probe session
+- `TODO.md:471` Intel spot-run
+- `TODO.md:476` In-app verifies owed
+- `TODO.md:492` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:504` The live pool swap is still L3
+- `TODO.md:508` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:516` Install WordPress into an empty LINKED folder
+- `TODO.md:523` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:522` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:561` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:572` Xdebug on PHP 8.0
-- `TODO.md:577` SMAppService privileged helper
-- `TODO.md:579` Developer ID signing + notarization
+- `TODO.md:530` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:569` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:580` Xdebug on PHP 8.0
+- `TODO.md:585` SMAppService privileged helper
+- `TODO.md:587` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:584` WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows, each needs its…
+- `TODO.md:592` WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows, each needs its…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 729 · ◐ 119 · 🔨 5 · 🚫 17** of 870 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
+**✅ 732 · ◐ 120 · 🔨 5 · 🚫 17** of 874 rows, plus 15 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -60,6 +60,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 |---|---|
 | `docs/PLAN-linux-port.md` | SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open ro… |
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
+| `docs/PLAN-phpmyadmin-followups.md` | in progress (15 Oct 2026) |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
@@ -69,6 +70,6 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
   SQLite schema version              v45
   commands/wordpress.rs commands     65
   commands/repo.rs commands          26
-  src/lib/ipc/index.ts exports       293
+  src/lib/ipc/index.ts exports       295
   rex commands (cli_server arms)     108
 ```

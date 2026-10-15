@@ -76,6 +76,12 @@ const ALLOWED_HOSTS: &[&str] = &[
     // publisher the compiled-in pin did not already trust — it lets the SIGNED
     // catalog name a newer version from the same place.
     "https://github.com/vrana/adminer/releases/download/",
+    // phpMyAdmin's own file server, and only its RELEASE directory: the same host
+    // also serves `/themes/` (third-party themes the project mirrors), which this
+    // family does not admit — a theme is pinned, never catalogued. The prefix is
+    // the one `binaries.rs`' phpmyadmin arm already pins by hash, so, as with
+    // Adminer, this admits no publisher the compiled-in pin did not already trust.
+    "https://files.phpmyadmin.net/phpMyAdmin/",
 ];
 
 /// The products a manifest may describe, and the rules each one carries.
@@ -101,29 +107,57 @@ const ALLOWED_HOSTS: &[&str] = &[
 ///   **neither** chmod nor codesign and never spawns anything. The bytes are
 ///   interpreted by an already-running php-fpm pool, as the user.
 ///
-/// **Adminer is strictly below PHP on every axis**, so admitting it does not
-/// raise the ceiling a key-holder already has. Saying that plainly matters: the
-/// third addition must be argued the same way, and "it is only a text file" is
-/// not the argument — arbitrary PHP as the user is the same grant as arbitrary
-/// native code as the user, reached by a shorter path.
+/// - **`PhpMyAdmin`** — `Shape::Dir` → `binaries::resolve_dir`, prepared by
+///   `prepare_script_dir` (`is_script_tree`): no executable is looked for, none
+///   is chmod-ed or signed, nothing is spawned. A tree of PHP, COPIED into its
+///   own docroot and interpreted by the same pool, as the user.
 ///
-/// # What IS worse about Adminer, and what answers it
+/// **Adminer and phpMyAdmin are strictly below PHP on every axis**, so admitting
+/// them does not raise the ceiling a key-holder already has. Saying that plainly
+/// matters: the third addition (phpMyAdmin, 15 Oct 2026) was argued the same
+/// way, and "it is only a text file" is not the argument — arbitrary PHP as the
+/// user is the same grant as arbitrary native code as the user, reached by a
+/// shorter path. The NEXT addition is argued the same way again.
+///
+/// # What IS worse about the consoles, and what answers it
 ///
 /// **Control ownership.** rexenv's security controls for the Adminer vhost live
 /// inside the artifact's OWN plugin API — `WRAPPER_INDEX_PHP` subclasses
 /// `\Adminer\Adminer` and overrides `login` (the loopback gate), `headers` and
 /// `csp` (the frame-ancestor bound). A PHP update cannot switch off a control
 /// rexenv wrote; an Adminer update can, by renaming the hook it hangs on — and
-/// it would fail SILENTLY, with the console still serving.
+/// it would fail SILENTLY, with the console still serving. phpMyAdmin's controls
+/// live in a config file rexenv GENERATES (`auth_type = config`, two loopback
+/// servers, `AllowThirdPartyFraming = 'sameorigin'`), so a release that renamed
+/// or dropped one of those keys would serve a login form, or no frame header.
 ///
-/// Two things answer that, and neither is optional: the compat ceiling in
-/// [`Family::track`], and `adminer::verify_pair`, which runs the staged pair
-/// through the bundled PHP and refuses an apply whose overrides no longer bind.
+/// Two things answer that for each console, and neither is optional: the compat
+/// ceiling in [`Family::track`], and a probe at apply time — `adminer::verify_pair`
+/// runs the staged pair through the bundled PHP and refuses an apply whose
+/// overrides no longer bind; `phpmyadmin::verify_tree` loads the tree's own
+/// `Config` from the generated file and refuses one whose LOADED servers or
+/// framing key are not what rexenv wrote (ledger #864–#866).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     Php,
     Adminer,
+    PhpMyAdmin,
 }
+
+/// The newest phpMyAdmin MAJOR whose tree shape and config loader have been run
+/// against rexenv's generator and probe, and therefore the highest a manifest
+/// may offer.
+///
+/// **Evidence, not a guess — raising it means re-running the probe.** Measured
+/// 14–15 Oct 2026 on 5.2.3 (the pin): `libraries/constants.php` +
+/// `vendor/autoload.php` + `\PhpMyAdmin\Config` load the generated
+/// `config.inc.php` on PHP 8.3.32/8.4.23/8.5.8, and the console renders logged in
+/// against the real engines on macOS, Windows and Linux. phpMyAdmin 6 moves the
+/// tree (`libraries/classes/` → `src/`, the constants file goes) and its theme
+/// format, so `verify_tree` would refuse it at apply time anyway — this ceiling
+/// is the structural half, so a 6.x row is never even OFFERED. Raise it only
+/// after `phpmyadmin_check` has run green against a 6.x tree.
+pub const PHPMYADMIN_MAX_MAJOR: u32 = 5;
 
 /// The newest Adminer MAJOR whose plugin API has been checked against rexenv's
 /// wrapper, and therefore the highest a manifest may offer.
@@ -159,6 +193,11 @@ impl Family {
             // errors on install.
             "php" | "php-fpm" | "php-licenses" => Some(Family::Php),
             "adminer" => Some(Family::Adminer),
+            // The TREE only. `phpmyadmin-theme` (the dark theme beside it) is a
+            // compiled-in pin and stays one: a theme is matched to the tree's
+            // series by hand (`phpmyadmin::verify_tree` checks `supports`), and
+            // nothing in a manifest row could say which tree it goes with.
+            "phpmyadmin" => Some(Family::PhpMyAdmin),
             _ => None,
         }
     }
@@ -170,6 +209,7 @@ impl Family {
         match self {
             Family::Php => &["php", "php-fpm"],
             Family::Adminer => &["adminer"],
+            Family::PhpMyAdmin => &["phpmyadmin"],
         }
     }
 
@@ -183,6 +223,9 @@ impl Family {
     ///   silently unavailable.
     /// - **Adminer**: the major, and only up to [`ADMINER_MAX_MAJOR`] — the
     ///   plugin API the wrapper hangs on is the thing a major bump may move.
+    /// - **PhpMyAdmin**: the major, and only up to [`PHPMYADMIN_MAX_MAJOR`] —
+    ///   the tree layout the probe loads and the config keys the generator
+    ///   writes are what a major bump moves.
     fn track(self, version: &str) -> Option<String> {
         match self {
             Family::Php => {
@@ -193,6 +236,10 @@ impl Family {
                 let major: u32 = version.split('.').next()?.parse().ok()?;
                 (major <= ADMINER_MAX_MAJOR).then(|| major.to_string())
             }
+            Family::PhpMyAdmin => {
+                let major: u32 = version.split('.').next()?.parse().ok()?;
+                (major <= PHPMYADMIN_MAX_MAJOR).then(|| major.to_string())
+            }
         }
     }
 
@@ -202,11 +249,12 @@ impl Family {
     /// its rows say `"any"` and a per-arch row is refused. Publishing the same
     /// file twice under two arch labels would be a fiction stated twice, and
     /// worse: it would make a HALF-published Adminer version structurally legal,
-    /// which is the failure the completeness rule exists for.
+    /// which is the failure the completeness rule exists for. phpMyAdmin is a
+    /// zip of PHP — the same rule for the same reason.
     fn arch_ok(self, arch: &str) -> bool {
         match self {
             Family::Php => arch == "arm64" || arch == "x86_64",
-            Family::Adminer => arch == ANY_ARCH,
+            Family::Adminer | Family::PhpMyAdmin => arch == ANY_ARCH,
         }
     }
 
@@ -214,7 +262,7 @@ impl Family {
     fn row_arch(self, machine: &str) -> &str {
         match self {
             Family::Php => machine,
-            Family::Adminer => ANY_ARCH,
+            Family::Adminer | Family::PhpMyAdmin => ANY_ARCH,
         }
     }
 
@@ -223,11 +271,14 @@ impl Family {
     /// Php stays minor-scoped: a patch bump only. Adminer is one file with no
     /// per-version compiled-in facts, and upstream moved 5.4 → 5.5 → 6.0 in five
     /// weeks, so a track change is an ordinary update there and refusing one
-    /// would refuse the feature.
+    /// would refuse the feature. phpMyAdmin likewise: the ceiling in `track`
+    /// already keeps an unprobed major out of the catalog, so within it any
+    /// newer version is an update (5.2.x → 5.3.0 is a minor the probe re-checks
+    /// at apply time).
     fn is_upgrade(self, candidate: &str, have: &str) -> bool {
         match self {
             Family::Php => newer(candidate, have),
-            Family::Adminer => segments(candidate) > segments(have),
+            Family::Adminer | Family::PhpMyAdmin => segments(candidate) > segments(have),
         }
     }
 }
@@ -264,7 +315,7 @@ const SERIAL_KEY: &str = "php_update_manifest_serial";
 /// One artifact a manifest describes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Artifact {
-    /// `php`, `php-fpm` or `adminer` — see [`Family`].
+    /// `php`, `php-fpm`, `adminer` or `phpmyadmin` — see [`Family`].
     pub name: String,
     /// A full `x.y.z`, whose minor must already be one rexenv ships.
     pub version: String,
@@ -878,6 +929,17 @@ pub fn adminer_floored(selected: Option<&str>) -> String {
     }
 }
 
+/// [`adminer_floored`] for phpMyAdmin: the choice, or the pin when there isn't
+/// one or it is not newer. The same comparison for the same reason — a choice
+/// made months ago can never hold a user below the tree their app ships.
+pub fn phpmyadmin_floored(selected: Option<&str>) -> String {
+    let pin = crate::core::binaries::pins().phpmyadmin;
+    match selected {
+        Some(sel) if segments(sel) > segments(pin) => sel.to_string(),
+        _ => pin.to_string(),
+    }
+}
+
 /// Whether `name` is an artifact a manifest is allowed to describe — exposed so
 /// `binaries` can assert it at the point it consults the catalog rather than
 /// trusting this module to have filtered.
@@ -1467,6 +1529,21 @@ mod tests {
         }
     }
 
+    /// A complete phpMyAdmin entry — the project's own release zip, arch-free.
+    fn phpmyadmin_row(version: &str) -> Artifact {
+        Artifact {
+            name: "phpmyadmin".into(),
+            version: version.into(),
+            arch: ANY_ARCH.into(),
+            url: format!(
+                "https://files.phpmyadmin.net/phpMyAdmin/{version}/phpMyAdmin-{version}-english.zip"
+            ),
+            sha256: "a".repeat(64),
+            min_macos: None,
+            os: None,
+        }
+    }
+
     /// **The name allowlist is a set of FAMILIES, and everything else rexenv
     /// resolves is still outside it.**
     ///
@@ -1481,6 +1558,8 @@ mod tests {
             "caddy", "nginx", "mysql", "mariadb", "postgres", "redis", "mailpit",
             "frankenphp", "httpd", "openlitespeed", "cloudflared", "wp-cli", "composer",
             "xdebug-8.3", "php-debug", "adminer.php", "Adminer", "PHP", "",
+            // The dark theme beside the phpMyAdmin tree is a pin, never a row.
+            "phpmyadmin-theme", "phpMyAdmin",
         ] {
             assert!(
                 Family::of_name(name).is_none(),
@@ -1495,9 +1574,11 @@ mod tests {
         // root:wheel and bootstraps it into the system launchd domain.
         assert!(Family::of_name("caddy").is_none());
 
-        let known: Vec<&str> =
-            [Family::Php, Family::Adminer].iter().flat_map(|f| f.names().iter().copied()).collect();
-        assert_eq!(known, ["php", "php-fpm", "adminer"], "a family changed its names");
+        let known: Vec<&str> = [Family::Php, Family::Adminer, Family::PhpMyAdmin]
+            .iter()
+            .flat_map(|f| f.names().iter().copied())
+            .collect();
+        assert_eq!(known, ["php", "php-fpm", "adminer", "phpmyadmin"], "a family changed its names");
         for n in &known {
             assert!(Family::of_name(n).is_some(), "{n}");
         }
@@ -1532,6 +1613,18 @@ mod tests {
                 "{n}: the Adminer grant says a plain file — no chmod, no codesign, never spawned"
             );
         }
+        for n in Family::PhpMyAdmin.names() {
+            assert_eq!(
+                shape_of_on(n, "macos"),
+                Shape::Dir,
+                "{n}: the PhpMyAdmin grant says a tree of scripts — copied, never spawned"
+            );
+            assert!(
+                crate::core::binaries::is_script_tree(n),
+                "{n}: a Dir that is NOT a script tree would go through prepare_binary_dir, \
+                 which on Windows wants an executable to check (#598) — the grant says none"
+            );
+        }
     }
 
     /// **Adminer rows are arch-free, and a per-arch one is refused.**
@@ -1547,6 +1640,14 @@ mod tests {
             assert!(
                 !acceptable(&Artifact { arch: arch.into(), ..adminer_row("6.0.1") }),
                 "an adminer row must carry arch \"{ANY_ARCH}\", not {arch:?}"
+            );
+        }
+        // phpMyAdmin: the same rule, a zip of PHP.
+        assert!(acceptable(&phpmyadmin_row("5.2.3")), "the control must pass");
+        for arch in ["arm64", "x86_64", "", "ANY"] {
+            assert!(
+                !acceptable(&Artifact { arch: arch.into(), ..phpmyadmin_row("5.2.3") }),
+                "a phpmyadmin row must carry arch \"{ANY_ARCH}\", not {arch:?}"
             );
         }
         // …and the reverse: PHP must never be arch-free.
@@ -1592,6 +1693,34 @@ mod tests {
         }
     }
 
+    /// **The phpMyAdmin ceiling and host prefix, enforced where they are
+    /// load-bearing.** A 6.x tree has a different layout than the probe loads
+    /// and a different theme format than the pinned dark theme declares; the
+    /// probe would refuse it at apply time, and this keeps it from being OFFERED.
+    /// The host is the project's release directory and nothing beside it: the
+    /// same server's `/themes/` is where the dark theme is pinned FROM, and a
+    /// catalog row must not be able to name one.
+    #[test]
+    fn a_phpmyadmin_major_past_the_probed_ceiling_or_off_its_release_path_is_dropped() {
+        assert!(acceptable(&phpmyadmin_row(&format!("{PHPMYADMIN_MAX_MAJOR}.9.9"))));
+        assert!(acceptable(&phpmyadmin_row("5.2.3")), "the pin's own row passes");
+        for major in [PHPMYADMIN_MAX_MAJOR + 1, PHPMYADMIN_MAX_MAJOR + 5, 99] {
+            assert!(
+                !acceptable(&phpmyadmin_row(&format!("{major}.0.0"))),
+                "major {major} is past the ceiling and nobody has run the probe against it"
+            );
+        }
+        for url in [
+            "https://files.phpmyadmin.net/themes/boodark/1.2.0/boodark-1.2.0.zip",
+            "https://files.phpmyadmin.net/phpMyAdmin-5.2.3-english.zip",
+            "https://phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-english.zip",
+            "http://files.phpmyadmin.net/phpMyAdmin/5.2.3/phpMyAdmin-5.2.3-english.zip",
+            "https://github.com/phpmyadmin/phpmyadmin/releases/download/RELEASE_5_2_3/x.zip",
+        ] {
+            assert!(!acceptable(&Artifact { url: url.into(), ..phpmyadmin_row("5.2.3") }), "{url}");
+        }
+    }
+
     /// **Each family upgrades by its OWN rule, and one family's rows never
     /// answer for another's.**
     ///
@@ -1621,7 +1750,17 @@ mod tests {
             .collect();
         entries.push(adminer_row("5.5.1"));
         entries.push(adminer_row("6.0.1"));
+        entries.push(phpmyadmin_row("5.2.4"));
+        entries.push(phpmyadmin_row("5.3.0"));
         let cat = VersionCatalog { entries };
+
+        // phpMyAdmin: the newest within its ceiling, on either Mac, and never an
+        // Adminer version (5.5.1 and 6.0.1 are Adminer rows; a flat list would
+        // have offered 6.0.1 "for phpMyAdmin").
+        assert_eq!(cat.newer_than(Family::PhpMyAdmin, "5.2.3", "arm64").as_deref(), Some("5.3.0"));
+        assert_eq!(cat.newer_than(Family::PhpMyAdmin, "5.2.3", "x86_64").as_deref(), Some("5.3.0"));
+        assert_eq!(cat.newer_than(Family::PhpMyAdmin, "5.3.0", "arm64"), None);
+        assert_eq!(cat.newer_than(Family::Adminer, "5.2.3", "arm64").as_deref(), Some("6.0.1"), "Adminer's own rows");
 
         // Adminer crosses tracks — 5.4.2 to the newest offered, 6.0.1.
         assert_eq!(
@@ -1661,6 +1800,19 @@ mod tests {
         };
         assert_eq!(half.newer_than(Family::Php, binaries::pins().php, "arm64"), None);
         assert_eq!(half.newer_than(Family::Adminer, "5.4.2", "arm64").as_deref(), Some("6.0.1"));
+        assert_eq!(half.newer_than(Family::PhpMyAdmin, "5.2.3", "arm64").as_deref(), Some("5.3.0"));
+    }
+
+    /// The phpMyAdmin floor is the same comparison as Adminer's: no choice, a
+    /// junk choice, or one at/below the pin → the pin byte for byte.
+    #[test]
+    fn the_phpmyadmin_floor_is_a_version_compare_against_the_pin() {
+        let pin = binaries::pins().phpmyadmin;
+        assert_eq!(phpmyadmin_floored(None), pin);
+        assert_eq!(phpmyadmin_floored(Some(pin)), pin);
+        assert_eq!(phpmyadmin_floored(Some("4.9.11")), pin, "older never holds the floor down");
+        assert_eq!(phpmyadmin_floored(Some("junk")), pin);
+        assert_eq!(phpmyadmin_floored(Some("99.0.0")), "99.0.0", "newer is honoured (vouching is the caller's)");
     }
 
     /// **A check a person is watching must always end.**

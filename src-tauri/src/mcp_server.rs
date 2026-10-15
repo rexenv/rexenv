@@ -1490,6 +1490,12 @@ impl<Rt: tauri::Runtime> user_sites::StackOps for AppSiteCreator<Rt> {
     fn adminer_set_theme<'a>(&'a self, theme: String) -> user_sites::OpFuture<'a, crate::error::Result<()>> {
         Box::pin(async move { crate::commands::database::adminer_set_theme(self.state()?, theme) })
     }
+    fn phpmyadmin_update_check<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::database::DbConsoleStatus>> {
+        Box::pin(async move { crate::commands::database::phpmyadmin_update_check(self.state()?).await })
+    }
+    fn phpmyadmin_update_apply<'a>(&'a self, version: String) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::database::DbConsoleStatus>> {
+        Box::pin(async move { crate::commands::database::phpmyadmin_update_apply(self.state()?, version).await })
+    }
     fn downloads<'a>(&'a self) -> user_sites::OpFuture<'a, crate::error::Result<(Vec<crate::commands::downloads::PlannedInfo>, crate::core::downloads::Snapshot)>> {
         Box::pin(async move {
             let plan = crate::commands::downloads::core_binaries_plan(self.state()?)?;

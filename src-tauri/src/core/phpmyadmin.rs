@@ -48,6 +48,45 @@ const TEMP_DIR: &str = "phpmyadmin-tmp";
 /// `phpmyadmin`. Absent means Adminer. Postgres rows ignore it (no driver).
 pub const CONSOLE_KEY: &str = "db_console";
 
+/// Where the user's chosen phpMyAdmin VERSION is stored — a settings row, the
+/// Adminer shape (`adminer::VERSION_KEY`). Absent means "follow the pin", never
+/// backfilled, so a user who never presses Update keeps receiving the tree their
+/// app ships as releases move it.
+pub const VERSION_KEY: &str = "phpmyadmin_version";
+
+/// **The ONE answer to "which phpMyAdmin version is the console".** Everything that
+/// stages, plans or displays it asks this — never `binaries::pins().phpmyadmin`.
+///
+/// The three steps are Adminer's (`adminer::effective_version`, ledger #363), for the
+/// same reasons: the stored selection; FLOORED by the compiled-in pin
+/// ([`crate::core::updates::phpmyadmin_floored`]) so a stale choice can never hold a
+/// user below the tree their app ships; VOUCHED on read through `binaries::manifest`
+/// (the pin first, then the verified catalog) so a selection whose entry has since
+/// left the manifest reads as "we are on the pin" rather than as a version nothing
+/// can produce. Read-time filtering also makes the generic `set_setting` door inert
+/// for this key — the same property `effective_console` has for the console key.
+pub fn effective_version(platform: &dyn Platform, conn: &rusqlite::Connection) -> String {
+    effective_version_for(conn, platform.binaries().arch())
+}
+
+/// [`effective_version`] against an explicit arch — the seam the tests use.
+fn effective_version_for(conn: &rusqlite::Connection, arch: crate::platform::traits::Arch) -> String {
+    let selected = crate::state::store::get_setting(conn, VERSION_KEY).ok().flatten();
+    let want = crate::core::updates::phpmyadmin_floored(selected.as_deref());
+    if binaries::manifest("phpmyadmin", &want, std::env::consts::OS, arch).is_some() {
+        return want;
+    }
+    binaries::pins().phpmyadmin.to_string()
+}
+
+/// Record the user's chosen phpMyAdmin version, or clear it back to the pin.
+pub fn set_selected_version(conn: &rusqlite::Connection, version: Option<&str>) -> Result<()> {
+    match version {
+        Some(v) => crate::state::store::set_setting(conn, VERSION_KEY, v),
+        None => crate::state::store::delete_setting(conn, VERSION_KEY),
+    }
+}
+
 /// The console the UI should open for MySQL/MariaDB: `phpmyadmin` ONLY when it is
 /// both chosen AND staged — read-time filtering, as `adminer::effective_version`
 /// does, so the generic `set_setting` door is inert for this key: a value written
@@ -523,6 +562,58 @@ mod tests {
         assert!(ini.contains(&crate::core::adminer::import_php_value(2048)));
         assert!(ini.contains("error_reporting=E_ALL & ~E_DEPRECATED"));
         assert!(ini.contains("display_errors=Off"));
+    }
+
+    /// **The effective phpMyAdmin version is the choice, floored by the pin, and
+    /// vouched** — Adminer's three legs (#363), each planted the same way: a choice
+    /// nothing vouches for reads as the pin; a vouched newer one is honoured on either
+    /// arch; a vouched OLDER one is still the pin (the floor, not the vouch, decides).
+    #[test]
+    fn the_effective_phpmyadmin_version_is_the_choice_floored_by_the_pin_and_vouched() {
+        use crate::platform::traits::Arch;
+        let _catalog = binaries::catalog_test_lock();
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let pin = binaries::pins().phpmyadmin;
+        let newer = {
+            let mut parts: Vec<u32> = pin.split('.').map(|n| n.parse().unwrap()).collect();
+            *parts.last_mut().unwrap() += 1;
+            parts.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(".")
+        };
+        let row = |v: &str, sha: char| {
+            (
+                "phpmyadmin",
+                v.to_string(),
+                crate::core::updates::ANY_ARCH,
+                format!("https://files.phpmyadmin.net/phpMyAdmin/{v}/phpMyAdmin-{v}-english.zip"),
+                sha.to_string().repeat(64),
+            )
+        };
+        let install = |rows: &[(&str, String, &str, String, String)]| {
+            let borrowed: Vec<(&str, &str, &str, &str, &str)> =
+                rows.iter().map(|(n, v, a, u, s)| (*n, v.as_str(), *a, u.as_str(), s.as_str())).collect();
+            binaries::install_catalog(crate::core::updates::catalog_for_tests(&borrowed));
+        };
+
+        binaries::install_catalog(Default::default());
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin, "no choice → the pin");
+
+        set_selected_version(&conn, Some(&newer)).unwrap();
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin, "an unvouched selection became effective");
+
+        install(&[row(&newer, 'c')]);
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), newer);
+        assert_eq!(effective_version_for(&conn, Arch::X86_64), newer, "arch-free");
+
+        // OLDER than the pin, VOUCHED (or this tests the vouching step, not the floor).
+        install(&[row(&newer, 'c'), row("4.9.11", 'd')]);
+        assert!(binaries::manifest("phpmyadmin", "4.9.11", std::env::consts::OS, Arch::Arm64).is_some());
+        set_selected_version(&conn, Some("4.9.11")).unwrap();
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin, "a stale choice held the machine below the pin");
+
+        set_selected_version(&conn, None).unwrap();
+        assert!(crate::state::store::get_setting(&conn, VERSION_KEY).unwrap().is_none());
+        assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
+        binaries::install_catalog(Default::default());
     }
 
     /// A tree with no autoloader is refused by the structural check — no PHP is

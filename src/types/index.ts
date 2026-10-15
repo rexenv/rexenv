@@ -633,8 +633,15 @@ export interface DbConsoleStatus {
   console: DbConsole;
   /** What phpMyAdmin's docroot serves, or `null` before it was ever chosen. */
   phpmyadminStaged: string | null;
-  /** The phpMyAdmin version this build ships (pin only). */
+  /** The phpMyAdmin version this build ships — the floor, and what "Back to …" returns to. */
   phpmyadminPinned: string;
+  /** What a stage WILL produce: the choice, floored by the pin, vouched by the verified
+   *  catalog. Differs from `phpmyadminStaged` after an app release moved the pin. */
+  phpmyadminEffective: string;
+  /** A newer phpMyAdmin a VERIFIED manifest offers (the third update family), or null.
+   *  ONE fact, as Adminer's row: rexenv downloads the project's own release zip, so a
+   *  version that exists and one rexenv can install are the same thing. */
+  phpmyadminUpdatable: string | null;
 }
 export type DbConsole = "adminer" | "phpmyadmin";
 

@@ -96,11 +96,29 @@ their_ceiling="$(printf '%s\n' "$remote" | sed -n 's/^ADMINER_MAX_MAJOR="\([0-9]
 [ -n "$their_adminer" ] && [ -n "$their_ceiling" ] \
   || { echo "no ADMINER_PIN / ADMINER_MAX_MAJOR in the fetched script — did they move?" >&2; exit 1; }
 
+# ── phpMyAdmin: the third family, the same pair (15 Oct 2026) ─────────────────
+#
+# `PHPMYADMIN_MAX_MAJOR` is evidence too — the newest major whose tree layout and
+# config loader have been run through `phpmyadmin::verify_tree` on the pinned PHP.
+# A publisher without the pair at all is the state between the app shipping the
+# family and the runtimes PR landing: MISSING, and non-zero, because until it lands
+# no phpMyAdmin row can ever be published and the Update button is dark everywhere.
+app_pma="$(sed -n 's/^\(pub \)*const PHPMYADMIN_VERSION: &str = "\([^"]*\)".*/\2/p' \
+  src-tauri/src/core/binaries.rs | head -1)"
+app_pma_ceiling="$(sed -n 's/^pub const PHPMYADMIN_MAX_MAJOR: u32 = \([0-9]*\).*/\1/p' \
+  src-tauri/src/core/updates.rs | head -1)"
+their_pma="$(printf '%s\n' "$remote" | sed -n 's/^PHPMYADMIN_PIN="\([^"]*\)".*/\1/p' | head -1)"
+their_pma_ceiling="$(printf '%s\n' "$remote" | sed -n 's/^PHPMYADMIN_MAX_MAJOR="\([0-9]*\)".*/\1/p' | head -1)"
+[ -n "$app_pma" ] && [ -n "$app_pma_ceiling" ] \
+  || { echo "could not read PHPMYADMIN_VERSION / PHPMYADMIN_MAX_MAJOR from the app" >&2; exit 1; }
+
 
 printf 'app  PHP_VERSIONS : %s\n' "$(printf '%s ' $ours)"
 printf 'runtimes PINS     : %s\n' "$(printf '%s ' $theirs)"
 printf 'app  adminer      : %s (ceiling %s)\n' "$app_adminer" "$app_ceiling"
-printf 'runtimes adminer  : %s (ceiling %s)\n\n' "$their_adminer" "$their_ceiling"
+printf 'runtimes adminer  : %s (ceiling %s)\n' "$their_adminer" "$their_ceiling"
+printf 'app  phpmyadmin   : %s (ceiling %s)\n' "$app_pma" "$app_pma_ceiling"
+printf 'runtimes phpmyadmin: %s (ceiling %s)\n\n' "${their_pma:-MISSING}" "${their_pma_ceiling:-MISSING}"
 
 status=0
 for patch in $ours; do
@@ -141,6 +159,24 @@ if [ "$app_adminer" != "$their_adminer" ]; then
   echo "stale    adminer — app pins $app_adminer, runtimes says $their_adminer."
   echo "         A pin below the app's is a wasted probe; one that catches up to a published"
   echo "         version is what the publisher's carry-forward covers (rexenv/runtimes#4)."
+fi
+
+if [ -z "$their_pma" ] || [ -z "$their_pma_ceiling" ]; then
+  echo "MISSING  phpmyadmin — runtimes has no PHPMYADMIN_PIN / PHPMYADMIN_MAX_MAJOR, so no"
+  echo "         phpMyAdmin row can be published and the console's Update button is dark"
+  echo "         everywhere. Land the publisher half (the third family's runtimes PR)."
+  status=1
+else
+  if [ "$app_pma_ceiling" != "$their_pma_ceiling" ]; then
+    echo "MISMATCH phpmyadmin ceiling — app says $app_pma_ceiling, runtimes says $their_pma_ceiling."
+    echo "         Both are EVIDENCE: the app's is the newest major whose tree the probe has"
+    echo "         loaded on the pinned PHP. Raise the app's only after phpmyadmin_check runs"
+    echo "         green against that major."
+    status=1
+  fi
+  if [ "$app_pma" != "$their_pma" ]; then
+    echo "stale    phpmyadmin — app pins $app_pma, runtimes says $their_pma (same rule as adminer)."
+  fi
 fi
 
 [ "$status" -eq 0 ] && echo "pins: every minor this app ships can receive updates, and the adminer ceilings agree"

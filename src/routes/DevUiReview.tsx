@@ -33,6 +33,8 @@
  *               composer.json could not be read, so the copy must claim NO
  *               count. It exists on no developer's machine, which is exactly
  *               why it needs a render somebody can look at
+ *    dbconsole — the Databases console card. `console=installed|offer|pin-moved|
+ *               above-pin|updating`; no param = phpMyAdmin not installed
  *    openin   — the "which app opens this" surfaces: header split button +
  *               the Browser/editor Quick-links tiles. `browsers=one|none`
  *               (the no-chevron and nothing-detected states), `icons=none`
@@ -60,7 +62,7 @@ import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
 import { ResolverHandBackRow } from "@/routes/Import";
 import { PhpVersionsSetting } from "@/routes/Settings";
-import { AdminerVersionCard } from "@/routes/Databases";
+import { AdminerVersionCard, DbConsoleCard } from "@/routes/Databases";
 import { WpCliPackagesCard } from "@/routes/Settings";
 import { Mail as MailScreen } from "@/routes/Mail";
 import { OnboardingDone } from "@/routes/Onboarding";
@@ -1129,8 +1131,38 @@ export function DevUiReview() {
           return { batch: null, items: [], seq: 0 };
         case "adminer_set_theme":
           return null;
+        // The console card: five states via `?console=`, for the same reason the
+        // Adminer card has five — a fixture in one state proves that one state renders.
         case "db_console_status":
-          return { console: "adminer", phpmyadminStaged: null, phpmyadminPinned: "5.2.3" };
+        case "phpmyadmin_update_check": {
+          const base = { console: "adminer", phpmyadminStaged: null, phpmyadminPinned: "5.2.3", phpmyadminEffective: "5.2.3", phpmyadminUpdatable: null };
+          switch (params.get("console")) {
+            // Installed, chosen, nothing offered — no control at all.
+            case "installed":
+              return { ...base, console: "phpmyadmin", phpmyadminStaged: "5.2.3" };
+            // A verified manifest offers a newer tree.
+            case "offer":
+              return { ...base, console: "phpmyadmin", phpmyadminStaged: "5.2.3", phpmyadminUpdatable: "5.2.4" };
+            // An app release moved the pin above what the docroot holds — the effective
+            // version is the offer, with no manifest involved.
+            case "pin-moved":
+              return { ...base, console: "phpmyadmin", phpmyadminStaged: "5.2.3", phpmyadminPinned: "5.2.5", phpmyadminEffective: "5.2.5" };
+            // On a manifest version above the pin: "Back to" is offered, nothing else.
+            case "above-pin":
+              return { ...base, console: "phpmyadmin", phpmyadminStaged: "5.2.4", phpmyadminEffective: "5.2.4" };
+            // Mid-update: the offer, with an apply that never settles (below).
+            case "updating":
+              return { ...base, console: "phpmyadmin", phpmyadminStaged: "5.2.3", phpmyadminUpdatable: "5.2.4" };
+            // Not installed: the install button names the version, no update controls.
+            default:
+              return base;
+          }
+        }
+        case "phpmyadmin_update_apply": {
+          if (params.get("console") === "updating") return new Promise<never>(() => {});
+          const v = String((args as Record<string, unknown> | undefined)?.version ?? "");
+          return { console: "phpmyadmin", phpmyadminStaged: v, phpmyadminPinned: "5.2.3", phpmyadminEffective: v, phpmyadminUpdatable: null };
+        }
         case "adminer_status":
         case "adminer_update_check":
           switch (params.get("adminer")) {
@@ -1585,6 +1617,11 @@ export function DevUiReview() {
           // under the engine table and its chips have to fit there.
           <div className="w-[46rem]">
             <AdminerVersionCard />
+          </div>
+        )}
+        {view === "dbconsole" && (
+          <div className="w-[46rem]">
+            <DbConsoleCard />
           </div>
         )}
         {view === "agents" && <AgentsView />}
