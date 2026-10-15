@@ -698,11 +698,13 @@ pub async fn ensure(platform: &dyn Platform, version: &str) -> Result<PathBuf> {
         // wrapper `require`s this path on every request, and a truncated PHP
         // file is a fatal error on a page the user is looking at.
         let tmp = dir.join(".adminer.php.new");
-        std::fs::copy(&src, &tmp)?;
+        // FLUSHED before the rename, and the marker flushed after it: a rename is
+        // atomic for the name, not the bytes (`phpmyadmin::write_durable`, #877).
+        crate::core::phpmyadmin::copy_durable(&src, &tmp)?;
         std::fs::rename(&tmp, &adminer_php)?;
         // The marker LAST: it means "the file beside me is this version", so
         // writing it before the file would claim a version that is not there.
-        std::fs::write(&marker, version)?;
+        crate::core::phpmyadmin::write_durable(&marker, version.as_bytes())?;
     }
     // The pre-dotfile name, if this install predates the move. Removing it is
     // stronger than making it unroutable — there is then nothing to route to.

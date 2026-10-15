@@ -345,7 +345,7 @@ fn write_config(platform: &dyn Platform, dir: &Path) -> Result<()> {
     if std::fs::read_to_string(&path).ok().as_deref() == Some(rendered.as_str()) {
         return Ok(());
     }
-    std::fs::write(&path, rendered)?;
+    write_durable(&path, rendered.as_bytes())?;
     Ok(())
 }
 
@@ -536,13 +536,14 @@ pub fn ensure_from(platform: &dyn Platform, version: &str, src: &Path, theme: Op
     }
     std::fs::rename(&fresh, &dir)?;
     let _ = std::fs::remove_dir_all(&old);
-    // LAST: "the tree beside me is this version".
-    std::fs::write(&marker, version)?;
+    // LAST: "the tree beside me is this version" — and flushed, so it can never
+    // outlive the tree it vouches for (#877).
+    write_durable(&marker, version.as_bytes())?;
     Ok(dir)
 }
 
 /// Recursive copy (files and directories; symlinks materialised — a release zip
-/// carries none).
+/// carries none). Every file is [`copy_durable`]'d: see it for the incident.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
@@ -551,9 +552,36 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
         if entry.file_type()?.is_dir() {
             copy_dir_recursive(&entry.path(), &to)?;
         } else {
-            std::fs::copy(entry.path(), &to)?;
+            copy_durable(&entry.path(), &to)?;
         }
     }
+    Ok(())
+}
+
+/// Write `bytes` to `path` and FLUSH them to the disk before returning.
+///
+/// **A rename publish is atomic for the NAME, not for the bytes behind it** (ledger
+/// #877). On the Ubuntu VM (15 Oct 2026) a stage completed, the marker read `5.2.3`,
+/// and the VM was powered off ~20 s later: the next boot found `index.php`,
+/// `config.inc.php` AND the marker all ZERO bytes — ext4's delayed allocation had the
+/// directory entries but not the data. The console read "not installed" (safe: the
+/// marker is read-filtered, so nothing was served and the next choice restaged), but
+/// a laptop losing power right after an update would have lost the console it had
+/// just reported installing. So the stage syncs each file it writes, and the marker —
+/// written LAST — is synced too, so it can never outlive the bytes it vouches for.
+/// Both consoles use these (`adminer::ensure` for its pair).
+pub(crate) fn write_durable(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+    f.write_all(bytes)?;
+    f.sync_all()?;
+    Ok(())
+}
+
+/// [`std::fs::copy`] followed by a flush of the copy — [`write_durable`]'s reason.
+pub(crate) fn copy_durable(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::copy(src, dst)?;
+    std::fs::OpenOptions::new().write(true).open(dst)?.sync_all()?;
     Ok(())
 }
 
@@ -728,6 +756,32 @@ mod tests {
         assert!(crate::state::store::get_setting(&conn, VERSION_KEY).unwrap().is_none());
         assert_eq!(effective_version_for(&conn, Arch::Arm64), pin);
         binaries::install_catalog(Default::default());
+    }
+
+    /// **Every byte the stage writes is flushed before the marker, and the marker is
+    /// flushed too** (#877): the stage functions of BOTH consoles reach the disk only
+    /// through `write_durable` / `copy_durable`. A bare `fs::write`/`fs::copy` in a
+    /// stage is the Ubuntu VM's zero-byte docroot waiting for the next power cut.
+    /// Text scan, because a power loss is not a thing a test can produce; plant: a
+    /// `std::fs::copy(` back in `copy_dir_recursive` fails it.
+    #[test]
+    fn the_stages_write_only_through_the_durable_helpers() {
+        let me = include_str!("phpmyadmin.rs");
+        let prod = &me[..me.find("\n#[cfg(test)]\nmod tests {\n").expect("tests")];
+        for (name, start, end) in [
+            ("copy_dir_recursive", "fn copy_dir_recursive(", "\n}\n"),
+            ("write_config", "fn write_config(", "\n}\n"),
+            ("ensure_from", "pub fn ensure_from(", "\n}\n"),
+        ] {
+            let i = prod.find(start).unwrap_or_else(|| panic!("{name}"));
+            let body = &prod[i..i + prod[i..].find(end).unwrap()];
+            assert!(!body.contains("std::fs::copy(") && !body.contains("std::fs::write("), "{name} writes without a flush:\n{body}");
+        }
+        let adminer = include_str!("adminer.rs");
+        let i = adminer.find("let tmp = dir.join(\".adminer.php.new\");").expect("adminer stage");
+        let body = &adminer[i..i + 700];
+        assert!(body.contains("copy_durable(") && body.contains("write_durable("), "adminer's stage pair is not flushed:\n{body}");
+        assert!(!body.contains("std::fs::copy(") && !body.contains("std::fs::write("), "{body}");
     }
 
     /// A tree with no autoloader is refused by the structural check — no PHP is

@@ -723,6 +723,12 @@ updated 5.4.2 → 6.0.2 through it; the pin itself has since moved to 6.1.0, 21 
   and a toast naming what is NOW being served. Then Browse a database: the console
   opens and the version in Adminer's own footer matches the row.
   ✓ 18 Sep 2026 (same VM and build): 5.4.2 → 6.0.2.
+  ✓ **15 Oct 2026, 6.1.1 → 6.1.2 on all three OSes** (manifest serial 10, the row Adminer's
+  discovery added): macOS 15.8 VM — "Adminer is now on 6.1.2", marker, `Back to 6.1.1`, Browse
+  on PostgreSQL → Adminer 6.1.2 in its own header, logged in; Ubuntu 22.04 VM — the same, incl.
+  the render; Dell Win10 — marker, `Back to 6.1.1`, the console switched to Adminer for a look:
+  Adminer 6.1.2 inside the frame, logged in as root, every database listed, `/.adminer.php` →
+  404. L1 `adminer_update_check` green on the dev Mac against the live document (6.1.2 binds).
 - [x] **THE LEG NOTHING AUTOMATED CAN PROVE — the controls still APPLY.** The probe
   proves Adminer still *declares* `login`/`headers`/`csp`; it cannot prove Adminer
   still *calls* them. After an update, on the Databases screen:
@@ -741,12 +747,14 @@ updated 5.4.2 → 6.0.2 through it; the pin itself has since moved to 6.1.0, 21 
   `/.adminer.php`. **Tell:** anything but 404 means the real console is reachable
   without the wrapper — no login gate, no frame bound.
   ✓ 18 Sep 2026 (same VM and build).
-- [ ] **A revert is a second press.** The pin is a floor and the old tree is kept, so going
+- [x] **A revert is a second press.** The pin is a floor and the old tree is kept, so going
   back is choosing the pinned version again: after an update the row shows **Back to
   <pin>** beside the version (since 30 Sep 2026, #759); press it → the same apply runs
   (cached files, no download), the toast names the pin, the console restages on the next
   start. **FAILED 18 Sep 2026 (VM)** — the row read only `Adminer 6.0.2` and offered 5.4.2
-  nowhere; the button is the fix, its press on the VM is owed.
+  nowhere; the button is the fix. ✓ **15 Oct 2026 (Dell):** after 6.1.1 → 6.1.2, **Back to
+  6.1.1** pressed → marker `6.1.1` in under 8 s, no download (the cached file); the button was
+  seen beside `6.1.2` on the macOS and Ubuntu VMs too.
 
 ## PHP ini settings — the revert (18 Aug 2026)
 
