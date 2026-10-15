@@ -3120,8 +3120,12 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
       `%LOCALAPPDATA%\rexenv\rexenv\bin\phpmyadmin-<v>`. ◐ **15 Oct 2026 (Dell):**
       `phpmyadmin_update_check` cross-built with the 5.2.2 TEST pin (`windows-example.sh`) PASS
       against manifest serial 10 — the 5.2.3 zip downloaded, digest-checked, extracted as a
-      script tree, probed and staged into the sandbox docroot. **The GUI press is still owed**
-      (it needs a test-pinned installer; the chain it runs is the one the example ran).
+      script tree, probed and staged into the sandbox docroot. ✓ **GUI, the same day (Dell,
+      a 5.2.2-pinned TEST installer built there):** `rex db console` → `update offered: 5.2.3`;
+      the card's **Update to 5.2.3** → marker `5.2.3`, the served page "phpMyAdmin 5.2.3",
+      `themes\boodark` beside it, **Back to 5.2.2** shown; pressed → the hub downloading
+      `phpmyadmin 5.2.2`, marker `5.2.2`, the page "phpMyAdmin 5.2.2", both trees in
+      `data\bin`, **Update to 5.2.3** offered again. The real installer put back after.
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half. Windows: the theme zip is prepared by `prepare_script_dir`
       (Mark-of-the-Web stripped) and staged into `…\rexenv\rexenv\data\phpmyadmin\themes\boodark`;
