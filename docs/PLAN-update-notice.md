@@ -1,6 +1,13 @@
 # PLAN — Making an app update impossible to miss (and "Check for Updates" reachable from any screen)
 
-**Status:** proposal, 15 Oct 2026. Nothing built. Owner asked for the plan only.
+**Status:** T1–T4 BUILT 15 Oct 2026 on branch `claude/update-notice` (not merged): the `app-update`
+push (ledger #884), the TopBar + sidebar pills (#885), the tray "Check for Updates…" (#535
+widened), docs + SMOKE rows. §7 resolved as recommended (toast "Show update"; icon-only idle
+control; rail pill kept — on its own line above Settings, since beside the label it overlapped
+it at 220 px). **Proven:** L0 tests (plant-proven), `verify.sh` green on a Linux sandbox
+(windows-check SKIPPED; macOS not compiled there), and `appupdate.js` run + plant-proven in
+**Chromium only**. **Owed:** the WebKit run (`verify-full.sh` on the Mac) and every §6 row below
+on its OS — none has run.
 **Builds on:** `docs/archive/PLAN-self-update.md` (the update machinery, D3 "how loud"),
 `docs/archive/PLAN-menubar-tray.md` (the tray's rules, ledger #534).
 
@@ -10,6 +17,8 @@ The only always-visible sign of a new release is a bare mono `0.6.0` beside **Se
 the sidebar. Users read it as "this is the app's version", not "a newer version exists". And
 "Check for Updates…" lives only in the macOS app menu and under Settings → About — nothing in
 the app's own chrome, and nothing at all on Windows/Linux, which have no native app menu.
+(This plan's references to "#534" for the tray rule mean ledger **#535** — #534 is the About
+card's copy row; corrected 15 Oct 2026 when T3 widened #535.)
 
 ## 1. What exists today (read, not remembered — 15 Oct 2026)
 
@@ -148,9 +157,9 @@ told, they do not poll. **Without S4, S1–S3 show yesterday's answer; S4 is not
 
 | OS | Host | What is pressed |
 |---|---|---|
-| macOS | 15.8 UTM VM, release build | pill from Sites; tray Check; app-menu Check still works; S4: leave the window open across a forced poll (test-pinned manifest) |
-| Windows | Dell (Win10 22H2), `tauri build` installer | pill; **tray Check is the only menu path** — press it; title-bar-above-content layout leaves the pill visible |
-| Linux | Ubuntu 22.04 UTM VM, deb | pill; tray Check via libappindicator (plain items, no icons expected) |
+| macOS | 15.8 UTM VM, release build — **owed: run on macOS VM** | pill from Sites; tray Check; app-menu Check still works; S4: leave the window open across a forced poll (test-pinned manifest) |
+| Windows | Dell (Win10 22H2), `tauri build` installer — **owed: run on Dell** | pill; **tray Check is the only menu path** — press it; title-bar-above-content layout leaves the pill visible |
+| Linux | Ubuntu 22.04 UTM VM, deb — **owed: run on Ubuntu VM** | pill; tray Check via libappindicator (plain items, no icons expected) |
 
 A row proven on one OS only is `◐`.
 

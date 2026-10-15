@@ -110,14 +110,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **The app-update notice is misread, and "Check for Updates…" is unreachable from the app's own chrome**
-  (owner, 15 Oct 2026): the only always-on sign of a release is a bare mono `0.6.0` beside Settings in the
-  sidebar, read as the running version; "Check for Updates…" exists only in the macOS app menu (Windows/Linux
-  have none). Also found: a background check (launch sweep / 6 h poller, `lib.rs` `check_for_app_update`) emits
-  nothing to the window, so the badge and the toast lag until About is opened. Plan: `docs/PLAN-update-notice.md`
-  — TopBar pill on every screen, sidebar pill that links to About, a tray "Check for Updates…" on all three OSes,
-  the `app-update` push. **T1 (the push), T2 (the pills) and T3 (the tray Check item) landed 15 Oct 2026** (ledger #884,
-  #885, #535 widened); T4 open.
+- [ ] **The update notice — built 15 Oct 2026 (`claude/update-notice`), open ONLY for its per-OS GUI proof.**
+  The problem (owner, 15 Oct 2026): the only always-on sign of a release was a bare mono `0.6.0` beside
+  Settings, read as the running version; "Check for Updates…" lived only in the macOS app menu; a background
+  check told the window nothing. `docs/PLAN-update-notice.md` T1–T4 landed: the `app-update` push (ledger #884),
+  the TopBar + sidebar pills (#885), the tray "Check for Updates…" on all three OSes (#535 widened). L0 green
+  and plant-proven; `appupdate.js` run in Chromium only. Owed: `appupdate.js` in WebKit (`verify-full.sh` on
+  the Mac); SMOKE-TEST "In-app self-update" notice / tray / push rows — run on the macOS VM; its Windows
+  section's tray row — run on the Dell; its Linux section's tray row — run on the Ubuntu VM.
+
+- [ ] **"Check for Updates…" re-reads the stored answer; it does not fetch** (found 15 Oct 2026 building the
+  update notice). `useCheckForUpdates` (the app menu, the tray item, the TopBar idle button) navigates to About
+  and invalidates `["app-update"]`, whose query is `app_update_state` — a pure read; the only network check is
+  the card's "Check now". So those doors land on the last stored answer unless the poller ran since, which the
+  menu item's own comment says it avoids, and the plan's T3 "footer timestamp refreshed" does not hold from
+  them. Left as is: the plan forbids the pills from checking. The fix belongs to the CARD (e.g. a `?check=1`
+  arrival it answers with its own mutation) and needs the owner's call.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

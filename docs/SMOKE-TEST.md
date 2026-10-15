@@ -2655,6 +2655,26 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   no version, or a menu that hangs while it opens — it must read a snapshot, never fetch.
   ✓ 7 Sep 2026 (dev Mac, 0.6.0 → 0.6.1): the tray's `Update to …` item opened About and
   installed nothing. ✓ 18 Sep 2026 (clean VM, → 0.7.2).
+- [ ] **The update notice is on a screen that is not Settings** (`docs/PLAN-update-notice.md`
+  S1/S2, ledger #885). With a newer release published, open **Sites**: the TopBar's right end
+  shows a brand pill `↑ Update to <version>` and the sidebar shows `● Update ready` on its own
+  line above Settings — **no bare version anywhere in the sidebar**. Click the TopBar pill → Settings
+  → About; back on Sites, click the sidebar pill → About; click **Settings** itself → General (not
+  About). Narrow the window to its minimum: the pill's label may truncate, the version must not.
+  With nothing offered, the TopBar shows only an icon button titled "Check for Updates…" that
+  lands on About. **Tell:** a bare `0.6.0` beside Settings, a Settings click hijacked to About, a
+  pill that starts an install. **Open: owed — run on the macOS VM (release build).**
+- [ ] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
+  item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise
+  the first item): the window comes forward on Settings → About. The app menu's own "Check for
+  Updates…" still does the same. **Tell:** a menu that hangs while opening, an item that installs.
+  **Open: owed — run on the macOS VM.**
+- [ ] **The push** (S4, ledger #884). Leave the window OPEN on Sites across a background check
+  that finds a release (a test-pinned manifest published while the app runs, then wait for the
+  poller — or relaunch with the window kept open through the launch sweep): the TopBar and
+  sidebar pills appear **without** opening About and without a click; the toast's action reads
+  **Show update**. **Tell:** the pills appear only after visiting About — the pre-15-Oct-2026
+  behaviour. **Open: owed — run on the macOS VM.**
 - [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
   no error; the footer says when it last checked. **Tell:** a button that appears and fails,
   or a footer claiming a check that never ran. **Open: "dark when current" as the CARD renders
@@ -3311,6 +3331,14 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       (1,009,152 B), `rex status` answered; the card then reads "Installed — … Reinstall".
 
 ### In-app self-update — replaces the macOS section
+- [ ] **The tray is the ONLY menu path to "Check for Updates…" here** (Windows draws no app menu;
+      `docs/PLAN-update-notice.md` S3, ledger #535). Right-click the notification-area icon →
+      **Check for Updates…** → the window comes forward on Settings → About. Then the main body's
+      notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
+      linking to About while Settings opens General, no bare version in the sidebar — and with
+      Windows' title bar ABOVE the page, the pill stays visible and clickable at the narrowest
+      window. The push row too (window open across a background check). **Open: owed — run on the
+      Dell (`tauri build` installer).**
 The swap and the relaunch are measured on fixtures on the Dell
 (`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
 fixture can do is the real install directory, the real quit gate and the real registry entry.
@@ -3893,6 +3921,13 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
+- [ ] **The tray is the ONLY menu path to "Check for Updates…" here** (GTK has no app menu;
+      `docs/PLAN-update-notice.md` S3, ledger #535). From the appindicator menu choose **Check for
+      Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
+      Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`
+      linking to About while Settings opens General, no bare version in the sidebar, and the push
+      row (window open across a background check). **Open: owed — run on the Ubuntu 22.04 VM
+      (the `.deb`).**
 - [x] **A route an older rexenv wrote is installed, with a notice — never MISSING, never the Welcome
       screen** (ledger #769): write 0.8.10's unit by hand — `sudo sed -i 's|^ExecStop=.*|ExecStop=/sbin/ip
       link del rexenv0|' /etc/systemd/system/rexenv-dns-route.service && sudo systemctl daemon-reload`
