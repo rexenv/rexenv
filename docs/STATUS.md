@@ -52,7 +52,7 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 741 · ◐ 120 · 🔨 5 · 🚫 17** of 883 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 741 · ◐ 121 · 🔨 5 · 🚫 17** of 884 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -70,6 +70,6 @@ App version **0.8.13** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md
   SQLite schema version              v45
   commands/wordpress.rs commands     65
   commands/repo.rs commands          26
-  src/lib/ipc/index.ts exports       299
+  src/lib/ipc/index.ts exports       300
   rex commands (cli_server arms)     110
 ```

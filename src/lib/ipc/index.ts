@@ -847,10 +847,6 @@ export async function appUpdateRestart(): Promise<void> {
   await invoke("app_update_restart");
 }
 
-/** Set aside exactly this version, or clear the skip by passing nothing.
- *
- *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean
- *  answers that question once and forever. */
 /** The app menu's "Check for Updates…". Fires with the window already shown —
  *  a check whose answer lands on a hidden window is a menu item that appears to
  *  do nothing. */
@@ -860,6 +856,22 @@ export async function onCheckUpdatesMenu(cb: () => void): Promise<() => void> {
   return listen("menu://check-updates", () => cb());
 }
 
+/** A background update check ACCEPTED a descriptor (the launch sweep or the 6 h
+ *  poller) — re-read `["app-update"]`. Every surface that shows the offer reads
+ *  that cache with `staleTime: Infinity`: it is told, it never polls, so without
+ *  this a release found while the window was open reached it only when someone
+ *  opened About (ledger #884). No payload — the state is re-read, never copied
+ *  from the event. Returns an unlisten function. No-op outside Tauri. */
+export async function onAppUpdate(cb: () => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("app-update", () => cb());
+}
+
+/** Set aside exactly this version, or clear the skip by passing nothing.
+ *
+ *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean
+ *  answers that question once and forever. */
 export async function appUpdateSkip(version?: string): Promise<AppUpdateState> {
   if (!isTauri()) return { ...mockAppUpdateState, skipped: version ?? null };
   return invoke<AppUpdateState>("app_update_skip", { version: version ?? null });

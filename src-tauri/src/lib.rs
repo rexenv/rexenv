@@ -835,7 +835,7 @@ pub fn run() {
                             .map(|c| core::app_update::auto_check_enabled(&c))
                             .unwrap_or(true);
                         if auto {
-                            check_for_app_update(&state).await;
+                            check_for_app_update(&bump, &state).await;
                         } else {
                             log::info!("app update: automatic checking is off");
                         }
@@ -1863,47 +1863,80 @@ pub fn take_swapped_awaiting_restart() -> Option<std::path::PathBuf> {
     SWAPPED_AWAITING_RESTART.lock().ok()?.take()
 }
 
-/// One app-update check: fetch unlocked, accept + record under a brief lock.
+/// One app-update check: fetch unlocked, accept + record under a brief lock,
+/// then TELL the window and the tray.
 ///
 /// Best-effort by contract, exactly like the PHP manifest poll above it — no key
 /// pinned, no network, a stale serial or a bad signature all leave the app
 /// resolving exactly what it resolves today, and every one of them is a log line
 /// rather than anything a user is shown. The timestamp is written only on the
 /// success path, so `checked N ago` can never age a failure into a success.
-async fn check_for_app_update(state: &state::app::AppState) {
+///
+/// After an ACCEPTED descriptor it emits [`APP_UPDATE_EVENT`] and refreshes the
+/// tray (ledger #884). It used to do neither: the result was stored and logged,
+/// and the sidebar/TopBar/toast — which read the `["app-update"]` cache and never
+/// poll — learned of a release the poller found only when somebody opened About.
+/// The always-visible notice was showing the PREVIOUS session's answer
+/// (`docs/PLAN-update-notice.md` §1). The DB guard is dropped first: `refresh_tray`
+/// reads the sites through `tray_model`, which takes the same lock.
+async fn check_for_app_update(app: &tauri::AppHandle, state: &state::app::AppState) {
+    use tauri::Emitter;
     let variant = platform::current().app_bundle().descriptor_variant();
-    match core::app_update::fetch(variant.as_deref(), core::updates::BACKGROUND_DEADLINE).await {
-        Ok((doc, sig)) => {
-            let Ok(conn) = state.db.lock() else {
-                log::warn!("app update: descriptor not stored — db lock");
+    let (doc, sig) =
+        match core::app_update::fetch(variant.as_deref(), core::updates::BACKGROUND_DEADLINE).await {
+            Ok(fetched) => fetched,
+            Err(e) => {
+                log::info!("app update: check skipped: {e}");
                 return;
-            };
-            let document = core::app_update::this_document(variant.as_deref());
-            match core::app_update::accept(&conn, &document, &doc, sig.trim()) {
-                Ok(m) => {
-                    let st = core::app_update::state(&conn, &document);
-                    if let Err(e) = core::app_update::store_check(&conn, st.offered.clone()) {
-                        log::warn!("app update: could not record the check: {e}");
-                    }
-                    match (&st.offered, &st.no_offer_reason) {
-                        (Some(o), _) => log::info!(
-                            "app update: {} can be installed (serial {}, {} bytes)",
-                            o.version,
-                            m.serial,
-                            o.size_bytes
-                        ),
-                        (None, Some(why)) => {
-                            log::info!("app update: nothing to offer — {why}")
-                        }
-                        (None, None) => log::info!("app update: nothing to offer"),
-                    }
-                }
-                Err(e) => log::info!("app update: descriptor not accepted: {e}"),
             }
+        };
+    let Ok(conn) = state.db.lock() else {
+        log::warn!("app update: descriptor not stored — db lock");
+        return;
+    };
+    let document = core::app_update::this_document(variant.as_deref());
+    let accepted = match core::app_update::accept(&conn, &document, &doc, sig.trim()) {
+        Ok(m) => {
+            let st = core::app_update::state(&conn, &document);
+            if let Err(e) = core::app_update::store_check(&conn, st.offered.clone()) {
+                log::warn!("app update: could not record the check: {e}");
+            }
+            match (&st.offered, &st.no_offer_reason) {
+                (Some(o), _) => log::info!(
+                    "app update: {} can be installed (serial {}, {} bytes)",
+                    o.version,
+                    m.serial,
+                    o.size_bytes
+                ),
+                (None, Some(why)) => {
+                    log::info!("app update: nothing to offer — {why}")
+                }
+                (None, None) => log::info!("app update: nothing to offer"),
+            }
+            true
         }
-        Err(e) => log::info!("app update: check skipped: {e}"),
+        Err(e) => {
+            log::info!("app update: descriptor not accepted: {e}");
+            false
+        }
+    };
+    drop(conn);
+    if !accepted {
+        return;
     }
+    // The window may be closed (a menu-bar app usually is) — an emit to nobody
+    // is harmless, and the next mount reads the stored answer anyway.
+    if let Err(e) = app.emit(APP_UPDATE_EVENT, ()) {
+        log::warn!("app update: could not tell the window: {e}");
+    }
+    refresh_tray(app);
 }
+
+/// Emitted after a background check ACCEPTS a descriptor, so every surface that
+/// reads the `["app-update"]` cache is told instead of polling (ledger #884).
+/// The payload is empty: the frontend re-reads `app_update_state`, the one
+/// answer, rather than trusting a second copy carried in an event.
+pub const APP_UPDATE_EVENT: &str = "app-update";
 
 /// Re-check every 6 hours, so a machine left running for a week still hears
 /// about a release.
@@ -1924,7 +1957,7 @@ fn spawn_app_update_poller(app: tauri::AppHandle) {
                 .map(|c| core::app_update::auto_check_enabled(&c))
                 .unwrap_or(false);
             if auto {
-                check_for_app_update(&state).await;
+                check_for_app_update(&app, &state).await;
             }
         }
     });
@@ -3213,7 +3246,7 @@ mod tests {
         let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
         // Assemble the needle so this test cannot convict itself by matching the
         // literal in its own body (the copy_scan rule).
-        let call = format!("check_for_app_{}", "update(&state)");
+        let call = format!("check_for_app_{}", "update(&");
         let gate = format!("auto_check_{}", "enabled(");
 
         let sites: Vec<usize> = src.match_indices(&call).map(|(i, _)| i).collect();
@@ -3244,6 +3277,40 @@ mod tests {
             body[tick..tick + 900].contains(&gate),
             "the poller must read the setting inside its loop, not once at spawn"
         );
+    }
+
+    /// **A background check that accepts a descriptor TELLS the window and the
+    /// tray** (ledger #884, `docs/PLAN-update-notice.md` S4).
+    ///
+    /// The sidebar, the TopBar pill and the toast read `["app-update"]` with
+    /// `staleTime: Infinity` — they are told, they do not poll — so a check that
+    /// stored its answer silently left them showing the previous session's for as
+    /// long as nobody opened About. Three things, by text, because nothing in the
+    /// types would notice their absence: the emit names `APP_UPDATE_EVENT`, the
+    /// tray is refreshed from the SAME function, and both come after the DB guard
+    /// is dropped (`tray_model` takes that lock; refreshing under it deadlocks)
+    /// and after the not-accepted early return (a refused descriptor changed
+    /// nothing worth announcing).
+    #[test]
+    fn a_background_check_tells_the_window_and_the_tray_after_the_lock_drops() {
+        let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
+        let start = src.find("async fn check_for_app_update").expect("the check exists");
+        let rest = &src[start..];
+        // Up to the event's own const, which is declared right after the function.
+        let end = rest.find(&format!("pub const {}", "APP_UPDATE_EVENT")).expect("the const follows the check");
+        let body = &rest[..end];
+        // Landmark: an empty or mis-sliced body passes every `contains` below.
+        assert!(body.contains("app_update::accept("), "sliced the wrong function");
+
+        let at = |needle: &str| {
+            body.find(needle).unwrap_or_else(|| panic!("check_for_app_update lacks {needle}"))
+        };
+        let emit = at(&format!("emit({}", "APP_UPDATE_EVENT"));
+        let tray = at(&format!("refresh_{}", "tray(app)"));
+        let dropped = at(&format!("drop({}", "conn)"));
+        let gate = at(&format!("if !{}", "accepted"));
+        assert!(dropped < gate && gate < emit && gate < tray, "emit/refresh must follow the drop and the accept gate");
+        assert_eq!(APP_UPDATE_EVENT, "app-update", "the frontend's onAppUpdate listens for this name");
     }
 
     #[test]

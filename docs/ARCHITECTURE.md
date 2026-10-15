@@ -1202,6 +1202,16 @@ honest footer —
   `checked N ago` reads ONE stored value written only after a success, so a failed check
   keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to
   date".
+  **A background check that ACCEPTS a descriptor tells the window and the tray** (15 Oct
+  2026, ledger #884, `docs/PLAN-update-notice.md` S4): `check_for_app_update` drops the DB
+  guard, emits `app-update` (no payload) and calls `refresh_tray`; `AppUpdateEventWatch` at the
+  app root invalidates `["app-update"]` + `["app-update-readiness"]`. Every surface that shows
+  the offer reads that cache with `staleTime: Infinity` — told, never polling — and until this
+  the check stored and logged its answer and told NOBODY: a release the 6 h poller found with
+  the window open reached the sidebar and the toast only when someone opened About, so the
+  always-visible notice was the previous session's answer. The interactive commands
+  (`app_update_check`/`_skip`/`_apply`) already return fresh state to their caller, so only
+  the background path emits.
   **A cancelled quit is a state, not a non-event** (7 Sep 2026, found by §M): the swap has
   already happened when the quit gate asks, so choosing "Keep sharing" leaves the new bundle
   on disk under the old process. The card reads that from the notice row the swap writes —

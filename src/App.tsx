@@ -22,6 +22,7 @@ import {
   onTrayRoute,
   startupNotices,
   appUpdateState,
+  onAppUpdate,
   onCheckUpdatesMenu,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -210,6 +211,39 @@ function CheckUpdatesMenuWatch() {
   return null;
 }
 
+/** The backend found something: a background check (launch sweep or the 6 h
+ *  poller) ACCEPTED a descriptor and said so with `app-update` (ledger #884).
+ *
+ *  Every surface showing the offer — the TopBar and sidebar pills, the toast —
+ *  reads `["app-update"]` with `staleTime: Infinity`, because they are TOLD
+ *  rather than polling. Before this listener existed nothing told them: a
+ *  release the poller found with the window open reached the sidebar only when
+ *  someone opened About, so the notice was the previous session's answer.
+ *  Invalidate, never set: the state is re-read from the one command that
+ *  computes it. */
+function AppUpdateEventWatch() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    onAppUpdate(() => {
+      void qc.invalidateQueries({ queryKey: ["app-update"] });
+      void qc.invalidateQueries({ queryKey: ["app-update-readiness"] });
+    })
+      .then((f) => {
+        if (disposed) f();
+        else unlisten = f;
+      })
+      // Outside the app shell the event API rejects (TrayRouteWatch's reason).
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [qc]);
+  return null;
+}
+
 /** Drains the notices the launch sweeps queued before this window existed.
  *
  *  Runs ONCE per app run, deliberately: the sweeps happen in `setup()`, so an
@@ -281,6 +315,7 @@ export function App() {
       <StartupNoticeHost />
       <UpdateWatch />
       <CheckUpdatesMenuWatch />
+      <AppUpdateEventWatch />
       <AboutMenuWatch />
       <TrayRouteWatch />
     </>
