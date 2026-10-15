@@ -110,6 +110,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **The app-update notice is misread, and "Check for Updates…" is unreachable from the app's own chrome**
+  (owner, 15 Oct 2026): the only always-on sign of a release is a bare mono `0.6.0` beside Settings in the
+  sidebar, read as the running version; "Check for Updates…" exists only in the macOS app menu (Windows/Linux
+  have none). Also found: a background check (launch sweep / 6 h poller, `lib.rs` `check_for_app_update`) emits
+  nothing to the window, so the badge and the toast lag until About is opened. Plan: `docs/PLAN-update-notice.md`
+  — TopBar pill on every screen, sidebar pill that links to About, a tray "Check for Updates…" on all three OSes,
+  the `app-update` push. Not started.
+
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),
