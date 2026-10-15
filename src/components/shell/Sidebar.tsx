@@ -7,7 +7,8 @@ import { RexLogo } from "@/components/common/RexLogo";
 import { NAV_ITEMS, type NavItem } from "./nav";
 import { StatusFooter } from "./StatusFooter";
 import { ThemeToggle } from "./ThemeToggle";
-import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus , appUpdateState } from "@/lib/ipc";
+import { UpdatePill } from "./UpdatePill";
+import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
 import type { GlobalStatus } from "@/types";
 
 /** Neutral placeholder until the first real `global_status` poll — all-zero so the
@@ -100,18 +101,7 @@ export function Sidebar() {
   const { data: inbox } = useQuery({ queryKey: ["mailpit-messages", ""], queryFn: () => mailpitMessages(""), refetchInterval: 5000 });
   const { data: tunnels = [] } = useQuery({ queryKey: ["tunnels"], queryFn: tunnelsStatus, refetchInterval: 2000 });
 
-  // The update offer, read from the cache the About card and UpdateWatch keep —
-  // never its own poll. A menu-bar app's window is usually closed, so this is
-  // the quiet, always-there surface: a version, not a dot, because "0.6.0" is
-  // the thing a person acts on.
-  const { data: update } = useQuery({
-    queryKey: ["app-update"],
-    queryFn: appUpdateState,
-    staleTime: Infinity,
-  });
-
   const liveBadges: Record<string, { badge?: string; activeDot?: boolean }> = {
-    "/settings": { badge: update?.offered?.version },
     "/sites": { badge: badgeCount(sites.length) },
     "/services": { badge: badgeCount(status.running) },
     "/databases": { badge: badgeCount(dbs.filter((d) => d.running).length) },
@@ -158,6 +148,14 @@ export function Sidebar() {
           </div>
         ))}
         <div className="flex-1" />
+        {/* The update notice: a SIBLING of the Settings link, never inside it (a
+            link inside a link is invalid HTML and WKWebView makes the inner one
+            dead), on its own line because a 220 px rail has no room beside the
+            label. It goes to About; Settings keeps going to General. It used to
+            be a bare mono "0.6.0" badge on Settings, read as the RUNNING version
+            by the people it was meant to alert (owner, 15 Oct 2026) — so: a
+            verb, and no version (ledger #885). */}
+        <UpdatePill variant="rail" />
         <div className="flex items-center gap-1">
           <div className="min-w-0 flex-1">
             {footer.map((item) => (

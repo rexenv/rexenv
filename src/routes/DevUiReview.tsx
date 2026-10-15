@@ -46,11 +46,21 @@
  *               here. `stale=1` makes Mark all read a no-op on the server side,
  *               which is the scenario that proves the screen updates from its
  *               own patch rather than from a refetch
+ *    updatenotice — the REAL Sidebar + TopBar with the app-update pills
+ *               (`?state=` as for `appupdate`, plus `checking`, whose card check
+ *               never settles). Events are mocked here: `window.__rexEmit(name)`
+ *               raises one, `window.__rexOfferNow = true` makes the next state
+ *               read carry an offer — the "poller found a release" leg — and
+ *               `window.__rexStateReads` counts reads, so a pill that polled
+ *               would be visible (`appupdate.js`)
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
 import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
+import { Sidebar } from "@/components/shell/Sidebar";
+import { TopBar } from "@/components/shell/TopBar";
+import { emit } from "@tauri-apps/api/event";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
 import { ThemesPanel as ThemesScreen } from "@/components/wordpress/WordPressManager";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -1012,6 +1022,15 @@ export function DevUiReview() {
             notice: "FIXTURE restart notice from the backend — rendered verbatim.",
           };
         }
+        // The card's "Check now". Recorded, and in `?state=checking` it never
+        // settles, so the pill's in-flight state can be looked at — the pill
+        // observes the card's mutation and must not add a check of its own.
+        case "app_update_check": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd });
+          if (params.get("state") === "checking") return new Promise(() => {});
+          return { running: "0.5.0", enabled: true, autoCheck: true, offered: null, noOfferReason: null, checkedAt: "2026-09-06 09:00:00", skipped: null, installedPending: null };
+        }
         case "app_update_restart": {
           const w = window as unknown as { __rexUpdate?: unknown[] };
           (w.__rexUpdate ??= []).push({ cmd });
@@ -1037,6 +1056,12 @@ export function DevUiReview() {
             skipped: null,
             installedPending: null,
           };
+          // The update-notice legs: every read is counted (a pill that polled
+          // would show up as reads with no event), and `__rexOfferNow` is the
+          // background check having found a release since the page loaded.
+          const w = window as unknown as { __rexStateReads?: number; __rexOfferNow?: boolean };
+          w.__rexStateReads = (w.__rexStateReads ?? 0) + 1;
+          if (w.__rexOfferNow) return { ...base, offered: offer };
           switch (params.get("state")) {
             case "never-checked":
               return { ...base, checkedAt: null, noOfferReason: null };
@@ -1236,6 +1261,11 @@ export function DevUiReview() {
           return [];
         case "platform_words":
           return mockPlatformWords;
+        // The Sidebar's footer, for `?view=updatenotice`.
+        case "global_status":
+          return { summary: "all", running: 6, total: 6, cpuPercent: 3, cpuCores: 8, ramMb: 900, ramTotalMb: 16384 };
+        case "repo_watches":
+          return [];
         case "live_sync_preview":
           ((window as unknown as { __livePreviews?: unknown[] }).__livePreviews ??= []).push(args);
           // `&live=php80`: the live site runs a PHP rexenv ships but this machine has not installed (#855).
@@ -1524,7 +1554,10 @@ export function DevUiReview() {
               `letting a placeholder value reach the view under test.`
           );
       }
-    });
+    }, { shouldMockEvents: params.get("view") === "updatenotice" });
+    if (params.get("view") === "updatenotice") {
+      (window as unknown as { __rexEmit?: (name: string) => Promise<void> }).__rexEmit = (name) => emit(name);
+    }
     setReady(true);
   }, []);
   if (!ready) return null;
@@ -1569,6 +1602,27 @@ export function DevUiReview() {
             />
             <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
               app-update harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark)
+            </div>
+          </div>
+        )}
+        {view === "updatenotice" && (
+          // The REAL chrome, so the rail pill is checked where it actually sits —
+          // beside the Settings link, not inside it.
+          <div data-probe="updatenotice-view" className="flex h-[760px] overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
+            <Sidebar />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <TopBar
+                title="Sites"
+                subtitle="3 sites"
+                action={
+                  <button className="h-[34px] rounded bg-brand px-3 text-[0.8125rem] font-medium text-rex-text">+ New site</button>
+                }
+              />
+              {params.get("state") === "checking" && (
+                <div className="p-4">
+                  <AppUpdateCard downloads={{ batch: null, items: [], seq: 0 }} />
+                </div>
+              )}
             </div>
           </div>
         )}

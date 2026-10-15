@@ -1123,6 +1123,17 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   which launch path it took, so the macOS run is the control. Ledger #698; RAN green on the
   Win11 VM 20 Sep 2026, where it found three separate reasons the first implementation could
   not work (working directory, `output()` vs `status()`, and a shared log file).
+- `appupdate.js` (WebKit, `verify-full.sh`) — the update notice in the chrome
+  (`?view=updatenotice`: the REAL Sidebar and TopBar). Per mocked state at 900 and 1440: the
+  TopBar pill's `data-phase`, a verb plus the version where there is an offer and the version
+  never clipped, no pill with no key pinned; the sidebar pill only with a notice, linking to
+  `?section=about`, while Settings stays plain `/settings`; no bare version anywhere in the
+  sidebar; no `<a>` inside an `<a>`; the pill showing the CARD's check in flight with exactly
+  one check run; and S4 — no state re-reads without an event, then an `app-update` event
+  flips both pills. **Plant-proven in Chromium, not WebKit** (15 Oct 2026, authoring sandbox
+  with no WebKit): restoring the `0.6.0` badge, dropping the event's invalidation, and a
+  500 ms `refetchInterval` on the pill each fail by name. The WebKit run is owed
+  (`verify-full.sh` on the Mac). Ledger #884, #885.
 - `appupdaterestart.js` (WebKit, `verify-full.sh`) — the self-update's restart. The apply
   and the restart are two commands; the check proves the order (install → dialog → nothing
   restarted yet → OK → exactly one restart), that there is no Cancel to give, and that the

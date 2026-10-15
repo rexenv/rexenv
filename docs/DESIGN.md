@@ -32,6 +32,13 @@ the shipped UI toward one.
 ## Honest-UI rules (design-level, enforced in code)
 
 - Status derives from reality (ownership AND liveness) — no fake per-site toggles.
+- **A bare value is not a badge.** The only always-visible sign of a new rexenv was a mono
+  `0.6.0` beside Settings in the sidebar, styled like the Sites/Services counts — and the
+  people it was meant to alert read it as the version they were RUNNING (owner, 15 Oct 2026).
+  A notice needs a verb or an icon that says what the value is for: the TopBar pill reads
+  `↑ Update to 0.6.0` / `Restart to finish 0.6.0`, the sidebar's says `Update ready` with no
+  version at all, and both are doors to Settings → About, never installers
+  (`UpdatePill.tsx`, ledger #885, `docs/PLAN-update-notice.md`).
 - **A thing that works is never shown as missing.** A Linux DNS route an older rexenv wrote still
   routed every name, and 0.8.11 said "resolver MISSING" and opened onboarding's Welcome over three
   sites (30 Sep 2026, #769). The shape on disk is now an amber NOTICE beside "installed" with a

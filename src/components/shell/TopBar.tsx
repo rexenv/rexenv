@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { onTitleBarMouseDown } from "@/lib/window-drag";
 import { TECH_INPUT } from "@/lib/utils";
+import { UpdatePill } from "./UpdatePill";
 
 interface TopBarProps {
   title: string;
@@ -29,7 +30,7 @@ export function TopBar({
       onMouseDown={onTitleBarMouseDown}
       className="drag-region flex h-[84px] flex-none items-center justify-between gap-4 border-b border-rex-border-subtle px-[22px]"
     >
-      <div>
+      <div className="min-w-0">
         <div className="text-[1.125rem] font-semibold tracking-[-0.01em] text-rex-text">
           {title}
         </div>
@@ -39,7 +40,7 @@ export function TopBar({
           </div>
         )}
       </div>
-      <div className="no-drag flex items-center gap-2.5">
+      <div className="no-drag flex min-w-0 items-center gap-2.5">
         {showSearch && (
           <div className="relative">
             <Search
@@ -58,6 +59,9 @@ export function TopBar({
           </div>
         )}
         {action}
+        {/* Rendered by the bar itself, not per route: the update notice is on
+            every screen without any route opting in (PLAN-update-notice S1). */}
+        <UpdatePill variant="bar" />
       </div>
     </header>
   );

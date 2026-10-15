@@ -2196,5 +2196,54 @@ const LINK = "https://example.test/a//b";
             bad.join("\n  ")
         );
     }
+
+    /// **The update pills read the cache and never run a check or an install**
+    /// (ledger #885, `docs/PLAN-update-notice.md` S1/S2).
+    ///
+    /// The TopBar and sidebar pills are doors to Settings → About: the card owns
+    /// the check mutation and its failure copy, and the consent sentence in front
+    /// of the ONE Install button. A pill that imported the check would be a
+    /// second place deciding what a failed check looks like; one that imported
+    /// the apply would be a path past the consent sentence. So the pill, the hook
+    /// its idle button calls, and the two shell files that mount it may name
+    /// neither — and the pill must still read the state (the landmark, so a file
+    /// emptied by a refactor cannot pass by saying nothing).
+    #[test]
+    fn the_update_pills_read_the_cache_and_never_check_or_install() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let read = |rel: &str| {
+            std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("{rel}: {e}"))
+        };
+        let pill = read("components/shell/UpdatePill.tsx");
+        assert!(
+            pill.contains("appUpdateState") && pill.contains(r#"queryKey: ["app-update"]"#),
+            "the pill must read the shared [\"app-update\"] cache"
+        );
+        let banned = [
+            "appUpdateCheck",
+            "appUpdateApply",
+            "appUpdateRestart",
+            "appUpdateSkip",
+            "useMutation",
+            "invoke(",
+            "refetchInterval",
+        ];
+        for rel in [
+            "components/shell/UpdatePill.tsx",
+            "lib/useCheckForUpdates.ts",
+            "components/shell/TopBar.tsx",
+            "components/shell/Sidebar.tsx",
+        ] {
+            let src = read(rel);
+            for b in banned {
+                if b == "refetchInterval" && rel.ends_with("Sidebar.tsx") {
+                    // The sidebar polls its own nav counts; the update notice is
+                    // not among them (the pill file is checked on its own).
+                    continue;
+                }
+                assert!(!src.contains(b), "{rel} names {b} — the update notice only navigates");
+            }
+        }
+    }
 }
 // probe

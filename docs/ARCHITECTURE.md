@@ -1212,6 +1212,21 @@ honest footer —
   always-visible notice was the previous session's answer. The interactive commands
   (`app_update_check`/`_skip`/`_apply`) already return fresh state to their caller, so only
   the background path emits.
+  **The notice in the app's own chrome** (`src/components/shell/UpdatePill.tsx`, ledger #885):
+  every `TopBar` renders a `bar` pill at the right of its action cluster — no route opts in —
+  and the sidebar a `rail` pill on its own line above Settings. The bar pill is an icon-only
+  "Check for Updates…" ghost button when nothing is offered (and when the offer is the
+  skipped version), a spinner while the CARD's check is in flight (it reads the card's
+  mutation by key, `useIsMutating`, and never starts one), `↑ Update to <version>` with an
+  offer (installable or refused — the card says why), `Restart to finish <version>` with a
+  swapped build pending, and nothing with no key pinned. The rail pill exists only with a
+  notice, says `Update ready` / `Restart to finish update` with NO version, and links to
+  `/settings?section=about` as a SIBLING of the Settings link (a link inside a link is dead in
+  WKWebView); Settings itself keeps going to General. **It replaced a bare mono `0.6.0` badge
+  on Settings**, which users read as the running version. Both pills only navigate: the idle
+  button calls `useCheckForUpdates` — the same navigate-to-About-and-invalidate the menu event
+  runs — and the card stays the one place that checks and the one place that installs. The
+  update toast's action reads "Show update" (it navigates; it does not install).
   **A cancelled quit is a state, not a non-event** (7 Sep 2026, found by §M): the swap has
   already happened when the quit gate asks, so choosing "Keep sharing" leaves the new bundle
   on disk under the old process. The card reads that from the notice row the swap writes —

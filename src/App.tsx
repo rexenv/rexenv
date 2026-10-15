@@ -26,6 +26,7 @@ import {
   onCheckUpdatesMenu,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
+import { ABOUT_PATH, useCheckForUpdates } from "@/lib/useCheckForUpdates";
 import { Toaster } from "@/components/ui/toaster";
 import { DialogHost } from "@/components/ui/dialog";
 
@@ -173,33 +174,27 @@ function UpdateWatch() {
   useEffect(() => {
     if (!offered || told.current === offered) return;
     told.current = offered;
+    // "Show update", not "Install…": the click only NAVIGATES, and the consent
+    // sentence in front of the one Install button is on the card (S5).
     toast.info(`rexenv ${offered} can be installed`, {
-      label: "Open About",
-      onClick: () => navigate("/settings?section=about"),
+      label: "Show update",
+      onClick: () => navigate(ABOUT_PATH),
     });
   }, [offered, navigate]);
   return null;
 }
 
-/** The app menu's "Check for Updates…": go to the card AND run a check.
- *
- *  Both, because someone who chose that item is ASKING — landing them on a card
- *  showing yesterday's answer would be a menu item that technically worked.
- *  Mounted at the app root so it fires from any screen. */
+/** "Check for Updates…" from a menu — the macOS app menu's item and, on all
+ *  three OSes, the tray's: both emit `menu://check-updates`, and this is the
+ *  ONE place that decides what that does (`useCheckForUpdates`, which the
+ *  TopBar's idle button calls too). Mounted at the app root so it fires from
+ *  any screen; the window is already shown by the time the event arrives. */
 function CheckUpdatesMenuWatch() {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
+  const checkForUpdates = useCheckForUpdates();
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
-    void onCheckUpdatesMenu(() => {
-      navigate("/settings?section=about");
-      // Invalidate rather than run the check here: the card owns that mutation
-      // and its failure copy, and a second caller would be a second place that
-      // decides what a failed check looks like.
-      void qc.invalidateQueries({ queryKey: ["app-update"] });
-      void qc.invalidateQueries({ queryKey: ["app-update-readiness"] });
-    }).then((f) => {
+    void onCheckUpdatesMenu(checkForUpdates).then((f) => {
       if (disposed) f();
       else unlisten = f;
     });
@@ -207,7 +202,7 @@ function CheckUpdatesMenuWatch() {
       disposed = true;
       unlisten?.();
     };
-  }, [navigate, qc]);
+  }, [checkForUpdates]);
   return null;
 }
 

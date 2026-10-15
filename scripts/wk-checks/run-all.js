@@ -35,6 +35,7 @@ const CHECKS = [
   "mail.js",
   "maillink.js",
   "appupdaterestart.js",
+  "appupdate.js",
   "agentlog.js",
   "worktree.js",
   "livetab.js",

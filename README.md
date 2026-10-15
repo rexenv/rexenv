@@ -169,7 +169,7 @@ rexenv/
 │   │   ├── DevGitPanel.tsx · DevUiReview.tsx   # dev-only harnesses (tree-shaken)
 │   ├── components/
 │   │   ├── ui/                 # shadcn/ui primitives (button, dialog, menu, …)
-│   │   ├── shell/              # AppShell, Sidebar, TopBar, StatusFooter
+│   │   ├── shell/              # AppShell, Sidebar, TopBar, StatusFooter, UpdatePill
 │   │   ├── common/             # StatusPill, StartStopToggle, Placeholder, …
 │   │   ├── sites/              # NewSiteDialog (+ blueprint picker)
 │   │   ├── wordpress/          # WordPressManager (plugins/themes/users/network/tools)

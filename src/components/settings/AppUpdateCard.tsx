@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { acknowledge } from "@/components/ui/dialog";
 import { toastBackendError } from "@/lib/toast";
 import { agoLabel } from "@/routes/Sites";
+import { APP_UPDATE_CHECK_MUTATION } from "@/lib/useCheckForUpdates";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
 import type { DownloadsSnapshot } from "@/types";
 
@@ -56,6 +57,8 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
   const [failed, setFailed] = useState(false);
 
   const check = useMutation({
+    // Named so the TopBar pill can SHOW this check in flight without running one.
+    mutationKey: APP_UPDATE_CHECK_MUTATION,
     mutationFn: appUpdateCheck,
     onMutate: () => setFailed(false),
     onSuccess: (fresh) => {
