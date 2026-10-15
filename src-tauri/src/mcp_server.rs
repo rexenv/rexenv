@@ -1200,7 +1200,7 @@ impl<Rt: tauri::Runtime> user_sites::SiteOps for AppSiteCreator<Rt> {
         Box::pin(async move {
             let jobs = tauri::Manager::try_state::<crate::commands::live_sync::LiveSyncJobs>(&self.app)
                 .ok_or_else(|| crate::error::Error::Other("live-sync job registry not ready".into()))?;
-            let started = crate::commands::live_sync::live_sync_pull(self.app.clone(), self.state()?, jobs.clone(), id, uploads_since, None).await?;
+            let started = crate::commands::live_sync::live_sync_pull(self.app.clone(), self.state()?, jobs.clone(), id, uploads_since, None, None).await?;
             crate::commands::live_sync::settle(&jobs, &started.id).await
         })
     }

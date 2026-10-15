@@ -8,8 +8,15 @@ the real app on the macOS VM (#824–#847). **14 Oct 2026 (L16, #859–#862): th
 Live tab's Check status, `rex live … status`, the MCP `live` status), **incremental pull** (only
 the tables and files that moved on live; a table live did not touch keeps what it holds here;
 "Pull everything again" is the old whole pull), **incremental push by default** (only the tables
-changed here), the sync **history**, the plugin's admin page rewritten (0.1.3). Open: real hosts
-2–3 (L14), S3 (resume, anonymise, uploads on demand, per-item conflict choice), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
+changed here), the sync **history**, the plugin's admin page rewritten (0.1.3). **15 Oct 2026 (L17, #878–#883): S3's remainder** —
+**per-item conflict choice** (keep live's / overwrite, per table and file; `--keep` on the CLI),
+**anonymise on pull** (a per-site switch; `core/live_sync/anonymise.rs` scrubs the staging copy
+before the swap; the tables it touched are never pushed), **uploads on demand** (a per-site
+switch, on by default; the mu-plugin `uploads_on_demand.rs` fetches a missing upload from live
+the first time a page asks for it), **resume** (`progress.rs`: an interrupted pull continues from
+the tables it staged and the files it fetched; an interrupted push continues the open push on
+live — plugin 0.1.4's `begin` with `resume`), and #857's MariaDB half measured. Open: real hosts
+2–3 (L14), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
 recommendation waiting for the owner's yes (the open questions are §11). **Owner answered
 9 Oct 2026:** the plugin ships as an in-app zip only for v1, and a push always needs a
@@ -326,6 +333,7 @@ Stages, each shippable on its own:
 | L14 | Real-host smoke (3 hosts) + per-OS proof; SMOKE / ARCHITECTURE / MAP / TESTING / INSTALL updated | SMOKE section green with host names — host 1 = `https://live-sync.rex.bd` (owner, 10 Oct 2026); `live_sync_real_host_check` (system tier): run 10 Oct 2026 — pull ✓, nothing-changed-after-pull ✓ (#841 holds on a real MySQL), probe push ✓ (post at the live domain, file served), rollback ✓ by the site's own file list; on the fourth run the host reset every connection from this Mac for some minutes, then recovered (cause not established; NOT an IP block — the owner browsed the site; a pull is ~25 requests). The client now names a reset plainly (#842) and retries READS with backoff (#843). Owed: hosts 2 and 3. Per-OS: the fixture L1 (`live_sync_pull_into_check`) ALL PASS on macOS, the Dell's Windows 10 and the Ubuntu 22.04 VM |
 | L15 | Multisite (S5) | own plan section, own sign-off |
 | L16 | Status + incremental (14 Oct 2026, owner: "a status button … up to date, behind, ahead; pull/push incremental, never everything again") | ✓ 14 Oct 2026: the base's local half (`stamps.rs`, `CHECKSUM TABLE` + the options content stamp shared with plugin 0.1.3, #859), `status.rs::judge` + `live_sync_status` + the Live tab's Check status card + `rex live … status` + the MCP `live` status's verdict (#860), the incremental pull with the delete rule (#861), the push's default = what changed here, the rollback keeping the local half (#862), the history (`<id>.history.json`, 20), the plugin's Tools page rewritten (connection / how it works / this site; last contact, last pull/push, the kept backup's size; Copy key; confirms). L0 plants ×6, L1 `live_sync_pull_into_check` legs 12–12d + 6, `live_sync_plugin_check` §9, L2 `livetab.js` legs 10–13 |
+| L17 | S3's remainder (15 Oct 2026): per-item conflict choice, anonymise on pull, uploads on demand, resume | ✓ 15 Oct 2026: `PushOptions::skip` + the conflict card's per-item keep/overwrite (#878); `anonymise.rs` rules over the staging copy, `SyncBase::anonymised`, the push's refusal and the picker's badge (#879); `uploads_on_demand.rs` mu-plugin + the site's switches (`live_sync_options`/`set_options`, `rex live … set`; #880); `progress.rs` + plugin 0.1.4 `begin … resume` / `chunk` counts (#881, #882); the plugin check runs on MariaDB with `REXENV_SYNC_ENGINE=mariadb` (#857's other half, #883). L0 plants, L1 `live_sync_pull_into_check` legs 13–16b, `live_sync_plugin_check` §10, L2 `livetab.js` legs 14–16 |
 
 ## 11. Open questions for the owner
 
@@ -335,7 +343,11 @@ Stages, each shippable on its own:
 2. **Name** — DECIDED 10 Oct 2026 (owner: "do them all" — the agent's defaults stand): "rexenv Sync" / the "Live" tab.
 3. **Huge uploads** — DECIDED 10 Oct 2026: "skip uploads older than N months" ships with the
    pull (an `exclude`-style filter the plugin applies by mtime); uploads-on-demand (a local
-   nginx fallback that fetches a missing file from live) is S3 work, after push.
+   nginx fallback that fetches a missing file from live) is S3 work, after push. **BUILT 15 Oct
+   2026** as a mu-plugin rather than an nginx rule (`core/live_sync/uploads_on_demand.rs`): every
+   web server rexenv generates falls through to `index.php` for a missing file, so the one PHP
+   file works under nginx, Apache, OpenLiteSpeed and FrankenPHP on all three OSes; a per-site
+   switch, on by default (#880).
 4. **Linux with no Secret Service** — DECIDED 10 Oct 2026 (owner): a 0600 file. And, asked the
    same morning, **macOS too**: rexenv is ad-hoc signed, so every update changes the code
    identity a keychain item is bound to and would prompt after each update; the owner chose
@@ -346,7 +358,12 @@ Stages, each shippable on its own:
    optional user:password stored beside the key and sent as `Authorization`; IP allowlists are
    the host's business (the pull says "a firewall refused").
 6. **Anonymise on pull** — DECIDED 10 Oct 2026: later (S3), after push — it is its own feature
-   (which columns, which tables, per plugin).
+   (which columns, which tables, per plugin). **BUILT 15 Oct 2026** (`core/live_sync/anonymise.rs`,
+   #879): one rule per table in ONE list (core users/usermeta/comments; WooCommerce orders,
+   addresses, customer lookup, sessions; Gravity Forms and WPForms entries emptied — their
+   fields ARE the data), run over the STAGING copy before the swap so the live values never
+   land here; off by default, a per-site switch; the tables a rule touched are recorded in the
+   base and a push refuses them.
 7. **Push scope default** — DECIDED 10 Oct 2026: whole DB minus the live-owned tables.
 8b. **`DISABLE_WP_CRON` on a synced site** (§2.8) — ANSWERED 10 Oct 2026: **off, on every pull** ("jodi disable korle valo hoi tahole disable kore rakho"). Set before the swap, so a failure aborts with nothing replaced (#839). The risk it guards: a pulled WooCommerce Subscriptions site renewing real subscriptions through real gateways from the local copy. Due events still run on demand (the Cron panel, `wp cron event run --due-now`). No per-site toggle: a person who wants page-view cron removes the line, and the next pull puts it back — said in the log line.
 8. **MCP push** — ANSWERED 9 Oct 2026: **a push needs a human click.** Push and Roll back

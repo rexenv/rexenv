@@ -1648,14 +1648,27 @@ where
         "live.pull" => {
             let state = app_state(app)?;
             let jobs = live_jobs_state(app)?;
-            let started = commands::live_sync::live_sync_pull(app.app_handle().clone(), state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, args["uploadsSince"].as_i64(), args["full"].as_bool()).await?;
+            let started = commands::live_sync::live_sync_pull(app.app_handle().clone(), state.clone(), jobs.clone(), need_str(&args, "id", cmd)?, args["uploadsSince"].as_i64(), args["full"].as_bool(), args["anonymise"].as_bool()).await?;
             live_follow(app, &started.id, progress).await
+        }
+        "live.options" => {
+            let state = app_state(app)?;
+            to_value(&commands::live_sync::live_sync_options(state.clone(), need_str(&args, "id", cmd)?).await?)
+        }
+        "live.set_options" => {
+            let state = app_state(app)?;
+            let id = need_str(&args, "id", cmd)?;
+            let now = commands::live_sync::live_sync_options(state.clone(), id.clone()).await?;
+            let anonymise = args["anonymise"].as_bool().unwrap_or(now.anonymise);
+            let uploads = args["uploadsOnDemand"].as_bool().unwrap_or(now.uploads_on_demand);
+            to_value(&commands::live_sync::live_sync_set_options(state.clone(), id, anonymise, uploads).await?)
         }
         "live.push" => {
             let state = app_state(app)?;
             let jobs = live_jobs_state(app)?;
             let tables = args["tables"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>());
             let over = args["override"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
+            let keep = args["keep"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect::<Vec<_>>());
             let started = commands::live_sync::live_sync_push(
                 app.app_handle().clone(),
                 state.clone(),
@@ -1665,6 +1678,7 @@ where
                 tables,
                 args["files"].as_bool().unwrap_or(true),
                 over,
+                keep,
             )
             .await?;
             live_follow(app, &started.id, progress).await

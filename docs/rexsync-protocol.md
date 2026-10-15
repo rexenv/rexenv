@@ -156,13 +156,13 @@ back unchanged. `null` means done.
 
 | Route | In | Out |
 |---|---|---|
-| `POST /push/begin` | `{tables: [..], files: [..], deletes: [..], base: <manifest checksums rexenv last saw>}` | `{push_id, conflicts: [..]}`. **Conflicts** are tables/files whose live checksum or size+mtime differ from `base`. A non-empty list stops here unless the request named each conflict in `override` |
+| `POST /push/begin` | `{tables: [..], files: [..], deletes: [..], base: <manifest checksums rexenv last saw>, override: [..], resume: <push_id>\|null}` | `{push_id, conflicts: [..], resumed, db_done: [..], received: {path: bytes}}`. **Conflicts** are tables/files whose live checksum or size+mtime differ from `base`. A non-empty list stops here unless the request named each conflict in `override`. **`resume`** (0.1.4, 15 Oct 2026): the id of an OPEN push to continue — the same conflict check, then that push's id back with `resumed: true`, the tables it holds WHOLE (`db_done`) and the bytes it holds of each file (`received`); a push that is not open, or that never named a table or file now asked for, answers `404 no_push` (a widened push starts over). Without `resume`, every other open push is aborted first: **one open push at a time** |
 | `POST /push/file?push_id=&path=&offset=` | raw bytes | `{received}`. Written into the quarantine dir `wp-content/uploads/rexsync-<push_id>/` (`push_id` = 32 hex) |
-| `POST /push/db?push_id=&table=&cursor=` | `{sql, sha256}` | `{cursor}`. Executed into `<prefix>rxnew_<table>` ONLY. The SQL is parsed for that one table name, and any other statement is refused |
+| `POST /push/db?push_id=&table=&chunk=&chunks=` | `{sql, sha256}` | `{ok}`. Executed into `<prefix>rxnew_<table>` ONLY. The SQL is parsed for that one table name, and any other statement is refused. `chunk` of `chunks` (1-based, 0.1.4): the table counts as whole — what `swap` requires and a resume trusts — only once the LAST chunk ran; a first chunk marks it not whole again (a table sent again starts from its `DROP TABLE`). A client that sends no counts (rexenv ≤ 14 Oct 2026) marks it whole on every chunk, as 0.1.3 did |
 | `POST /push/swap?push_id=` | — | `{swapped: [..], backup_id}`. One `RENAME TABLE` for the live → `rxbak_` → live rotation; files moved with the old ones kept under the backup; the plugin's option rows re-written; caches flushed; maintenance mode on for the duration only |
 | `POST /push/rollback?backup_id=` | — | `{restored: [..]}` |
 | `POST /push/abort?push_id=` | — | `{removed: true}`. Quarantine dir and `rxnew_*` tables gone |
-| ~~`GET /push/status?push_id=`~~ | — | NOT in v1 (10 Oct 2026): an interrupted push is `abort`ed and started again; resume is S3 |
+| ~~`GET /push/status?push_id=`~~ | — | Never built: resume is `begin` with `resume` (above, 15 Oct 2026) — the one call answers the open push's state AND re-runs the conflict check, so nothing can be continued past a change on live |
 
 **`/push/swap` never runs without a backup made in the same request** (plan invariant #1). If
 the backup step fails, nothing is swapped.

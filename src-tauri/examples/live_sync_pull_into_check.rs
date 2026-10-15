@@ -146,6 +146,15 @@ async fn main() -> std::process::ExitCode {
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../companion/rexenv-sync"));
     copy_dir(&src, &live_root.join("wp-content/plugins/rexenv-sync"));
     let _ = wordpress::wp_run(&php, &wp, &live_root, &["plugin", "activate", "rexenv-sync"]);
+    // The fixture's CUT: while `uploads/rexsync-cut/cut.json` names a route + param +
+    // value, the live site answers 500 to that one request — how legs 15/16 interrupt a
+    // pull and a push the way a host does. Under `uploads/rexsync-*`, so no pull lists it.
+    std::fs::create_dir_all(live_root.join("wp-content/mu-plugins")).unwrap();
+    std::fs::write(
+        live_root.join("wp-content/mu-plugins/rexsync-cut.php"),
+        "<?php\nadd_filter('rest_pre_dispatch', function ($result, $server, $request) {\n    $f = WP_CONTENT_DIR . '/uploads/rexsync-cut/cut.json';\n    if (!is_file($f)) { return $result; }\n    $c = json_decode((string) file_get_contents($f), true);\n    if (is_array($c) && $request->get_route() === $c['route'] && (string) $request->get_param($c['param']) === $c['value']) {\n        return new WP_Error('cut', 'fixture cut', array('status' => 500));\n    }\n    return $result;\n}, 10, 3);\n",
+    )
+    .unwrap();
     let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=LIVE-ONLY", "--post_status=publish"]);
     std::fs::create_dir_all(live_root.join("wp-content/uploads/2026")).unwrap();
     std::fs::write(live_root.join("wp-content/uploads/2026/rexsync-probe.txt"), "from live").unwrap();
@@ -300,7 +309,7 @@ async fn main() -> std::process::ExitCode {
     let fresh: base::SyncBase = pulled_base.clone().unwrap_or_default();
     tokio::time::sleep(Duration::from_millis(1100)).await; // the edit lands a second after the pull
     std::fs::write(local_root.join("wp-content/uploads/2026/from-local.txt"), "from local").unwrap();
-    let opts = push::PushOptions { tables: None, files: true, override_items: vec![] };
+    let opts = push::PushOptions { tables: None, files: true, override_items: vec![], skip: vec![] };
     let pushed = push::push_from(&client, &target, Some(&fresh), &opts, &mut sink).await;
     let live_db = &live.db_name;
     match &pushed {
@@ -336,7 +345,7 @@ async fn main() -> std::process::ExitCode {
     let stale_base = fresh.clone();
     // Named table: with none named a push sends what changed HERE since the base, and
     // nothing has — the conflict is the PLUGIN's verdict on the table asked for.
-    let opts9 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec![] };
+    let opts9 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec![], skip: vec![] };
     let again = push::push_from(&client, &target, Some(&stale_base), &opts9, &mut sink).await;
     match again {
         Err(push::PushStop::Conflicts(list)) => check(
@@ -346,10 +355,124 @@ async fn main() -> std::process::ExitCode {
         other => check(false, &format!("9. expected conflicts, got {}", match other { Ok(_) => "ok".into(), Err(push::PushStop::Failed(e)) => e.to_string(), Err(push::PushStop::Conflicts(c)) => format!("{c:?}") })),
     }
     // 10. Overriding the conflict pushes.
-    let opts2 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec!["wp_posts".into()] };
+    let opts2 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: false, override_items: vec!["wp_posts".into()], skip: vec![] };
     let over = push::push_from(&client, &target, Some(&stale_base), &opts2, &mut sink).await;
     let over_why = match &over { Ok(_) => "ok".to_string(), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
     check(over.is_ok() && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-CHANGED-SINCE'") == "0", &format!("10. overriding the conflict pushes that table (live's newer post is gone, as warned) — {over_why}"));
+
+    // ── S3 (15 Oct 2026): per-item choice, anonymise, uploads on demand, resume ──
+    // 13. `skip`: a conflict the person chose to keep live's version of is left out, and
+    //     the rest of the push goes. Live's post (LIVE-CHANGED-SINCE) is gone after leg 10;
+    //     make live move again, then push posts + a new file with posts skipped.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let after10 = match &over { Ok(r) => r.base.clone(), Err(_) => stale_base.clone() };
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=LIVE-AGAIN", "--post_status=publish"]);
+    std::fs::write(local_root.join("wp-content/uploads/2026/skip-leg.txt"), "from local, leg 13").unwrap();
+    let opts13 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: true, override_items: vec![], skip: vec!["wp_posts".into()] };
+    let skipped = push::push_from(&client, &target, Some(&after10), &opts13, &mut sink).await;
+    let skip_why = match &skipped { Ok(r) => format!("ok: tables {:?}, {} files", r.tables, r.files), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
+    check(
+        matches!(&skipped, Ok(r) if r.tables.is_empty() && r.files >= 1)
+            && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='LIVE-AGAIN'") == "1"
+            && std::fs::read_to_string(live_root.join("wp-content/uploads/2026/skip-leg.txt")).ok().as_deref() == Some("from local, leg 13"),
+        &format!("13. a skipped conflict (wp_posts) is left out — live's newer post survives — and the file still went ({skip_why})"),
+    );
+    let base13 = match &skipped { Ok(r) => r.base.clone(), Err(_) => after10.clone() };
+
+    // 14. Anonymise: a pull with the switch on scrubs the copy's users and comments before
+    //     the swap; the base names them; a push of such a table is refused before the
+    //     plugin is asked; a later pull WITHOUT the switch that replaces the table clears it.
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["user", "create", "pii-probe", "pii-probe@real-people.example", "--role=subscriber", "--first_name=Real", "--last_name=Person"]);
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["comment", "create", "--comment_post_ID=1", "--comment_content=PII", "--comment_author=Real Commenter", "--comment_author_email=commenter@real-people.example", "--comment_approved=1"]);
+    let opts14 = pull::PullOptions { anonymise: true, uploads_on_demand: Some(true), ..Default::default() };
+    let anon = pull::pull_into(&client, &target, Some(&base13), &opts14, &mut sink).await;
+    let (anon_base, anon_why) = match &anon { Ok(r) => (Some(r.base.clone()), format!("anonymised {:?}", r.anonymised)), Err(e) => (None, e.to_string()) };
+    let emails = query(&mysql, db, "SELECT COUNT(*) FROM wp_users WHERE user_email LIKE '%real-people.example'");
+    let anon_emails = query(&mysql, db, "SELECT COUNT(*) FROM wp_users WHERE user_email LIKE 'user%@example.invalid'");
+    let c_emails = query(&mysql, db, "SELECT COUNT(*) FROM wp_comments WHERE comment_author_email LIKE '%real-people.example'");
+    let names = query(&mysql, db, "SELECT COUNT(*) FROM wp_usermeta WHERE meta_key='first_name' AND meta_value='Real'");
+    check(
+        anon.is_ok() && emails == "0" && anon_emails != "0" && c_emails == "0" && names == "0"
+            && anon_base.as_ref().is_some_and(|b| b.anonymised.contains(&"wp_users".to_string()) && b.anonymised.contains(&"wp_comments".to_string()))
+            && local_root.join("wp-content/mu-plugins/rexenv-live-uploads.php").is_file(),
+        &format!("14. anonymise on pull: no real e-mail or name here (users {emails}/{anon_emails}, comments {c_emails}, names {names}), the base names the tables, the uploads-on-demand mu-plugin is in place ({anon_why})"),
+    );
+    let refused = push::push_from(&client, &target, anon_base.as_ref(), &push::PushOptions { tables: Some(vec!["wp_users".into()]), files: false, override_items: vec![], skip: vec![] }, &mut sink).await;
+    check(
+        matches!(&refused, Err(push::PushStop::Failed(e)) if e.to_string().contains("anonymised") && e.to_string().contains("never pushed"))
+            && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_users WHERE user_email='pii-probe@real-people.example'") == "1",
+        &format!("14b. a push of an anonymised table is refused and live's users are untouched ({})", match &refused { Err(push::PushStop::Failed(e)) => e.to_string(), _ => "not refused".into() }),
+    );
+    // 14c. The uploads-on-demand mu-plugin names the live site; the switch off takes it out.
+    let mu = std::fs::read_to_string(local_root.join("wp-content/mu-plugins/rexenv-live-uploads.php")).unwrap_or_default();
+    let opts14c = pull::PullOptions { uploads_on_demand: Some(false), ..Default::default() };
+    let off = pull::pull_into(&client, &target, anon_base.as_ref(), &opts14c, &mut sink).await;
+    check(
+        mu.contains(&format!("'https://{}/wp-content/uploads'", live.domain)) && off.is_ok() && !local_root.join("wp-content/mu-plugins/rexenv-live-uploads.php").exists()
+            && off.as_ref().map(|r| r.base.anonymised.contains(&"wp_users".to_string())).unwrap_or(false),
+        &format!("14c. the mu-plugin carried the live uploads URL; a pull with the switch off removes it; a kept (unchanged) anonymised table stays on the list ({:?})", off.as_ref().map(|r| r.base.anonymised.clone()).ok()),
+    );
+    let base14 = off.map(|r| r.base).ok().or(anon_base.clone());
+    // 14d. live changes the users table; a pull WITHOUT anonymise replaces it → off the list.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["user", "create", "pii-two", "pii-two@real-people.example", "--role=subscriber"]);
+    let plain = pull::pull_into(&client, &target, base14.as_ref(), &pull::PullOptions::default(), &mut sink).await;
+    check(
+        plain.as_ref().map(|r| !r.base.anonymised.contains(&"wp_users".to_string())).unwrap_or(false)
+            && query(&mysql, db, "SELECT COUNT(*) FROM wp_users WHERE user_email='pii-two@real-people.example'") == "1",
+        &format!("14d. a plain pull that replaced wp_users takes it off the anonymised list ({:?})", plain.as_ref().map(|r| r.base.anonymised.clone()).ok()),
+    );
+    let mut base15 = plain.map(|r| r.base).ok().or(base14);
+
+    // 15. Resume: a pull cut off mid-way (live refuses one table) continues from what it
+    //     staged; the staging database and the record are the proof.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=RESUME-ONE", "--post_status=publish"]);
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["option", "update", "blogdescription", "resume probe"]);
+    // Two tables moved on live (options, then posts in export order). The fixture's cut
+    // mu-plugin makes the site answer 500 to the export of wp_posts while the flag is
+    // set: the pull dies with wp_options staged.
+    let cut_flag = live_root.join("wp-content/uploads/rexsync-cut/cut.json");
+    std::fs::create_dir_all(cut_flag.parent().unwrap()).unwrap();
+    std::fs::write(&cut_flag, r#"{"route":"/rexenv-sync/v1/db/export","param":"table","value":"wp_posts"}"#).unwrap();
+    let cut = pull::pull_into(&client, &target, base15.as_ref(), &pull::PullOptions::default(), &mut sink).await;
+    let _ = std::fs::remove_file(&cut_flag);
+    let progress_file = scratch.join(format!("pull-{db}.progress.json"));
+    let staged_options = query(&mysql, &format!("{db}_pull"), "SELECT COUNT(*) FROM wp_options WHERE option_value='resume probe'");
+    check(
+        cut.is_err() && progress_file.is_file() && staged_options == "1",
+        &format!("15. a pull cut off by the site keeps its staging copy and a record (options staged: {staged_options}; {})", cut.err().map(|e| e.to_string()).unwrap_or_default()),
+    );
+    let resumed = pull::pull_into(&client, &target, base15.as_ref(), &pull::PullOptions::default(), &mut sink).await;
+    check(
+        resumed.as_ref().map(|r| r.tables_resumed >= 1 && r.tables >= 1).unwrap_or(false)
+            && query(&mysql, db, "SELECT COUNT(*) FROM wp_posts WHERE post_title='RESUME-ONE'") == "1"
+            && query(&mysql, db, "SELECT option_value FROM wp_options WHERE option_name='blogdescription'") == "resume probe"
+            && !progress_file.exists(),
+        &format!("15b. the next pull reuses the staged table and exports the rest; the record is gone ({:?})", resumed.as_ref().map(|r| (r.tables_resumed, r.tables, r.tables_kept)).ok()),
+    );
+    base15 = resumed.map(|r| r.base).ok().or(base15);
+    // 16. Resume a push: the site answers 500 to the SECOND file while the flag is set, so
+    //     the push dies after the first file reached the quarantine; clear the flag and
+    //     push again — the first file is not sent twice, and the swap happens.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    std::fs::write(local_root.join("wp-content/uploads/2026/a-first.txt"), "first file").unwrap();
+    std::fs::write(local_root.join("wp-content/uploads/2026/b-second.txt"), "second file").unwrap();
+    std::fs::write(&cut_flag, r#"{"route":"/rexenv-sync/v1/push/file","param":"path","value":"uploads/2026/b-second.txt"}"#).unwrap();
+    let opts16 = push::PushOptions { tables: Some(vec![]), files: true, override_items: vec![], skip: vec![] };
+    let died = push::push_from(&client, &target, base15.as_ref(), &opts16, &mut sink).await;
+    let _ = std::fs::remove_file(&cut_flag);
+    let record_file = scratch.join(format!("push-{db}.open.json"));
+    let died_why = match &died { Ok(_) => "ok?!".to_string(), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
+    check(matches!(&died, Err(push::PushStop::Failed(e)) if e.to_string().contains("continues from")) && record_file.is_file(), &format!("16. a push cut off by the site leaves the open push on live and a record ({died_why})"));
+    let again = push::push_from(&client, &target, base15.as_ref(), &opts16, &mut sink).await;
+    check(
+        again.as_ref().map(|r| r.files_resumed >= 1 && r.files >= 2).unwrap_or(false)
+            && std::fs::read_to_string(live_root.join("wp-content/uploads/2026/a-first.txt")).ok().as_deref() == Some("first file")
+            && std::fs::read_to_string(live_root.join("wp-content/uploads/2026/b-second.txt")).ok().as_deref() == Some("second file")
+            && !record_file.exists(),
+        &format!("16b. the next push continues the open one — the first file not sent again — and swaps ({:?})", again.as_ref().map(|r| (r.files_resumed, r.files)).ok()),
+    );
 
     // 11. The scoped import: a hostile stream cannot leave the staging database.
     {

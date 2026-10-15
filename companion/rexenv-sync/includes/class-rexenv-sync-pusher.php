@@ -61,12 +61,19 @@ final class Rexenv_Sync_Pusher {
 	 * conflicts unless each is in `override`; otherwise open the quarantine and
 	 * the push's record. Returns the response array, or a WP_Error.
 	 *
-	 * @param array $tables   Table names the push will replace.
-	 * @param array $files    wp-content-relative paths the push will write.
-	 * @param array $base     ['tables' => [name => stamp], 'files' => [path => "size:mtime"]].
-	 * @param array $override Items the user chose to overwrite despite a conflict.
+	 * @param array  $tables   Table names the push will replace.
+	 * @param array  $files    wp-content-relative paths the push will write.
+	 * @param array  $base     ['tables' => [name => stamp], 'files' => [path => "size:mtime"]].
+	 * @param array  $override Items the user chose to overwrite despite a conflict.
+	 * @param string $resume   An open push's id to CONTINUE (0.1.4): the same conflict
+	 *                         check, then that push's id back with what it already holds
+	 *                         (`db_done`, `received`) instead of a new quarantine. A push
+	 *                         that is not open answers `no_push`; a request for a table or
+	 *                         file the open push never named is refused the same way, so
+	 *                         a widened push starts over. Without `resume`, every other
+	 *                         open push is aborted first: ONE open push at a time.
 	 */
-	public static function begin( array $tables, array $files, array $base, array $override ) {
+	public static function begin( array $tables, array $files, array $base, array $override, $resume = '' ) {
 		$known = self::site_tables();
 		foreach ( $tables as $t ) {
 			if ( ! in_array( $t, $known, true ) ) {
@@ -78,11 +85,27 @@ final class Rexenv_Sync_Pusher {
 				return new WP_Error( 'bad_path', "Not a path this plugin writes: $f", array( 'status' => 400 ) );
 			}
 		}
+		$resume = is_string( $resume ) ? $resume : '';
+		$open   = '' !== $resume ? self::push_record( $resume ) : null;
+		if ( '' !== $resume && ( ! $open || 'open' !== $open['state'] || array_diff( $tables, $open['tables'] ) || array_diff( $files, $open['files'] ) ) ) {
+			return new WP_Error( 'no_push', 'No open push with that id covers what was asked.', array( 'status' => 404 ) );
+		}
 		$conflicts = self::conflicts( $tables, $files, $base );
 		$blocking  = array_values( array_diff( $conflicts, $override ) );
 		if ( $blocking ) {
 			return new WP_Error( 'conflict', 'The live site changed since rexenv last saw it.', array( 'status' => 409, 'conflicts' => $conflicts ) );
 		}
+		if ( $open ) {
+			$received = array();
+			foreach ( $open['files'] as $rel ) {
+				$full = self::quarantine( $resume ) . '/' . $rel;
+				if ( is_file( $full ) ) {
+					$received[ $rel ] = (int) filesize( $full );
+				}
+			}
+			return array( 'push_id' => $resume, 'conflicts' => $conflicts, 'resumed' => true, 'db_done' => array_keys( array_filter( $open['db_done'] ) ), 'received' => (object) $received );
+		}
+		self::abort_open_pushes();
 		$push_id = bin2hex( random_bytes( 16 ) );
 		$dir     = self::quarantine( $push_id );
 		if ( ! wp_mkdir_p( $dir ) ) {
@@ -91,7 +114,26 @@ final class Rexenv_Sync_Pusher {
 		file_put_contents( $dir . '/index.php', "<?php // rexenv Sync quarantine\n" );
 		file_put_contents( $dir . '/.htaccess', "Deny from all\n" );
 		self::save_record( $push_id, array( 'tables' => array_values( $tables ), 'files' => array_values( $files ), 'db_done' => array(), 'state' => 'open', 'at' => time() ) );
-		return array( 'push_id' => $push_id, 'conflicts' => $conflicts );
+		return array( 'push_id' => $push_id, 'conflicts' => $conflicts, 'resumed' => false, 'db_done' => array(), 'received' => (object) array() );
+	}
+
+	/** Every open push's record, by id — `rexsync_push_<id>` rows. */
+	public static function open_push_ids() {
+		global $wpdb;
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$names = (array) $wpdb->get_col( $wpdb->prepare( "SELECT option_name FROM `{$wpdb->options}` WHERE option_name LIKE %s", $wpdb->esc_like( self::OPTION ) . '%' ) );
+		$ids   = array();
+		foreach ( $names as $n ) {
+			$ids[] = substr( $n, strlen( self::OPTION ) );
+		}
+		return $ids;
+	}
+
+	/** Abort every open push: a new `begin` is the ONE open push afterwards. */
+	private static function abort_open_pushes() {
+		foreach ( self::open_push_ids() as $id ) {
+			self::abort( $id );
+		}
 	}
 
 	/** Tables whose stamp, and files whose size:mtime, differ from `base`. */
@@ -148,8 +190,11 @@ final class Rexenv_Sync_Pusher {
 	 * §4.2 `db`: one chunk of SQL for `table`, run against the SHADOW table. Every
 	 * backtick-quoted table name must be `table` itself; it is rewritten to the
 	 * shadow name, and a statement naming any other table of this site is refused.
+	 * `$chunk` of `$chunks` (1-based, 0.1.4): the table counts as whole (`db_done`,
+	 * what `swap` requires and a resume trusts) only once the LAST chunk ran; a
+	 * client that sends no counts (0.1.3) marks it on every chunk, as before.
 	 */
-	public static function receive_sql( $push_id, $table, $sql, $sha256 ) {
+	public static function receive_sql( $push_id, $table, $sql, $sha256, $chunk = 0, $chunks = 0 ) {
 		global $wpdb;
 		$r = self::push_record( $push_id );
 		if ( ! $r || 'open' !== $r['state'] ) {
@@ -174,7 +219,13 @@ final class Rexenv_Sync_Pusher {
 				return new WP_Error( 'sql', "The site's database refused a statement for $table: " . $wpdb->last_error, array( 'status' => 500 ) );
 			}
 		}
-		$r['db_done'][ $table ] = true;
+		$chunk  = (int) $chunk;
+		$chunks = (int) $chunks;
+		if ( $chunks <= 0 || $chunk >= $chunks ) {
+			$r['db_done'][ $table ] = true;
+		} elseif ( 1 === $chunk ) {
+			$r['db_done'][ $table ] = false; // a table sent again from its first chunk is not whole
+		}
 		self::save_record( $push_id, $r );
 		return array( 'ok' => true );
 	}

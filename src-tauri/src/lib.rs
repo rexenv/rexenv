@@ -1055,6 +1055,33 @@ pub fn run() {
                 }
             });
 
+            // The two serial lanes, watched (`core::stall_watch`): the async runtime from
+            // inside it, the main thread by a closure queued onto it from a plain thread.
+            tauri::async_runtime::spawn(core::stall_watch::watch_runtime());
+            let lanes = app.handle().clone();
+            std::thread::Builder::new()
+                .name("stall-watch".into())
+                .spawn(move || loop {
+                    std::thread::sleep(core::stall_watch::TICK);
+                    let sent = std::time::Instant::now();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    if lanes.run_on_main_thread(move || { let _ = tx.send(sent.elapsed()); }).is_err() {
+                        return; // the app is going away
+                    }
+                    let landed = match rx.recv_timeout(core::stall_watch::OVERDUE) {
+                        Ok(lag) => lag,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            log::warn!("stall: the main thread has not run a queued closure for {}s — still stalled", core::stall_watch::OVERDUE.as_secs());
+                            match rx.recv() { Ok(lag) => lag, Err(_) => return }
+                        }
+                        Err(_) => return,
+                    };
+                    if let Some(lag) = core::stall_watch::lag_of(std::time::Duration::ZERO, landed) {
+                        log::warn!("{}", core::stall_watch::line("main thread", lag));
+                    }
+                })
+                .expect("stall-watch thread");
+
             let watchdog = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 use tauri::Emitter;
@@ -1236,6 +1263,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::app_info,
+            commands::system::webview_note,
             commands::system::platform_words,
             commands::system::repair_resolver,
             commands::system::unresolvable_tlds,
@@ -1296,6 +1324,8 @@ pub fn run() {
             commands::live_sync::live_sync_diff,
             commands::live_sync::live_sync_status,
             commands::live_sync::live_sync_history,
+            commands::live_sync::live_sync_options,
+            commands::live_sync::live_sync_set_options,
             commands::live_sync::live_sync_plugin_zip,
             commands::live_sync::live_sync_preview,
             commands::live_sync::live_sync_create_from_live,

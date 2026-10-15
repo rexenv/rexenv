@@ -95,21 +95,47 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     if (await picker.count()) fails.push(`${scheme} 5: the picker stayed open after Push`);
     if ((await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth))) fails.push(`${scheme}: overflow (picker)`);
 
-    // 6. conflicts
+    // 6. conflicts: "overwriting all" sends every conflict as an override, nothing skipped.
     await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=conflicts`, { waitUntil: "networkidle" });
     await page.waitForTimeout(400);
     const ctext = await page.evaluate(() => document.body.innerText);
-    for (const want of ["Nothing was sent", "wp_posts", "themes/shop/style.css"]) if (!ctext.includes(want)) fails.push(`${scheme} 6: "${want}" not shown`);
+    for (const want of ["Nothing was sent", "wp_posts", "themes/shop/style.css", "keep live's", "overwrite"]) if (!ctext.includes(want)) fails.push(`${scheme} 6: "${want}" not shown`);
     await page.screenshot({ path: `shot-livetab-conflicts-${scheme}.png`, fullPage: true });
-    await page.getByRole("button", { name: "Push anyway, overwriting these" }).click();
+    await page.getByRole("button", { name: "Push anyway, overwriting all" }).click();
     await page.waitForTimeout(200);
     const cdlg = await page.getByRole("dialog").innerText().catch(() => "");
     if (!cdlg.includes("themes/shop/style.css")) fails.push(`${scheme} 6: Push anyway did not ask first (${cdlg.slice(0, 80)})`);
     await page.getByRole("dialog").getByRole("button", { name: "Push anyway" }).click();
     await page.waitForTimeout(300);
     const over = (await page.evaluate(() => window.__livePushes ?? []))[0] || {};
-    if (!(JSON.stringify(over.overrideItems) === JSON.stringify(["wp_posts", "themes/shop/style.css"]) && JSON.stringify(over.tables) === JSON.stringify(["wp_options", "wp_posts"]) && over.files === true && over.confirmHost === "example.com"))
+    if (!(JSON.stringify(over.overrideItems) === JSON.stringify(["wp_posts", "themes/shop/style.css"]) && JSON.stringify(over.tables) === JSON.stringify(["wp_options", "wp_posts"]) && over.files === true && over.confirmHost === "example.com" && JSON.stringify(over.skipItems) === "[]"))
       fails.push(`${scheme} 6: override sent ${JSON.stringify(over)}`);
+    // 14. the per-item choice (S3, 15 Oct 2026): live's version is kept by default; one item
+    //     switched to overwrite goes in `overrideItems`, the rest in `skipItems`; the dialog names both.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=conflicts`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    if (!(await page.getByLabel("Keep live's wp_posts").isChecked()) || (await page.getByLabel("Overwrite wp_posts").isChecked())) fails.push(`${scheme} 14: keep live's is not the default`);
+    await page.getByLabel("Overwrite themes/shop/style.css").check();
+    await page.getByRole("button", { name: "Push with these choices" }).click();
+    await page.waitForTimeout(200);
+    const pdlg = (await page.getByRole("dialog").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (!(pdlg.includes("Overwrite 1 item") && pdlg.includes("themes/shop/style.css") && pdlg.includes("Left as the live site has them") && pdlg.includes("wp_posts"))) fails.push(`${scheme} 14: the choice dialog (${pdlg.slice(0, 160)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Push anyway" }).click();
+    await page.waitForTimeout(300);
+    const chosen = (await page.evaluate(() => window.__livePushes ?? []))[0] || {};
+    if (!(JSON.stringify(chosen.overrideItems) === JSON.stringify(["themes/shop/style.css"]) && JSON.stringify(chosen.skipItems) === JSON.stringify(["wp_posts"]) && JSON.stringify(chosen.tables) === JSON.stringify(["wp_options", "wp_posts"])))
+      fails.push(`${scheme} 14: the choice sent ${JSON.stringify(chosen)}`);
+    // Everything kept: the dialog is the plain "Push" and nothing is overridden.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=conflicts`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(400);
+    await page.getByRole("button", { name: "Push with these choices" }).click();
+    await page.waitForTimeout(200);
+    const kdlg = (await page.getByRole("dialog").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (!kdlg.includes("Push without the 2 item")) fails.push(`${scheme} 14: the all-kept dialog (${kdlg.slice(0, 120)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Push", exact: true }).click();
+    await page.waitForTimeout(300);
+    const kept = (await page.evaluate(() => window.__livePushes ?? []))[0] || {};
+    if (!(JSON.stringify(kept.overrideItems) === "[]" && JSON.stringify(kept.skipItems) === JSON.stringify(["wp_posts", "themes/shop/style.css"]))) fails.push(`${scheme} 14: all-kept sent ${JSON.stringify(kept)}`);
 
     // 7. a settled push + Roll back
     await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&push=ok`, { waitUntil: "networkidle" });
@@ -210,6 +236,33 @@ const BASE = process.env.WK_BASE_URL ?? "http://localhost:5199";
     await page.waitForTimeout(400);
     const otext = (await page.getByTestId("live-status").innerText()).replace(/\s+/g, " ");
     if (!(otext.includes("Up to date") && otext.includes("cannot be told yet") && !otext.includes("Show what moved"))) fails.push(`${scheme} 12b: old-base card (${otext.slice(0, 160)})`);
+
+    // 15. The switches: anonymise on pull (off by default) and uploads on demand (on); a
+    //     tick sends both values; with anonymise on, the pull's confirm says so and the
+    //     settled pull's card names the scrubbed tables and the reused parts.
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    if ((await page.getByLabel("Anonymise personal data on pull").isChecked()) || !(await page.getByLabel("Fetch missing uploads from live").isChecked())) fails.push(`${scheme} 15: the switches' defaults`);
+    await page.getByLabel("Anonymise personal data on pull").check();
+    await page.waitForTimeout(300);
+    const opt = (await page.evaluate(() => window.__liveOptions ?? []))[0] || {};
+    if (!(opt.anonymise === true && opt.uploadsOnDemand === true)) fails.push(`${scheme} 15: the switch sent ${JSON.stringify(opt)}`);
+    await page.goto(`${BASE}/dev/ui-review?view=live&paired=1&anon=1&pull=anonymised`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(300);
+    const atext = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
+    for (const w of ["personal data anonymised in 3 tables", "4 tables and 120 files the interrupted pull had already copied were reused"]) if (!atext.includes(w)) fails.push(`${scheme} 15: the pull card lacks "${w}"`);
+    await page.getByRole("button", { name: "Pull from live" }).click();
+    await page.waitForTimeout(200);
+    const adlg = await page.getByRole("dialog").innerText().catch(() => "");
+    if (!adlg.includes("anonymised in the copy")) fails.push(`${scheme} 15: the pull's confirm does not say anonymise is on (${adlg.slice(0, 120)})`);
+    await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+    await page.waitForTimeout(200);
+    // 16. An anonymised table in the picker: unticked, disabled, badged — never pushable.
+    await page.getByRole("button", { name: "Push to live…" }).click();
+    await page.waitForTimeout(400);
+    const anonBox = page.getByLabel("wp_comments", { exact: true });
+    if ((await anonBox.isChecked()) || !(await anonBox.isDisabled())) fails.push(`${scheme} 16: the anonymised table is tickable`);
+    if (!(await page.getByTestId("push-picker").innerText()).includes("anonymised — never pushed")) fails.push(`${scheme} 16: no anonymised badge`);
 
     // 13. History + the last-sync line.
     await page.goto(`${BASE}/dev/ui-review?view=live&paired=1`, { waitUntil: "networkidle" });

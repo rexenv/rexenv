@@ -1012,6 +1012,35 @@ transient, cron and rewrite-rules write. The volatile-row list exists twice — 
 and `stamps::tests::the_plugin_and_rexenv_leave_out_the_same_option_rows` reads the plugin's
 source so the two cannot drift (#859).
 
+**S3's remainder is proven on the same fixture** (`live_sync_pull_into_check` legs 13–16b, 15 Oct
+2026): a skipped conflict is left out and the rest goes (13); anonymise scrubs the copy's users,
+usermeta and comments before the swap, the base names them, a push of one is refused, a pull
+without the switch that replaces the table clears it (14–14d); the uploads-on-demand mu-plugin
+is in place with the live URL and gone with the switch off (14, 14c); a pull the site CUTS on
+one table (the fixture's `mu-plugins/rexsync-cut.php` answers 500 to the one request named in
+`uploads/rexsync-cut/cut.json`) leaves its staging copy and record, and the next pull reuses
+the staged table (15–15b); a push the site cuts on its second file leaves the open push on live
+and a record here, and the next push continues it without sending the first file again
+(16–16b). The plugin's own test §10 holds the resume answer (`db_done` only after the LAST
+chunk; `received` by bytes; `no_push` for a widened set; a fresh begin aborts the open push).
+The pure halves are L0: `anonymise::rules_apply_by_prefixed_name_to_present_tables_only`,
+`uploads_on_demand::the_plugin_is_bounded_to_uploads`,
+`progress::a_resume_skips_only_the_unchanged_whole_parts`,
+`push::anonymised_tables_are_refused_and_skips_applied_before_begin` (TEXT: both before
+`push_begin`). **`REXENV_SYNC_ENGINE=mariadb`** runs `live_sync_plugin_check` on the bundled
+MariaDB — #857's other half: a `RENAME` leaves InnoDB's `Rows` estimate stale there too (one
+row read 0 after the rename on 12.3.2, and a 3-row table read 1 — the previous ANALYZE's
+figure — until the next ANALYZE), and `settle_stats` settles it the same way.
+
+**The app's two serial lanes are watched** (`core/stall_watch.rs`, 15 Oct 2026): a tokio task
+sleeps one tick and logs when it wakes late; a plain thread queues a closure onto the main
+thread every tick and logs when it runs late (`stall: the main thread was busy for N s beyond
+its tick …`). They exist because the Live tab's Check status was reported starting 7–110 s after
+its click (14 Oct 2026) with nothing in the log for the gap; with the webview noting its own
+clicks into the log (`webview_note`, the in-flight IPC list beside it) the gap measured ZERO on
+six tries across the macOS VM and the Dell — the earlier figures were the automation's lag, not
+the app's. The watchers stay: a real stall is the one failure that cannot name itself.
+
 **The live-sync signature is proven from both sides by one file** (10 Oct 2026, #824).
 `companion/rexenv-sync/tests/vectors.json` is read by the Rust lib tests (`core::live_sync::sign`,
 in the bar) and by the plugin's plain-PHP test. That one is outside the bar because the bar

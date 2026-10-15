@@ -75,6 +75,7 @@ pub mod sites;
 pub mod stopped_page;
 pub mod ssl;
 pub mod stale_lock;
+pub mod stall_watch;
 pub mod starter;
 pub mod stack_guard;
 pub mod terminal;

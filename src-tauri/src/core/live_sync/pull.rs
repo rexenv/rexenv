@@ -27,11 +27,21 @@
 //! tables are in `_prepull`). A FULL pull (`PullOptions::full`) replaces everything,
 //! as every pull did before.
 //!
+//! "Resume" (15 Oct 2026, `progress.rs`): a pull that died mid-way leaves its staging
+//! database, its incoming folder and a progress record behind; the next pull (not a
+//! full one) reuses every staged table whose live stamp has not moved, treats a table
+//! an earlier run already swapped in as kept, and skips an incoming file the listing
+//! still describes — nothing already verified onto this disk crosses the wire twice.
+//! "Anonymise" (`anonymise.rs`): with the site's switch on, the staging copy is
+//! scrubbed before the swap. "Uploads on demand" (`uploads_on_demand.rs`): the pull
+//! ends by putting the mu-plugin in place, or taking it out, as the site's switch says.
+//!
 //! MySQL/MariaDB only: a live WordPress is MySQL, and a local PostgreSQL site has
 //! nothing to receive it.
 
 use super::base::SyncBase;
 use super::client::Client;
+use super::{anonymise, progress, uploads_on_demand};
 use crate::core::db::{DbEngine, SqlClient};
 use crate::core::wordpress;
 use crate::error::{Error, Result};
@@ -78,6 +88,12 @@ pub struct PullReport {
     pub tables: usize,
     /// Tables unchanged on live, kept from the local copy.
     pub tables_kept: usize,
+    /// Tables an interrupted pull had already staged or swapped, reused (not exported).
+    pub tables_resumed: usize,
+    /// Files an interrupted pull had already verified into the incoming folder, reused.
+    pub files_resumed: usize,
+    /// Tables the anonymise rules touched in the copy.
+    pub anonymised: Vec<String>,
     pub rows: u64,
     /// Files fetched from live.
     pub files: usize,
@@ -117,7 +133,13 @@ pub struct PullOptions {
     /// library's history stays on live.
     pub uploads_since: Option<i64>,
     /// Replace EVERY table and fetch EVERY file, base or not — "Pull everything again".
+    /// A full pull never resumes an interrupted one either.
     pub full: bool,
+    /// Scrub personal data in the copy before the swap (`anonymise.rs`).
+    pub anonymise: bool,
+    /// Put the uploads-on-demand mu-plugin in place (`Some(true)`), take it out
+    /// (`Some(false)`), or leave it (`None`) once the pull is done.
+    pub uploads_on_demand: Option<bool>,
 }
 
 /// `*`-only glob on a `/` path, the way the plugin's `fnmatch` reads the list.
@@ -213,16 +235,38 @@ pub async fn pull_into(
 
     // ── 1. tables → staging: changed ones from live, the rest from here ────
     let local_now = local.engine.list_tables(local.client, local.port, local.db_name)?;
-    let (changed, kept): (Vec<&super::client::RemoteTable>, Vec<&super::client::RemoteTable>) = m.tables.iter().partition(|t| match prior {
-        Some(b) => b.tables.get(&t.name) != Some(&t.checksum) || !local_now.contains(&t.name),
-        None => true,
+    // An interrupted pull's leftovers (`progress.rs`): reused unless this is a full pull.
+    let progress_file = progress::pull_file(local.scratch, local.db_name);
+    let mut progress: progress::PullProgress = if options.full { progress::PullProgress::default() } else { progress::read(&progress_file).unwrap_or_default() };
+    let stage_exists = local.engine.database_exists(local.client, local.port, &stage)?;
+    let in_stage: Vec<String> = if stage_exists && !options.full { local.engine.list_tables(local.client, local.port, &stage)? } else { Vec::new() };
+    // A table an earlier, failed run already swapped in (its files phase died) IS live's
+    // version: kept, like one the base says is unchanged.
+    let swapped_already = |t: &super::client::RemoteTable| progress.swapped.get(&t.name) == Some(&t.checksum) && local_now.contains(&t.name);
+    let (changed, kept): (Vec<&super::client::RemoteTable>, Vec<&super::client::RemoteTable>) = m.tables.iter().partition(|t| {
+        !swapped_already(t)
+            && match prior {
+                Some(b) => b.tables.get(&t.name) != Some(&t.checksum) || !local_now.contains(&t.name),
+                None => true,
+            }
     });
-    local.engine.drop_database(local.client, local.port, &stage)?;
-    local.engine.create_database(local.client, local.port, &stage)?;
-    let mut report = PullReport { backup_db: backup.clone(), tables_kept: kept.len(), ..Default::default() };
+    let (resumable, to_export): (Vec<&super::client::RemoteTable>, Vec<&super::client::RemoteTable>) =
+        changed.iter().partition(|t| progress.staged.get(&t.name) == Some(&t.checksum) && in_stage.contains(&t.name));
+    if resumable.is_empty() {
+        local.engine.drop_database(local.client, local.port, &stage)?;
+        local.engine.create_database(local.client, local.port, &stage)?;
+        progress.staged.clear();
+    } else {
+        on_line(&format!("  {} already staged by the interrupted pull, reused", super::count(resumable.len(), "table", "tables")));
+        // What the interrupted run staged but live has since moved is dropped before the
+        // fresh export lands (the export's own DROP would do it; this keeps the record true).
+        progress.staged.retain(|t, _| resumable.iter().any(|r| r.name == *t));
+    }
+    let swapped_kept = kept.iter().filter(|t| swapped_already(t)).count();
+    let mut report = PullReport { backup_db: backup.clone(), tables_kept: kept.len() - swapped_kept, tables_resumed: resumable.len() + swapped_kept, ..Default::default() };
     report.base.tables = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
     let staged: Result<()> = async {
-        for t in &changed {
+        for t in &to_export {
             let file = local.scratch.join(format!("pull-{}.sql", t.name));
             let rows = client.export_table(&t.name, &file).await?;
             // Data from a machine rexenv does not control: under a user that can
@@ -233,6 +277,9 @@ pub async fn pull_into(
             report.rows += rows;
             report.tables += 1;
             on_line(&format!("  {} — {}", t.name, super::count(rows as usize, "row", "rows")));
+            // Recorded as it lands, so a pull that dies on the next table resumes from here.
+            progress.staged.insert(t.name.clone(), t.checksum.clone());
+            progress::write(&progress_file, &progress)?;
         }
         for t in &kept {
             // Unchanged on live since the base: the local copy IS that table — copied
@@ -240,9 +287,11 @@ pub async fn pull_into(
             // strict MySQL 8 refuses WordPress's '0000-00-00 00:00:00' defaults even in
             // a `CREATE TABLE … LIKE` ("Invalid default value for 'comment_date'" — the
             // first incremental run, 14 Oct 2026), exactly as the export's header says.
+            // A copy a resumed run already holds is replaced: the local table may have
+            // moved since.
             exec(
                 local,
-                &format!("SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO'; CREATE TABLE {s}.{t} LIKE {d}.{t}; INSERT INTO {s}.{t} SELECT * FROM {d}.{t}", s = q(&stage), d = q(local.db_name), t = q(&t.name)),
+                &format!("SET SESSION sql_mode='NO_AUTO_VALUE_ON_ZERO'; DROP TABLE IF EXISTS {s}.{t}; CREATE TABLE {s}.{t} LIKE {d}.{t}; INSERT INTO {s}.{t} SELECT * FROM {d}.{t}", s = q(&stage), d = q(local.db_name), t = q(&t.name)),
                 &format!("keeping {}", t.name),
             )?;
         }
@@ -258,8 +307,13 @@ pub async fn pull_into(
     }
     .await;
     if let Err(e) = staged {
-        let _ = local.engine.drop_database(local.client, local.port, &stage);
-        return Err(e);
+        // The staging database and the record stay: the next pull continues from them.
+        let _ = progress::write(&progress_file, &progress);
+        return Err(Error::Other(format!("{e} — the next pull continues from the tables already copied")));
+    }
+    // Personal data out of the COPY, before anything is swapped in (`anonymise.rs`).
+    if options.anonymise {
+        report.anonymised = anonymise::apply(local, &stage, &m.prefix, on_line)?;
     }
 
     // ── 2. the copy's URLs → the local domain (with the live table prefix) ──
@@ -308,6 +362,11 @@ pub async fn pull_into(
     }
     let _ = local.engine.drop_database(local.client, local.port, &stage);
     on_line(&format!("database swapped in; the previous local tables are in `{backup}`"));
+    // The tables are live's now, whatever happens to the files below: a pull that dies
+    // from here on resumes with them as kept.
+    progress.staged.clear();
+    progress.swapped = m.tables.iter().map(|t| (t.name.clone(), t.checksum.clone())).collect();
+    let _ = progress::write(&progress_file, &progress);
 
     // ── 4. files ────────────────────────────────────────────────────────
     let mut excludes: Vec<&str> = DEFAULT_EXCLUDES.to_vec();
@@ -347,18 +406,33 @@ pub async fn pull_into(
     if prior.is_some() {
         on_line(&format!("files: {} changed on live since the last sync, {} unchanged", files.len(), report.files_kept));
     }
-    let incoming_dir: PathBuf = content.join(format!(".rexsync-incoming-{}", &uuid::Uuid::new_v4().simple().to_string()[..8]));
+    // One incoming folder per site, kept across an interrupted pull: a file already in it
+    // with the listing's size and mtime was verified (sha256) by that run and is reused.
+    let incoming_dir: PathBuf = progress::incoming_dir(&content, local.db_name);
+    if options.full {
+        let _ = std::fs::remove_dir_all(&incoming_dir);
+    }
     let paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
-    let sized: Vec<(String, u64)> = files.iter().map(|f| (f.path.clone(), f.size)).collect();
+    let mut sized: Vec<(String, u64)> = Vec::new();
+    for f in &files {
+        let have = join_incoming(&incoming_dir, &f.path).and_then(|p| std::fs::metadata(p).ok());
+        let same = have.map(|md| md.len() == f.size && md.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64) == Some(f.mtime)).unwrap_or(false);
+        if same {
+            report.files_resumed += 1;
+        } else {
+            sized.push((f.path.clone(), f.size));
+        }
+    }
+    if report.files_resumed > 0 {
+        on_line(&format!("  {} already fetched by the interrupted pull, reused", super::count(report.files_resumed, "file", "files")));
+    }
     let refused = if sized.is_empty() {
         Vec::new()
     } else {
         match client.read_files(&sized, &incoming_dir, &excludes).await {
             Ok(r) => r,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&incoming_dir); // ours: a fresh random name
-                return Err(e);
-            }
+            // The folder stays (ours, named for this site): the next pull reuses what landed.
+            Err(e) => return Err(Error::Other(format!("{e} — the next pull continues from the files already fetched"))),
         }
     };
     report.refused_files = refused.iter().map(|r| r.path.clone()).chain(too_big).collect();
@@ -379,6 +453,7 @@ pub async fn pull_into(
         report.files += 1;
     }
     let _ = std::fs::remove_dir_all(&incoming_dir);
+    progress::forget(&progress_file);
     // Gone from live since the base: removed here only when untouched here since
     // (ledger #861). Never with `uploads_since`, which leaves old uploads unlisted —
     // they are not gone, just not asked for.
@@ -436,7 +511,39 @@ pub async fn pull_into(
     // The sync moment is the END of the pull (#841): every file it wrote is now no
     // newer than this, so the next push sends only what is edited from here on.
     report.base.at = super::base::now();
+    // Anonymised here: what this pull scrubbed, plus what an earlier anonymised pull
+    // scrubbed and this one KEPT from the local copy (a table live replaced is live's
+    // again). A push refuses every table on the list (#879).
+    let kept_names: std::collections::BTreeSet<&str> = kept.iter().map(|t| t.name.as_str()).collect();
+    report.base.anonymised = report.anonymised.clone();
+    for t in prior.map(|b| b.anonymised.as_slice()).unwrap_or(&[]) {
+        if kept_names.contains(t.as_str()) && !report.base.anonymised.contains(t) {
+            report.base.anonymised.push(t.clone());
+        }
+    }
+    report.base.anonymised.sort();
+    // Uploads on demand, as the site's switch says (`uploads_on_demand.rs`).
+    match options.uploads_on_demand {
+        Some(true) => {
+            uploads_on_demand::ensure(local.docroot, "wp-content", &m.site_url)?;
+            on_line("uploads on demand: a media file missing here is fetched from live when a page asks for it");
+        }
+        Some(false) => uploads_on_demand::remove(local.docroot)?,
+        None => {}
+    }
     Ok(report)
+}
+
+/// `incoming/<rel>` for a [`super::client::safe_rel`] path, or `None` for anything else.
+fn join_incoming(incoming: &Path, rel: &str) -> Option<PathBuf> {
+    if !super::client::safe_rel(rel) {
+        return None;
+    }
+    let mut p = incoming.to_path_buf();
+    for seg in rel.split('/') {
+        p.push(seg);
+    }
+    p.starts_with(incoming).then_some(p)
 }
 
 #[cfg(test)]

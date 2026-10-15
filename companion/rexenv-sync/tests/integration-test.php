@@ -252,7 +252,10 @@ $base_now = function () use ( $send, $pt, $pfile ) {
 // The stamp a manifest would carry for $t NOW, and whether it is the settled one: what
 // a RENAME leaves must not move when InnoDB's statistics catch up (#857).
 $settled = function ( $t ) use ( $wpdb ) {
+	// MySQL 8 only; MariaDB has no such variable (the plugin's own `table_status` lets it fail the same way).
+	$suppress = $wpdb->suppress_errors( true );
 	$wpdb->query( 'SET SESSION information_schema_stats_expiry = 0' );
+	$wpdb->suppress_errors( $suppress );
 	$now = Rexenv_Sync_Reader::stamp( $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $t ), ARRAY_A ) );
 	$wpdb->get_results( "ANALYZE TABLE `$t`" );
 	$later = Rexenv_Sync_Reader::stamp( $wpdb->get_row( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $t ), ARRAY_A ) );
@@ -347,6 +350,39 @@ $check( null !== $opt_stamp && 0 === strpos( $opt_stamp, 'opt:' ), "the manifest
 $last = Rexenv_Sync_Pairing::last();
 $check( isset( $last['seen']['at'] ) && isset( $last['pull']['table'] ) && isset( $last['push']['id'] ) && isset( $last['rollback']['id'] ), 'rexsync_last records the last contact, pull, push and rollback' );
 $check( false === strpos( Rexenv_Sync_Reader::export_table( $wpdb->options, null )['sql'], 'rexsync_last' ), 'an options export never carries rexsync_last' );
+
+// 10. Resume (0.1.4, §4.2): an open push answers `begin` with `resume` — what it holds
+//     whole (`db_done`, only after the LAST chunk) and how much of each file it holds
+//     (`received`); a resume for something the open push never named is refused; a
+//     fresh `begin` aborts every open push, so there is ever one.
+$wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
+$wpdb->query( "CREATE TABLE `$pt` (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(32)) ENGINE=InnoDB" );
+$wpdb->query( "INSERT INTO `$pt` (v) VALUES ('live-1'), ('live-2')" );
+file_put_contents( WP_CONTENT_DIR . '/' . $pfile, 'live version' );
+$base = $base_now();
+$r    = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array( $pfile ), 'base' => $base ) ) );
+$d    = $r->get_data();
+$rid  = isset( $d['push_id'] ) ? $d['push_id'] : '';
+$check( 200 === $r->get_status() && false === $d['resumed'] && array() === $d['db_done'], 'a fresh begin answers resumed=false with nothing done' );
+$c1 = "DROP TABLE IF EXISTS `$pt`;\nCREATE TABLE `$pt` (id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, v VARCHAR(32)) ENGINE=InnoDB;\nINSERT INTO `$pt` (`id`,`v`) VALUES\n(1,'local-1');\n";
+$c2 = "INSERT INTO `$pt` (`id`,`v`) VALUES\n(2,'local-2'),\n(3,'local-3');\n";
+$send( 'POST', '/rexenv-sync/v1/push/db', array( 'push_id' => $rid, 'table' => $pt, 'chunk' => '1', 'chunks' => '2' ), wp_json_encode( array( 'sql' => $c1, 'sha256' => hash( 'sha256', $c1 ) ) ) );
+$send( 'POST', '/rexenv-sync/v1/push/file', array( 'push_id' => $rid, 'path' => $pfile, 'offset' => '0' ), 'loca' );
+$r = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array( $pfile ), 'base' => $base, 'resume' => $rid ) ) );
+$d = $r->get_data();
+$check( 200 === $r->get_status() && $d['push_id'] === $rid && true === $d['resumed'] && array() === $d['db_done'] && 4 === (int) ( (array) $d['received'] )[ $pfile ], 'begin with resume: the open push, the half-sent table NOT whole, the file received to 4 bytes (' . wp_json_encode( $d ) . ')' );
+$check( 409 === $send( 'POST', '/rexenv-sync/v1/push/swap', array( 'push_id' => $rid ) )->get_status(), 'a swap of a half-sent table is refused (incomplete)' );
+$send( 'POST', '/rexenv-sync/v1/push/db', array( 'push_id' => $rid, 'table' => $pt, 'chunk' => '2', 'chunks' => '2' ), wp_json_encode( array( 'sql' => $c2, 'sha256' => hash( 'sha256', $c2 ) ) ) );
+$d = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array( $pfile ), 'base' => $base, 'resume' => $rid ) ) )->get_data();
+$check( true === $d['resumed'] && array( $pt ) === $d['db_done'] && '3' === $wpdb->get_var( "SELECT COUNT(*) FROM `rxnew_$pt`" ), 'after the last chunk the table is whole in the shadow and db_done names it' );
+$r = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt, $wpdb->options ), 'files' => array(), 'base' => $base, 'resume' => $rid ) ) );
+$check( 404 === $r->get_status() && 'no_push' === $r->get_data()['code'], 'a resume asking for a table the open push never named is refused (no_push)' );
+$check( 404 === $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array(), 'base' => $base, 'resume' => str_repeat( 'f', 32 ) ) ) )->get_status(), 'a resume of a push live does not have is refused' );
+$d2 = $send( 'POST', '/rexenv-sync/v1/push/begin', array(), wp_json_encode( array( 'tables' => array( $pt ), 'files' => array(), 'base' => $base ) ) )->get_data();
+$check( isset( $d2['push_id'] ) && $d2['push_id'] !== $rid && null === $wpdb->get_var( "SHOW TABLES LIKE 'rxnew_$pt'" ) && ! is_dir( WP_CONTENT_DIR . '/uploads/rexsync-' . $rid ) && array( $d2['push_id'] ) === Rexenv_Sync_Pusher::open_push_ids(), 'a fresh begin aborts the open push (shadow + quarantine gone): one open push at a time' );
+$send( 'POST', '/rexenv-sync/v1/push/abort', array( 'push_id' => $d2['push_id'] ) );
+$wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
+@unlink( WP_CONTENT_DIR . '/' . $pfile );
 
 Rexenv_Sync_Pairing::delete();
 $check( false === get_option( Rexenv_Sync_Pairing::LAST ), 'Disconnect drops the record too' );

@@ -188,6 +188,9 @@ mod tests {
         ("live_sync_create_from_live", Never("takes the pasted key; an agent that could create a site from any live site it chose holds the same power live_sync_pair denies it")),
         ("live_sync_rollback", Never("changes the live site; the same ruling as the push it undoes (owner, 9 Oct 2026)")),
         ("live_sync_history", Never("the Live tab's list of past syncs; the `live` tool's status carries the verdict and the last sync, which is what an agent acts on")),
+        ("live_sync_options", Never("the site's sync switches (anonymise on pull, uploads on demand) are the person's choice about their own data; the `live` tool's pull applies whatever is set")),
+        ("webview_note", Never("a line the webview writes into the app log beside what the backend did (the Live tab's Check status timing, 15 Oct 2026); an agent has `agent_activity` for its own trail")),
+        ("live_sync_set_options", Never("turning anonymising OFF would let the next pull copy live customers onto this machine, and the mu-plugin switch writes into the site; both stay a click in the Live tab")),
         // ── wp_install
         ("wp_install_job", Never(JOBS)),
         ("wp_install_active", Never(JOBS)),

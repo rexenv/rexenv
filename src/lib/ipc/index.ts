@@ -9,6 +9,7 @@
 import type { StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
+  LiveSyncOptions,
   LiveSyncJobState, LiveSyncPushPlan,
   LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
 import {
@@ -43,7 +44,29 @@ export function isTauri(): boolean {
 /** Lazily import the Tauri API so a browser-only dev build doesn't crash. */
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<T>(cmd, args);
+  inFlight.set(cmd, (inFlight.get(cmd) ?? 0) + 1);
+  try {
+    return await invoke<T>(cmd, args);
+  } finally {
+    const n = (inFlight.get(cmd) ?? 1) - 1;
+    if (n > 0) inFlight.set(cmd, n);
+    else inFlight.delete(cmd);
+  }
+}
+
+/** Every command this webview has sent and not yet heard back from, by name. */
+const inFlight = new Map<string, number>();
+
+/** The commands in flight right now, `name×count`, for a note beside a slow call. */
+export function ipcInFlight(): string[] {
+  return [...inFlight.entries()].map(([cmd, n]) => (n > 1 ? `${cmd}×${n}` : cmd));
+}
+
+/** A line from this webview into the app log (`webview: …`), so what the GUI waited
+ *  for sits beside what the backend did. Never throws; a dev build outside Tauri drops it. */
+export function webviewNote(text: string): void {
+  if (!isTauri()) return;
+  void invoke<void>("webview_note", { text }).catch(() => undefined);
 }
 
 /** Native folder picker (tauri-plugin-dialog). Returns the chosen absolute
@@ -519,8 +542,18 @@ export async function liveSyncUnpair(siteId: string): Promise<boolean> {
  *  this Unix time. `full`: replace every table and fetch every file (the default
  *  brings only what changed on live since the last sync). Progress streams on
  *  `onLiveSyncState`. */
-export async function liveSyncPull(siteId: string, uploadsSince?: number, full?: boolean): Promise<LiveSyncJobState> {
-  return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null, full: full ?? false });
+export async function liveSyncPull(siteId: string, uploadsSince?: number, full?: boolean, anonymise?: boolean): Promise<LiveSyncJobState> {
+  return invoke<LiveSyncJobState>("live_sync_pull", { siteId, uploadsSince: uploadsSince ?? null, full: full ?? false, anonymise: anonymise ?? null });
+}
+
+/** The site's sync switches: anonymise on pull (off by default), uploads on demand (on). */
+export async function liveSyncOptions(siteId: string): Promise<LiveSyncOptions> {
+  return invoke<LiveSyncOptions>("live_sync_options", { siteId });
+}
+
+/** Store the switches; the uploads-on-demand mu-plugin goes in or out at once. */
+export async function liveSyncSetOptions(siteId: string, anonymise: boolean, uploadsOnDemand: boolean): Promise<LiveSyncOptions> {
+  return invoke<LiveSyncOptions>("live_sync_set_options", { siteId, anonymise, uploadsOnDemand });
 }
 
 /** Where this copy stands against live: the verdict and per-table detail.
@@ -562,8 +595,8 @@ export async function liveSyncPushPlan(siteId: string): Promise<LiveSyncPushPlan
  *  live host and refuses anything else (ledger #834). `tables` null = every table but the
  *  live-owned. A conflict settles the job as `conflicts` with nothing sent; `overrideItems`
  *  are the conflicts chosen to overwrite on the next try. */
-export async function liveSyncPush(siteId: string, confirmHost: string, tables: string[] | null, files: boolean, overrideItems: string[]): Promise<LiveSyncJobState> {
-  return invoke<LiveSyncJobState>("live_sync_push", { siteId, confirmHost, tables, files, overrideItems });
+export async function liveSyncPush(siteId: string, confirmHost: string, tables: string[] | null, files: boolean, overrideItems: string[], skipItems: string[] = []): Promise<LiveSyncJobState> {
+  return invoke<LiveSyncJobState>("live_sync_push", { siteId, confirmHost, tables, files, overrideItems, skipItems });
 }
 
 /** Put live back to the backup a push made. */

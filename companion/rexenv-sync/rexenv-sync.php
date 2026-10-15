@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       rexenv Sync
  * Description:       Connects this site to rexenv on a developer's machine, so it can be copied there and kept in step. Every request is signed; nothing is sent until you connect.
- * Version:           0.1.3
+ * Version:           0.1.4
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * License:           GPL-2.0-or-later
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'REXENV_SYNC_VERSION', '0.1.3' );
+define( 'REXENV_SYNC_VERSION', '0.1.4' );
 define( 'REXENV_SYNC_DIR', __DIR__ );
 
 require_once __DIR__ . '/includes/class-rexenv-sync-signature.php';

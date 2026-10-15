@@ -139,7 +139,8 @@ final class Rexenv_Sync_Rest {
 			self::strings( isset( $j['tables'] ) ? $j['tables'] : null ),
 			self::strings( isset( $j['files'] ) ? $j['files'] : null ),
 			isset( $j['base'] ) && is_array( $j['base'] ) ? $j['base'] : array(),
-			self::strings( isset( $j['override'] ) ? $j['override'] : null )
+			self::strings( isset( $j['override'] ) ? $j['override'] : null ),
+			isset( $j['resume'] ) && is_string( $j['resume'] ) ? $j['resume'] : ''
 		) );
 	}
 
@@ -149,7 +150,7 @@ final class Rexenv_Sync_Rest {
 
 	public static function push_db( WP_REST_Request $request ) {
 		$j = self::body_json( $request );
-		return rest_ensure_response( Rexenv_Sync_Pusher::receive_sql( (string) $request->get_param( 'push_id' ), (string) $request->get_param( 'table' ), isset( $j['sql'] ) ? (string) $j['sql'] : '', isset( $j['sha256'] ) ? (string) $j['sha256'] : '' ) );
+		return rest_ensure_response( Rexenv_Sync_Pusher::receive_sql( (string) $request->get_param( 'push_id' ), (string) $request->get_param( 'table' ), isset( $j['sql'] ) ? (string) $j['sql'] : '', isset( $j['sha256'] ) ? (string) $j['sha256'] : '', $request->get_param( 'chunk' ), $request->get_param( 'chunks' ) ) );
 	}
 
 	public static function push_swap( WP_REST_Request $request ) {

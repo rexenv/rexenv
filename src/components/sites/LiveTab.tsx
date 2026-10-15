@@ -20,6 +20,7 @@ import { confirm } from "@/components/ui/dialog";
 import {
   liveSyncActive,
   liveSyncHistory,
+  liveSyncOptions,
   liveSyncPair,
   liveSyncPairing,
   liveSyncPull,
@@ -27,14 +28,17 @@ import {
   liveSyncPluginZip,
   liveSyncPushPlan,
   liveSyncRollback,
+  liveSyncSetOptions,
   liveSyncStatus,
   liveSyncUnpair,
   onLiveSyncState,
   revealPath,
+  ipcInFlight,
+  webviewNote,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn, TECH_INPUT } from "@/lib/utils";
-import type { LiveSyncChange, LiveSyncHistoryEntry, LiveSyncJobState, LiveSyncPushPlan, LiveSyncStatus, Site } from "@/types";
+import type { LiveSyncChange, LiveSyncHistoryEntry, LiveSyncJobState, LiveSyncOptions, LiveSyncPushPlan, LiveSyncStatus, Site } from "@/types";
 
 const INPUT =
   "h-8 w-full rounded-md border border-rex-border bg-rex-well px-2.5 font-mono text-[0.78125rem] text-rex-text outline-none focus:border-brand";
@@ -51,6 +55,12 @@ export function LiveTab({ site }: { site: Site }) {
   const qc = useQueryClient();
   const pairing = useQuery({ queryKey: ["live-sync-pairing", site.id], queryFn: () => liveSyncPairing(site.id) });
   const history = useQuery({ queryKey: ["live-sync-history", site.id], queryFn: () => liveSyncHistory(site.id), enabled: !!pairing.data });
+  const options = useQuery({ queryKey: ["live-sync-options", site.id], queryFn: () => liveSyncOptions(site.id), enabled: !!pairing.data });
+  const setOptions = useMutation({
+    mutationFn: (o: LiveSyncOptions) => liveSyncSetOptions(site.id, o.anonymise, o.uploadsOnDemand),
+    onSuccess: (o) => qc.setQueryData(["live-sync-options", site.id], o),
+    onError: toastBackendError,
+  });
   const [job, setJob] = useState<LiveSyncJobState | null>(null);
   const [picker, setPicker] = useState<LiveSyncPushPlan | null>(null);
   const [sync, setSync] = useState<LiveSyncStatus | null>(null);
@@ -80,14 +90,29 @@ export function LiveTab({ site }: { site: Site }) {
   };
   // The old verdict goes the moment a new check starts: a card that still said "up to
   // date" while the spinner ran read as the answer (the macOS VM run, 14 Oct 2026).
-  const status = useMutation({ mutationFn: () => liveSyncStatus(site.id), onMutate: () => setSync(null), onSuccess: setSync, onError: toastBackendError });
+  // Noted into the app log at both ends: the check's body is seconds, but the click
+  // and its first line were up to a minute apart on the test machines (14 Oct 2026).
+  const status = useMutation({
+    mutationFn: async () => {
+      const t = performance.now();
+      webviewNote(`check status: clicked with in flight: ${ipcInFlight().join(", ") || "nothing"}`);
+      try {
+        return await liveSyncStatus(site.id);
+      } finally {
+        webviewNote(`check status: answered after ${((performance.now() - t) / 1000).toFixed(1)}s`);
+      }
+    },
+    onMutate: () => setSync(null),
+    onSuccess: setSync,
+    onError: toastBackendError,
+  });
   const pull = useMutation({
     mutationFn: (a: { uploadsSince?: number; full?: boolean }) => liveSyncPull(site.id, a.uploadsSince, a.full),
     onSuccess: follow,
     onError: toastBackendError,
   });
   const push = useMutation({
-    mutationFn: (a: PushAsk & { confirmHost: string; overrideItems: string[] }) => liveSyncPush(site.id, a.confirmHost, a.tables, a.files, a.overrideItems),
+    mutationFn: (a: PushAsk & { confirmHost: string; overrideItems: string[]; skipItems?: string[] }) => liveSyncPush(site.id, a.confirmHost, a.tables, a.files, a.overrideItems, a.skipItems ?? []),
     onSuccess: (j) => {
       setPicker(null);
       void follow(j);
@@ -141,7 +166,9 @@ export function LiveTab({ site }: { site: Site }) {
       ? "Every table and every wp-content file on the live site replaces this site's, whatever changed. The previous local database is kept one step back."
       : "Only the tables and files that changed on the live site since the last sync replace this site's. A table live did not touch keeps what it holds here. The previous local database is kept one step back.";
     const title = a.full ? `Pull everything from ${p.siteUrl} again?` : a.uploadsSince ? `Pull ${p.siteUrl}, recent uploads only?` : `Pull ${p.siteUrl} into ${site.domain}?`;
-    const message = a.uploadsSince ? "Uploads older than six months stay on the live site and will 404 here. Everything else is pulled as usual. Nothing on the live site changes." : `${what} Nothing on the live site changes.`;
+    const anon = options.data?.anonymise ? " Personal data (e-mails, names, addresses, IPs, form entries) is anonymised in the copy before it is swapped in." : "";
+    const uod = a.uploadsSince && options.data?.uploadsOnDemand !== false ? " A missing upload is fetched from the live site the first time a page asks for it." : "";
+    const message = a.uploadsSince ? `Uploads older than six months stay on the live site.${uod || " They will 404 here."} Everything else is pulled as usual.${anon} Nothing on the live site changes.` : `${what}${anon} Nothing on the live site changes.`;
     if (await confirm({ title, message, confirmLabel: "Pull" })) pull.mutate(a);
   };
 
@@ -200,6 +227,42 @@ export function LiveTab({ site }: { site: Site }) {
             {plan.isPending || (running && job?.kind === "push") ? <Loader2 className="h-3.5 w-3.5 animate-rex-spin" /> : <CloudUpload className="h-3.5 w-3.5" />} Push to live…
           </Button>
         </div>
+        {options.data && (
+          <div className="mt-3 flex flex-col gap-1.5 border-t border-rex-border-subtle pt-3 text-[0.75rem] text-rex-text" data-testid="live-options">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={options.data.anonymise}
+                disabled={busy || setOptions.isPending}
+                onChange={(e) => setOptions.mutate({ ...options.data!, anonymise: e.target.checked })}
+                aria-label="Anonymise personal data on pull"
+              />
+              <span>
+                Anonymise personal data on pull
+                <span className="block text-[0.6875rem] text-rex-text-muted">
+                  E-mails, names, addresses, IPs and form entries are scrubbed in the copy before it is swapped in — the live values never land on this machine. Tables it touches are never pushed back.
+                </span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={options.data.uploadsOnDemand}
+                disabled={busy || setOptions.isPending}
+                onChange={(e) => setOptions.mutate({ ...options.data!, uploadsOnDemand: e.target.checked })}
+                aria-label="Fetch missing uploads from live"
+              />
+              <span>
+                Fetch missing uploads from live
+                <span className="block text-[0.6875rem] text-rex-text-muted">
+                  A media file this copy does not have is fetched from the live site the first time a page asks for it, saved here and served — so "recent uploads only" still renders every page.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
       </div>
       {sync && !running && (
         <StatusCard
@@ -223,29 +286,43 @@ export function LiveTab({ site }: { site: Site }) {
           job={job}
           liveHost={picker?.liveHost ?? liveHost}
           busy={busy}
-          onOverride={async (items) => {
+          onChoose={async (overwrite, keep) => {
             if (!job) return;
             if (
               await confirm({
-                title: `Overwrite ${items.length} item(s) on ${liveHost}?`,
+                title: overwrite.length > 0 ? `Overwrite ${overwrite.length} item(s) on ${liveHost}?` : `Push without the ${keep.length} item(s) live changed?`,
                 // A list, not "\n"-joined text: the dialog does not keep newlines, and the
                 // names ran into one line with the next sentence ("wpcs_terms The live site").
                 message: (
                   <>
-                    These changed on the live site after your last sync. Pushing anyway replaces them with this site's version:
-                    <ul className="my-2 font-mono text-[0.75rem]">
-                      {items.map((i) => (
-                        <li key={i}>{i}</li>
-                      ))}
-                    </ul>
+                    {overwrite.length > 0 && (
+                      <>
+                        These changed on the live site after your last sync. Pushing replaces them with this site's version:
+                        <ul className="my-2 font-mono text-[0.75rem]">
+                          {overwrite.map((i) => (
+                            <li key={i}>{i}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                    {keep.length > 0 && (
+                      <>
+                        Left as the live site has them (not sent):
+                        <ul className="my-2 font-mono text-[0.75rem]">
+                          {keep.map((i) => (
+                            <li key={i}>{i}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                     The live site keeps a backup you can roll back to.
                   </>
                 ),
-                confirmLabel: "Push anyway",
-                danger: true,
+                confirmLabel: overwrite.length > 0 ? "Push anyway" : "Push",
+                danger: overwrite.length > 0,
               })
             )
-              push.mutate({ tables: job.askedTables, files: job.askedFiles, confirmHost: liveHost, overrideItems: items });
+              push.mutate({ tables: job.askedTables, files: job.askedFiles, confirmHost: liveHost, overrideItems: overwrite, skipItems: keep });
           }}
           onRollback={async (backupId) => {
             if (
@@ -534,7 +611,7 @@ function PushPicker({
   onPush: (tables: string[], files: boolean, confirmHost: string) => void;
 }) {
   // Ticked by default: changed here (or unknown) and not live-owned.
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(plan.tables.filter((t) => !t.liveOwned && t.changedHere !== false).map((t) => t.name)));
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(plan.tables.filter((t) => !t.liveOwned && !t.anonymised && t.changedHere !== false).map((t) => t.name)));
   const [files, setFiles] = useState(true);
   const [typed, setTyped] = useState("");
   const matches = typed.trim().toLowerCase() === plan.liveHost.toLowerCase();
@@ -562,8 +639,13 @@ function PushPicker({
       <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         {plan.tables.map((t) => (
           <label key={t.name} className="flex items-center gap-2 text-[0.75rem] text-rex-text">
-            <input type="checkbox" checked={picked.has(t.name)} onChange={() => toggle(t.name)} disabled={busy} aria-label={t.name} />
-            <span className={cn("truncate font-mono", t.changedHere === false && "text-rex-text-muted")}>{t.name}</span>
+            <input type="checkbox" checked={picked.has(t.name)} onChange={() => toggle(t.name)} disabled={busy || t.anonymised} aria-label={t.name} />
+            <span className={cn("truncate font-mono", (t.changedHere === false || t.anonymised) && "text-rex-text-muted")}>{t.name}</span>
+            {t.anonymised && (
+              <span className="rounded-full bg-rex-surface-2 px-1.5 py-0.5 text-[0.625rem] text-rex-text-muted" title="The pull anonymised this table's personal data here — the scrubbed rows are never pushed back. Turn anonymising off and pull again to push it.">
+                anonymised — never pushed
+              </span>
+            )}
             {t.liveOwned && (
               <span className="rounded-full bg-rex-surface-2 px-1.5 py-0.5 text-[0.625rem] text-rex-text-muted" title="The live site writes here (users, comments, orders, entries) — what it wrote since your last pull would be lost">
                 live writes here
@@ -606,16 +688,19 @@ function JobCard({
   job,
   liveHost,
   busy,
-  onOverride,
+  onChoose,
   onRollback,
 }: {
   job: LiveSyncJobState;
   liveHost: string;
   busy: boolean;
-  onOverride: (items: string[]) => void;
+  /** The per-item choice on a conflict stop: what to overwrite on live, what to keep as live has it. */
+  onChoose: (overwrite: string[], keep: string[]) => void;
   onRollback: (backupId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  // Per item, live's version is kept unless the person picks "overwrite" — the safe default.
+  const [overwrite, setOverwrite] = useState<Set<string>>(() => new Set());
   const bad = job.status === "failed" || job.status === "conflicts";
   return (
     <div className={cn("rounded-lg border p-4", bad ? "border-status-error-border bg-status-error-bg/40" : "border-rex-border bg-rex-surface-1")}>
@@ -630,7 +715,13 @@ function JobCard({
                 {" "}— {plural(job.tablesKept, "table")} and {plural(job.filesKept, "file")} unchanged on live were kept as they are here
               </>
             )}
-            {job.filesDeleted > 0 && <>; {plural(job.filesDeleted, "file")} gone from live removed here</>}.
+            {job.tablesResumed + job.filesResumed > 0 && (
+              <>
+                ; {plural(job.tablesResumed, "table")} and {plural(job.filesResumed, "file")} the interrupted pull had already copied were reused
+              </>
+            )}
+            {job.filesDeleted > 0 && <>; {plural(job.filesDeleted, "file")} gone from live removed here</>}
+            {job.anonymised.length > 0 && <>; personal data anonymised in {plural(job.anonymised.length, "table")}</>}.
             {job.backupDb && (
               <>
                 {" "}The previous local tables are in <span className="font-mono">{job.backupDb}</span>.
@@ -641,7 +732,8 @@ function JobCard({
         {job.status === "ok" && job.kind === "push" && (
           <span>
             Pushed {plural(job.tables, "table")} and {plural(job.files, "file")} to <span className="font-mono">{liveHost}</span>
-            {job.tablesKept > 0 && <> ({plural(job.tablesKept, "unchanged table")} left out)</>}.
+            {job.tablesKept > 0 && <> ({plural(job.tablesKept, "unchanged table")} left out)</>}
+            {job.tablesResumed + job.filesResumed > 0 && <> — {plural(job.tablesResumed, "table")} and {plural(job.filesResumed, "file")} the interrupted push had already sent were not sent again</>}.
             {job.backupId ? (
               <>
                 {" "}The live site keeps what they replaced as <span className="font-mono">{job.backupId}</span>.
@@ -665,15 +757,33 @@ function JobCard({
         )}
       </div>
       {job.status === "conflicts" && (
-        <div className="mt-2">
-          <ul className="font-mono text-[0.71875rem] text-rex-text-muted">
-            {job.conflicts.map((c) => (
-              <li key={c}>{c}</li>
-            ))}
-          </ul>
-          <div className="mt-2 flex gap-2">
-            <Button size="sm" variant="secondary" disabled={busy} onClick={() => onOverride(job.conflicts)}>
-              Push anyway, overwriting these
+        <div className="mt-2" data-testid="live-conflicts">
+          <div className="text-[0.71875rem] text-rex-text-muted">For each one, choose: keep what the live site has (it is left out of the push) or overwrite it with this site's version.</div>
+          <table className="mt-1 text-[0.71875rem]">
+            <tbody>
+              {job.conflicts.map((c) => (
+                <tr key={c}>
+                  <td className="pr-3 font-mono text-rex-text">{c}</td>
+                  <td className="pr-3">
+                    <label className="flex items-center gap-1">
+                      <input type="radio" name={`conflict-${c}`} checked={!overwrite.has(c)} disabled={busy} onChange={() => setOverwrite((s) => { const n = new Set(s); n.delete(c); return n; })} aria-label={`Keep live's ${c}`} /> keep live's
+                    </label>
+                  </td>
+                  <td>
+                    <label className="flex items-center gap-1">
+                      <input type="radio" name={`conflict-${c}`} checked={overwrite.has(c)} disabled={busy} onChange={() => setOverwrite((s) => new Set(s).add(c))} aria-label={`Overwrite ${c}`} /> overwrite
+                    </label>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button size="sm" variant="secondary" disabled={busy} onClick={() => onChoose(job.conflicts.filter((c) => overwrite.has(c)), job.conflicts.filter((c) => !overwrite.has(c)))}>
+              Push with these choices
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => onChoose(job.conflicts, [])}>
+              Push anyway, overwriting all
             </Button>
           </div>
           <div className="mt-1 text-[0.71875rem] text-rex-text-muted">Or pull first to bring the live changes here, then push again.</div>

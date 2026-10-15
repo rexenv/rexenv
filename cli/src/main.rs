@@ -348,18 +348,26 @@ COMMANDS:
                                        diverged, with the tables and files that moved
   live <domain> diff                   What changed ON LIVE since the last sync (tables, files)
   live <domain> history                The last syncs (pull / push / rollback), newest first
-  live <domain> pull [--recent-uploads] [--full]
+  live <domain> pull [--recent-uploads] [--full] [--anonymise]
                 Bring what changed on the live site since the last sync into this
                 site (tables live did not touch keep what they hold here); --full
                 replaces every table and file (the previous local tables are kept
-                one step back either way)
-  live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b]
+                one step back either way); --anonymise scrubs e-mails, names,
+                addresses, IPs and form entries in the copy before the swap. An
+                interrupted pull continues from what it had already copied
+  live <domain> push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] [--keep a,b]
                 Send this site's tables (default: all but the live-owned) and the
                 files changed here to the LIVE site, which keeps a backup. Stops
                 with the list when live changed since the last sync; --override
-                names what to overwrite anyway. --confirm must be the live host
+                names what to overwrite anyway, --keep what to leave as live has
+                it. --confirm must be the live host. An interrupted push continues
+                from what already reached the site (plugin 0.1.4)
   live <domain> rollback <backup-id>   Put the live site back to a push's backup
   live <domain> disconnect             Forget the pairing (the live site's key stays valid)
+  live <domain> set [anonymise|uploads-on-demand on|off]
+                The site's sync switches — printed with no argument: anonymise on every
+                pull (off by default); fetch a missing upload from live when a page asks
+                for it (on by default)
   service start|stop <mysql|mariadb|postgres|redis|mailpit>
                 Start/stop one optional service (web tier stays via rex start/stop)
   config get|set <key> [value]       Settings the CLI may touch (refusals say why)
@@ -2032,15 +2040,15 @@ fn now_unix() -> i64 {
 }
 
 const LIVE_USAGE: &str =
-    "rex live <domain> status | diff | history | pull [--recent-uploads] [--full] | push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] | rollback <backup-id> | disconnect";
+    "rex live <domain> status | diff | history | pull [--recent-uploads] [--full] [--anonymise] | push --confirm <live-host> [--tables a,b] [--no-files] [--override a,b] [--keep a,b] | rollback <backup-id> | disconnect | set [anonymise|uploads-on-demand on|off]";
 
 /// Live ↔ local sync (`docs/PLAN-wp-live-sync.md` L12) — the Live tab's commands
 /// through `live.*` on the socket. `push` carries the typed host as `--confirm`;
 /// the app compares it, not this binary.
 fn cmd_live(words: &[String], json_output: bool) {
     let known: &[&str] = match words.get(1).map(String::as_str) {
-        Some("pull") => &["--recent-uploads", "--full"],
-        Some("push") => &["--confirm", "--tables", "--no-files", "--override"],
+        Some("pull") => &["--recent-uploads", "--full", "--anonymise"],
+        Some("push") => &["--confirm", "--tables", "--no-files", "--override", "--keep"],
         _ => &[],
     };
     reject_unknown_flags(words, "live", known, LIVE_USAGE);
@@ -2172,7 +2180,8 @@ fn cmd_live(words: &[String], json_output: bool) {
         Some("pull") => {
             let since = if words.iter().any(|w| w == "--recent-uploads") { Some(now_unix() - 183 * 86400) } else { None };
             let full = words.iter().any(|w| w == "--full");
-            let data = request_streaming("live.pull", json!({ "id": id, "uploadsSince": since, "full": full }), on_line);
+            let anonymise = words.iter().any(|w| w == "--anonymise");
+            let data = request_streaming("live.pull", json!({ "id": id, "uploadsSince": since, "full": full, "anonymise": if anonymise { Some(true) } else { None } }), on_line);
             if json_output {
                 return print_json(&data);
             }
@@ -2185,7 +2194,7 @@ fn cmd_live(words: &[String], json_output: bool) {
             };
             let data = request_streaming(
                 "live.push",
-                json!({ "id": id, "confirmHost": confirm, "tables": list("--tables"), "files": !words.iter().any(|w| w == "--no-files"), "override": list("--override").unwrap_or_default() }),
+                json!({ "id": id, "confirmHost": confirm, "tables": list("--tables"), "files": !words.iter().any(|w| w == "--no-files"), "override": list("--override").unwrap_or_default(), "keep": list("--keep") }),
                 on_line,
             );
             if json_output {
@@ -2210,6 +2219,30 @@ fn cmd_live(words: &[String], json_output: bool) {
                 return print_json(&data);
             }
             outln!("{domain} disconnected (the live site's key stays valid until Disconnect there)");
+        }
+        Some("set") => {
+            // No switch named: the current values (`live.options`); a switch + on/off: set it.
+            let (what, on) = match (words.get(2).map(String::as_str), words.get(3).map(String::as_str)) {
+                (None, _) => ("", false),
+                (Some(w @ ("anonymise" | "uploads-on-demand")), Some(v @ ("on" | "off"))) => (w, v == "on"),
+                _ => {
+                    errln!("rex: usage: rex live <domain> set [anonymise|uploads-on-demand on|off]");
+                    exit(1);
+                }
+            };
+            let data = match what {
+                "" => request("live.options", json!({ "id": id })),
+                "anonymise" => request("live.set_options", json!({ "id": id, "anonymise": on })),
+                _ => request("live.set_options", json!({ "id": id, "uploadsOnDemand": on })),
+            };
+            if json_output {
+                return print_json(&data);
+            }
+            outln!(
+                "{domain}: anonymise on pull {}, uploads on demand {}",
+                if data["anonymise"].as_bool().unwrap_or(false) { "on" } else { "off" },
+                if data["uploadsOnDemand"].as_bool().unwrap_or(true) { "on" } else { "off" }
+            );
         }
         Some(other) => {
             errln!("rex: unknown live verb `{other}` — usage: {LIVE_USAGE}");

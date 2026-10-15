@@ -180,7 +180,7 @@ async fn main() -> std::process::ExitCode {
         std::fs::create_dir_all(root.join("wp-content/uploads")).unwrap();
         std::fs::write(root.join("wp-content").join(&file_rel), "pushed by rexenv's L14 check").unwrap();
         let tables = vec![format!("{}posts", m.prefix), format!("{}postmeta", m.prefix)];
-        let opts = push::PushOptions { tables: Some(tables), files: true, override_items: vec![] };
+        let opts = push::PushOptions { tables: Some(tables), files: true, override_items: vec![], skip: vec![] };
         let search = format!("{live_url}/?rest_route=/wp/v2/posts&search={title}");
         let file_url = format!("{live_url}/wp-content/{file_rel}");
         match push::push_from(&client, &target, Some(&base), &opts, &mut sink).await {

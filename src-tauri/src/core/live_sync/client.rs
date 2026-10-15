@@ -43,14 +43,22 @@ pub struct Manifest {
 /// `/{8f2b…}year{8f2b…}/…` (every post link a 404) and a push carried it back to live (#856).
 pub const MIN_PLUGIN: (u32, u32, u32) = (0, 1, 1);
 
+/// The plugin's version as a triple, or `None` when it cannot be read.
+pub fn plugin_version(version: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = version.trim().split('.').map(|p| p.parse::<u32>());
+    match (parts.next(), parts.next(), parts.next().unwrap_or(Ok(0))) {
+        (Some(Ok(a)), Some(Ok(b)), Ok(c)) => Some((a, b, c)),
+        _ => None,
+    }
+}
+
+/// The first plugin that resumes an interrupted push (`/push/begin` with `resume`).
+pub const RESUME_PLUGIN: (u32, u32, u32) = (0, 1, 4);
+
 /// The refusal for a plugin older than [`MIN_PLUGIN`], or `None`. An unreadable version
 /// is refused too: nothing says it is past the fix.
 pub fn plugin_too_old(version: &str) -> Option<String> {
-    let mut parts = version.trim().split('.').map(|p| p.parse::<u32>());
-    let v = match (parts.next(), parts.next(), parts.next().unwrap_or(Ok(0))) {
-        (Some(Ok(a)), Some(Ok(b)), Ok(c)) => (a, b, c),
-        _ => (0, 0, 0),
-    };
+    let v = plugin_version(version).unwrap_or((0, 0, 0));
     (v < MIN_PLUGIN).then(|| {
         format!(
             "rexenv Sync: the site's plugin is {version}, which damages a pulled database (every % in it, \
@@ -103,12 +111,20 @@ struct FrameHeader {
     error: Option<String>,
 }
 
-/// What `/push/begin` answers.
+/// What `/push/begin` answers. `resumed` (plugin 0.1.4) says the push named in
+/// `resume` is still open and this answer describes it: `db_done` the tables it holds
+/// whole, `received` the bytes it holds of each file.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PushBegun {
     pub push_id: String,
     #[serde(default)]
     pub conflicts: Vec<String>,
+    #[serde(default)]
+    pub resumed: bool,
+    #[serde(default)]
+    pub db_done: Vec<String>,
+    #[serde(default)]
+    pub received: std::collections::BTreeMap<String, u64>,
 }
 
 /// The §4.2 conflict refusal, as the client reports it: the items live changed.
@@ -523,8 +539,11 @@ impl Client {
     /// `/push/begin` (§4.2). `Err` carries the §6 sentence; a conflict is
     /// `Ok(PushBegun)` ONLY when every conflict was in `override` — otherwise the
     /// `Conflicts` list comes back so the caller can ask.
-    pub async fn push_begin(&self, tables: &[String], files: &[String], base: &super::base::SyncBase, override_items: &[String]) -> Result<std::result::Result<PushBegun, Conflicts>> {
-        let body = serde_json::to_vec(&serde_json::json!({ "tables": tables, "files": files, "base": { "tables": base.tables, "files": base.files }, "override": override_items })).expect("json");
+    /// `resume` names an open push on live (plugin 0.1.4) to continue instead of opening
+    /// a new one; a site that no longer has it answers `no_push`, which the caller turns
+    /// into a fresh begin.
+    pub async fn push_begin(&self, tables: &[String], files: &[String], base: &super::base::SyncBase, override_items: &[String], resume: Option<&str>) -> Result<std::result::Result<PushBegun, Conflicts>> {
+        let body = serde_json::to_vec(&serde_json::json!({ "tables": tables, "files": files, "base": { "tables": base.tables, "files": base.files }, "override": override_items, "resume": resume })).expect("json");
         match self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/begin", &[], body).await {
             Ok(bytes) => Ok(Ok(Self::json(&bytes)?)),
             Err(e) => {
@@ -552,10 +571,13 @@ impl Client {
         }
     }
 
-    /// `/push/db`: one chunk of a table's dump.
-    pub async fn push_sql(&self, push_id: &str, table: &str, sql: &str) -> Result<()> {
+    /// `/push/db`: chunk `chunk` of `chunks` of a table's dump (1-based). The plugin marks
+    /// the table whole only on the last one (0.1.4), so a resume never trusts a table
+    /// that was cut off between chunks.
+    pub async fn push_sql(&self, push_id: &str, table: &str, sql: &str, chunk: usize, chunks: usize) -> Result<()> {
         let body = serde_json::to_vec(&serde_json::json!({ "sql": sql, "sha256": sign::sha256_hex(sql.as_bytes()) })).expect("json");
-        self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/db", &[("push_id", push_id), ("table", table)], body).await.map(|_| ())
+        let (c, n) = (chunk.to_string(), chunks.to_string());
+        self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/db", &[("push_id", push_id), ("table", table), ("chunk", &c), ("chunks", &n)], body).await.map(|_| ())
     }
 
     /// `/push/swap` → the backup id.
@@ -747,6 +769,8 @@ mod tests {
         let e = plugin_too_old("0.1.0").expect("0.1.0 refused");
         assert!(e.contains("0.1.0") && e.contains("Upload Plugin"), "{e}");
         assert!(plugin_too_old("").is_some() && plugin_too_old("dev").is_some());
+        assert_eq!(plugin_version("0.1.4"), Some((0, 1, 4)));
+        assert!(plugin_version("0.1.3") < Some(RESUME_PLUGIN) && plugin_version("0.2") >= Some(RESUME_PLUGIN));
         for ok in ["0.1.1", "0.2", "1.0.0", " 0.1.1 "] {
             assert_eq!(plugin_too_old(ok), None, "{ok}");
         }

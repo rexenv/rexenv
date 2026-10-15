@@ -4056,7 +4056,10 @@ pub(crate) mod tests {
             Box::pin(async move {
                 Ok(crate::commands::live_sync::LiveSyncJobState {
                     id: "j1".into(), site_id: id, domain: "mine.rex".into(), kind: "pull".into(), status: "ok".into(), lines: vec![], error: None,
-                    tables: 12, tables_kept: 0, rows: 1560, files: 457, files_kept: 0, files_deleted: 0, files_kept_edited: vec![], refused_files: vec![], backup_db: Some("mine_prepull".into()), backup_id: None, conflicts: vec![], asked_tables: None, asked_files: false,
+                    tables: 12, tables_kept: 0, rows: 1560, files: 457, files_kept: 0, files_deleted: 0, files_kept_edited: vec![],
+                    anonymised: vec![],
+                    tables_resumed: 0,
+                    files_resumed: 0, refused_files: vec![], backup_db: Some("mine_prepull".into()), backup_id: None, conflicts: vec![], asked_tables: None, asked_files: false,
                 })
             })
         }

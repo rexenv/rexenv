@@ -16,7 +16,7 @@
 
 use crate::commands::wordpress::wp_tools;
 use crate::core::db::DbEngine;
-use crate::core::live_sync::{base, client::Client, pull, push, secrets, sign, stamps, status};
+use crate::core::live_sync::{base, client::Client, progress, pull, push, secrets, sign, stamps, status, uploads_on_demand};
 use crate::core::{self, service_manager, sites};
 use crate::error::{Error, Result};
 use crate::state::app::AppState;
@@ -70,6 +70,11 @@ pub struct LiveSyncJobState {
     pub files_deleted: usize,
     /// A pull: files gone from live but edited here — kept, named.
     pub files_kept_edited: Vec<String>,
+    /// A pull: tables the anonymise rules touched (15 Oct 2026).
+    pub anonymised: Vec<String>,
+    /// What an interrupted pull or push had already moved and this one reused.
+    pub tables_resumed: usize,
+    pub files_resumed: usize,
     pub refused_files: Vec<String>,
     pub backup_db: Option<String>,
     /// A push's backup id on LIVE — what Roll back names.
@@ -181,9 +186,71 @@ pub async fn live_sync_unpair(state: State<'_, AppState>, jobs: State<'_, LiveSy
     forget_settled(&jobs, &site_id);
     // The base goes with the pairing (#847): found on the VM, 10 Oct 2026 — Disconnect
     // left `<site>.base.json`, and a later pairing to another site would have judged
-    // its conflicts against the first site's stamps.
+    // its conflicts against the first site's stamps. So do the uploads-on-demand
+    // mu-plugin (it names the live site) and an interrupted job's records.
+    if let Ok(site) = wordpress_site(&state, &site_id) {
+        let _ = uploads_on_demand::remove(&site.served_root());
+        if let Ok(scratch) = scratch_dir(&state) {
+            progress::forget(&progress::pull_file(&scratch, &site.db_name));
+            progress::forget(&progress::push_file(&scratch, &site.db_name));
+        }
+    }
     base::delete(state.platform.as_ref(), &site_id)?;
     secrets::delete(state.platform.as_ref(), &site_id)
+}
+
+fn scratch_dir(state: &AppState) -> Result<std::path::PathBuf> {
+    Ok(state.platform.paths().app_data_dir()?.join("live-sync").join("scratch"))
+}
+
+/// The per-site switches of a sync (15 Oct 2026): anonymise on pull (off unless chosen —
+/// plan §11 Q6) and uploads on demand (on unless turned off — plan §11 Q3). Kept in the
+/// settings table under the site's id; nothing of them crosses to the live site.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveSyncOptions {
+    pub anonymise: bool,
+    pub uploads_on_demand: bool,
+}
+
+fn option_key(site_id: &str, what: &str) -> String {
+    format!("live_sync.{what}.{site_id}")
+}
+
+fn read_options(state: &AppState, site_id: &str) -> Result<LiveSyncOptions> {
+    let conn = lock_db(state)?;
+    let get = |what: &str| crate::state::store::get_setting(&conn, &option_key(site_id, what));
+    Ok(LiveSyncOptions { anonymise: get("anonymise")?.as_deref() == Some("1"), uploads_on_demand: get("uploads_on_demand")?.as_deref() != Some("0") })
+}
+
+/// `live_sync_options` — the site's switches.
+#[tauri::command]
+pub async fn live_sync_options(state: State<'_, AppState>, site_id: String) -> Result<LiveSyncOptions> {
+    read_options(&state, &site_id)
+}
+
+/// `live_sync_set_options` — store the switches; the uploads-on-demand mu-plugin goes in
+/// or out at once on a paired site (the anonymise switch applies on the next pull).
+#[tauri::command]
+pub async fn live_sync_set_options(state: State<'_, AppState>, site_id: String, anonymise: bool, uploads_on_demand: bool) -> Result<LiveSyncOptions> {
+    let site = wordpress_site(&state, &site_id)?;
+    {
+        let conn = lock_db(&state)?;
+        crate::state::store::set_setting(&conn, &option_key(&site_id, "anonymise"), if anonymise { "1" } else { "0" })?;
+        crate::state::store::set_setting(&conn, &option_key(&site_id, "uploads_on_demand"), if uploads_on_demand { "1" } else { "0" })?;
+    }
+    if let Some(p) = secrets::pairing(state.platform.as_ref(), &site.id)? {
+        if uploads_on_demand {
+            // Only once a pull has happened: before it the copy is not live's and the
+            // plugin would fetch into a stranger's uploads folder.
+            if base::get(state.platform.as_ref(), &site.id)?.is_some() {
+                uploads_on_demand::ensure(&site.served_root(), site.content_dir_rel(), &p.site_url)?;
+            }
+        } else {
+            uploads_on_demand::remove(&site.served_root())?;
+        }
+    }
+    read_options(&state, &site_id)
 }
 
 /// Drop a site's FINISHED jobs — a running one is left alone (ledger #854). Their cards
@@ -238,12 +305,16 @@ pub async fn live_sync_pull<R: tauri::Runtime>(
     site_id: String,
     uploads_since: Option<i64>,
     full: Option<bool>,
+    anonymise: Option<bool>,
 ) -> Result<LiveSyncJobState> {
     let site = wordpress_site(&state, &site_id)?;
     if !site.provisioned {
         return Err(Error::Other(format!("{} has not finished setting up — Retry it first.", site.domain)));
     }
     let client = client_for(&state, &site.id)?;
+    let switches = read_options(&state, &site.id)?;
+    let anonymise = anonymise.unwrap_or(switches.anonymise);
+    let uploads_on_demand = switches.uploads_on_demand;
     // A pull replaces the site's database: not beside an import or a provision of it.
     if let Ok(active) = state.db_import_active.lock() {
         if active.as_deref() == Some(site.domain.as_str()) {
@@ -253,7 +324,7 @@ pub async fn live_sync_pull<R: tauri::Runtime>(
     let job_site = site.clone();
     let full = full.unwrap_or(false);
     start_job(&app, &jobs, &site, "pull", move |worker, entry| async move {
-        let outcome = run_pull(&worker, &entry, &job_site, client, uploads_since, full).await;
+        let outcome = run_pull(&worker, &entry, &job_site, client, pull::PullOptions { excludes: Vec::new(), uploads_since, full, anonymise, uploads_on_demand: Some(uploads_on_demand) }).await;
         settle_pull(&worker, &entry, &job_site, outcome);
     })
 }
@@ -271,6 +342,9 @@ fn settle_pull<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<Entry>, site: 
             st.files_kept = r.files_kept;
             st.files_deleted = r.files_deleted.len();
             st.files_kept_edited = r.files_kept_edited;
+            st.anonymised = r.anonymised;
+            st.tables_resumed = r.tables_resumed;
+            st.files_resumed = r.files_resumed;
             st.refused_files = r.refused_files;
             st.backup_db = Some(r.backup_db);
         }
@@ -383,6 +457,9 @@ where
             files_kept: 0,
             files_deleted: 0,
             files_kept_edited: Vec::new(),
+            anonymised: Vec::new(),
+            tables_resumed: 0,
+            files_resumed: 0,
             refused_files: Vec::new(),
             backup_db: None,
             backup_id: None,
@@ -515,21 +592,13 @@ fn line_sink<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<Entry>) -> impl 
     }
 }
 
-async fn run_pull<R: tauri::Runtime>(
-    app: &AppHandle<R>,
-    entry: &Arc<Entry>,
-    site: &Site,
-    client: Client,
-    uploads_since: Option<i64>,
-    full: bool,
-) -> Result<pull::PullReport> {
+async fn run_pull<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<Entry>, site: &Site, client: Client, options: pull::PullOptions) -> Result<pull::PullReport> {
     let state = app.state::<AppState>();
     let tools = LocalTools::for_site(&state, site).await?;
     let local = tools.local(&state, site);
     let mut on_line = line_sink(app, entry);
-    let options = pull::PullOptions { excludes: Vec::new(), uploads_since, full };
     // Incremental against the base (14 Oct 2026); `full` replaces everything.
-    let prior = if full { None } else { base::get(state.platform.as_ref(), &site.id)? };
+    let prior = if options.full { None } else { base::get(state.platform.as_ref(), &site.id)? };
     let report = pull::pull_into(&client, &local, prior.as_ref(), &options, &mut on_line).await?;
     // The base for the next pull and push (§2.6).
     base::put(state.platform.as_ref(), &site.id, &report.base)?;
@@ -549,6 +618,8 @@ pub struct PushTable {
     /// unless live-owned; `false` = unchanged, unticked; `null` = the base cannot say
     /// (an old base without local stamps): ticked unless live-owned, as before.
     pub changed_here: Option<bool>,
+    /// Scrubbed by the pull (anonymise on): never pushed — the picker shows why.
+    pub anonymised: bool,
 }
 
 /// What `live_sync_push_plan` answers: the picker's rows and the gates' facts.
@@ -598,7 +669,7 @@ pub async fn live_sync_push_plan(state: State<'_, AppState>, site_id: String) ->
     let tables = names
         .into_iter()
         .filter(|name| !stamps::plugin_own_table(&m.prefix, name))
-        .map(|name| PushTable { live_owned: push::live_owned(&m.prefix, &name), changed_here: changed.as_ref().map(|c| c.contains(&name)), name })
+        .map(|name| PushTable { live_owned: push::live_owned(&m.prefix, &name), changed_here: changed.as_ref().map(|c| c.contains(&name)), anonymised: prior.anonymised.contains(&name), name })
         .collect();
     Ok(PushPlan { live_host: pull::host_of(&m.site_url), tables, base_at: Some(prior.at) })
 }
@@ -618,6 +689,7 @@ pub async fn live_sync_push<R: tauri::Runtime>(
     tables: Option<Vec<String>>,
     files: bool,
     override_items: Vec<String>,
+    skip_items: Option<Vec<String>>,
 ) -> Result<LiveSyncJobState> {
     let site = wordpress_site(&state, &site_id)?;
     if !site.provisioned {
@@ -634,7 +706,7 @@ pub async fn live_sync_push<R: tauri::Runtime>(
     if tables.as_ref().is_some_and(|t| t.is_empty()) && !files {
         return Err(Error::Other("nothing picked — choose at least one table, or the changed files.".into()));
     }
-    let options = push::PushOptions { tables, files, override_items };
+    let options = push::PushOptions { tables, files, override_items, skip: skip_items.unwrap_or_default() };
     let job_site = site.clone();
     let asked = (options.tables.clone(), options.files);
     start_job(&app, &jobs, &site, "push", move |worker, entry| async move {
@@ -651,6 +723,8 @@ pub async fn live_sync_push<R: tauri::Runtime>(
                 st.tables = r.tables.len();
                 st.tables_kept = r.tables_unchanged;
                 st.files = r.files;
+                st.tables_resumed = r.tables_resumed;
+                st.files_resumed = r.files_resumed;
                 st.backup_id = Some(r.backup_id);
             }
             Err(push::PushStop::Conflicts(list)) => {
@@ -899,8 +973,9 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
             };
             let job_site = site.clone();
             let w2 = worker.clone();
+            let switches = read_options(&state, &site.id).unwrap_or(LiveSyncOptions { anonymise: false, uploads_on_demand: true });
             let _ = start_job(&worker, &jobs, &site, "pull", move |w, entry| async move {
-                let outcome = run_pull(&w, &entry, &job_site, client, None, true).await;
+                let outcome = run_pull(&w, &entry, &job_site, client, pull::PullOptions { excludes: Vec::new(), uploads_since: None, full: true, anonymise: switches.anonymise, uploads_on_demand: Some(switches.uploads_on_demand) }).await;
                 settle_pull(&w, &entry, &job_site, outcome);
                 let _ = w2.emit("sites://changed", ());
             });
@@ -933,7 +1008,7 @@ mod tests {
             running: AtomicBool::new(false),
             state: Mutex::new(LiveSyncJobState {
                 id: id.into(), site_id: site.into(), domain: "x.rex".into(), kind: "push".into(), status: "ok".into(), lines: vec![],
-                error: None, tables: 2, tables_kept: 0, rows: 0, files: 1, files_kept: 0, files_deleted: 0, files_kept_edited: vec![], refused_files: vec![],
+                error: None, tables: 2, tables_kept: 0, rows: 0, files: 1, files_kept: 0, files_deleted: 0, files_kept_edited: vec![], anonymised: vec![], tables_resumed: 0, files_resumed: 0, refused_files: vec![],
                 backup_db: None, backup_id: backup.map(str::to_string), conflicts: vec![], asked_tables: None, asked_files: true,
             }),
         })

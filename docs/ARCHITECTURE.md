@@ -1475,6 +1475,17 @@ honest footer —
   after the import, and the private (0600) dump file is removed on every path. The dump
   uses the export's flags, so stored routines and events are not copied; WordPress uses
   neither.
+- **The two serial lanes are watched** (`core/stall_watch.rs`, 15 Oct 2026, #883). Every `async`
+  command runs on the tokio runtime; every IPC message from the webview arrives on the main
+  thread, where a non-`async` command runs inline. A long blocking call on either lane delays
+  everything queued behind it, and nothing in the log said so: the command that waited logs its
+  first line only once it runs. Now a task sleeps one 2 s tick on the runtime and a plain thread
+  queues a closure onto the main thread every 2 s; either landing more than 1.5 s late writes
+  `stall: the <lane> was busy for N s beyond its tick`. Beside it, `webview_note` lets the
+  webview put a line into the app log (the Live tab's Check status notes its click, with the
+  commands then in flight, and its answer) — the measurement that showed the "7–110 s dispatch
+  delay" of 14 Oct 2026 to be the test automation's own lag: click and first line in the same
+  second, nine presses, two OSes.
 - **Live ↔ local sync** (`docs/PLAN-wp-live-sync.md`, the wire in `docs/rexsync-protocol.md`;
   built 10 Oct 2026 up to pull). The plugin `companion/rexenv-sync` on the LIVE site answers
   signed requests only (#825). rexenv always calls out (`core/live_sync/client.rs`, #826) and
@@ -1507,7 +1518,28 @@ honest footer —
   A rollback refreshes live's half of the base and puts the local half back to what it was
   before the push (the push records it as `before_push`), so the local changes the push sent
   count as ahead again once live no longer has them (#862). The plugin judges conflicts against the base rexenv recorded at the last sync and
-  stops the push with nothing sent. The push gates are in Rust (#834): the live host typed
+  stops the push with nothing sent; the conflict card then offers a choice PER ITEM (15 Oct
+  2026, #878): keep live's (the item is left out — `PushOptions::skip`) or overwrite (`override`),
+  the safe default being keep. **Anonymise on pull** (a per-site switch, off by default; plan §11
+  Q6, #879): `anonymise.rs` runs one rule per table over the STAGING copy before the swap —
+  e-mails to `user<id>@example.invalid`, names and addresses emptied, IPs zeroed, sessions and
+  form entries emptied — so the live values never land on this machine, not even in `_prepull`;
+  the base records the tables a rule touched and a push refuses them (the picker shows them
+  disabled). **Uploads on demand** (a per-site switch, on by default; plan §11 Q3, #880): the pull
+  puts an auto-managed mu-plugin in `wp-content/mu-plugins/` that, at `muplugins_loaded`, fetches
+  a missing file under `uploads/` from the live site's uploads URL (baked in), saves it beside
+  its siblings and serves it — one PHP file for every web server rexenv generates (they all fall
+  through to `index.php` for a missing file) on all three OSes; never pushed (`mu-plugins/rexenv-*`
+  is skipped by the walk), gone with Disconnect. **Resume** (`progress.rs`, #881): an interrupted
+  pull keeps its staging database, its per-site incoming folder and a record of what landed; the
+  next pull reuses every staged table whose live stamp has not moved, treats a table already
+  swapped in as kept and skips a file the folder already holds with the listing's size and mtime.
+  An interrupted push keeps the open push on live and a record here; the next push of the same (or
+  a narrower) set asks plugin 0.1.4 to continue it (`begin` with `resume`, the same conflict
+  check first) and sends only the tables it does not hold whole and the files it holds short —
+  provided nothing changed here since (the record carries the local stamps). The plugin marks a
+  table whole only after its last chunk (#882) and keeps ONE open push: a fresh `begin` aborts
+  the others. The push gates are in Rust (#834): the live host typed
   out, a base that exists; live-owned tables (users, comments, orders, entries) start
   unticked. Push and rollback are never an agent tool. New site → From a live site (#835)
   proves the pasted key against the live site before anything exists, stores the pairing in

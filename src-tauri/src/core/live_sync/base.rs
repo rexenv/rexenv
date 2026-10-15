@@ -41,6 +41,12 @@ pub struct SyncBase {
     /// that push sent count as "ahead" again once live no longer has them (#862).
     #[serde(default)]
     pub before_push: Option<Box<LocalHalf>>,
+    /// Tables the pull ANONYMISED here (`anonymise.rs`, 15 Oct 2026): their local rows are
+    /// scrubbed copies of live's, and a push refuses to send them (#879). A table replaced
+    /// by a later pull without anonymising leaves the list; one kept from the local copy
+    /// stays on it.
+    #[serde(default)]
+    pub anonymised: Vec<String>,
 }
 
 /// The local copy's half of a base: its table stamps and the sync moment.

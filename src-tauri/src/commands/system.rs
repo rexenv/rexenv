@@ -53,6 +53,15 @@ pub async fn setup_edge_conflict(
     Ok(Some(SetupEdgeConflict { holder: help.holder, app: help.app, fix: help.free_command }))
 }
 
+/// `webview_note` — a line from the webview into the app log, so what the GUI waited
+/// for sits beside what the backend did (the Live tab's Check status, 14 Oct 2026: the
+/// click and the command's first line were a minute apart with nothing between them).
+#[tauri::command]
+pub async fn webview_note(text: String) {
+    let text: String = text.chars().take(600).collect();
+    log::info!("webview: {}", text.replace(['\n', '\r'], " "));
+}
+
 #[tauri::command]
 pub fn app_info() -> AppInfo {
     core::app_info::current()

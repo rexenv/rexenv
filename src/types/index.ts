@@ -1617,6 +1617,11 @@ export interface LiveSyncJobState {
   filesDeleted: number;
   /** A pull: files gone from live but edited here — kept, named. */
   filesKeptEdited: string[];
+  /** A pull: tables the anonymise rules touched. */
+  anonymised: string[];
+  /** What an interrupted pull or push had already moved and this one reused. */
+  tablesResumed: number;
+  filesResumed: number;
   refusedFiles: string[];
   backupDb: string | null;
   /** A push's backup on LIVE — what Roll back names. */
@@ -1660,8 +1665,14 @@ export interface LiveSyncPushPlan {
   liveHost: string;
   /** `changedHere`: its local stamp moved since the last sync (ticked by default unless
    *  live-owned); `false` = unchanged (unticked); `null` = the base cannot say. */
-  tables: { name: string; liveOwned: boolean; changedHere: boolean | null }[];
+  tables: { name: string; liveOwned: boolean; changedHere: boolean | null; anonymised: boolean }[];
   baseAt: number | null;
+}
+
+/** The site's sync switches (`live_sync_options`): anonymise on pull, uploads on demand. */
+export interface LiveSyncOptions {
+  anonymise: boolean;
+  uploadsOnDemand: boolean;
 }
 
 /** What one side did to one item since the last sync (`live_sync_status`). */

@@ -1354,6 +1354,61 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       this site…" + Not connected. The "last contact / last pull / last push / backup kept" lines
       with real values need the live host on 0.1.3 (their data is proven by the plugin's own test §9).
       Then the local copy was pulled again whole, which put plugin 0.1.2 back and deactivated it.
+- [ ] **S3 (15 Oct 2026) — the per-item conflict choice.** Push after live changed since the
+      last sync → the card "Nothing was sent: N item(s) changed on …" lists each conflict with
+      two radios, **keep live's** (ticked by default) / **overwrite** → switch ONE to overwrite →
+      **Push with these choices** → the dialog names the overwritten one AND the kept ones →
+      Push anyway → the job sends the rest: the kept item is still live's version afterwards,
+      the overwritten one is this site's. **Push anyway, overwriting all** still overwrites every
+      conflict. `rex live <domain> push --confirm <host> --keep a,b` is the same choice.
+      ◐ macOS: L2 `wk-checks/livetab.js` legs 6 + 14 (what the card sends); L1
+      `live_sync_pull_into_check` leg 13 (a skipped table's live post survives, the file goes).
+      The GUI press against the real host is owed on each OS.
+- [ ] **Anonymise personal data on pull** (the switch under the connected card, off by default) →
+      tick it → **Pull from live** → the confirm says personal data is anonymised in the copy →
+      the card ends "…; personal data anonymised in N tables" and the log names each table and
+      what it scrubbed → wp-admin → Users: every e-mail is `user<id>@example.invalid`, display
+      names "User N"; Comments: authors "Commenter N", no real e-mail or IP. **Push to live…** → the
+      picker shows those tables unticked, disabled, badged "anonymised — never pushed"; `rex live
+      <domain> push --confirm <host> --tables <prefix>users` → refused: "holds anonymised data
+      here … it is never pushed". Untick the switch → Pull → the tables live changed since come
+      back with real data (the ones live did not touch stay scrubbed until live changes them).
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 14–14d; L2 `livetab.js` legs 15–16. The GUI
+      press against the real host is owed on each OS — the live host's data is the owner's
+      (live-sync.rex.bd holds no real customers: the probe users of the L14 runs).
+- [ ] **Fetch missing uploads from live** (the switch, on by default) → **Pull, recent uploads
+      only** → open a post whose image is older than six months: it RENDERS (the file is fetched
+      from live on first view and is now under `wp-content/uploads/…`; the response carried
+      `X-Rexenv-Live-Uploads: fetched`); the second view is served by nginx itself. The mu-plugin
+      `wp-content/mu-plugins/rexenv-live-uploads.php` names the live uploads URL. Untick the switch
+      → the file is gone at once; a missing upload 404s as before. **Disconnect** removes it too.
+      It is never pushed (the push's file list leaves `mu-plugins/rexenv-*` out).
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 14/14c (the file in place with the live URL,
+      gone with the switch off); L0 `the_plugin_is_bounded_to_uploads`. The page render through
+      a real web server is owed on each OS (nginx, and once each on Apache / OLS / FrankenPHP).
+- [ ] **Resume — an interrupted pull.** Pull a big site and kill the app (or cut the network)
+      while it is on a table → the Live tab after relaunch: the job reads failed with "… the next
+      pull continues from the tables already copied" → **Pull from live** again → the log says
+      "N tables already staged by the interrupted pull, reused" and "M files already fetched …
+      reused", the card "…; N tables and M files the interrupted pull had already copied were
+      reused". A failure AFTER the swap (on the files) leaves the database live's and the next
+      pull treats every table as kept. **Pull everything again** never resumes.
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 15–15b (the site cuts one export; the staging
+      copy and the record survive; the next pull reuses the staged table and exports the rest;
+      the record is gone). The app-kill variant is owed on each OS.
+- [ ] **Resume — an interrupted push** (plugin 0.1.4 on live). Push, kill the app mid-upload →
+      relaunch → the job reads failed with "… the next push continues from what already reached
+      the site" → **Push to live…** again with the same picks → the log says "continuing the
+      interrupted push: N tables and M files already on live, not sent again" → the swap happens,
+      the card "… — N tables and M files the interrupted push had already sent were not sent
+      again". A push of a WIDER set (a table the open push never named) starts over, and the
+      plugin aborts the old one: Tools → rexenv Sync → "Backup kept" is the new push's; no
+      `rxnew_*` table of the old one remains. A plugin older than 0.1.4 aborts on failure as before.
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 16–16b (the site cuts the second file; the open
+      push and the record survive; the next push continues, the first file is not sent again, the
+      swap lands); the plugin's own test §10 (what `begin … resume` answers; a table is whole only
+      after its last chunk; a fresh begin aborts the open push). The app-kill variant on the real
+      host (0.1.4 uploaded there by the owner) is owed on each OS.
   ✓ **Linux** — the Ubuntu 22.04 VM (GNOME, WebKitGTK), this tree's debug deb, 14 Oct 2026, against
   live-sync.rex.bd (plugin 0.1.2 there), `l14lx.rex` on its 11 Oct base: Check status → "Live has
   changes you do not have here — 3 tables, 0 files. Pull to bring them." + the old-base line ("What

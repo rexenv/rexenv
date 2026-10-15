@@ -13,7 +13,7 @@
 //! a shared host's limits, a WAF.
 
 use rexenv_lib::commands::{self, site_provision};
-use rexenv_lib::core::{binaries, database, sites, ssl, wordpress};
+use rexenv_lib::core::{binaries, sites, ssl, wordpress};
 use rexenv_lib::state::app::AppState;
 use rexenv_lib::state::models::{NewSite, SiteDbEngine, SiteType, WebServer};
 use std::path::Path;
@@ -45,10 +45,16 @@ async fn main() -> std::process::ExitCode {
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
-    let (mysql, _) = rexenv_lib::core::db::DbEngine::Mysql
-        .sql_client_bins(&*plat, binaries::pins().mysql)
-        .await
-        .expect("bundled MySQL client");
+    // `REXENV_SYNC_ENGINE=mariadb` runs the whole thing on the bundled MariaDB instead
+    // (#857's row-estimate half: a RENAME resets InnoDB's `Rows` there too, and
+    // `settle_stats` must settle it the same way — measured on MariaDB 12.3.2, 15 Oct 2026).
+    let engine = match std::env::var("REXENV_SYNC_ENGINE").as_deref() {
+        Ok("mariadb") => rexenv_lib::core::db::DbEngine::Mariadb,
+        _ => rexenv_lib::core::db::DbEngine::Mysql,
+    };
+    println!("engine: {engine:?}");
+    let pin = if engine == rexenv_lib::core::db::DbEngine::Mariadb { binaries::pins().mariadb } else { binaries::pins().mysql };
+    let (mysql, _) = engine.sql_client_bins(&*plat, pin).await.expect("bundled SQL client");
     let app = tauri::test::mock_app();
     app.manage(commands::repo::RepoJobs::default());
     app.manage(site_provision::ProvisionJobs::default());
@@ -73,7 +79,7 @@ async fn main() -> std::process::ExitCode {
             php_version: binaries::pins().php.split('.').take(2).collect::<Vec<_>>().join("."),
             web_server: WebServer::Nginx,
             path: String::new(),
-            db_engine: SiteDbEngine::Mysql,
+            db_engine: if engine == rexenv_lib::core::db::DbEngine::Mariadb { SiteDbEngine::Mariadb } else { SiteDbEngine::Mysql },
             git_url: String::new(),
             git_ref: None,
             git_migrate: false,
@@ -136,7 +142,7 @@ async fn main() -> std::process::ExitCode {
     {
         let state = handle.state::<AppState>();
         let conn = state.db.lock().unwrap();
-        let _ = rexenv_lib::core::db::DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &site.db_name);
+        let _ = engine.drop_database(&mysql, engine.port(), &site.db_name);
         let _ = sites::teardown(&conn, state.platform.as_ref(), &site_id);
     }
     let _ = std::fs::remove_file(&db_file);

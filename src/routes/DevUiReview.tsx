@@ -1209,7 +1209,9 @@ export function DevUiReview() {
           return params.get("paired") === "1" ? { siteUrl: "https://example.com", keyId: "k_0123abcd", basicAuthUser: null } : null;
         case "live_sync_active": {
           if (params.get("paired") !== "1") return null;
-          const job = { id: "j1", siteId: "s1", domain: "example.rex", kind: "pull", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, tablesKept: 0, rows: 1560, files: 457, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], refusedFiles: [], backupDb: "wp_example_rex_prepull", backupId: null, conflicts: [], askedTables: null, askedFiles: false };
+          const job = { id: "j1", siteId: "s1", domain: "example.rex", kind: "pull", status: params.get("pull") === "failed" ? "failed" : "ok", lines: ["live: https://example.com — WordPress 6.8, 12 tables", "  wp_options — 125 rows"], error: params.get("pull") === "failed" ? "rexenv Sync: a firewall in front of the site (Wordfence, Cloudflare, ModSecurity) refused the request." : null, tables: 12, tablesKept: 0, rows: 1560, files: 457, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], anonymised: [], tablesResumed: 0, filesResumed: 0, refusedFiles: [], backupDb: "wp_example_rex_prepull", backupId: null, conflicts: [], askedTables: null, askedFiles: false };
+          // `&pull=anonymised` (livetab.js leg 15): a pull that scrubbed three tables and resumed an interrupted one.
+          if (params.get("pull") === "anonymised") return { ...job, anonymised: ["wp_users", "wp_usermeta", "wp_comments"], tablesResumed: 4, filesResumed: 120 };
           // `&pull=incremental` (livetab.js leg 11): a pull that kept what live did not touch.
           if (params.get("pull") === "incremental") return { ...job, tables: 3, tablesKept: 9, files: 2, filesKept: 455, filesDeleted: 1, filesKeptEdited: ["uploads/2026/notes.txt"] };
           // `&longlog=1` (livetab.js leg 9): a pull whose log is taller than its box.
@@ -1243,8 +1245,17 @@ export function DevUiReview() {
           ((window as unknown as { __liveCreates?: unknown[] }).__liveCreates ??= []).push(args);
           return { id: "p1", domain: String((args as { domain?: string } | undefined)?.domain ?? ""), siteId: null, phases: [{ key: "prepare", label: "preparing site (domain, certificate)", status: "running" }], phaseCursor: 0, pct: 5, status: "running", summary: null, error: null, logKey: "site-provision-p1.log", downloadIds: [] };
         case "live_sync_push_plan":
-          // `wp_terms` is unchanged here → unticked, badged "unchanged" (livetab.js leg 12).
-          return { liveHost: "example.com", tables: ["wp_options", "wp_posts", "wp_postmeta", "wp_terms", "wp_users", "wp_usermeta", "wp_comments"].map((name) => ({ name, liveOwned: /users|usermeta|comments/.test(name), changedHere: name === "wp_terms" ? false : /users|usermeta|comments/.test(name) ? null : true })), baseAt: 1760000000 };
+          // `wp_terms` is unchanged here → unticked, badged "unchanged" (livetab.js leg 12);
+          // `&anon=1`: `wp_comments` was anonymised by the pull → disabled, badged (leg 16).
+          return { liveHost: "example.com", tables: ["wp_options", "wp_posts", "wp_postmeta", "wp_terms", "wp_users", "wp_usermeta", "wp_comments"].map((name) => ({ name, liveOwned: /users|usermeta|comments/.test(name), changedHere: name === "wp_terms" ? false : /users|usermeta|comments/.test(name) ? null : true, anonymised: params.get("anon") === "1" && name === "wp_comments" })), baseAt: 1760000000 };
+        // The site's switches (livetab.js leg 15): what the tab SENT is recorded (`window.__liveOptions`).
+        case "live_sync_options":
+          return { anonymise: params.get("anon") === "1", uploadsOnDemand: true };
+        case "live_sync_set_options": {
+          ((window as unknown as { __liveOptions?: unknown[] }).__liveOptions ??= []).push(args);
+          const a = args as { anonymise?: boolean; uploadsOnDemand?: boolean };
+          return { anonymise: !!a.anonymise, uploadsOnDemand: !!a.uploadsOnDemand };
+        }
         // `&status=<verdict>` (livetab.js leg 10): what Check status answers; the call is
         // recorded (`window.__liveStatusCalls`).
         case "live_sync_status": {
@@ -1278,7 +1289,7 @@ export function DevUiReview() {
             : { entries: [], baseAt: null, baseKind: null };
         case "live_sync_push":
           ((window as unknown as { __livePushes?: unknown[] }).__livePushes ??= []).push(args);
-          return { id: "j3", siteId: "s1", domain: "example.rex", kind: "push", status: "running", lines: [], error: null, tables: 0, tablesKept: 0, rows: 0, files: 0, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: (args as { tables?: string[] }).tables ?? null, askedFiles: !!(args as { files?: boolean }).files };
+          return { id: "j3", siteId: "s1", domain: "example.rex", kind: "push", status: "running", lines: [], error: null, tables: 0, tablesKept: 0, rows: 0, files: 0, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], anonymised: [], tablesResumed: 0, filesResumed: 0, refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: (args as { tables?: string[] }).tables ?? null, askedFiles: !!(args as { files?: boolean }).files };
         case "live_sync_rollback":
           ((window as unknown as { __liveRollbacks?: unknown[] }).__liveRollbacks ??= []).push(args);
           return undefined;
@@ -1288,7 +1299,7 @@ export function DevUiReview() {
         case "live_sync_pull":
           // What the Pull menu SENT (`window.__livePulls`): `full` for "everything again".
           ((window as unknown as { __livePulls?: unknown[] }).__livePulls ??= []).push(args);
-          return { id: "j2", siteId: "s1", domain: "example.rex", kind: "pull", status: "running", lines: [], error: null, tables: 0, tablesKept: 0, rows: 0, files: 0, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: null, askedFiles: false };
+          return { id: "j2", siteId: "s1", domain: "example.rex", kind: "pull", status: "running", lines: [], error: null, tables: 0, tablesKept: 0, rows: 0, files: 0, filesKept: 0, filesDeleted: 0, filesKeptEdited: [], anonymised: [], tablesResumed: 0, filesResumed: 0, refusedFiles: [], backupDb: null, backupId: null, conflicts: [], askedTables: null, askedFiles: false };
         case "live_sync_unpair":
           return true;
         case "live_sync_plugin_zip":

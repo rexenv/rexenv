@@ -5,10 +5,18 @@
 //!
 //! Conflicts are the plugin's verdict against the BASE rexenv recorded at the
 //! last pull/push: tables and files live changed since. They stop the push
-//! unless the caller named each in `override` — rexenv never merges.
+//! unless the caller named each in `override` — rexenv never merges; a conflict
+//! the caller named in `skip` is left out of the push instead (per-item choice,
+//! 15 Oct 2026). A table the pull ANONYMISED here is refused outright (#879).
+//!
+//! Resume (15 Oct 2026, `progress.rs`): a push that died after `begin` leaves the open
+//! push on live and a record here; the next push of the same (or a narrower) set asks
+//! the plugin to continue it, and sends only the tables it does not hold whole and the
+//! files it holds short — provided nothing changed here since.
 
 use super::base::SyncBase;
 use super::client::{Client, Conflicts};
+use super::progress;
 use super::pull::LocalSite;
 use crate::core::wordpress;
 use crate::error::{Error, Result};
@@ -39,6 +47,9 @@ pub struct PushOptions {
     pub files: bool,
     /// Conflicts the person chose to overwrite anyway.
     pub override_items: Vec<String>,
+    /// Tables and files to leave OUT of this push — conflicts the person chose to keep
+    /// live's version of.
+    pub skip: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -47,6 +58,9 @@ pub struct PushReport {
     /// Tables unchanged here since the base, left out (when `tables` was `None`).
     pub tables_unchanged: usize,
     pub files: usize,
+    /// Tables and files the interrupted push had already put on live whole, not sent again.
+    pub tables_resumed: usize,
+    pub files_resumed: usize,
     pub backup_id: String,
     pub base: SyncBase,
 }
@@ -152,17 +166,46 @@ pub async fn push_from(
             }
         }
     }
+    // Per-item choice: what the person chose to keep live's version of is left out.
+    let before_skip = tables.len() + files.len();
+    let tables: Vec<String> = tables.into_iter().filter(|t| !options.skip.contains(t)).collect();
+    files.retain(|f| !options.skip.contains(f));
+    let skipped = before_skip - tables.len() - files.len();
+    // Never a scrubbed table (#879): the local rows are anonymised copies of live's.
+    if let Some(t) = tables.iter().find(|t| base.anonymised.contains(t)) {
+        return Err(Error::Other(format!(
+            "{t} holds anonymised data here (anonymise on pull is on for {}) — it is never pushed. Turn anonymising off and pull again to push it.",
+            local.domain
+        ))
+        .into());
+    }
     if tables.is_empty() && files.is_empty() {
-        return Err(Error::Other(format!("nothing has changed on {} since the last sync — there is nothing to push.", local.domain)).into());
+        return Err(Error::Other(if skipped > 0 {
+            "everything that changed was left out — nothing to push.".to_string()
+        } else {
+            format!("nothing has changed on {} since the last sync — there is nothing to push.", local.domain)
+        })
+        .into());
     }
     on_line(&format!(
-        "push: {} tables{}, {} of {} files changed since the last sync, to {}",
+        "push: {} tables{}, {} of {} files changed since the last sync{}, to {}",
         tables.len(),
         if tables_unchanged > 0 { format!(" ({tables_unchanged} unchanged here, left out)") } else { String::new() },
         files.len(),
         total_files,
+        if skipped > 0 { format!(", {skipped} kept as live has them") } else { String::new() },
         m.site_url
     ));
+    // An interrupted push to continue (`progress.rs`), when the plugin can.
+    let record_file = progress::push_file(local.scratch, local.db_name);
+    let open: Option<progress::PushProgress> = progress::read(&record_file);
+    let plugin_resumes = super::client::plugin_version(&m.plugin) >= Some(super::client::RESUME_PLUGIN);
+    let resume_id: Option<String> = open.as_ref().filter(|r| plugin_resumes && progress::push_resumable(r, &tables, &files)).map(|r| r.push_id.clone());
+    if let Some(r) = open.as_ref().filter(|_| resume_id.is_none()) {
+        // Not reusable (another set, an older plugin): the plugin's next `begin` drops it.
+        on_line(&format!("  an interrupted push ({}) is on live and cannot be continued for this set — it is dropped", &r.push_id[..r.push_id.len().min(8)]));
+        progress::forget(&record_file);
+    }
 
     // ── the local copy, moved to the live host ───────────────────────────
     let copy = format!("{}_push", local.db_name);
@@ -190,7 +233,13 @@ pub async fn push_from(
     }
 
     // ── begin: the plugin's conflict verdict ─────────────────────────────
-    let begun = match client.push_begin(&tables, &files, base, &options.override_items).await {
+    let mut begun_try = client.push_begin(&tables, &files, base, &options.override_items, resume_id.as_deref()).await;
+    if resume_id.is_some() && matches!(&begun_try, Err(e) if e.to_string().contains("no longer has that push")) {
+        // Live dropped it (the record was stale): a fresh one.
+        progress::forget(&record_file);
+        begun_try = client.push_begin(&tables, &files, base, &options.override_items, None).await;
+    }
+    let begun = match begun_try {
         Ok(Ok(b)) => b,
         Ok(Err(Conflicts(list))) => {
             let _ = local.engine.drop_database(local.client, local.port, &copy);
@@ -210,8 +259,27 @@ pub async fn push_from(
         }
     };
     let push_id = begun.push_id.clone();
+    // What the open push already holds whole, and has not changed here since: skipped.
+    let local_stamps_now = super::stamps::local_stamps(local, &m.prefix)?;
+    let local_files_now: BTreeMap<String, (u64, i64)> = super::pull::walk_local(&content)?.into_iter().map(|(p, s, m)| (p, (s, m))).collect();
+    let (skip_tables, skip_files) = match (&open, begun.resumed) {
+        (Some(rec), true) => (progress::push_tables_to_skip(rec, &begun.db_done, &local_stamps_now), progress::push_files_to_skip(rec, &begun.received, &local_files_now)),
+        _ => (Vec::new(), Vec::new()),
+    };
+    if begun.resumed {
+        on_line(&format!("  continuing the interrupted push: {} and {} already on live, not sent again", super::count(skip_tables.len(), "table", "tables"), super::count(skip_files.len(), "file", "files")));
+    }
+    // The record for a resume of THIS push, written before the first byte goes.
+    let record = progress::PushProgress {
+        push_id: push_id.clone(),
+        tables: tables.clone(),
+        files: files.clone(),
+        local_tables: tables.iter().filter_map(|t| local_stamps_now.get(t).map(|s| (t.clone(), s.clone()))).collect(),
+        local_files: files.iter().filter_map(|f| local_files_now.get(f).map(|(_, m)| (f.clone(), *m))).collect(),
+    };
+    progress::write(&record_file, &record)?;
     let sent: Result<()> = async {
-        for rel in &files {
+        for rel in files.iter().filter(|f| !skip_files.contains(f)) {
             let mut p = content.clone();
             for seg in rel.split('/') {
                 p.push(seg);
@@ -219,16 +287,16 @@ pub async fn push_from(
             client.push_file(&push_id, rel, &std::fs::read(&p)?).await?;
         }
         if !files.is_empty() {
-            on_line(&format!("  {} in the quarantine", super::count(files.len(), "file", "files")));
+            on_line(&format!("  {} in the quarantine", super::count(files.len() - skip_files.len(), "file", "files")));
         }
-        for t in &tables {
+        for t in tables.iter().filter(|t| !skip_tables.contains(t)) {
             let f = local.scratch.join(format!("push-{t}.sql"));
             local.engine.dump_tables_to_file(&local.dump, local.port, &copy, &[t.as_str()], &f)?;
             let sql = std::fs::read_to_string(&f)?;
             let _ = std::fs::remove_file(&f);
             let pieces = chunks(&sql, 4 * 1024 * 1024);
-            for piece in &pieces {
-                client.push_sql(&push_id, t, piece).await?;
+            for (i, piece) in pieces.iter().enumerate() {
+                client.push_sql(&push_id, t, piece, i + 1, pieces.len()).await?;
             }
             on_line(&format!("  {t} — {} in the shadow table", super::count(pieces.len(), "chunk", "chunks")));
         }
@@ -237,12 +305,19 @@ pub async fn push_from(
     .await;
     let _ = local.engine.drop_database(local.client, local.port, &copy);
     if let Err(e) = sent {
-        let _ = client.push_abort(&push_id).await;
-        return Err(e.into());
+        // The open push stays on live, the record here: the next push of this set
+        // continues from what landed (a plugin that cannot resume gets it aborted then).
+        if !plugin_resumes {
+            let _ = client.push_abort(&push_id).await;
+            progress::forget(&record_file);
+            return Err(e.into());
+        }
+        return Err(Error::Other(format!("{e} — the next push continues from what already reached the site")).into());
     }
 
     // ── the swap, then the proof ─────────────────────────────────────────
     let backup_id = client.push_swap(&push_id).await?;
+    progress::forget(&record_file);
     on_line(&format!("swapped in; the previous live tables are the site's backup {backup_id}"));
     let after = client.manifest().await?;
     let mut new_base = SyncBase {
@@ -255,6 +330,7 @@ pub async fn push_from(
         kind: "push".into(),
         // What a rollback of THIS push puts back as the local half (#862).
         before_push: Some(Box::new(base.local_half())),
+        anonymised: base.anonymised.clone(),
     };
     // The files just pushed now carry LIVE mtimes we did not read; re-list them.
     if options.files {
@@ -262,7 +338,7 @@ pub async fn push_from(
             new_base.files.insert(f.path, format!("{}:{}", f.size, f.mtime));
         }
     }
-    Ok(PushReport { tables, tables_unchanged, files: files.len(), backup_id, base: new_base })
+    Ok(PushReport { tables, tables_unchanged, files: files.len(), tables_resumed: skip_tables.len(), files_resumed: skip_files.len(), backup_id, base: new_base })
 }
 
 #[cfg(test)]
@@ -279,6 +355,23 @@ mod tests {
         let sql = "A;\nB;\nCCCC;\n";
         assert_eq!(chunks(sql, 6), vec!["A;\nB;\n", "CCCC;\n"]);
         assert_eq!(chunks(sql, 100), vec![sql]);
+    }
+
+    /// **A table the pull anonymised is never pushed, and an item in `skip` is left out
+    /// before the plugin is asked** (ledger #879). TEXT: the refusal reads `base.anonymised`
+    /// and comes before `push_begin`; the skip filter too. Plant: move the refusal after
+    /// `push_begin(` → red.
+    #[test]
+    fn anonymised_tables_are_refused_and_skips_applied_before_begin() {
+        let src = include_str!("push.rs");
+        let body = &src[src.find("pub async fn push_from(").expect("push_from")..];
+        let refuse = body.find("base.anonymised.contains(t)").expect("the anonymised refusal");
+        let skip = body.find("!options.skip.contains(t)").expect("the skip filter");
+        let begin = body.find("client.push_begin(").expect("begin");
+        assert!(refuse < begin && skip < begin, "refusal/skip after begin");
+        assert!(body.contains("it is never pushed"));
+        // The new base carries the list on.
+        assert!(body.contains("anonymised: base.anonymised.clone()"));
     }
 
     /// **A push with no table list sends only the tables changed HERE since the base**

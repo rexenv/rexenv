@@ -245,6 +245,7 @@ mod tests {
             local_files: BTreeMap::new(),
             kind: "pull".into(),
             before_push: None,
+            anonymised: Vec::new(),
         }
     }
 

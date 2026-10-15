@@ -606,17 +606,19 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 ## Phase 4+ (next era)
 
 - [ ] **WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows,
-  each needs its own live host), S3's remainder (resume, anonymise, uploads on demand, per-item
-  conflict choice), MariaDB's row-estimate behaviour after a RENAME (#857 is ◐ for it), the owner's
-  read of L13's agent pass, and the GUI's Check status: the command body takes 3–11 s (the per-phase
-  log line, 14 Oct 2026) but on the Dell it STARTED 7 s / 20 s / 110 s after the click on three tries
-  ("requested" is logged at entry), and 40–60 s on both VMs — the wait is between the webview's invoke
-  and the command's first line, not in the command; cause not found.** The 14 Oct rows (status,
-  incremental pull, picker, history, rollback) ran on all three OSes. Everything else — pull (incremental since 14 Oct 2026), push with backup
-  + Roll back (only the tables changed here by default), the per-table conflict stop, the status
-  verdict + history, New site → From a live site, `rex live`, the MCP `live` tool, plugin 0.1.3 —
-  is built; proven on macOS, Windows and Linux against the real host up to 0.1.2 (#824–#847,
-  #854–#857), the 14 Oct rows on the fixture L1 + the macOS VM (#859–#862). Plan:
+  each needs its own live host), S5 multisite, and the owner's read of L13's agent pass.** Closed 15
+  Oct 2026: S3's remainder (per-item conflict choice, anonymise on pull, uploads on demand, resume —
+  L17, #878–#883; plugin 0.1.4), #857's MariaDB half (measured on 12.3.2, `REXENV_SYNC_ENGINE=mariadb`),
+  and the "Check status dispatch delay": measured from inside the webview (`webview_note`, the in-flight
+  IPC list) on the macOS VM and the Dell, the click and the command's first line are the SAME second
+  on six tries (2.5–3.1 s total) — the 14 Oct figures (7–110 s) were the automation's own lag (the
+  Dell's `schtasks /create … /run` and the VM's `osascript` activate ran that long before the click
+  landed), not the app's; the two stall watchers (`core/stall_watch.rs`, main thread + async runtime)
+  logged nothing and stay in as the diagnostic that would name a real one. Everything else — pull
+  (incremental since 14 Oct 2026), push with backup + Roll back (only the tables changed here by
+  default), the per-table conflict stop, the status verdict + history, New site → From a live site,
+  `rex live`, the MCP `live` tool — is built; proven on macOS, Windows and Linux against the real
+  host up to 0.1.2 (#824–#847, #854–#857), the 14 Oct rows on all three OSes (#859–#863). Plan:
   `docs/PLAN-wp-live-sync.md`; the build narrative moved to `docs/archive/SHIPPED-2026-10.md`
   ("Judgement moves", 14 Oct 2026).
 
