@@ -41,8 +41,14 @@ export function TopBar({
         )}
       </div>
       <div className="no-drag flex min-w-0 items-center gap-2.5">
+        {/* The search SHRINKS (to 100 px) before anything else does: at the window's
+            minimum width (980) the Sites header — three buttons plus the update
+            pill — is wider than the bar, and a fixed 190 px input pushed the pill
+            past the window's edge, version and all (the 15.8 UTM VM, 16 Oct 2026; the
+            review fixture had carried ONE button, so the WebKit check never saw
+            the real cluster). */}
         {showSearch && (
-          <div className="relative">
+          <div className="relative w-[190px] min-w-[100px] shrink">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-rex-text-dim"
               strokeWidth={1.9}
@@ -54,7 +60,7 @@ export function TopBar({
               onChange={
                 onSearchChange ? (e) => onSearchChange(e.target.value) : undefined
               }
-              className="h-[34px] w-[190px] rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand"
+              className="h-[34px] w-full rounded border border-rex-border bg-rex-surface-1 pl-[33px] pr-3 text-[0.8125rem] text-rex-text outline-none transition-colors focus:border-brand"
             />
           </div>
         )}

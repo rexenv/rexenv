@@ -24,8 +24,10 @@ export function updatePillPhase(
 ): UpdatePillPhase {
   if (!st?.enabled) return "dark";
   if (st.installedPending) return "pending";
-  if (st.offered && st.skipped === st.offered.version) return "skipped";
   if (st.offered) return ready?.refusal ? "refused" : "offered";
+  // The backend withdraws a skipped version (`offered` is null, `skipped` says
+  // which) — never compare the two, the comparison is already made in Rust.
+  if (st.skipped) return "skipped";
   return checking ? "checking" : "idle";
 }
 
@@ -119,7 +121,13 @@ export function UpdatePill({ variant }: { variant: "bar" | "rail" }) {
       data-phase={phase}
       data-version={version ?? ""}
       className={cn(
-        "flex h-[30px] min-w-0 max-w-[15rem] flex-none items-center gap-1.5 rounded-full border px-3 text-[0.78125rem] font-medium transition-colors",
+        // The pill never shrinks: at the window's minimum width it is the
+        // TopBar's SEARCH that gives (190 → 120 px, TopBar.tsx), and the bar fits
+        // with the pill whole. It used to be pushed past the window's edge,
+        // version and all, on the 15.8 UTM VM (16 Oct 2026) — the search was fixed
+        // at 190 px then. (A flex item cannot shrink below its nowrap text
+        // anyway, so "the label truncates" was never a thing this could do.)
+        "flex h-[30px] flex-none items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[0.78125rem] font-medium transition-colors",
         pending
           ? "border-rex-border-strong bg-rex-surface-2 text-rex-text-bright hover:bg-rex-surface-2-hover"
           : "border-brand/40 bg-brand-active text-brand-tint hover:border-brand",
@@ -130,8 +138,7 @@ export function UpdatePill({ variant }: { variant: "bar" | "rail" }) {
       ) : (
         <ArrowUp className="h-[14px] w-[14px] flex-none" strokeWidth={2} />
       )}
-      {/* The LABEL truncates at a narrow window, never the version. */}
-      <span className="min-w-0 truncate">{pending ? "Restart to finish" : "Update to"}</span>
+      <span>{pending ? "Restart to finish" : "Update to"}</span>
       <span className="flex-none font-mono">{version}</span>
     </Link>
   );

@@ -6,8 +6,12 @@ widened), docs + SMOKE rows. §7 resolved as recommended (toast "Show update"; i
 control; rail pill kept — on its own line above Settings, since beside the label it overlapped
 it at 220 px). **Proven:** L0 tests (plant-proven); `verify.sh` all green on the dev Mac, 16 Oct 2026, with
 windows-check AND linux-check green (compile gates); `appupdate.js` + `appupdaterestart.js` PASS in
-WebKit on the dev Mac, 16 Oct 2026 (plant-proven in Chromium on 15 Oct). **Owed:** every §6 row
-below on its OS — none has run.
+WebKit on the dev Mac, 16 Oct 2026 (plant-proven in Chromium on 15 Oct); **the §6 GUI rows ran on all
+three OSes on 16 Oct 2026** (SMOKE-TEST "In-app self-update" + the Windows and Linux tray rows). That
+run found two defects, fixed the same day: the pill pushed past the window's edge at the minimum
+width (the TopBar's fixed-width search; the review fixture had one button where Sites has three)
+and the card's "set aside … Undo" row unreachable (it compared `skipped` to an offer the backend
+withdraws). Nothing owed.
 **Builds on:** `docs/archive/PLAN-self-update.md` (the update machinery, D3 "how loud"),
 `docs/archive/PLAN-menubar-tray.md` (the tray's rules, ledger #534).
 
@@ -157,9 +161,9 @@ told, they do not poll. **Without S4, S1–S3 show yesterday's answer; S4 is not
 
 | OS | Host | What is pressed |
 |---|---|---|
-| macOS | 15.8 UTM VM, release build — **owed: run on macOS VM** | pill from Sites; tray Check; app-menu Check still works; S4: leave the window open across a forced poll (test-pinned manifest) |
-| Windows | Dell (Win10 22H2), `tauri build` installer — **owed: run on Dell** | pill; **tray Check is the only menu path** — press it; title-bar-above-content layout leaves the pill visible |
-| Linux | Ubuntu 22.04 UTM VM, deb — **owed: run on Ubuntu VM** | pill; tray Check via libappindicator (plain items, no icons expected) |
+| macOS | 15.8 UTM VM, release build — ✓ 16 Oct 2026 (0.8.12-pinned build; found the pill overflow at 980 and the unreachable Undo row, both fixed) | pill from Sites; tray Check; app-menu Check still works; S4: leave the window open across a forced poll (test-pinned manifest) |
+| Windows | Dell (Win10 22H2), `tauri build` installer — ✓ 16 Oct 2026 (installer built there, 0.8.12-pinned) | pill; **tray Check is the only menu path** — press it; title-bar-above-content layout leaves the pill visible |
+| Linux | Ubuntu 22.04 UTM VM, deb — ✓ 16 Oct 2026 (container-built binary over `/usr/bin/rexenv`, 0.8.12-pinned) | pill; tray Check via libappindicator (plain items, no icons expected) |
 
 A row proven on one OS only is `◐`.
 

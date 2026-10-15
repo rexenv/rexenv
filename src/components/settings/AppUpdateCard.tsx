@@ -152,7 +152,13 @@ export function AppUpdateCard({ downloads }: { downloads: DownloadsSnapshot }) {
       ? st.restartDeclined
         ? "installed"
         : "pending"
-      : st.skipped && st.skipped === offered?.version
+      // A skipped version is WITHDRAWN by the backend (`offer_for` answers
+      // `Skipped`, so `offered` is null and `noOfferReason` says so) — the row
+      // used to test `skipped === offered.version`, which can never be true in
+      // production, so the "set aside … Undo" row never rendered and a skip
+      // could not be undone from the GUI (the 15.8 UTM VM, 16 Oct 2026; the review
+      // fixture had mocked a skipped state WITH an offer).
+      : st.skipped && !offered
         ? "skipped"
         : ready?.refusal
           ? "refused"

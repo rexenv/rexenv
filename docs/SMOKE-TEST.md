@@ -2655,7 +2655,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   no version, or a menu that hangs while it opens — it must read a snapshot, never fetch.
   ✓ 7 Sep 2026 (dev Mac, 0.6.0 → 0.6.1): the tray's `Update to …` item opened About and
   installed nothing. ✓ 18 Sep 2026 (clean VM, → 0.7.2).
-- [ ] **The update notice is on a screen that is not Settings** (`docs/PLAN-update-notice.md`
+- [x] **The update notice is on a screen that is not Settings** (`docs/PLAN-update-notice.md`
   S1/S2, ledger #885). With a newer release published, open **Sites**: the TopBar's right end
   shows a brand pill `↑ Update to <version>` and the sidebar shows `● Update ready` on its own
   line above Settings — **no bare version anywhere in the sidebar**. Click the TopBar pill → Settings
@@ -2664,20 +2664,41 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   With nothing offered, the TopBar shows only an icon button titled "Check for Updates…" that
   lands on About AND runs a check: the button shows "Checking…" and the footer's "checked … ago"
   moves to "just now" (ledger #886); the URL keeps no `check=1` (reload About: no second check). **Tell:** a bare `0.6.0` beside Settings, a Settings click hijacked to About, a
-  pill that starts an install. **Open: owed — run on the macOS VM (release build).**
-- [ ] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
+  pill that starts an install. ✓ **16 Oct 2026, macOS 15.8 UTM VM**, this tree's release build
+  pinned to 0.8.12 so the live manifest (serial 20) offered 0.8.13: on Sites `↑ Update to 0.8.13`
+  at the bar's right end and `● Update ready` on its own line above Settings, no bare version;
+  TopBar pill → About (card: "rexenv 0.8.13 · 28.6 MB has been published"); sidebar pill → About
+  (focus ring on the pill); Sites → Settings → General. **The first run found the pill PUSHED PAST
+  the window's edge at the minimum width (980):** Sites' header is three buttons wide and the
+  search was a fixed 190 px — fixed the same day (the search shrinks to 100 px, the pill never
+  shrinks, `appupdate.js` pins its fixture at 980 with Sites' real cluster and asserts the pill is
+  inside the bar; the review fixture had carried ONE button). Re-run on the fixed build: the pill
+  whole at 980, the search reading "Filter sit". Skip this version → the TopBar shows only the
+  ↻ icon and the rail pill is gone; the icon → About with "checked just now". **Second finding:**
+  the card's "set aside … Undo" row never rendered — it tested `skipped === offered.version` while
+  the backend WITHDRAWS a skipped offer — fixed the same day (row on `st.skipped && !offered`,
+  fixture reshaped, L2 leg + plant); re-run on that build: Skip → "rexenv 0.8.13 was set aside. A
+  newer release will still offer itself. Undo", both pills gone; Undo → the offer and both pills back. Windows (Dell, Win10) and Linux (Ubuntu VM): the same four notice legs ✓, see
+  each OS's section.
+- [x] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
   item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise
   the first item): the window comes forward on Settings → About. The app menu's own "Check for
   Updates…" still does the same — each runs a check on arrival (the footer timestamp moves).
   **Tell:** a menu that hangs while opening, an item that installs, a landing with an
-  unchanged timestamp.
-  **Open: owed — run on the macOS VM.**
-- [ ] **The push** (S4, ledger #884). Leave the window OPEN on Sites across a background check
+  unchanged timestamp. ✓ **16 Oct 2026, macOS 15.8 UTM VM** (0.8.12-pinned build): ⌘W, the menu-bar
+  item's menu listed `Update to 0.8.13…` then `Check for Updates…`; chosen → the window came
+  forward on Settings → About; ⌘W again, the app menu's own `Check for Updates…` → the same, the
+  card's footer "Release list from rexenv, checked just now" (read through accessibility).
+- [x] **The push** (S4, ledger #884). Leave the window OPEN on Sites across a background check
   that finds a release (a test-pinned manifest published while the app runs, then wait for the
   poller — or relaunch with the window kept open through the launch sweep): the TopBar and
   sidebar pills appear **without** opening About and without a click; the toast's action reads
   **Show update**. **Tell:** the pills appear only after visiting About — the pre-15-Oct-2026
-  behaviour. **Open: owed — run on the macOS VM.**
+  behaviour. ✓ **16 Oct 2026, macOS 15.8 UTM VM**, the relaunch form: the 0.8.12-pinned app opened on
+  Sites, the launch sweep logged `app update: 0.8.13 can be installed (serial 20 …)`, and both pills
+  were on Sites at first paint with the toast "rexenv 0.8.13 can be installed · Show update" —
+  About never opened. The same on the Dell (serial 15) and the Ubuntu VM. The poller form (a manifest
+  published while the window sits open) is L2 only — `appupdate.js` leg 5 drives the event.
 - [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
   no error; the footer says when it last checked. **Tell:** a button that appears and fails,
   or a footer claiming a check that never ran. **Open: "dark when current" as the CARD renders
@@ -3340,8 +3361,14 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar — and with
       Windows' title bar ABOVE the page, the pill stays visible and clickable at the narrowest
-      window. The push row too (window open across a background check). **Open: owed — run on the
-      Dell (`tauri build` installer).**
+      window. The push row too (window open across a background check). ✓ **16 Oct 2026, the Dell
+      (Win10 22H2)**, `rexenv_0.8.12_x64-setup.exe` built there from this tree (version pinned so the
+      live Windows manifest, serial 15, offered 0.8.13), installed `/S`, launched on the desktop:
+      pills on Sites at first paint (push, relaunch form); TopBar pill → About (13.6 MB offer, Install
+      button); sidebar pill → About; Settings → General; the overflow flyout's rexenv icon
+      right-clicked → `Update to 0.8.13…`, `Check for Updates…` → About, "checked just now". Width:
+      at 980 the pill is whole; a `MoveWindow` to 960 — BELOW the declared minimum, which Windows
+      enforces only for a user's drag — clipped it, so that is not a state a user reaches.
 The swap and the relaunch are measured on fixtures on the Dell
 (`windows_app_bundle_swap_check`, `windows_app_relaunch_check` — `docs/TESTING.md`); what no
 fixture can do is the real install directory, the real quit gate and the real registry entry.
@@ -3929,8 +3956,12 @@ rexenv0 <name>` and read `Current Scopes:`.
       Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
       Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar, and the push
-      row (window open across a background check). **Open: owed — run on the Ubuntu 22.04 VM
-      (the `.deb`).**
+      row (window open across a background check). ✓ **16 Oct 2026, Ubuntu 22.04 arm64 UTM VM**, this
+      tree's binary built in the linux-check container (0.8.12-pinned, `TAURI_CONFIG` devUrl null)
+      installed over `/usr/bin/rexenv`, launched on the GNOME desktop: pills on Sites at first paint;
+      TopBar pill → About (14.8 MB offer); sidebar pill → About (tooltip "An update is ready — open
+      About"); Settings → General; the appindicator menu listed `Update to 0.8.13…` and `Check for
+      Updates…` as plain items → About, footer "checked just now".
 - [x] **A route an older rexenv wrote is installed, with a notice — never MISSING, never the Welcome
       screen** (ledger #769): write 0.8.10's unit by hand — `sudo sed -i 's|^ExecStop=.*|ExecStop=/sbin/ip
       link del rexenv0|' /etc/systemd/system/rexenv-dns-route.service && sudo systemctl daemon-reload`

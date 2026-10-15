@@ -1072,7 +1072,10 @@ export function DevUiReview() {
             case "installing":
               return { ...base, offered: offer };
             case "skipped":
-              return { ...base, offered: offer, skipped: "0.6.0" };
+              // Production's shape: the backend WITHDRAWS a skipped offer and
+              // says why; the fixture used to carry the offer too, which is how
+              // a card row that could never render passed its check.
+              return { ...base, offered: null, noOfferReason: "0.6.0 was skipped", skipped: "0.6.0" };
             // Automatic checking OFF, so the L2 sees the sentence that only
             // renders in that state — and can bind it to `data-auto-check`
             // rather than to a switch that is always drawn the same way.
@@ -1608,14 +1611,34 @@ export function DevUiReview() {
         {view === "updatenotice" && (
           // The REAL chrome, so the rail pill is checked where it actually sits —
           // beside the Settings link, not inside it.
-          <div data-probe="updatenotice-view" className="flex h-[760px] overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
+          // 980 px wide — the app window's MINIMUM (`tauri.conf.json` minWidth), so
+          // the TopBar here is exactly as narrow as it can ever be in production
+          // (760 px beside the 220 px sidebar). The review page's own gutter had
+          // made it narrower than any real window, which is not a case.
+          <div data-probe="updatenotice-view" className="flex h-[760px] w-[980px] min-w-[980px] overflow-hidden rounded-xl border border-rex-border bg-rex-bg">
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar
                 title="Sites"
-                subtitle="3 sites"
+                subtitle="3 sites · 3 running"
+                searchPlaceholder="Filter sites…"
+                // The Sites header's REAL cluster — three buttons, the widths of
+                // production's. One "+ New site" here let the pill overflow the
+                // window at its minimum width unseen (16 Oct 2026).
                 action={
-                  <button className="h-[34px] rounded bg-brand px-3 text-[0.8125rem] font-medium text-rex-text">+ New site</button>
+                  <>
+                    <div className="flex-none">
+                      <button className="flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright">
+                        All sites <span className="text-rex-text-muted">▾</span>
+                      </button>
+                    </div>
+                    <div className="flex-none">
+                      <button className="flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright">
+                        ↕ Name
+                      </button>
+                    </div>
+                    <button className="h-[34px] flex-none whitespace-nowrap rounded-[9px] bg-brand px-3 text-[0.8125rem] font-medium text-white">+ New site</button>
+                  </>
                 }
               />
               {params.get("state") === "checking" && (

@@ -110,7 +110,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **The update notice — built 15 Oct 2026 (`claude/update-notice`, on master), open ONLY for its per-OS GUI proof.**
+- [x] **The update notice — built 15 Oct 2026 (`claude/update-notice`, on master), open ONLY for its per-OS GUI proof.** ✓ 16 Oct 2026 — the GUI rows ran on the macOS 15.8 VM, the Dell and the Ubuntu VM from 0.8.12-pinned test builds against the live manifests (SMOKE-TEST "In-app self-update" + both tray rows); two defects found and fixed that day (pill overflow at the minimum width; the unreachable Undo row).
   The problem (owner, 15 Oct 2026): the only always-on sign of a release was a bare mono `0.6.0` beside
   Settings, read as the running version; "Check for Updates…" lived only in the macOS app menu; a background
   check told the window nothing. `docs/PLAN-update-notice.md` T1–T4 landed: the `app-update` push (ledger #884),

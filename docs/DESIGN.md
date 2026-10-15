@@ -38,7 +38,12 @@ the shipped UI toward one.
   A notice needs a verb or an icon that says what the value is for: the TopBar pill reads
   `↑ Update to 0.6.0` / `Restart to finish 0.6.0`, the sidebar's says `Update ready` with no
   version at all, and both are doors to Settings → About, never installers
-  (`UpdatePill.tsx`, ledger #885, `docs/PLAN-update-notice.md`).
+  (`UpdatePill.tsx`, ledger #885, `docs/PLAN-update-notice.md`). **At the window's minimum
+  width the pill is what stays whole and the SEARCH is what gives** (190 → 100 px, `TopBar.tsx`):
+  the first macOS run found the pill pushed past the window's edge on Sites, version and all,
+  because the search was a fixed width and the review fixture had one header button where Sites
+  has three (16 Oct 2026). A flex item cannot shrink below its nowrap text, so "the label
+  truncates" is not a thing a pill can promise — the room has to come from a neighbour.
 - **A thing that works is never shown as missing.** A Linux DNS route an older rexenv wrote still
   routed every name, and 0.8.11 said "resolver MISSING" and opened onboarding's Welcome over three
   sites (30 Sep 2026, #769). The shape on disk is now an amber NOTICE beside "installed" with a

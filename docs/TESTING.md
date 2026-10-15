@@ -1124,7 +1124,10 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   Win11 VM 20 Sep 2026, where it found three separate reasons the first implementation could
   not work (working directory, `output()` vs `status()`, and a shared log file).
 - `appupdate.js` (WebKit, `verify-full.sh`) — the update notice in the chrome
-  (`?view=updatenotice`: the REAL Sidebar and TopBar). Per mocked state at 900 and 1440: the
+  (`?view=updatenotice`: the REAL Sidebar and TopBar, the frame pinned at 980 px — the window's
+  minimum — with Sites' real three-button header; the fixture had carried ONE button at 900 and so
+  passed while the macOS VM showed the pill pushed past the window's edge, 16 Oct 2026). Per mocked
+  state at 980 and 1440: the pill inside the bar with its version whole, the
   TopBar pill's `data-phase`, a verb plus the version where there is an offer and the version
   never clipped, no pill with no key pinned; the sidebar pill only with a notice, linking to
   `?section=about`, while Settings stays plain `/settings`; no bare version anywhere in the
