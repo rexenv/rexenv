@@ -71,13 +71,18 @@ async fn main() -> ExitCode {
         offered == catalog.newer_than(updates::Family::PhpMyAdmin, pinned, other),
         "an arch-free artifact answered differently per arch",
     );
-    // The families never answer for each other: a phpMyAdmin version string asked of
-    // the Adminer or PHP family must get nothing.
+    // The offer comes from phpMyAdmin's OWN rows. A version string is not typed per
+    // family — ask the Adminer family about "5.2.2" and it will happily offer its 6.1.2,
+    // because its rule is "any newer version within the ceiling" (found on the first real
+    // run, 15 Oct 2026: this leg once asserted the Adminer family answers NOTHING here and
+    // failed against the live document). The property that matters: what the phpMyAdmin
+    // family offers resolves as a `phpmyadmin` row, never as another family's, and the PHP
+    // family (minor-tracked) offers nothing for a phpMyAdmin version.
     checks.is(
-        "the families do not answer for each other",
-        catalog.newer_than(updates::Family::Adminer, pinned, arch).is_none()
+        "the phpMyAdmin offer is a phpmyadmin row, and PHP offers nothing for it",
+        offered.as_deref().map_or(true, |v| catalog.artifact("phpmyadmin", v, updates::ANY_ARCH).is_some())
             && catalog.newer_than(updates::Family::Php, pinned, arch).is_none(),
-        "another family offered something for a phpMyAdmin version string",
+        "the offer is not a phpmyadmin row, or the PHP family answered for a phpMyAdmin version",
     );
 
     // The selection and the FLOOR — against the SANDBOX database, with or without

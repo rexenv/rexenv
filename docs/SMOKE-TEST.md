@@ -990,9 +990,19 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   says 5.2.3 = the stage published without the marker, or the row was not re-read.
   Relaunch the app: `~/Library/Application Support/dev.rexenv.rexenv/bin/` keeps
   `phpmyadmin-5.2.3` and the chosen version's tree and nothing else named
-  `phpmyadmin-<v>`. **Open: no manifest carries a phpMyAdmin row yet (the runtimes PR
-  adds the discovery; the first publish is the first run).** L1 `phpmyadmin_update_check`
-  covers the chain up to the stage; L2 `dbconsole-*` the card's six states.
+  `phpmyadmin-<v>`. L1 `phpmyadmin_update_check` covers the chain up to the stage; L2
+  `dbconsole-*` the card's six states. ✓ **15 Oct 2026 (macOS 15.8 UTM VM):** manifest
+  serial 10 published with the first `phpmyadmin` row (5.2.3 — upstream's newest IS the
+  pin, so the run used a TEST build pinned to 5.2.2, uncommitted; the shipped build is
+  offered nothing today, correctly). `rex db console` printed `update offered: 5.2.3`; the
+  card showed **Update to 5.2.3**; pressed → "Updating to 5.2.3…" with the spinner, the hub
+  downloading `phpmyadmin 5.2.3`, marker `5.2.3`, `themes/boodark/` beside it, the served
+  page "phpMyAdmin 5.2.3", **Back to 5.2.2** shown; pressed → the 5.2.2 zip downloaded,
+  probed, published (marker `5.2.2` in 12 s), the page "phpMyAdmin 5.2.2"; relaunch → the
+  log `phpmyadmin: removed outdated binary cache phpmyadmin-5.2.3` (the sweep: neither pin
+  nor effective); Update again → re-download, marker `5.2.3`, both trees kept. L1
+  `phpmyadmin_update_check` green on the dev Mac against the live document (download +
+  digest + extract + probe + stage into a sandbox).
 - [ ] **Re-upload a zip of a plugin you already have** (19 Aug 2026, #374 — L2 mocks
   the backend, so the actual overwrite only happens here): Plugins → Upload zip → pick a
   zip whose plugin is already installed → Install. It must FAIL naming the folder
@@ -3107,9 +3117,11 @@ Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · re
 - [ ] **phpMyAdmin updates through the signed manifest** (15 Oct 2026): the main body's row.
       Windows differences: none in the flow — the zip is OS-agnostic and the tree is prepared
       by `prepare_script_dir` (Mark-of-the-Web stripped); the cache is
-      `%LOCALAPPDATA%\rexenv\rexenv\bin\phpmyadmin-<v>`. **Open: waits on the first
-      published phpMyAdmin row**, then run `phpmyadmin_update_check` cross-built on the Dell
-      and the GUI press.
+      `%LOCALAPPDATA%\rexenv\rexenv\bin\phpmyadmin-<v>`. ◐ **15 Oct 2026 (Dell):**
+      `phpmyadmin_update_check` cross-built with the 5.2.2 TEST pin (`windows-example.sh`) PASS
+      against manifest serial 10 — the 5.2.3 zip downloaded, digest-checked, extracted as a
+      script tree, probed and staged into the sandbox docroot. **The GUI press is still owed**
+      (it needs a test-pinned installer; the chain it runs is the one the example ran).
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half. Windows: the theme zip is prepared by `prepare_script_dir`
       (Mark-of-the-Web stripped) and staged into `…\rexenv\rexenv\data\phpmyadmin\themes\boodark`;
@@ -3775,8 +3787,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       (`docs/TESTING.md` § Proving a Linux claim).
 - [ ] **phpMyAdmin updates through the signed manifest** (15 Oct 2026): the main body's row.
       Linux differences: none — the cache is `~/.local/share/rexenv/bin/phpmyadmin-<v>`. **Open:
-      waits on the first published phpMyAdmin row**, then `phpmyadmin_update_check` built in the
-      22.04 container and run on the Ubuntu VM, and the GUI press.
+      waits on the first published phpMyAdmin row**. ◐ **15 Oct 2026 (Ubuntu VM):**
+      `phpmyadmin_update_check` built in the 22.04 container with the 5.2.2 TEST pin, PASS
+      against manifest serial 10 (download, digest, extract, probe, stage into the sandbox).
+      **The GUI press is still owed** (a test-pinned binary; the chain is the example's).
 - [ ] **phpMyAdmin follows the app's palette** (15 Oct 2026): the main body's "Flip the
       theme" row's phpMyAdmin half; the theme under `~/.local/share/rexenv/phpmyadmin/themes/boodark`.
       ✓ **15 Oct 2026 (Ubuntu 22.04 VM, container-built 2e3cb72b over a docroot staged without the
