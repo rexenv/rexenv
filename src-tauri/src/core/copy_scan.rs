@@ -2198,7 +2198,7 @@ const LINK = "https://example.test/a//b";
     }
 
     /// **The update pills read the cache and never run a check or an install**
-    /// (ledger #885, `docs/PLAN-update-notice.md` S1/S2).
+    /// (ledger #885, `docs/archive/PLAN-update-notice.md` S1/S2).
     ///
     /// The TopBar and sidebar pills are doors to Settings → About: the card owns
     /// the check mutation and its failure copy, and the consent sentence in front

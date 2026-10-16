@@ -18,7 +18,7 @@ export const APP_UPDATE_CHECK_MUTATION = ["app-update-check"] as const;
  *
  *  ONE hook, three doors — the macOS app menu, the tray (all three OSes, through
  *  the same `menu://check-updates` event) and the TopBar's idle button — so what
- *  "the user asked" does is decided in one place (`docs/PLAN-update-notice.md`).
+ *  "the user asked" does is decided in one place (`docs/archive/PLAN-update-notice.md`).
  *
  *  It used to navigate and INVALIDATE `["app-update"]` — but that query is
  *  `app_update_state`, a pure read, so every door landed on the stored answer

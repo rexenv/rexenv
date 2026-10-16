@@ -2235,3 +2235,178 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   (`cfaec633`, which also fixed the repo panel's Refresh not re-reading the worktree lists).
   The row's build narrative moved to `docs/archive/SHIPPED-2026-10.md` ("Judgement moves").
 
+
+## Reconcile of 17 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **After an app update no site answers until Stop all/Start all** (user report, macOS, 16 Oct 2026) ✓ 16 Oct 2026 — ledger #898, 15.8 VM run + the released 0.8.13 contrast
+  a same-patch PHP rebuild (0.8.12's php-8x-8) was fetched at launch but the running pools were never
+  restarted onto it, and on a login launch login-start raced that fetch, refused with `binaries not ready
+  yet (php-fpm, …)` and left the stack down. The launch task now fetches every installed minor whose start
+  plan is not cached, restarts its live pool once the plan reads cached, and login-start waits on
+  `LAUNCH_FETCH`. Then the rest: nginx, engines, Mailpit and override servers the user already had are
+  re-fetched and restarted the same way (edge excepted, moves at the next Start all), in-use asides swept;
+  the Windows run found #899 (an adopted nginx master never stopped, a pool restart failing its own port
+  gate) — fixed. Run on all three: the 15.8 VM, the Ubuntu VM, the Dell (SMOKE rows in each section).
+
+- [x] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** ✓ 16 Oct 2026 — `wordpress::multisite_convert` now runs WordPress's own `network.php` sequence through `wp eval-file` (the network tables named on wpdb first, `dbDelta(wp_get_db_schema('global'))`, `populate_network`), then writes the six constants itself; L0 plant + L1 `live_sync_pull_into_check` leg 18 on the 7.1 pin (ledger #894). Original row: "WordPress database
+  error Table 'wp_<db>.wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): wp-cli runs
+  `install_network()` without the network tables named on wpdb, and 7.1's `populate_network` reads
+  `$wpdb->site` first. rexenv's own **Convert to multisite** (`wp_multisite_convert` →
+  `wordpress::multisite_convert`) takes the same path and will fail the same way on a 7.1 site — the
+  fixture converts with the `network.php` sequence instead (`live_sync_pull_into_check` leg 17: name
+  `$wpdb->tables('ms_global')` on wpdb, `install_network()`, `populate_network()`, then the six
+  constants). Fix: do that in `core::wordpress::multisite_convert` through `wp eval-file` (or upgrade
+  wp-cli when a fix lands); add an L1 leg on a 7.1 fixture; the Network sub-tab's SMOKE row.
+
+- [x] **App icons on Windows and Linux, Spotlight detection + Re-detect on macOS** (owner, 16 Oct 2026) ✓ 16 Oct 2026 — the GUI rows ran on the Dell, the Ubuntu VM and the macOS VM the same day (SMOKE-TEST rows ticked):
+  the browser/editor/terminal pickers on Windows and Linux wore the grey fallback glyph for every app
+  (`icon: None` on every row) while macOS showed each app's icon; a client's VS Code in a sub-folder of
+  /Applications read "No code editor detected" with no way to ask again. Built 16 Oct 2026: `exe_icon.rs`
+  (Windows, #887), `desktop.rs` icon rules (Linux, #887), Spotlight after the four folders + Settings'
+  **Re-detect** (macOS, #888). L0 green on every host; GUI ✓ on all three.
+
+- [x] **The update notice — built 15 Oct 2026 (`claude/update-notice`, on master), open ONLY for its per-OS GUI proof.** ✓ 16 Oct 2026 — the GUI rows ran on the macOS 15.8 VM, the Dell and the Ubuntu VM from 0.8.12-pinned test builds against the live manifests (SMOKE-TEST "In-app self-update" + both tray rows); two defects found and fixed that day (pill overflow at the minimum width; the unreachable Undo row).
+  The problem (owner, 15 Oct 2026): the only always-on sign of a release was a bare mono `0.6.0` beside
+  Settings, read as the running version; "Check for Updates…" lived only in the macOS app menu; a background
+  check told the window nothing. `docs/archive/PLAN-update-notice.md` T1–T4 landed: the `app-update` push (ledger #884),
+  the TopBar + sidebar pills (#885), the tray "Check for Updates…" on all three OSes (#535 widened). L0 green
+  and plant-proven; `verify.sh` all green on the dev Mac 16 Oct 2026 (windows-check + linux-check green);
+  `appupdate.js` + `appupdaterestart.js` PASS in WebKit on the dev Mac 16 Oct 2026. Owed: SMOKE-TEST "In-app self-update" notice / tray / push rows — run on the macOS VM; its Windows
+  section's tray row — run on the Dell; its Linux section's tray row — run on the Ubuntu VM.
+
+- [x] **"Check for Updates…" re-reads the stored answer; it does not fetch** ✓ 15 Oct 2026 — owner ruling: the
+  click opens About AND runs the check. `useCheckForUpdates` (app menu, tray, TopBar idle button) now navigates to
+  `/settings?section=about&check=1` and `AppUpdateCard` runs its own check once and drops the flag (ledger #886;
+  `appupdate.js` leg 6, Chromium, plant-proven; the WebKit run and the per-OS clicks are owed with the row above).
+
+- [x] **Database console: "Open in browser" on the Databases rows + phpMyAdmin as a second console** —
+  ✓ **SHIPPED 15 Oct 2026** (`ed85a0f7` … the T8 commit): T1–T8 all ticked below, proven on the macOS
+  VM, the Dell and the Ubuntu VM (GUI + `phpmyadmin_check` on each); the plan archived. —
+  owner asks, 14 Oct 2026: (1) beside each Browse button (which opens Adminer INSIDE the app) a control
+  that opens the same console in a real browser, in the app-wide shape — the preferred browser's icon,
+  the chevron listing every installed browser, each with its private-window target; (2) phpMyAdmin,
+  "onekei chachchhe". The design is `docs/archive/PLAN-db-console-open-and-phpmyadmin.md` (planned against
+  `1269fb8f`, nothing built): (1) is frontend-only — `SplitButton` + `useBrowserMenu` + `openExternal`
+  already carry the preference and the per-OS private flags on all three OSes; (2) = a second internal
+  vhost `phpmyadmin.rexenv.rex` on the shared stack for **MySQL + MariaDB only** (no PostgreSQL driver
+  exists; Postgres keeps Adminer), chosen by ONE `db_console` setting on the console card, downloaded
+  on demand when chosen, `auth_type = config` naming only the two loopback engines, the direct vhost
+  never frameable, the in-app frame through its own `rexpma` proxy origin (words + both CSP ends, all
+  three OSes). Tasks, in build order (plan §10) — each its own commit, docs in the same commit:
+  - [x] **T1** Databases row: "Open in browser" `SplitButton` (icon + chevron + private rows) beside
+    Browse; the same split button replaces `AdminerFrame`'s plain button. Proof: `wk-checks/openin.js`
+    row; GUI on macOS, the Dell (`tauri build`) and the Ubuntu VM (deb); SMOKE rows ×3.
+    ✓ **14 Oct 2026:** `OpenInBrowserSplit` in `open-in.tsx`, rendered by the Databases row
+    (`data-probe="db-open-in-browser"`) and `AdminerFrame`'s bar; `openin.js` ALL PASS in WebKit
+    (6 chevrons, the console primary sends `open_external` with the adminer url). Frontend only —
+    the preference route and the per-OS private flags were already shared. GUI runs owed: SMOKE
+    rows in the main body, § Windows and § Linux (all "no run recorded").
+  - [ ] **T7 (before T2)** `examples/phpmyadmin_check.rs` (stack tier, `all`): stage → GET through the
+    loopback edge → 200 + title, on the pinned PHP (8.3.32 — the plan said 8.5.8; the pool pin is
+    `PHP_VERSION`), run on macOS + Dell + Ubuntu VM — the measurement that fixes the version to pin,
+    and plan §7's fallback (an older pool for the vhost) if phpMyAdmin 5.2.x fatals.
+    ✓ **The measurement, 14 Oct 2026 (macOS, by hand, before T2's pin):** 5.2.3 through `php -S` on
+    the bundled 8.3.32, 8.4.23 and 8.5.8, `auth_type = config` against the real MySQL 8.4.6 (13306)
+    and MariaDB (13307): `index.php?server=1`, `?server=2` and `?route=/database/structure&db=mysql`
+    all 200 with the logged-in title, zero fatal/deprecation on the page. Headers measured for T5:
+    `X-Frame-Options: DENY`, a CSP with no `frame-ancestors`, cookies `SameSite=Strict`. **Open for
+    the example itself and its Windows + Linux runs.**
+    ✓ **15 Oct 2026, the example:** `examples/phpmyadmin_check.rs` (network tier, `all`): no
+    block/route before staging → `ensure` into a sandbox (marker, two-loopback-server config,
+    framing denied, `0600` secret) → block + route + `.user.ini` after → PLANT a parse-error
+    autoloader (`ensure_from` seam): refused by name, docroot untouched → PLANT a remote server in
+    the loaded config: refused → the real-stack leg through `dbconsole_proxy::forward` when the
+    running app has it staged. macOS run: all sandbox legs green; the real-stack leg skipped there
+    (the dev Mac's app is the release build). **Open: the real-stack leg + the Windows and Linux runs.**
+    ✓ **15 Oct 2026, the runs:** macOS VM (15.8, the release build swapped in) — every leg incl. the
+    real stack through the proxy; the first GUI Browse was an EMPTY frame → `AllowThirdPartyFraming`
+    `false` → `'sameorigin'` (ledger #865) and a rebuild now re-renders a staged config (an app
+    update's generator must reach it — the swapped app kept the old `false`); after both, phpMyAdmin
+    renders inside the app, logged in, and "Open in browser" opened it in Safari. Ubuntu VM (22.04
+    arm64, the container-built binary swapped into `/usr/bin`): `rex db console phpmyadmin` 2.6 s,
+    `SAMEORIGIN`, the logged-in title, `0600` secret, the example green incl. the real-stack leg.
+    Dell (Win10 22H2, the installer built there): `rex db console phpmyadmin` 64 s, `SAMEORIGIN`,
+    forward-slash `TempDir`, no Mark-of-the-Web stream, the secret's ACL owner-only, phpMyAdmin
+    inside the app at `http://rexpma.localhost`, Firefox's private target launched with
+    `-private-window`; `phpmyadmin_check` cross-built and green there too. GUI rows ticked in SMOKE
+    ×3; ledger #864–#867, #869 → ✅ naming the three hosts.
+  - [x] **T2** catalog arm `phpmyadmin` (`Shape::Dir`, OS-agnostic zip, sha256), `docs/PORTS.md` rows
+    in the macOS + Windows + Linux tables, THIRD-PARTY-NOTICES row (GPL-2.0-or-later, one artifact —
+    `notices-check.py` decides whether its vendored composer tree needs per-package rows).
+    ✓ **14 Oct 2026:** `PHPMYADMIN_VERSION` 5.2.3 + `PHPMYADMIN_5_2_3_SHA256`, `phpmyadmin_spec`
+    (pin only, `files.phpmyadmin.net`, `ZipTree { strip: 1 }` → `index.php`), `Shape::Dir`, the
+    `PinSet` field; a PHP tree is prepared by the new `prepare_script_dir` trait method (Windows:
+    MotW stripped, no PE required — `check_tree` would have refused it), default no-op on macOS/Linux.
+    NOTICES: a downloaded runtime, not distributed by us — the prose list, no table (the checker
+    walks only the compiled-in composer tree). PORTS rows ×3 tables; PLATFORMS §3.
+  - [x] **T3** `core/phpmyadmin.rs`: docroot + marker + rename-publish staging, the `config.inc.php`
+    generator (pure, tested: loopback-only servers, forward-slash paths with a space AND a backslash,
+    `AllowThirdPartyFraming = false`), the blowfish secret file owner-only via `permissions()`,
+    `.user.ini` (#788 shape), the `verify_tree` probe BEFORE publish (plant: a fatal tree never
+    becomes the docroot). Ledger rows plan §5.1, §5.2, §5.5.
+    ✓ **15 Oct 2026:** the module as planned (6 L0 tests, two plant-proven; the probe loads the
+    tree's own `constants.php` + autoloader and `PhpMyAdmin\Config` from the generated file, and
+    re-checks the LOADED servers and framing key); by hand on macOS the probe said OK on the real
+    5.2.3 tree (8.3.32 + 8.5.8) and FAIL on three plants (parse-error autoload, a remote server, framing
+    opened). Ledger #864–#866, each ◐ until T7's example runs on all three OSes. Nothing calls
+    `ensure` yet — T6 does.
+  - [x] **T4** the vhost in `sites::rebuild` emitted only for a staged docroot, cert, the
+    `tunnels.rs` tunnel-origin assertion widened to both hosts. Ledger rows §5.3, §5.6.
+    ✓ **15 Oct 2026:** `sites::console_vhosts` (one rule for both consoles) + the staged gate read
+    once for the nginx block and the edge route; the CA-rotation reissue covers the host while
+    staged; ledger #867 (◐, plant-proven L0) and #868 (✅). Live rebuild legs → T7.
+  - [x] **T5** `core/dbconsole_proxy.rs`: `forward(console, …)`, one cookie jar per console (§5.4),
+    `X-Frame-Options` stripped on the replayed copy only, the `rexpma` scheme in `lib.rs` (+ a
+    `PLAN-linux-port.md` §1.1 row), `PlatformWords` origin filled for macOS/Windows/Linux,
+    `tauri.conf.json` `frame-src` in `csp` AND `devCsp` — both ends, every OS (#699/#702/#703).
+    Proof: the frame renders on all three (GUI), the `SameSite=Strict` cookie measurement (plan §7).
+    ✓ **15 Oct 2026:** the module (`Console::{Adminer,PhpMyAdmin}`, `forward`, the pure
+    `replay_headers`), `lib.rs` registers both schemes through one `db_console_request`, no new
+    `cfg(target_os)` (so no §1.1 row), `phpmyadmin_origin` in all three word sets with the
+    scheme-shape test, `frame-src` in `csp` + `devCsp`, the TS type + mock. Ledger #869, #870
+    (plant-proven). The GUI render on each OS and the `SameSite=Strict` jar behaviour are T6's
+    rows (nothing frames `rexpma:` until the UI exists).
+  - [x] **T6** the `db_console` setting + IPC (`db_console_get` / `db_console_set` = download → probe →
+    stage → rebuild → reload, the button holding the sentence), the console card's segmented control
+    + phpMyAdmin version line, `src/lib/dbconsole.ts` choosing URLs, Browse / Open in browser / the
+    site Database tab following it, Postgres rows pinned to Adminer with the tooltip. GUI ×3; SMOKE ×3.
+    ✓ **15 Oct 2026 (built):** `db_console_status` / `db_console_set` (choosing phpMyAdmin IS the
+    install: prefetch → `ensure` → setting → web-tier reload), `phpmyadmin::effective_console`
+    read-filtered on the staged marker (CLI access read-only), the `DbConsoleCard`, `src/lib/
+    dbconsole.ts` + `phpmyadmin.ts`, the console-aware frame/tab/rows, `rex db console` +
+    `rex db browse` following it. SMOKE rows written for macOS, Windows, Linux — **GUI runs owed
+    on each OS** (the macOS dev Mac's running app holds a live tunnel, so the macOS GUI run is the
+    VM's).
+  - [x] **T8** docs with each commit: ARCHITECTURE (§Adminer → "Database consoles"), MAP, PLATFORMS §3,
+    SMOKE main + § Windows + § Linux, DESIGN, TESTING + `live-checks.sh`, the ledger verdicts naming
+    the OS each proof came from; then the plan header → SHIPPED and its move to `docs/archive/`.
+    ✓ **15 Oct 2026:** every doc landed with its commit; the plan is `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`
+    (SHIPPED), its README row added, citations repointed.
+  Follow-ups, NOT this row (plan §9): phpMyAdmin as a third `updates::Family`; its palette following
+  the app (`rex db console` shipped with T6).
+
+- [x] **phpMyAdmin follow-ups** (plan §9, `docs/archive/PLAN-db-console-open-and-phpmyadmin.md`;
+  the design record is `docs/archive/PLAN-phpmyadmin-followups.md`). ✓ **15 Oct 2026** — all three
+  below; still owed outside the app: the `rexenv/runtimes` PR #24 (owner merges) and, after the first
+  published phpMyAdmin row, the SMOKE update rows on each OS:
+  - [x] (1) a third `updates::Family` so the console updates through the signed manifest like
+    Adminer. ✓ **15 Oct 2026** — `Family::PhpMyAdmin` (`arch: any`, `files.phpmyadmin.net/phpMyAdmin/`
+    only, `PHPMYADMIN_MAX_MAJOR` = 5), `phpmyadmin_spec` pin-first/catalog-second,
+    `phpmyadmin::effective_version` (choice → floor → vouch), `phpmyadmin_update_check`/`_apply`
+    (stage THEN record), the console card's Update / Back to, MCP `stack` actions, L1
+    `phpmyadmin_update_check` (network tier), L2 `dbconsole-*` ×6; ledger #871–#873. **Open half:**
+    the publisher — `rexenv/runtimes` PR (`PHPMYADMIN_PIN`/`_MAX_MAJOR`, discovery, `arch: any`,
+    `manifest-guard.py`), owner merges; the first published row is SMOKE's first run (×3 OSes).
+  - [x] (2) its palette following the app (5.2 ships no dark theme — a vendored one is needed).
+    ✓ **15 Oct 2026** — BooDark 1.2.0 pinned as `phpmyadmin-theme` (MIT, `supports 5.2`, from the
+    project's theme mirror, never a manifest row), staged into `themes/boodark/` by `ensure`; the
+    generated config reads `.rexenv-theme` per request (Adminer's file and mechanism), picker off,
+    stale cookie dropped; `adminer_set_theme` writes both docroots; the probe refuses a theme not
+    declaring the tree's series; `phpmyadmin_check` runs the resolution through the real PHP;
+    ledger #875/#876. GUI render = SMOKE rows ×3.
+  - [x] (3) the ~52 MB tree is never swept. ✓ **15 Oct 2026** — `gc_outdated_phpmyadmin_caches` at
+    launch keeps the pin + the effective version, refuses an empty keep-set, never touches the
+    theme dir; ledger #874.
+

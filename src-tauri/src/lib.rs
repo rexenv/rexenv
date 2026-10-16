@@ -1923,7 +1923,7 @@ pub fn take_swapped_awaiting_restart() -> Option<std::path::PathBuf> {
 /// and the sidebar/TopBar/toast — which read the `["app-update"]` cache and never
 /// poll — learned of a release the poller found only when somebody opened About.
 /// The always-visible notice was showing the PREVIOUS session's answer
-/// (`docs/PLAN-update-notice.md` §1). The DB guard is dropped first: `refresh_tray`
+/// (`docs/archive/PLAN-update-notice.md` §1). The DB guard is dropped first: `refresh_tray`
 /// reads the sites through `tray_model`, which takes the same lock.
 async fn check_for_app_update(app: &tauri::AppHandle, state: &state::app::AppState) {
     use tauri::Emitter;
@@ -3342,7 +3342,7 @@ mod tests {
     }
 
     /// **A background check that accepts a descriptor TELLS the window and the
-    /// tray** (ledger #884, `docs/PLAN-update-notice.md` S4).
+    /// tray** (ledger #884, `docs/archive/PLAN-update-notice.md` S4).
     ///
     /// The sidebar, the TopBar pill and the toast read `["app-update"]` with
     /// `staleTime: Infinity` — they are told, they do not poll — so a check that

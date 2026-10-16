@@ -701,7 +701,7 @@ run them.
   which the Accessory activation policy and Sparkle's convention both argue against.
   **Lesson, 15 Oct 2026:** the badge shipped as a bare mono `0.6.0` beside Settings and was read
   as the RUNNING version — a value with no verb is not a notice. Replaced by the TopBar/sidebar
-  pills and a tray "Check for Updates…" (`docs/PLAN-update-notice.md`, ledger #885).
+  pills and a tray "Check for Updates…" (`docs/archive/PLAN-update-notice.md`, ledger #885).
 
 ## §T0 result — **O1, measured 6 Sep 2026 on macOS 26.6.2 (25G83)**
 

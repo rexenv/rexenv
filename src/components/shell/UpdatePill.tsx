@@ -32,7 +32,7 @@ export function updatePillPhase(
 }
 
 /**
- * The app-update notice in the app's own chrome (`docs/PLAN-update-notice.md`
+ * The app-update notice in the app's own chrome (`docs/archive/PLAN-update-notice.md`
  * S1/S2): `bar` sits at the right of every TopBar, `rail` beside Settings in the
  * sidebar.
  *

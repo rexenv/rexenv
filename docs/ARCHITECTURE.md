@@ -1235,7 +1235,7 @@ honest footer —
   keeps yesterday's timestamp instead of aging into a lie, and nothing ever says "up to
   date".
   **A background check that ACCEPTS a descriptor tells the window and the tray** (15 Oct
-  2026, ledger #884, `docs/PLAN-update-notice.md` S4): `check_for_app_update` drops the DB
+  2026, ledger #884, `docs/archive/PLAN-update-notice.md` S4): `check_for_app_update` drops the DB
   guard, emits `app-update` (no payload) and calls `refresh_tray`; `AppUpdateEventWatch` at the
   app root invalidates `["app-update"]` + `["app-update-readiness"]`. Every surface that shows
   the offer reads that cache with `staleTime: Infinity` — told, never polling — and until this
@@ -2170,7 +2170,7 @@ words (the browser shell's mock and two dev review pages excepted).
   only caller of the check, with its own failure copy and 6 s deadline (owner ruling, 15 Oct
   2026).
 - **The tray's "Check for Updates…"** (`TrayAction::CheckUpdates`, `tray:check-updates`, 15 Oct
-  2026, `docs/PLAN-update-notice.md` S3) sits right under the update item, or first when there
+  2026, `docs/archive/PLAN-update-notice.md` S3) sits right under the update item, or first when there
   is no offer, whenever a release key is pinned (`TrayModel::update_enabled` =
   `app_update::enabled()`, a compiled-in constant — a dev build omits it). Its click shows the
   window and raises the SAME `menu://check-updates` event as the macOS app menu, so one handler

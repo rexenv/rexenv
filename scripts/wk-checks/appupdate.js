@@ -1,5 +1,5 @@
 // WebKit check: the app-update notice in the app's own chrome
-// (docs/PLAN-update-notice.md S1/S2/S4, ledger #884 / #885).
+// (docs/archive/PLAN-update-notice.md S1/S2/S4, ledger #884 / #885).
 //
 // The only always-visible notice used to be a bare mono `0.6.0` beside Settings,
 // read as the RUNNING version by the people it was meant to alert (owner,

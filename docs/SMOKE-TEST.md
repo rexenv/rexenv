@@ -2762,7 +2762,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   no version, or a menu that hangs while it opens — it must read a snapshot, never fetch.
   ✓ 7 Sep 2026 (dev Mac, 0.6.0 → 0.6.1): the tray's `Update to …` item opened About and
   installed nothing. ✓ 18 Sep 2026 (clean VM, → 0.7.2).
-- [x] **The update notice is on a screen that is not Settings** (`docs/PLAN-update-notice.md`
+- [x] **The update notice is on a screen that is not Settings** (`docs/archive/PLAN-update-notice.md`
   S1/S2, ledger #885). With a newer release published, open **Sites**: the TopBar's right end
   shows a brand pill `↑ Update to <version>` and the sidebar shows `● Update ready` on its own
   line above Settings — **no bare version anywhere in the sidebar**. Click the TopBar pill → Settings
@@ -3502,7 +3502,7 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       Studio Code" VS Code's; Terminal kept the glyph (Windows Terminal's `wt.exe` is an alias stub
       with no icon group — the honest case). Re-detect present.
 - [x] **The tray is the ONLY menu path to "Check for Updates…" here** (Windows draws no app menu;
-      `docs/PLAN-update-notice.md` S3, ledger #535). Right-click the notification-area icon →
+      `docs/archive/PLAN-update-notice.md` S3, ledger #535). Right-click the notification-area icon →
       **Check for Updates…** → the window comes forward on Settings → About. Then the main body's
       notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar — and with
@@ -4114,7 +4114,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       icon; a site's Open in browser control and the Quick-links "Open in Firefox" the same; Re-detect
       present ("No code editor detected" — the VM has none).
 - [x] **The tray is the ONLY menu path to "Check for Updates…" here** (GTK has no app menu;
-      `docs/PLAN-update-notice.md` S3, ledger #535). From the appindicator menu choose **Check for
+      `docs/archive/PLAN-update-notice.md` S3, ledger #535). From the appindicator menu choose **Check for
       Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
       Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar, and the push

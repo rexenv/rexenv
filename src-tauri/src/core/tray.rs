@@ -148,7 +148,7 @@ pub enum TrayAction {
     /// `menu://check-updates` event the macOS app menu raises, so one frontend
     /// handler decides what "the user asked" does on every OS. Windows and Linux
     /// have no app menu at all, so on those two this item is the ONLY menu path
-    /// to the check (`docs/PLAN-update-notice.md` S3). Like `UpdateTo`, it never
+    /// to the check (`docs/archive/PLAN-update-notice.md` S3). Like `UpdateTo`, it never
     /// fetches and never installs (ledger #535): it opens a door.
     CheckUpdates,
 }
@@ -962,7 +962,7 @@ mod tests {
     }
 
     /// **Check for Updates… is in the tray exactly when a key is pinned, beside
-    /// the offer or where it would be** (`docs/PLAN-update-notice.md` S3).
+    /// the offer or where it would be** (`docs/archive/PLAN-update-notice.md` S3).
     ///
     /// Windows and Linux have no app menu, so without this item the check had no
     /// menu path at all on two of the three OSes. A dev build pins no key and has
