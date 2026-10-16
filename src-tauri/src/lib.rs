@@ -826,6 +826,9 @@ pub fn run() {
                                 Err(e) => log::warn!("php: {minor}'s repaired pool did not become ready: {e}"),
                             }
                         }
+                        // …and the rest of the stack the same way: nginx, an engine,
+                        // Mailpit or an override server this build moved or re-pinned.
+                        commands::services::launch_refetch_stack(&state).await;
                         drop(launch_fetch);
 
                         // Refresh the SIGNED update manifest, so the catalog is

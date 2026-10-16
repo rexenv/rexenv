@@ -239,6 +239,19 @@ pub fn uncached_names(plan: &[PlannedBinary]) -> Vec<&str> {
     plan.iter().filter(|p| !p.cached).map(|p| p.name.as_str()).collect()
 }
 
+/// The non-PHP half of the launch fetch (ledger #898): the start plan's items this build
+/// would have to download AND that the user already had in some version (`had`, asked of
+/// [`binaries::has_any_cache`]) — a re-pinned or moved nginx, caddy, engine, Mailpit or
+/// override server. PHP is left out: the launch fetches PHP per INSTALLED minor and restarts
+/// its pools itself, and a minor no site needs is not on this plan at all. An item the user
+/// never had is left out too, so a stack nobody has started is never fetched at an open.
+pub fn launch_refetch(plan: &[PlannedBinary], had: impl Fn(&str) -> bool) -> Vec<PlannedBinary> {
+    plan.iter()
+        .filter(|p| !p.cached && p.name != "php" && p.name != "php-fpm" && had(&p.name))
+        .cloned()
+        .collect()
+}
+
 /// One binary an action needs: enough to plan (cached split), display (via
 /// [`Planned`]) and fetch (via [`resolve_any`]'s name-based dispatch).
 #[derive(Debug, Clone)]
@@ -843,6 +856,25 @@ mod tests {
         let warm = vec![PlannedBinary { name: "caddy".into(), version: "1".into(), cached: true }];
         assert!(uncached_names(&warm).is_empty());
         assert!(uncached_names(&[]).is_empty());
+    }
+
+    /// Ledger #898 — the launch re-fetches only what the user HAD, never PHP (fetched per
+    /// installed minor beside it), never a cached item.
+    #[test]
+    fn launch_refetch_takes_uncached_non_php_items_the_user_had() {
+        let p = |n: &str, cached| PlannedBinary { name: n.into(), version: "1".into(), cached };
+        let plan = vec![
+            p("caddy", true),
+            p("nginx", false),
+            p("mysql", false),
+            p("php-fpm", false),
+            p("php", false),
+            p("openlitespeed", false),
+        ];
+        let had = |n: &str| n != "openlitespeed";
+        let names: Vec<String> = launch_refetch(&plan, had).into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec!["nginx", "mysql"]);
+        assert!(launch_refetch(&plan, |_| false).is_empty(), "a never-started stack fetches nothing");
     }
 
     /// A fresh hub per test (the global one is shared across the test binary).

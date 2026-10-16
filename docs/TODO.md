@@ -115,7 +115,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   restarted onto it, and on a login launch login-start raced that fetch, refused with `binaries not ready
   yet (php-fpm, …)` and left the stack down. The launch task now fetches every installed minor whose start
   plan is not cached, restarts its live pool once the plan reads cached, and login-start waits on
-  `LAUNCH_FETCH`. Windows/Linux runs owed (SMOKE rows in each section).
+  `LAUNCH_FETCH`. Then the rest: nginx, engines, Mailpit and override servers the user already had are
+  re-fetched and restarted the same way (edge excepted, moves at the next Start all), in-use asides swept;
+  the Windows run found #899 (an adopted nginx master never stopped, a pool restart failing its own port
+  gate) — fixed. Run on all three: the 15.8 VM, the Ubuntu VM, the Dell (SMOKE rows in each section).
 
 - [x] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** ✓ 16 Oct 2026 — `wordpress::multisite_convert` now runs WordPress's own `network.php` sequence through `wp eval-file` (the network tables named on wpdb first, `dbDelta(wp_get_db_schema('global'))`, `populate_network`), then writes the six constants itself; L0 plant + L1 `live_sync_pull_into_check` leg 18 on the 7.1 pin (ledger #894). Original row: "WordPress database
   error Table 'wp_<db>.wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): wp-cli runs

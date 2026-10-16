@@ -1341,8 +1341,14 @@ impl ServiceManager {
                     &self.site_env,
                     &self.site_aliases,
                 )?;
+                // The platform's STOP, as Stop all does — never `Proc::kill`, which is a
+                // no-op on an ADOPTED handle: the adopted master was left running while
+                // only the port's listeners were reaped. On macOS/Linux the master
+                // listens too, so it went down anyway; on Windows it does not listen,
+                // survived, respawned a worker, and two nginx trees served side by side
+                // (the Dell, 16 Oct 2026, ledger #898).
                 if let Some(mut child) = self.nginx.take() {
-                    child.kill();
+                    let _ = services::stop(platform, child.id());
                     child.wait();
                 }
                 // Workers outlive a killed master and keep the port (their title
@@ -1351,6 +1357,7 @@ impl ServiceManager {
                 for pid in platform.supervisor().owned_listeners(self.ports.nginx, "nginx") {
                     let _ = platform.supervisor().stop(pid);
                 }
+                ports::wait_free(platform, self.ports.nginx, ports::Proto::Tcp, 20, Duration::from_millis(250));
                 ports::ensure_free(platform, self.ports.nginx, ports::Proto::Tcp, "Nginx")?;
                 self.nginx = Some(
                     services::start_nginx(platform, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)?
@@ -1866,6 +1873,112 @@ impl ServiceManager {
     }
 
     /// Stop the whole stack.
+    /// Move every RUNNING service whose binary the launch just fetched onto those bytes
+    /// (ledger #898) — the non-PHP half of what an update owes the stack (PHP pools are
+    /// restarted per minor by the launch itself). `fetched` holds only items the launch
+    /// fetched successfully, so each re-resolve below is a cache hit, never a download
+    /// under this lock.
+    ///
+    /// Why: services outlive the app, so after an update re-pins or moves nginx, an
+    /// engine, Mailpit or an override server, the survivors keep the OLD bytes until a
+    /// Stop all/Start all — and a moved nginx/caddy pin left adoption with no `bins` at
+    /// all (no cache for the new pin), so every reload failed "binaries not resolved yet".
+    ///
+    /// **The edge is never restarted here**: on macOS and Linux moving it means a privileged
+    /// reinstall, and a prompt must never appear unprompted (the watchdog's rule); Windows
+    /// follows the same rule rather than a per-OS exception nobody has run. Its new caddy
+    /// is wired for reloads, and the edge itself moves at the next Start all — said in the
+    /// returned notes, never silently. Returns the readiness checks to await AFTER the lock
+    /// drops (M4) and one note per thing not moved.
+    pub async fn restart_onto_fetched(
+        &mut self,
+        platform: &dyn Platform,
+        ca: &ssl::LocalCa,
+        sites: &[Site],
+        fetched: &[crate::core::downloads::PlannedBinary],
+    ) -> (Vec<ReadyCheck>, Vec<String>) {
+        let mut checks = Vec::new();
+        let mut notes = Vec::new();
+        let got = |name: &str| fetched.iter().any(|b| b.name == name);
+        if got("nginx") || got("caddy") {
+            let nginx = binaries::cached_program(platform, "nginx", binaries::pins().nginx);
+            let caddy = binaries::cached_bin(platform, "caddy", binaries::pins().caddy);
+            if let (Some(nginx), Some(caddy)) = (nginx, caddy) {
+                self.bins = Some(Bins { nginx, caddy });
+            }
+        }
+        if got("nginx") && self.nginx.is_some() && self.bins.is_some() {
+            match self.restart_web_service(platform, ca, sites, &WebTarget::Nginx).await {
+                Ok((WebRestartOutcome::Restarted, c)) => checks.extend(c),
+                Ok(_) => notes.push("Nginx was not restarted onto its new binary".to_string()),
+                Err(e) => notes.push(format!("Nginx could not be restarted onto its new binary: {e}")),
+            }
+        }
+        if got("caddy") && !matches!(self.caddy, CaddyHandle::Stopped) {
+            notes.push(
+                "the HTTPS edge keeps its running Caddy until the next Start all — rexenv never \
+                 restarts the edge unprompted"
+                    .to_string(),
+            );
+        }
+        for engine in DbEngine::ALL.into_iter().filter(|e| e.available()) {
+            let version = self.db_version(engine);
+            if !self.dbs.contains_key(&engine)
+                || !fetched.iter().any(|b| b.name == engine.key() && b.version == version)
+            {
+                continue;
+            }
+            self.stop_db(platform, engine).ok();
+            match self.spawn_db(platform, engine).await {
+                Ok(Some(c)) => checks.push(c),
+                Ok(None) => {}
+                Err(e) => notes.push(format!("{} could not be restarted onto its new binary: {e}", engine.label())),
+            }
+        }
+        if got("mailpit") && self.mailpit.is_some() {
+            self.stop_mailpit(platform).ok();
+            self.mailpit_bin = binaries::cached_bin(platform, "mailpit", binaries::pins().mailpit);
+            match self.spawn_mailpit(platform).await {
+                Ok(Some(c)) => checks.push(c),
+                Ok(None) => {}
+                Err(e) => notes.push(format!("Mailpit could not be restarted onto its new binary: {e}")),
+            }
+        }
+        // Override servers: forget the resolved-once path (it names the old cache), then
+        // restart each RUNNING backend of that kind on its recorded port.
+        let kinds: Vec<OverrideKind> = [
+            ("frankenphp", OverrideKind::Frankenphp),
+            ("httpd", OverrideKind::Apache),
+            ("openlitespeed", OverrideKind::Openlitespeed),
+        ]
+        .into_iter()
+        .filter(|(name, _)| got(name))
+        .map(|(_, kind)| kind)
+        .collect();
+        for kind in &kinds {
+            match kind {
+                OverrideKind::Frankenphp => self.frankenphp_bin = None,
+                OverrideKind::Apache => self.httpd_dir = None,
+                OverrideKind::Openlitespeed => self.ols_dir = None,
+            }
+        }
+        let running: Vec<&Site> = sites
+            .iter()
+            .filter(|s| {
+                OverrideKind::of(s.web_server).is_some_and(|k| kinds.contains(&k))
+                    && self.overrides.contains_key(&s.domain)
+            })
+            .collect();
+        for site in running {
+            match self.restart_site_backend(platform, site).await {
+                Ok((SiteRestartOutcome::Backend { .. }, c)) => checks.extend(c),
+                Ok(_) => notes.push(format!("{}'s server was not restarted onto its new binary", site.domain)),
+                Err(e) => notes.push(format!("{}'s server could not be restarted onto its new binary: {e}", site.domain)),
+            }
+        }
+        (checks, notes)
+    }
+
     pub fn stop_all(&mut self, platform: &dyn Platform) -> Result<()> {
         // Manual intervention resets the watchdog's give-up counters.
         self.restart_attempts.clear();
@@ -3325,6 +3438,28 @@ mod tests {
             let waits = f.matches("await_child_edge(").count();
             assert!(spawns > 0 && waits == spawns, "{name}: {spawns} child-edge spawn(s), {waits} wait(s)");
         }
+    }
+
+    /// Ledger #899 — a restart STOPS what it adopted: the nginx arm of `restart_web_service`
+    /// goes through the platform's stop (as Stop all does), never `Proc::kill`, which does
+    /// nothing to an adopted handle; and a pool's `stop_one` waits for its port before the
+    /// respawn's port gate. Text order (the behaviour half is the Dell run in the row).
+    #[test]
+    fn a_restart_stops_the_adopted_master_and_waits_for_the_port() {
+        let src = crate::core::copy_scan::production_source(include_str!("service_manager.rs"));
+        let arm = src.find("WebTarget::Nginx => {").expect("the nginx arm");
+        let end = src[arm..].find("WebTarget::Edge => {").expect("the edge arm") + arm;
+        let body = &src[arm..end];
+        let stop = body.find("services::stop(platform, child.id())").expect("the platform's stop");
+        let wait = body.find("ports::wait_free(").expect("a wait for the port");
+        let gate = body.find("ports::ensure_free(").expect("the gate");
+        assert!(stop < wait && wait < gate, "stop → wait for the port → gate");
+        assert!(!body.contains("child.kill()"), "Proc::kill is a no-op on an adopted master");
+
+        let php = crate::core::copy_scan::production_source(include_str!("php.rs"));
+        let one = php.find("pub fn stop_one(").expect("stop_one");
+        let next = php[one..].find("pub fn stop_all(").expect("stop_all follows") + one;
+        assert!(php[one..next].contains("ports::wait_free("), "stop_one returns before its port frees");
     }
 
     /// Ledger #851 — a Start all waits for an edge only while its supervisor is still starting it.

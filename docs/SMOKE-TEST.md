@@ -2908,6 +2908,11 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   throughout; (b) nginx + fpm stopped, both fpm caches' pin markers spoiled, `--hidden` launch →
   the wait line, the fetch, 200 at +20 s. The released 0.8.13 on the same steps: `auto-start:
   [restart-failed] binaries not ready yet (php…`, 502 for as long as it was watched.
+  (c) the same with nginx, Mailpit and caddy re-pinned too — `launch: fetching what this build moved
+  or re-pinned: caddy …, nginx …, mailpit …`, nginx's and Mailpit's pids change, the edge's does not
+  (`the HTTPS edge keeps its running Caddy until the next Start all`), no prompt, sites 200. ✓ **16 Oct
+  2026, 15.8 VM**, final build: 8.3 fpm 2826→27694 (7.4 untouched), nginx 3446→27872, Mailpit
+  3466→27911, caddy 325 untouched.
 
 ## Robustness (spot-check) — §2
 - [ ] **Start all over a running edge adds no "Background Items Added" card** (ledger #772): with
@@ -3475,10 +3480,16 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       (1,009,152 B), `rex status` answered; the card then reads "Installed — … Reinstall".
 
 ### In-app self-update — replaces the macOS section
-- [ ] **An update that re-pins a running binary moves the stack onto it, and the first login after it
-      still starts the stack** (ledger #898) — the macOS row's (a) and (b), on Windows. Common code (the
-      launch task in `lib.rs`, `LAUNCH_FETCH` in `commands/services.rs`), so the steps are the macOS ones;
-      the pool is the php-cgi group, the login launch is the logon task's `--hidden`; a running php-cgi holds its tree, so (a) may instead log `php: <minor>'s cache is in use — its pool moves onto the new bytes at the next Start all` (#801's rename-aside refused; no restart, no download under the lock) — record which one Windows does. **Open: compiled only on Windows, never run there.**
+- [x] **An update that re-pins a running binary moves the stack onto it, and the first login after it
+      still starts the stack** (ledger #898/#899) — the macOS row's (a), (b) and (c), on Windows: the pool is the
+      php-cgi group, the login launch is `--hidden`. A pin marker written from PowerShell needs
+      `[IO.File]::WriteAllText` — `Set-Content -Force` left it unchanged with no error. ✓ **16 Oct 2026, the Dell
+      (Win10 22H2)**, `tauri build` on the Dell: (b) stack killed, 8.3's marker spoiled, `--hidden` → the wait
+      line, up at +20 s, 200 — the pre-fix build on the same steps refused (`binaries not ready yet (php)`), 502.
+      (a)+(c) 8.3 + nginx + Mailpit + caddy spoiled, stack running → 8.3's group restarted, nginx 3308/9388 →
+      1140/10056 (ONE tree), Mailpit 3928→7524, 200 throughout. The first run of (a) found #899: 8.3 left at 502
+      (`port 9783 … already in use`) and two nginx trees. The final build also swept the six `.<name>.stale-<pid>`
+      asides those runs had left (`launch: removed …`), none left.
 - [x] **App icons are the apps' own** (ledger #887, `exe_icon.rs`): Settings → General → Web
       browser shows Chrome's / Edge's / Firefox's icon (read out of each `.exe`), Code editor shows
       VS Code's / PhpStorm's, Terminal the terminal's; the site header's Open-in-browser chevron the
@@ -4086,10 +4097,13 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
-- [ ] **An update that re-pins a running binary moves the stack onto it, and the first login after it
-      still starts the stack** (ledger #898) — the macOS row's (a) and (b), on Linux. Common code (the
-      launch task in `lib.rs`, `LAUNCH_FETCH` in `commands/services.rs`), so the steps are the macOS ones;
-      the pool is php-fpm, the login launch is the XDG autostart entry with `--hidden`. **Open: compiled only on Linux, never run there.**
+- [x] **An update that re-pins a running binary moves the stack onto it, and the first login after it
+      still starts the stack** (ledger #898/#899) — the macOS row's (a), (b) and (c), on Linux (php-fpm pools, the
+      XDG autostart's `--hidden`). Kill fpm/nginx with `pkill -x`, never `pkill -f` over ssh (it matches the
+      remote shell). ✓ **16 Oct 2026, Ubuntu 22.04 arm64 VM**, container-built binary over `/usr/bin/rexenv`:
+      (b) the wait held ~6.5 min across four failed-and-resumed downloads, then the stack came up, 200 — the
+      pre-fix binary on the same steps logged `binaries not ready yet (php-fpm, php-fpm)`; (a)+(c) 8.3 fpm
+      9962→17544 (7.4 untouched), nginx 10065→17585 (one master + one worker), Mailpit 10070→17595, 200.
 - [x] **App icons are the apps' own** (ledger #887, `desktop.rs`): Settings → General → Web browser
       shows Firefox's and Chromium's icons (the snaps' — read through `/var/lib/snapd/desktop/
       applications/*.desktop` → `Icon=/snap/<pkg>/current/….png`), Terminal shows GNOME Terminal's

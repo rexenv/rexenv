@@ -3422,6 +3422,29 @@ fn cached_bundle_dir_in(bin_dir: &Path, name: &str, version: &str, member: &str)
     dir.join(member).exists().then_some(dir)
 }
 
+/// Whether ANY version of `name` was ever published into the cache — the user has
+/// run this artifact before. The launch fetch's gate (ledger #898): an artifact this
+/// build re-pinned or moved is fetched at launch only when an earlier one is here, so
+/// a stack that has never been started is never downloaded behind the user's back.
+pub fn has_any_cache(platform: &dyn Platform, name: &str) -> bool {
+    platform.paths().bin_dir().is_ok_and(|d| has_any_cache_in(&d, name))
+}
+
+/// Pure core of [`has_any_cache`]: a `<name>-<digit>…` DIRECTORY. The digit is what
+/// keeps `php` from answering for `php-fpm-8.3.32` or `phpmyadmin-5.2.3`, and the
+/// dot-prefixed staging dirs (`.staging-…`) never match.
+fn has_any_cache_in(bin_dir: &Path, name: &str) -> bool {
+    let prefix = format!("{name}-");
+    std::fs::read_dir(bin_dir).is_ok_and(|entries| {
+        entries.flatten().any(|e| {
+            e.file_type().is_ok_and(|t| t.is_dir())
+                && e.file_name().to_str().and_then(|n| n.strip_prefix(&prefix)).is_some_and(|rest| {
+                    rest.starts_with(|c: char| c.is_ascii_digit())
+                })
+        })
+    })
+}
+
 /// Every PHP patch whose cache tree must SURVIVE the launch GC — or `None` when
 /// the question cannot be answered, in which case the caller must SKIP the sweep.
 ///
@@ -3846,6 +3869,29 @@ fn retire_stale_tree(bin_dir: &Path, dir: &Path) -> std::io::Result<()> {
     std::fs::rename(dir, &aside)?;
     let _ = std::fs::remove_dir_all(&aside);
     Ok(())
+}
+
+/// Delete every tree [`retire_stale_tree`] moved aside but could not delete — a running
+/// process held it (Windows), so `.<name>-<version>.stale-<pid>` stayed behind, ~100 MB a
+/// tree, one more per re-pinned update (the Dell, 16 Oct 2026, ledger #898). Run at the end
+/// of the launch fetch, after its restarts let the old processes go; a tree still in use
+/// fails here too and is tried again next launch. Returns the names removed.
+pub fn sweep_stale_trees(platform: &dyn Platform) -> Vec<String> {
+    platform.paths().bin_dir().map(|d| sweep_stale_trees_in(&d)).unwrap_or_default()
+}
+
+fn sweep_stale_trees_in(bin_dir: &Path) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(bin_dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().to_str()?.to_string();
+            let is_aside = name.starts_with('.')
+                && name.rsplit_once(".stale-").is_some_and(|(_, pid)| !pid.is_empty() && pid.bytes().all(|b| b.is_ascii_digit()));
+            (is_aside && e.file_type().is_ok_and(|t| t.is_dir()) && std::fs::remove_dir_all(e.path()).is_ok())
+                .then_some(name)
+        })
+        .collect()
 }
 
 /// How many times a transient download failure (network drop, timeout, 5xx) is
@@ -5397,6 +5443,46 @@ mod tests {
         assert!(r.is_ok(), "a 200 to a Range request must restart cleanly: {r:?}");
         assert_eq!(std::fs::read(&dest).unwrap(), payload, "no duplicated prefix");
         let _ = std::fs::remove_file(&dest);
+    }
+
+    /// Ledger #898 — the launch fetch's gate answers for ITS name only: `php` is not
+    /// `php-fpm-8.3.32` or `phpmyadmin-5.2.3`, a staging dir is not a cache, a FILE is not
+    /// a published tree, and an empty bin dir has nothing.
+    /// Ledger #898 — the sweep removes only `retire_stale_tree`'s asides: never a cache, a
+    /// staging dir, or a name that merely contains "stale".
+    #[test]
+    fn sweep_stale_trees_removes_only_the_asides() {
+        let base = std::env::temp_dir().join(format!("rexenv-sst-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        for d in [".php-8.3.32.stale-9068", ".nginx-1.30.4.stale-12", "php-8.3.32", ".staging-php-8.3.32-1-0", "stale-1", ".x.stale-abc"] {
+            std::fs::create_dir_all(base.join(d).join("ext")).unwrap();
+        }
+        let mut gone = sweep_stale_trees_in(&base);
+        gone.sort();
+        assert_eq!(gone, vec![".nginx-1.30.4.stale-12".to_string(), ".php-8.3.32.stale-9068".to_string()]);
+        for kept in ["php-8.3.32", ".staging-php-8.3.32-1-0", "stale-1", ".x.stale-abc"] {
+            assert!(base.join(kept).exists(), "{kept} must survive");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn has_any_cache_matches_its_own_name_and_a_version_only() {
+        let base = std::env::temp_dir().join(format!("rexenv-hac-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        assert!(!has_any_cache_in(&base, "nginx"), "empty");
+        for d in ["php-fpm-8.3.32", "phpmyadmin-5.2.3", ".staging-nginx-1.30.4-1-0", "nginx-old"] {
+            std::fs::create_dir_all(base.join(d)).unwrap();
+        }
+        std::fs::write(base.join("caddy-2.11.4"), b"").unwrap();
+        assert!(!has_any_cache_in(&base, "php"), "php-fpm/phpmyadmin are not php");
+        assert!(!has_any_cache_in(&base, "nginx"), "staging, and a non-version suffix");
+        assert!(!has_any_cache_in(&base, "caddy"), "a file is not a published cache");
+        assert!(has_any_cache_in(&base, "php-fpm"));
+        std::fs::create_dir_all(base.join("nginx-1.30.3")).unwrap();
+        assert!(has_any_cache_in(&base, "nginx"), "any earlier version counts");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

@@ -1426,6 +1426,17 @@ impl PhpFpmPools {
         for pid in platform.supervisor().owned_listeners(p.port, platform.supervisor().php_pool_model().process_title()) {
             let _ = platform.supervisor().stop(pid);
         }
+        // "Stopped" means the port is FREE: the respawn right after a stop (a restart) is
+        // port-gated, and a php-cgi child still exiting failed it — the 8.3 pool on the Dell
+        // stayed down after an update's restart (16 Oct 2026, ledger #898). Bounded, like
+        // the override backends' wait.
+        crate::core::ports::wait_free(
+            platform,
+            p.port,
+            crate::core::ports::Proto::Tcp,
+            20,
+            std::time::Duration::from_millis(250),
+        );
         true
     }
 

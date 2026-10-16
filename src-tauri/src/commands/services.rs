@@ -371,6 +371,64 @@ impl LaunchFetch {
     }
 }
 
+/// The non-PHP half of the launch fetch (ledger #898), run inside it before
+/// `LAUNCH_FETCH` is released: fetch what the start plan needs that this build moved
+/// or re-pinned AND the user already had (`downloads::launch_refetch`), then move the
+/// running services onto it (`ServiceManager::restart_onto_fetched`). Download
+/// unlocked; restart under the lock; readiness awaited after it drops (M4).
+pub async fn launch_refetch_stack(state: &AppState) {
+    let platform = state.platform.as_ref();
+    let Ok((sites, php_minors, _, _, _, db_versions, php_patches, adminer_version, _)) = start_inputs(state) else {
+        log::warn!("launch: skipped the binary re-fetch — the stack's inputs could not be read");
+        return;
+    };
+    let plan = core::downloads::plan_for_start_with(
+        platform,
+        &sites,
+        &php_minors,
+        &db_versions,
+        &php_patches,
+        &adminer_version,
+    );
+    let wanted = core::downloads::launch_refetch(&plan, |n| core::binaries::has_any_cache(platform, n));
+    if wanted.is_empty() {
+        sweep_asides(platform);
+        return;
+    }
+    let names: Vec<String> = wanted.iter().map(|b| format!("{} {}", b.name, b.version)).collect();
+    log::info!("launch: fetching what this build moved or re-pinned: {}", names.join(", "));
+    if let Err(e) = core::downloads::prefetch(platform, "Update binaries", &wanted).await {
+        log::warn!("launch: part of the binary re-fetch failed: {e}");
+    }
+    // Only what really landed: a restart over an uncached item would download under the lock.
+    let fetched: Vec<_> =
+        wanted.into_iter().filter(|b| core::binaries::is_cached(platform, &b.name, &b.version)).collect();
+    if fetched.is_empty() {
+        sweep_asides(platform);
+        return;
+    }
+    let (checks, notes) = {
+        let mut mgr = state.services.lock().await;
+        mgr.restart_onto_fetched(platform, &state.ca, &sites, &fetched).await
+    };
+    for note in &notes {
+        log::info!("launch: {note}");
+    }
+    match core::service_manager::await_ready(checks).await {
+        Ok(()) => log::info!("launch: running services moved onto the fetched binaries"),
+        Err(e) => log::warn!("launch: a service restarted onto its new binary did not become ready: {e}"),
+    }
+    sweep_asides(platform);
+}
+
+/// The trees a re-fetch moved aside while something still ran from them — gone once the
+/// restarts above released them (`binaries::sweep_stale_trees`).
+fn sweep_asides(platform: &dyn crate::platform::traits::Platform) {
+    for name in core::binaries::sweep_stale_trees(platform) {
+        log::info!("launch: removed {name}, a tree a re-fetch had to leave in use");
+    }
+}
+
 /// How long login-start waits for the launch fetch: PHP trees are tens of MB per
 /// minor, and a login on a slow network is exactly when it is slow. Past it,
 /// login-start refuses as it always did — honestly, naming what is missing.
@@ -843,7 +901,11 @@ mod launch_fetch_tests {
         let spawn = lib[begin..].find("tauri::async_runtime::spawn(").map(|i| begin + i).expect("then spawns");
         let fetch = lib.find("&format!(\"Repair PHP {minor}\")").expect("the fetch");
         let release = lib.find("drop(launch_fetch);").expect("the gate is released");
-        assert!(begin < spawn && spawn < fetch && fetch < release, "begin → spawn → fetch → release");
+        let rest = lib.find("commands::services::launch_refetch_stack(&state).await").expect("the non-PHP fetch");
+        assert!(
+            begin < spawn && spawn < fetch && fetch < rest && rest < release,
+            "begin → spawn → PHP fetch → the rest of the stack → release"
+        );
         let login = lib.find("if LOGIN_START.ready(hidden_launch) {").expect("login-start");
         assert!(begin < login, "the gate must exist before login-start can look at it");
 

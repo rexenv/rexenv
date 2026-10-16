@@ -1109,6 +1109,17 @@ Live-proven end to end by `site_stop_start_check`.
   an update left every site dark (`binaries not ready yet (php-fpm, php-fpm)`, 9 Oct). It now
   waits — up to 10 min, still downloading nothing itself — on `commands::services::LAUNCH_FETCH`
   (taken before the task is spawned, released on every path out of the fetch), then asks again.
+  **The rest of the stack the same way** (#898): before releasing the gate, the launch asks the start
+  plan which non-PHP items this build would download AND the user already had in some version
+  (`downloads::launch_refetch`, gated on `binaries::has_any_cache`, so a never-started stack is never
+  fetched at an open), fetches them, and `ServiceManager::restart_onto_fetched` moves what runs onto
+  them: `bins` re-pointed (a moved nginx/caddy pin used to leave adoption with none, so every reload
+  failed until Start all), nginx restarted, an engine, Mailpit, each running override backend. **The
+  edge is never restarted there** — it moves at the next Start all, and the log says so. Trees a
+  re-fetch had to move aside while something still ran from them (Windows) are swept at the end
+  (`binaries::sweep_stale_trees`). A restart stops an ADOPTED master through the platform's stop,
+  never `Proc::kill` (a no-op on adopted), and a pool stop waits for its port (#899): on Windows
+  nginx's master does not listen, so the old listener-only reap left two nginx trees serving.
 - MySQL is Oracle-signed (never re-sign) and needs a direct CDN URL + browser UA.
 - **Multi-version engines (per-engine DB version switch):** `MYSQL/POSTGRES/MARIADB/
   REDIS_VERSIONS` are the offered sets (default first); the mysql/postgres manifests

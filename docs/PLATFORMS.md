@@ -284,6 +284,13 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   `VerifiedAndReputablePolicyState = 1` at the next refresh (measured on the Win11 VM, 29 Sep 2026).
 - Proof hosts, SSH, the click helpers: `docs/TESTING.md` §"Proving a Windows claim";
   design record `docs/PLAN-windows-port.md`; user side `docs/INSTALL.md` § Windows.
+- **nginx's master does not LISTEN on Windows** (#899): a stop that reaps only the port's
+  listeners leaves the master alive, and it respawns a worker — two nginx trees served side by side
+  on the Dell. Stop the master through `ProcessSupervisor::stop` (as Stop all does), and remember
+  `Proc::kill` is a no-op on an ADOPTED handle; on macOS/Linux the master listens, which hid this.
+- **A running php-cgi or nginx does not stop a tree's RENAME** — `retire_stale_tree` moves it aside
+  and then cannot delete it; `binaries::sweep_stale_trees` removes the `.<name>.stale-<pid>` asides
+  at the end of the launch fetch (#898).
 
 ## 8. Linux — the traps
 
