@@ -295,11 +295,14 @@ function GeneralPrefsCard() {
           onClick={() => void redetectApps()}
           disabled={redetecting || editorsFetching}
           data-probe="redetect-apps"
-          title={`Look again for editors, browsers and terminals — in ${words.appSearch}.`}
-          className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[11px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
+          // Icon-only (owner, 16 Oct 2026): the ↻ beside the picker reads as
+          // "look again" without a word, and a labelled button crowded the row.
+          // The name lives in aria-label + the tooltip, which also says WHERE.
+          aria-label="Re-detect editors"
+          title={`Re-detect — look again for editors, browsers and terminals in ${words.appSearch}.`}
+          className="flex h-8 w-8 flex-none items-center justify-center rounded-[9px] border border-transparent text-rex-text-muted transition-colors hover:border-rex-border hover:bg-rex-hover hover:text-rex-text-bright disabled:opacity-60"
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", (redetecting || editorsFetching) && "animate-rex-spin motion-reduce:animate-none")} strokeWidth={1.9} />
-          {redetecting ? "Looking…" : "Re-detect"}
+          <RefreshCw className={cn("h-[15px] w-[15px]", (redetecting || editorsFetching) && "animate-rex-spin motion-reduce:animate-none")} strokeWidth={1.9} />
         </button>
       </div>
       <div className="flex items-center gap-[14px] border-b border-rex-border-subtle py-[15px]">

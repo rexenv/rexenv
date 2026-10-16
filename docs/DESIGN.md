@@ -38,7 +38,8 @@ the shipped UI toward one.
   there while the macOS pickers showed each app — and the owner saw it as the OS being
   second-class (16 Oct 2026). Now each OS reads the icon the way its desktop does (ledger #887,
   `docs/PLATFORMS.md` §3). The same honesty cuts the other way: a detection is a snapshot, so the
-  row that says "No code editor detected" sits beside a **Re-detect** that looks again (#888).
+  row that says "No code editor detected" sits beside a **Re-detect** ↻ icon that looks again (#888) — icon-only by the owner's ruling (16 Oct
+  2026): the ↻ reads as "look again" without a word; its name is the tooltip and `aria-label`.
 - **A bare value is not a badge.** The only always-visible sign of a new rexenv was a mono
   `0.6.0` beside Settings in the sidebar, styled like the Sites/Services counts — and the
   people it was meant to alert read it as the version they were RUNNING (owner, 15 Oct 2026).

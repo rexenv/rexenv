@@ -1970,7 +1970,7 @@ every bundle, kept 10 s so the three detections on a Settings mount share it; a 
 /Applications or the home folder wins over a stray on another disk; the Trash, Time Machine and
 Xcode's tree are not "installed"). A client's VS Code in a sub-folder of /Applications read "No code
 editor detected" until then (16 Oct 2026, ledger #888). Every detection is a FRESH scan — nothing is
-stored — and Settings → General's **Re-detect** button refetches editors, browsers and terminals
+stored — and Settings → General's **Re-detect** ↻ icon (icon-only, named by its tooltip and `aria-label`) refetches editors, browsers and terminals
 together, because the answer a user sees is a snapshot of one scan and a snapshot needs a "look
 again" (a relaunch was the only other way). The found bundle's PATH is what `open -a` gets, so a
 bundle Spotlight located opens where it is. **On Windows** (`platform/windows/

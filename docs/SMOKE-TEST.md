@@ -949,9 +949,10 @@ app quit (#784), and an adopted session restarted the site without its env vars 
   → `themes/boodark/`, 0 "not found"); click into `mysql` → still dark; no picker anywhere.
 - [x] **Re-detect finds an editor outside the four folders** (16 Oct 2026, ledger #888). With no
   editor in /Applications or ~/Applications, Settings → General → Code editor reads "No code editor
-  detected" beside a **Re-detect** button. Put a bundle somewhere else Spotlight indexes — a
+  detected" beside a **Re-detect** ↻ icon (tooltip "Re-detect — look again for editors, browsers and
+  terminals in …"). Put a bundle somewhere else Spotlight indexes — a
   sub-folder of /Applications (`/Applications/Dev/Visual Studio Code.app`), or the Desktop — wait a
-  few seconds, press Re-detect: the button reads "Looking…", a toast says "Found VS Code.", the
+  few seconds, press the ↻: it spins while it looks, a toast says "Found VS Code.", the
   picker shows it with its icon, and "Open in editor" on a site opens THAT bundle. Remove it,
   Re-detect → "Still no code editor found. rexenv looked in /Applications, ~/Applications and
   Spotlight." **Tell:** a relaunch needed to see a new install; a bundle in the Trash counted.
