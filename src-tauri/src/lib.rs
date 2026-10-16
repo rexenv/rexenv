@@ -637,6 +637,11 @@ pub fn run() {
                     // cache hit, not a download). Stack stopped ⇒ nothing to
                     // restart; the next start resolves the new pin anyway.
                     let bump = app.handle().clone();
+                    // Login-start waits on this (`LAUNCH_FETCH`): taken HERE, before the
+                    // spawn, so the login-start below can never look before it exists;
+                    // released after the fetch inside — dropped on every path, so a login
+                    // never waits on a task that has already given up.
+                    let launch_fetch = commands::services::LAUNCH_FETCH.begin();
                     tauri::async_runtime::spawn(async move {
                         let Some(state) = bump.try_state::<state::app::AppState>() else {
                             return;
@@ -738,16 +743,23 @@ pub fn run() {
                                 continue;
                             }
                         }
-                        // Repair caches that are PRESENT but incomplete — the
-                        // bytes are there and something beside them is not
-                        // (a re-pinned digest, or the licence texts every cache
-                        // predating ledger #336 is missing). Done HERE, at app
-                        // launch, rather than in `auto_start_inner`: login-start
-                        // stays strictly offline (ledger #175 — never download,
-                        // never prompt), and by the next login the cache is
-                        // whole. Only ever repairs what already EXISTS, so a
-                        // minor the user never installed is never fetched.
-                        let repairs: Vec<String> = {
+                        // Fetch what an INSTALLED minor's effective patch is missing —
+                        // a cache PRESENT but incomplete (a re-pinned digest, the
+                        // licence texts every cache predating ledger #336 lacks) or
+                        // ABSENT because this build moved the pin while the stack was
+                        // stopped (the patch-bump loop above only sees live pools).
+                        // Done HERE, at app launch, rather than in `auto_start_inner`:
+                        // login-start stays strictly offline (ledger #175 — never
+                        // download, never prompt) and WAITS for this fetch instead
+                        // (`LAUNCH_FETCH`). Before that wait, a login launch right after
+                        // an update raced it: login-start found the 0.8.12 re-pinned
+                        // PHP "not ready", refused, and the whole stack stayed down —
+                        // the browser got nothing until a Start all (the 15.8 VM, 9 Oct
+                        // 2026: `binaries not ready yet (php-fpm, php-fpm)`). Asked of
+                        // the same plan login-start checks, so the two cannot disagree
+                        // about what "ready" means on any OS. A minor the user never
+                        // installed is never fetched.
+                        let fetches: Vec<(String, String, Vec<core::downloads::PlannedBinary>)> = {
                             let installed = state
                                 .db
                                 .lock()
@@ -756,34 +768,65 @@ pub fn run() {
                                 .unwrap_or_default();
                             installed
                                 .into_iter()
-                                .filter(|(_, patch)| {
-                                    ["php", "php-fpm"].iter().any(|n| {
-                                        core::binaries::needs_repair(platform, n, patch)
-                                    })
+                                .map(|(minor, patch)| {
+                                    let plan = core::downloads::plan_for_php_patch(platform, &minor, &patch);
+                                    (minor, patch, plan)
                                 })
-                                .map(|(minor, _)| minor)
+                                .filter(|(_, _, plan)| !core::downloads::uncached_names(plan).is_empty())
                                 .collect()
                         };
-                        for minor in &repairs {
-                            log::info!("php: repairing an incomplete {minor} cache");
-                            // Repair the patch that was FOUND broken. Planning the
-                            // pin here would re-fetch a tree that is already fine
-                            // and leave the incomplete one incomplete, so the
-                            // detect would fire again at every launch.
-                            let plan = match want.get(minor) {
-                                Some(p) => core::downloads::plan_for_php_patch(platform, minor, p),
-                                None => core::downloads::plan_for_php_with(platform, minor, &want),
-                            };
+                        for (minor, patch, plan) in &fetches {
+                            log::info!("php: fetching {minor}'s missing or incomplete binaries");
                             if let Err(e) = core::downloads::prefetch(
                                 platform,
                                 &format!("Repair PHP {minor}"),
-                                &plan,
+                                plan,
                             )
                             .await
                             {
                                 log::warn!("php: could not repair the {minor} cache: {e}");
+                                continue;
+                            }
+                            // A pool still running is running the bytes this fetch just
+                            // REPLACED: a same-patch rebuild (0.8.12's php-8x-8, the curl
+                            // that resolves `.rex`) keeps its patch string, so the
+                            // patch-bump loop above never sees it, and the old master kept
+                            // serving the old build until a Stop all/Start all — measured
+                            // on the 15.8 VM, 16 Oct 2026: 0.8.11 → 0.8.13, cache
+                            // repaired, both fpm masters still the pre-update pids.
+                            // Restarted onto the fetched cache (a hit — no download under
+                            // the lock); a stopped minor has nothing to restart. Only once the
+                            // plan reads CACHED: a running php-cgi holds its tree on Windows, so
+                            // the fetch serves the stale tree until it is free (#801) — a restart
+                            // then would stop the pool and download under the services lock.
+                            // That minor moves at its next Start all, as before.
+                            let fetched = core::downloads::plan_for_php_patch(platform, minor, patch);
+                            if !core::downloads::uncached_names(&fetched).is_empty() {
+                                log::info!("php: {minor}'s cache is in use — its pool moves onto the new bytes at the next Start all");
+                                continue;
+                            }
+                            let checks = {
+                                let mut mgr = state.services.lock().await;
+                                if !mgr.has_php_pool(minor) {
+                                    continue;
+                                }
+                                match mgr
+                                    .restart_pools_for(platform, std::slice::from_ref(minor))
+                                    .await
+                                {
+                                    Ok(c) => c,
+                                    Err(e) => {
+                                        log::warn!("php: restart onto the repaired {minor} cache failed: {e}");
+                                        continue;
+                                    }
+                                }
+                            };
+                            match core::service_manager::await_ready(checks).await {
+                                Ok(()) => log::info!("php: {minor}'s pool restarted onto the repaired cache"),
+                                Err(e) => log::warn!("php: {minor}'s repaired pool did not become ready: {e}"),
                             }
                         }
+                        drop(launch_fetch);
 
                         // Refresh the SIGNED update manifest, so the catalog is
                         // populated before the user ever opens Settings.

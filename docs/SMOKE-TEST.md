@@ -2895,6 +2895,19 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
 - [ ] **Which permissions come back — re-recorded per macOS major.** The same list on macOS 15
   (the clean VM) and on 13/14. **Open: only macOS 26 is recorded;** the 18 Sep and 27 Sep VM
   updates did not record the TCC log.
+- [x] **An update that re-pins a running binary moves the stack onto it, and the first login
+  after it still starts the stack** (ledger #898). Two shapes, both with sites in use before the
+  update: (a) stack RUNNING, update over a release whose PHP bytes changed under the same patch
+  (0.8.11 → 0.8.12+, php-8x-8) — `rexenv.log` shows `php: fetching <minor>'s missing or incomplete
+  binaries` then `php: <minor>'s pool restarted onto the repaired cache`, the fpm masters' pids
+  change, the sites keep answering. (b) the first LOGIN after such an update with the stack down
+  (a reboot) — `auto-start: waiting for the launch's binary repair before starting`, then the
+  stack comes up by itself; NOT `binaries not ready yet (php-fpm, …)` and dark sites until Start
+  all, which is what users met. ✓ **16 Oct 2026, macOS 15.8 VM**, this tree's `tauri build`:
+  (a) 0.8.11 serving → swap → pids 1015/1020 → 12085/12433, `smoke1/php74/sm763.rex` 200
+  throughout; (b) nginx + fpm stopped, both fpm caches' pin markers spoiled, `--hidden` launch →
+  the wait line, the fetch, 200 at +20 s. The released 0.8.13 on the same steps: `auto-start:
+  [restart-failed] binaries not ready yet (php…`, 502 for as long as it was watched.
 
 ## Robustness (spot-check) — §2
 - [ ] **Start all over a running edge adds no "Background Items Added" card** (ledger #772): with
@@ -3462,6 +3475,10 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       (1,009,152 B), `rex status` answered; the card then reads "Installed — … Reinstall".
 
 ### In-app self-update — replaces the macOS section
+- [ ] **An update that re-pins a running binary moves the stack onto it, and the first login after it
+      still starts the stack** (ledger #898) — the macOS row's (a) and (b), on Windows. Common code (the
+      launch task in `lib.rs`, `LAUNCH_FETCH` in `commands/services.rs`), so the steps are the macOS ones;
+      the pool is the php-cgi group, the login launch is the logon task's `--hidden`; a running php-cgi holds its tree, so (a) may instead log `php: <minor>'s cache is in use — its pool moves onto the new bytes at the next Start all` (#801's rename-aside refused; no restart, no download under the lock) — record which one Windows does. **Open: compiled only on Windows, never run there.**
 - [x] **App icons are the apps' own** (ledger #887, `exe_icon.rs`): Settings → General → Web
       browser shows Chrome's / Edge's / Firefox's icon (read out of each `.exe`), Code editor shows
       VS Code's / PhpStorm's, Terminal the terminal's; the site header's Open-in-browser chevron the
@@ -4069,6 +4086,10 @@ rexenv0 <name>` and read `Current Scopes:`.
       window and the terminal legs are not on this VM's menu.
 
 ### In-app update on Linux (L7, ledger #729/#730)
+- [ ] **An update that re-pins a running binary moves the stack onto it, and the first login after it
+      still starts the stack** (ledger #898) — the macOS row's (a) and (b), on Linux. Common code (the
+      launch task in `lib.rs`, `LAUNCH_FETCH` in `commands/services.rs`), so the steps are the macOS ones;
+      the pool is php-fpm, the login launch is the XDG autostart entry with `--hidden`. **Open: compiled only on Linux, never run there.**
 - [x] **App icons are the apps' own** (ledger #887, `desktop.rs`): Settings → General → Web browser
       shows Firefox's and Chromium's icons (the snaps' — read through `/var/lib/snapd/desktop/
       applications/*.desktop` → `Icon=/snap/<pkg>/current/….png`), Terminal shows GNOME Terminal's

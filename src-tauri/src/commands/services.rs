@@ -321,6 +321,61 @@ pub async fn stop_services(
     state.services.lock().await.stop_all(state.platform.as_ref())
 }
 
+/// The launch task's binary fetch (`lib.rs`: the repair of an installed PHP minor's
+/// incomplete or re-pinned cache), as a fact login-start can WAIT on.
+///
+/// Login-start never downloads (ledger #175); the launch task does, and the two start
+/// together on a login launch. Without this, the first login after an update that
+/// re-pinned a cached binary raced the fetch, found the cache "not ready" and refused
+/// to start anything — every site dark until the user pressed Start all (the 15.8 VM,
+/// 9 Oct 2026). `IDLE` = no launch fetch in this process (a test, an init failure):
+/// nothing to wait for.
+pub struct LaunchFetch(std::sync::atomic::AtomicU8);
+
+const FETCH_IDLE: u8 = 0;
+const FETCH_RUNNING: u8 = 1;
+const FETCH_DONE: u8 = 2;
+
+pub static LAUNCH_FETCH: LaunchFetch = LaunchFetch(std::sync::atomic::AtomicU8::new(FETCH_IDLE));
+
+/// Marks the fetch finished when dropped — on every path out of the launch task.
+pub struct LaunchFetchGuard(&'static LaunchFetch);
+
+impl Drop for LaunchFetchGuard {
+    fn drop(&mut self) {
+        self.0 .0.store(FETCH_DONE, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl LaunchFetch {
+    pub fn begin(&'static self) -> LaunchFetchGuard {
+        self.0.store(FETCH_RUNNING, std::sync::atomic::Ordering::SeqCst);
+        LaunchFetchGuard(self)
+    }
+
+    fn running(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst) == FETCH_RUNNING
+    }
+
+    /// Wait, at most `max`, for a RUNNING fetch to finish. True when there is
+    /// nothing (left) to wait for.
+    pub async fn settled(&self, max: std::time::Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + max;
+        while self.running() {
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        }
+        true
+    }
+}
+
+/// How long login-start waits for the launch fetch: PHP trees are tens of MB per
+/// minor, and a login on a slow network is exactly when it is slow. Past it,
+/// login-start refuses as it always did — honestly, naming what is missing.
+const LOGIN_FETCH_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
+
 /// Login-start, run once from app setup on a LOGIN launch (`--hidden`, the
 /// launch the "Start rexenv at login" toggle installs) — never on a launch the
 /// user made. One toggle, one fact: the login item IS the opt-in, so the stack
@@ -374,14 +429,24 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
     // The EFFECTIVE patches, or login-start checks the pin's cache and then starts
     // pools that need the selection — downloading on the one path whose whole
     // contract is that it never does (ledger #175).
-    let plan = core::downloads::plan_for_start_with(
-        state.platform.as_ref(),
-        &sites,
-        &php_minors,
-        &db_versions,
-        &php_patches,
-        &adminer_version,
-    );
+    let plan_now = || {
+        core::downloads::plan_for_start_with(
+            state.platform.as_ref(),
+            &sites,
+            &php_minors,
+            &db_versions,
+            &php_patches,
+            &adminer_version,
+        )
+    };
+    let mut plan = plan_now();
+    // Not ready NOW may be ready in a moment: the launch task is fetching it (see
+    // `LaunchFetch`). Wait for that — still downloading nothing here — then ask again.
+    if !core::downloads::uncached_names(&plan).is_empty() && LAUNCH_FETCH.running() {
+        log::info!("auto-start: waiting for the launch's binary repair before starting");
+        LAUNCH_FETCH.settled(LOGIN_FETCH_WAIT).await;
+        plan = plan_now();
+    }
     let missing = core::downloads::uncached_names(&plan);
     if !missing.is_empty() {
         // "not ready" rather than "not downloaded": since ledger #336 a cache can
@@ -735,6 +800,58 @@ mod mirror_tests {
         let load = src.find("commands::services::load_mirrors(&conn, &mut mgr)").expect("the launch loads the mirrors");
         let adopt = src.find("mgr.adopt_startup(").expect("the launch adopts");
         assert!(load < adopt, "the mirrors must be loaded before adoption");
+    }
+}
+
+#[cfg(test)]
+mod launch_fetch_tests {
+    use super::{LaunchFetch, FETCH_IDLE};
+    use std::time::Duration;
+
+    fn gate() -> &'static LaunchFetch {
+        Box::leak(Box::new(LaunchFetch(std::sync::atomic::AtomicU8::new(FETCH_IDLE))))
+    }
+
+    /// Ledger #898 — login-start waits for a RUNNING launch fetch, and only for one:
+    /// no fetch in the process is nothing to wait for, and a dropped guard (any path
+    /// out of the launch task, a failed fetch included) releases the wait.
+    #[tokio::test]
+    async fn login_start_waits_only_while_the_launch_fetch_runs() {
+        let g = gate();
+        assert!(g.settled(Duration::ZERO).await, "idle: nothing to wait for");
+        let guard = g.begin();
+        assert!(g.running());
+        assert!(!g.settled(Duration::from_millis(300)).await, "a running fetch holds the wait");
+        let release = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            drop(guard);
+        });
+        assert!(g.settled(Duration::from_secs(5)).await, "the dropped guard releases it");
+        release.await.unwrap();
+        assert!(!g.running());
+    }
+
+    /// …and the wiring that the test above cannot reach (it needs an `AppHandle`): the launch
+    /// takes the guard BEFORE it spawns the fetch task (a login-start racing the spawn would
+    /// otherwise see IDLE and refuse), releases it after the fetch, and login-start asks the
+    /// gate before it refuses on an uncached plan. Text order — the behaviour half is the
+    /// SMOKE row (a login launch right after an update that re-pinned PHP).
+    #[test]
+    fn the_launch_holds_the_gate_across_the_fetch_and_login_start_waits_on_it() {
+        let lib = crate::core::copy_scan::production_source(include_str!("../lib.rs"));
+        let begin = lib.find("commands::services::LAUNCH_FETCH.begin()").expect("the launch takes the gate");
+        let spawn = lib[begin..].find("tauri::async_runtime::spawn(").map(|i| begin + i).expect("then spawns");
+        let fetch = lib.find("&format!(\"Repair PHP {minor}\")").expect("the fetch");
+        let release = lib.find("drop(launch_fetch);").expect("the gate is released");
+        assert!(begin < spawn && spawn < fetch && fetch < release, "begin → spawn → fetch → release");
+        let login = lib.find("if LOGIN_START.ready(hidden_launch) {").expect("login-start");
+        assert!(begin < login, "the gate must exist before login-start can look at it");
+
+        let svc = crate::core::copy_scan::production_source(include_str!("services.rs"));
+        let inner = svc.find("async fn auto_start_inner").expect("auto_start_inner");
+        let wait = svc[inner..].find("LAUNCH_FETCH.settled(").expect("login-start waits") + inner;
+        let refuse = svc[inner..].find("binaries not ready yet").expect("the refusal") + inner;
+        assert!(wait < refuse, "login-start must wait for the fetch before it refuses");
     }
 }
 

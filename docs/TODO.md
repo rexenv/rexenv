@@ -110,6 +110,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **After an app update no site answers until Stop all/Start all** (user report, macOS, 16 Oct 2026) ✓ 16 Oct 2026 — ledger #898, 15.8 VM run + the released 0.8.13 contrast
+  a same-patch PHP rebuild (0.8.12's php-8x-8) was fetched at launch but the running pools were never
+  restarted onto it, and on a login launch login-start raced that fetch, refused with `binaries not ready
+  yet (php-fpm, …)` and left the stack down. The launch task now fetches every installed minor whose start
+  plan is not cached, restarts its live pool once the plan reads cached, and login-start waits on
+  `LAUNCH_FETCH`. Windows/Linux runs owed (SMOKE rows in each section).
+
 - [x] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** ✓ 16 Oct 2026 — `wordpress::multisite_convert` now runs WordPress's own `network.php` sequence through `wp eval-file` (the network tables named on wpdb first, `dbDelta(wp_get_db_schema('global'))`, `populate_network`), then writes the six constants itself; L0 plant + L1 `live_sync_pull_into_check` leg 18 on the 7.1 pin (ledger #894). Original row: "WordPress database
   error Table 'wp_<db>.wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): wp-cli runs
   `install_network()` without the network tables named on wpdb, and 7.1's `populate_network` reads

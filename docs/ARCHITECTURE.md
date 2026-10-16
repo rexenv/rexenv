@@ -1097,6 +1097,18 @@ Live-proven end to end by `site_stop_start_check`.
   deleted and re-fetched with no hub row. `needs_repair` separates *never downloaded* from
   *downloaded, now incomplete*; the launch task repairs the second, which is what keeps
   login-start strictly offline (#175) without weakening the predicate. Ledger #341.
+  **The launch fetch is asked of the start plan, and login-start waits for it** (#898): for
+  every INSTALLED minor whose effective patch's plan (`plan_for_php_patch`, the per-OS pool +
+  CLI names) is not all cached — incomplete, re-pinned, or absent because the pin moved while
+  the stack was stopped — the launch task fetches it, then restarts that minor's live pool so
+  it runs the bytes it just fetched. A same-patch rebuild keeps the patch string, so the bump
+  loop below never saw it: after 0.8.11 → 0.8.12/13 the pools kept serving the c-ares curl
+  until a Stop all/Start all (15.8 VM, 16 Oct 2026: cache repaired, both fpm masters still the
+  pre-update pids). Login-start runs beside that task on a login launch; it used to find the
+  cache "not ready" while the fetch was still going and refuse, so the first login after such
+  an update left every site dark (`binaries not ready yet (php-fpm, php-fpm)`, 9 Oct). It now
+  waits — up to 10 min, still downloading nothing itself — on `commands::services::LAUNCH_FETCH`
+  (taken before the task is spawned, released on every path out of the fetch), then asks again.
 - MySQL is Oracle-signed (never re-sign) and needs a direct CDN URL + browser UA.
 - **Multi-version engines (per-engine DB version switch):** `MYSQL/POSTGRES/MARIADB/
   REDIS_VERSIONS` are the offered sets (default first); the mysql/postgres manifests
@@ -3514,7 +3526,7 @@ IPC surface — which is how a reader ends up designing against a system with on
   `~/Library/LaunchAgents/dev.rexenv.rexenv.plist`, `RunAtLoad` — launches the app at
   login (not headless services; the edge still needs its `:443` prompt). **The login
   launch is also what runs Start all** (`auto_start_services`, #175's guards: never download,
-  never prompt), gated on the `--hidden` flag and on nothing else — so "Start rexenv at
+  never prompt — it waits for the launch's own PHP fetch instead of refusing on it, #898), gated on the `--hidden` flag and on nothing else — so "Start rexenv at
   login" is ONE toggle and the whole of "my sites are back after a reboot", and a launch the
   user made never starts services behind their back (ledger #739). Until 29 Sep 2026 a second
   toggle, "Start services when rexenv opens", held that half in a setting
