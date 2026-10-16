@@ -2,7 +2,7 @@
 
 This is the companion plugin that `docs/PLAN-wp-live-sync.md` describes: it goes on a LIVE
 WordPress site and answers signed HTTPS requests from rexenv (`docs/rexsync-protocol.md`), which
-ships it as a zip ("Download plugin"). Built (10 Oct 2026, 0.1.3 on 14 Oct 2026, 0.1.4 on 15 Oct 2026, 0.1.5 on 16 Oct 2026):
+ships it as a zip ("Download plugin"). Built (10 Oct 2026, 0.1.3 on 14 Oct 2026, 0.1.4 on 15 Oct 2026, 0.1.5 and 0.1.6 on 16 Oct 2026):
 - the Tools → rexenv Sync page: three cards — Connection (connected or not, the key id, last
   contact, last pull / push / roll back by rexenv, the kept backup and its size on disk; Regenerate
   key and Disconnect ask first), How it works, This site (address, versions, tables, free disk,
@@ -13,6 +13,8 @@ ships it as a zip ("Download plugin"). Built (10 Oct 2026, 0.1.3 on 14 Oct 2026,
   `/files/read` (the binary frame) and `/db/export`.
 
 Push: `/push/begin` (conflicts against rexenv's base), `/push/file` and `/push/db` into a quarantine and shadow tables, `/push/swap` (one `RENAME TABLE`, backup made in the same request), `/push/rollback`, `/push/abort`.
+
+**0.1.6 (16 Oct 2026) — a MySQL restart on the host no longer moves every stamp.** `Update_time` lives in InnoDB's memory and the `Rows` estimate is re-sampled after a restart; the plugin now remembers each table's last non-NULL `Update_time` with the `Rows` read beside it (`rexsync_stamps`, its own row) and hands them back when a row comes up NULL — a real write sets a fresh time and moves the stamp as before.
 
 **0.1.5 (16 Oct 2026) — networks.** The manifest says `subdomain`; every sub-site's `<prefix><id>_options` and the network's `sitemeta` get the content stamp the options table gets (`options_like`), so a network can read "up to date".
 

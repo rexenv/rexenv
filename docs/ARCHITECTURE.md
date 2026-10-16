@@ -1581,7 +1581,11 @@ honest footer —
   may take — the first real cPanel host (LiteSpeed) delivers a 6 MB file frame at ~100 KB/s, and
   one 60 s total timeout read that as "error decoding response body" on every pull; a file batch
   the host cuts anyway is split in halves and asked for again, and a push chunk the host refuses
-  as too large (`post_max_size` 8M) is halved. **Behind HTTP basic auth** (#891): the optional
+  as too large (`post_max_size` 8M) is halved. **A MySQL restart on live moves no stamp**
+  (plugin 0.1.6, #893): `Update_time` is InnoDB memory and the `Rows` estimate is re-sampled
+  after a restart, which read as 21 tables changed on the cPanel host minutes after a pull;
+  the plugin remembers each table's last non-NULL `Update_time` with its `Rows` and hands them
+  back when a row comes up NULL. **Behind HTTP basic auth** (#891): the optional
   user:password beside the key goes out as `Authorization` on every request — proven on
   `auth.rex.bd`; the uploads-on-demand mu-plugin carries no password, so a missing upload 404s
   there as before. The push gates are in Rust (#834): the live host typed

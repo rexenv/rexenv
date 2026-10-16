@@ -21,7 +21,7 @@ final class Rexenv_Sync_Pairing {
 	public static function owned_option_patterns() {
 		// The push's records and the kept backup are the LIVE site's state: a pulled
 		// copy that carried `rexsync_backup` would believe it had a backup (#845).
-		return array( self::OPTION, 'rexsync\_push\_%', 'rexsync_backup', self::LAST, '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
+		return array( self::OPTION, 'rexsync\_push\_%', 'rexsync_backup', self::LAST, 'rexsync_stamps', '_transient_rexsync_%', '_transient_timeout_rexsync_%' );
 	}
 
 	/**
@@ -102,6 +102,7 @@ final class Rexenv_Sync_Pairing {
 	public static function delete() {
 		delete_option( self::OPTION );
 		delete_option( self::LAST );
+		delete_option( Rexenv_Sync_Reader::STAMPS );
 	}
 
 	/** The nonce table: `<prefix>rexsync_nonces` — its OWN table, never in options. */

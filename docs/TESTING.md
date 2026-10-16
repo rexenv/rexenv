@@ -1044,7 +1044,9 @@ names a 0600 `user:password` file for the second; the network run checks the cop
 `Subdirectory` network whose every sub-site reads the local domain (1b). What the host taught:
 it is a LiteSpeed box that delivers a 6 MB file frame at ~100 KB/s (a signed `curl` of 100 files
 took over 120 s) and has `post_max_size` 8M — the client's two clocks and the batch/chunk halving
-came from it (#892). The fixture's network leg (`live_sync_pull_into_check` 17–17c) converts the
+came from it (#892); and its MySQL restarted between a 15-minute pull and the next status, which
+read "21 tables changed" with nothing written — plugin 0.1.6 remembers each table's last
+`Update_time` + `Rows` for exactly that (#893, the plugin test's §11). The fixture's network leg (`live_sync_pull_into_check` 17–17c) converts the
 live fixture the way `network.php` does (install + populate with the network tables named on wpdb
 first), because **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3 with "Table
 wp_site doesn't exist"** — a TODO row for rexenv's own Convert to multisite. The fixture live is

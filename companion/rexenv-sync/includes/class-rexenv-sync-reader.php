@@ -37,7 +37,47 @@ final class Rexenv_Sync_Reader {
 		$wpdb->suppress_errors( $suppress );
 		$like = $wpdb->esc_like( $wpdb->base_prefix ) . '%';
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
-		return (array) $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A );
+		return self::settle_rows( (array) $wpdb->get_results( $wpdb->prepare( 'SHOW TABLE STATUS LIKE %s', $like ), ARRAY_A ) );
+	}
+
+	/** The option that remembers each table's last non-NULL `Update_time` and the `Rows` read with it. */
+	const STAMPS = 'rexsync_stamps';
+
+	/**
+	 * Hold the stamp still across a MySQL restart (0.1.6, 16 Oct 2026). InnoDB keeps
+	 * `Update_time` in memory only — NULL after a restart — and re-samples the `Rows`
+	 * estimate; on the cPanel host 21 of 38 tables read "changed on live" minutes after a
+	 * pull with nothing written, because the server had restarted in between. So each
+	 * table's last non-NULL `Update_time` and the `Rows` read beside it are remembered in
+	 * an option of the plugin's own (never exported, left out of the options stamp); a row
+	 * that comes back with a NULL `Update_time` gets both remembered values back. A real
+	 * write after the restart sets a fresh `Update_time`, which moves the stamp as before.
+	 */
+	public static function settle_rows( array $rows ) {
+		$kept    = get_option( self::STAMPS );
+		$kept    = is_array( $kept ) ? $kept : array();
+		$changed = false;
+		foreach ( $rows as &$r ) {
+			if ( ! isset( $r['Name'] ) ) {
+				continue;
+			}
+			$name = $r['Name'];
+			if ( isset( $r['Update_time'] ) && null !== $r['Update_time'] && '' !== $r['Update_time'] ) {
+				$pair = array( (string) $r['Update_time'], (int) $r['Rows'] );
+				if ( ! isset( $kept[ $name ] ) || $kept[ $name ] !== $pair ) {
+					$kept[ $name ] = $pair;
+					$changed       = true;
+				}
+			} elseif ( isset( $kept[ $name ] ) ) {
+				$r['Update_time'] = $kept[ $name ][0];
+				$r['Rows']        = $kept[ $name ][1];
+			}
+		}
+		unset( $r );
+		if ( $changed ) {
+			update_option( self::STAMPS, $kept, false );
+		}
+		return $rows;
 	}
 
 	public static function manifest() {

@@ -137,7 +137,12 @@ back unchanged. `null` means done.
   read with `information_schema_stats_expiry = 0` on MySQL 8. `Auto_increment` NULL is
   written as 1 (10 Oct 2026): an empty table nobody has opened reports NULL until the first
   SELECT — the pull's own export — makes it 1, so unfolded, every never-used table read as
-  changed on live right after a pull.
+  changed on live right after a pull. **A MySQL restart on the host** (0.1.6, 16 Oct 2026)
+  makes `Update_time` NULL for every table and re-samples the `Rows` estimate: 21 of 38 tables
+  read "changed on live" minutes after a pull with nothing written (the cPanel host). The plugin
+  remembers each table's last non-NULL `Update_time` with the `Rows` read beside it
+  (`rexsync_stamps`, its own row) and hands them back when a row comes up NULL; a real write
+  after the restart sets a fresh time and moves the stamp as before.
 - `/db/export`'s cursor is `"k:<json>"` (keyset: a single-column primary key, `WHERE pk >
   last`) or `"o:<n>"` (offset: composite or no key). A cell that is not valid UTF-8 is
   written `0x<hex>`, because the chunk travels inside JSON, which would rewrite the bytes

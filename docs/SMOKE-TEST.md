@@ -1241,7 +1241,16 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       same key → "a multisite network" in the preview, Create and pull → the new site is a network.
       ◐ macOS: L1 `live_sync_pull_into_check` legs 17–17c (fixture network) + `live_sync_real_host_check`
       ALL PASS against the real host (pull, 1b every sub-site on the local domain, nothing changed, push,
-      rollback), 16 Oct 2026. The GUI press is owed on each OS; a SUBDOMAIN network on a real host too.
+      rollback), 16 Oct 2026. ✓ **the macOS 15.8 VM, this tree's debug build, 16 Oct 2026:** `l14vm.rex`
+      Disconnect → the network's key → Connect ("38 tables") → Pull from live → the log's "wp-config: a
+      subdirectory network — the network constants are in", "URLs: … (41 replacements)", "l14vm.rex is served
+      as a subdirectory network now" → "Pulled 38 tables (473 rows) and 454 files" (≈15 min: the host
+      delivers at ~100 KB/s) → `https://l14vm.rex/`, `/shop/` (title "Shop") and `/blog/` all 200 from the
+      VM's own edge. Check status then read "behind — 21 tables": the host's MySQL had restarted during the
+      pull (every written table's `Update_time` NULL, `Rows` re-sampled) — plugin 0.1.6 (#893) came from this
+      press; the next Pull brought "21 tables (54 rows) and 3 files — 17 tables and 451 files unchanged on live
+      were kept" and Check status read "Up to date — nothing to pull or push". The Windows and Linux presses
+      are owed; a SUBDOMAIN network on a real host too.
 - [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
       paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
       connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused

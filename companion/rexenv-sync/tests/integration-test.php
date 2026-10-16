@@ -384,6 +384,17 @@ $send( 'POST', '/rexenv-sync/v1/push/abort', array( 'push_id' => $d2['push_id'] 
 $wpdb->query( "DROP TABLE IF EXISTS `$pt`, `rxnew_$pt`, `rxbak_$pt`" );
 @unlink( WP_CONTENT_DIR . '/' . $pfile );
 
+// 11. A MySQL restart (0.1.6): a status row that comes back with a NULL Update_time and a
+//     re-sampled Rows gets the remembered pair, so the stamp holds; a real later write moves it.
+$rows = array( array( 'Name' => $wpdb->posts, 'Update_time' => '2026-10-16 01:02:03', 'Rows' => 7, 'Auto_increment' => 9, 'Data_length' => 16384, 'Engine' => 'InnoDB' ) );
+Rexenv_Sync_Reader::settle_rows( $rows );
+$after = Rexenv_Sync_Reader::settle_rows( array( array( 'Name' => $wpdb->posts, 'Update_time' => null, 'Rows' => 5, 'Auto_increment' => 9, 'Data_length' => 16384, 'Engine' => 'InnoDB' ) ) );
+$check( '2026-10-16 01:02:03' === $after[0]['Update_time'] && 7 === $after[0]['Rows'] && Rexenv_Sync_Reader::stamp( $rows[0] ) === Rexenv_Sync_Reader::stamp( $after[0] ), 'after a restart (NULL Update_time, re-sampled Rows) the remembered pair keeps the stamp still' );
+$later = Rexenv_Sync_Reader::settle_rows( array( array( 'Name' => $wpdb->posts, 'Update_time' => '2026-10-16 02:00:00', 'Rows' => 8, 'Auto_increment' => 10, 'Data_length' => 16384, 'Engine' => 'InnoDB' ) ) );
+$check( Rexenv_Sync_Reader::stamp( $later[0] ) !== Rexenv_Sync_Reader::stamp( $rows[0] ) && get_option( Rexenv_Sync_Reader::STAMPS )[ $wpdb->posts ] === array( '2026-10-16 02:00:00', 8 ), 'a real write after the restart moves the stamp and refreshes what is remembered' );
+$check( false === strpos( Rexenv_Sync_Reader::export_table( $wpdb->options, null )['sql'], Rexenv_Sync_Reader::STAMPS ), 'the remembered stamps never travel in an options export' );
+delete_option( Rexenv_Sync_Reader::STAMPS );
+
 Rexenv_Sync_Pairing::delete();
 $check( false === get_option( Rexenv_Sync_Pairing::LAST ), 'Disconnect drops the record too' );
 echo "integration: $fail failed\n";

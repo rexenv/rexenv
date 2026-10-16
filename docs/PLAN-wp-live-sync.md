@@ -29,7 +29,9 @@ auth** (`https://auth.rex.bd`, `.htaccess` + `.htpasswd`): the same run with `RE
 — pull, push, rollback through the password. The cPanel host is a LiteSpeed box that delivers a
 6 MB file frame at ~100 KB/s and has `post_max_size` 8M: the client now runs two clocks (60 s
 without a byte = dead; 20 min total), halves a file batch the host cuts, and halves a push chunk
-the host refuses as too large (#892). Open: a SUBDOMAIN network on a real host (the fixture and
+the host refuses as too large (#892); its MySQL restarted between a pull and the next status,
+which then read "21 tables changed on live" — plugin 0.1.6 holds a table's stamp still across a
+restart (#893). Open: a SUBDOMAIN network on a real host (the fixture and
 host 2 are subdirectory networks; the code path is the Local import's, proven there), a
 mapped-domain sub-site (refused, as the import refuses it). Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
