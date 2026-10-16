@@ -15,8 +15,23 @@ before the swap; the tables it touched are never pushed), **uploads on demand** 
 switch, on by default; the mu-plugin `uploads_on_demand.rs` fetches a missing upload from live
 the first time a page asks for it), **resume** (`progress.rs`: an interrupted pull continues from
 the tables it staged and the files it fetched; an interrupted push continues the open push on
-live — plugin 0.1.4's `begin` with `resume`), and #857's MariaDB half measured. Open: real hosts
-2–3 (L14), S5 multisite. Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
+live — plugin 0.1.4's `begin` with `resume`), and #857's MariaDB half measured.
+**16 Oct 2026 (L15 + L14's hosts 2–3, #889–#892): a NETWORK pulls and pushes** — the manifest
+says `subdomain` (plugin 0.1.5), the pull writes the network constants into the local wp-config
+(the live host first, for the blog listing; the local domain after), moves the URLs network-aware
+(each sub-site under the host, the network last — the Local import's `rehome_urls_on_copy`),
+records the mode on the site row (`adopt_multisite`) and reloads the web tier with the network
+rewrite rules; every sub-site's options table and `sitemeta` are content-stamped on both sides;
+a sub-site's `comments`/orders count as live-owned. Proven on the fixture (leg 17) and on a REAL
+cPanel host: `https://live-sync.rex.bd` rebuilt as a subdirectory network (blog 1, /shop/, /blog/)
+— pull, "nothing changed" after it, a probe push to the main site, rollback. **Host 3, HTTP basic
+auth** (`https://auth.rex.bd`, `.htaccess` + `.htpasswd`): the same run with `REXENV_LIVE_AUTH_FILE`
+— pull, push, rollback through the password. The cPanel host is a LiteSpeed box that delivers a
+6 MB file frame at ~100 KB/s and has `post_max_size` 8M: the client now runs two clocks (60 s
+without a byte = dead; 20 min total), halves a file batch the host cuts, and halves a push chunk
+the host refuses as too large (#892). Open: a SUBDOMAIN network on a real host (the fixture and
+host 2 are subdirectory networks; the code path is the Local import's, proven there), a
+mapped-domain sub-site (refused, as the import refuses it). Was: PLANNED 9 Oct 2026. Owner request ("local staging system"); this
 plan was written by the agent while the owner was away, so every decision in §2 is a
 recommendation waiting for the owner's yes (the open questions are §11). **Owner answered
 9 Oct 2026:** the plugin ships as an in-app zip only for v1, and a push always needs a
@@ -188,7 +203,7 @@ A WordPress site with a different source for content (the git-site-clone pattern
 normal WP provisioning (PHP version = live's major.minor if rexenv ships it, else nearest
 with a line saying so; same WP core version; same `$table_prefix`), then the pull phases.
 Domain default: live host's first label + `.rex` (`example.com` → `example.rex`), editable.
-Multisite: **refused in v1** with the reason (domain mapping, per-blog uploads); Stage 5.
+Multisite: **refused in v1** with the reason (domain mapping, per-blog uploads); Stage 5 — **built 16 Oct 2026** (#889): the pull writes the constants and the site row takes the mode; a mapped-domain sub-site still stops the pull.
 
 ### 2.8 Safety on the local side
 
@@ -267,7 +282,7 @@ keychain" / "Windows Credential Manager" / "your keyring").
 
 ## 6. Out of scope (v1)
 
-Multisite networks (Stage 5); WordPress core files and `wp-config.php` transfer; scheduled
+~~Multisite networks (Stage 5)~~ (built 16 Oct 2026; a mapped-domain sub-site is still refused); WordPress core files and `wp-config.php` transfer; scheduled
 or automatic sync; non-WordPress sites; row-level DB merge; pushing to a host that is not
 the paired one ("push to another server" = a migration tool, a different product); sites
 behind HTTP basic auth (§11 Q5).
@@ -330,8 +345,8 @@ Stages, each shippable on its own:
 | L11 | Sync base + conflict list + live-owned table defaults (S3) — 10 Oct 2026: two base bugs found by pushing against the pull's OWN base (#841: pulled files stamped "now" made the first push send all of wp-content; empty tables' NULL Auto_increment read as a live change) | L0 diff tests; L1 leg where both sides changed — base recorded by pull/push (`core/live_sync/base.rs`), the plugin's conflict verdict against it, live-owned defaults (`LIVE_OWNED`): ✓ 10 Oct 2026 (#833). The conflict card lists the items and "Push anyway" overrides them all at once (#834); a per-item three-column choice is S3 |
 | L12 | CLI `rex live …`, MCP `live` (status/diff/pull only) + dial | `cli` tests; CLI-ROADMAP; MCP parity; ledger #7 — ✓ 10 Oct 2026: `rex live <domain> status \| diff \| pull \| push --confirm <host> \| rollback \| disconnect` (six `live.*` arms), the MCP `live` tool (status/diff Read, pull Destroy; no push/rollback/pair action at any level — L0 `live_reads_under_read_pulls_under_destroy_and_never_pushes`), `live_sync_diff`; #836. Connect is not a CLI command (the key would land in shell history) |
 | L13 | Security review of plugin + client (security-auditor pass + owner) | findings closed — agent pass ✓ 10 Oct 2026 (read-only security-auditor over the plugin, `core/live_sync`, `commands/live_sync.rs`, the protocol): 1 critical (export stream imported as root → scoped throwaway user, #837), 1 high (no size/disk ceilings → 1 GiB per file, disk pre-check), 2 medium fixed (`now` on every 401 + skew before signature → signature first, `now` on `clock_skew` only; host charset in `parse_key`), 1 low fixed (conflict list filtered to what was asked), 3 accepted-and-documented (pulled code runs locally — it is the site; pairing file plaintext behind the ACL; probabilistic nonce GC). All in #837. **Owner's half still open:** read #837 and the three accepted postures |
-| L14 | Real-host smoke (3 hosts) + per-OS proof; SMOKE / ARCHITECTURE / MAP / TESTING / INSTALL updated | SMOKE section green with host names — host 1 = `https://live-sync.rex.bd` (owner, 10 Oct 2026); `live_sync_real_host_check` (system tier): run 10 Oct 2026 — pull ✓, nothing-changed-after-pull ✓ (#841 holds on a real MySQL), probe push ✓ (post at the live domain, file served), rollback ✓ by the site's own file list; on the fourth run the host reset every connection from this Mac for some minutes, then recovered (cause not established; NOT an IP block — the owner browsed the site; a pull is ~25 requests). The client now names a reset plainly (#842) and retries READS with backoff (#843). Owed: hosts 2 and 3. Per-OS: the fixture L1 (`live_sync_pull_into_check`) ALL PASS on macOS, the Dell's Windows 10 and the Ubuntu 22.04 VM |
-| L15 | Multisite (S5) | own plan section, own sign-off |
+| L14 | Real-host smoke (3 hosts) + per-OS proof; SMOKE / ARCHITECTURE / MAP / TESTING / INSTALL updated — **hosts 2 and 3 ✓ 16 Oct 2026** (`live_sync_real_host_check` ALL PASS against `https://live-sync.rex.bd` rebuilt as a subdirectory network, plugin 0.1.5, and against `https://auth.rex.bd` behind HTTP basic auth with `REXENV_LIVE_AUTH_FILE`; both stood up through the cPanel UAPI from a bootstrap script, no SSH) | SMOKE section green with host names — host 1 = `https://live-sync.rex.bd` (owner, 10 Oct 2026); `live_sync_real_host_check` (system tier): run 10 Oct 2026 — pull ✓, nothing-changed-after-pull ✓ (#841 holds on a real MySQL), probe push ✓ (post at the live domain, file served), rollback ✓ by the site's own file list; on the fourth run the host reset every connection from this Mac for some minutes, then recovered (cause not established; NOT an IP block — the owner browsed the site; a pull is ~25 requests). The client now names a reset plainly (#842) and retries READS with backoff (#843). Owed: hosts 2 and 3. Per-OS: the fixture L1 (`live_sync_pull_into_check`) ALL PASS on macOS, the Dell's Windows 10 and the Ubuntu 22.04 VM |
+| L15 | Multisite (S5) | ✓ 16 Oct 2026 (#889, #890): `pull_into`'s network branch (constants → network-aware URL move → `DOMAIN_CURRENT_SITE` to the local domain → `--network` deactivation), `PullReport::network` → `commands::live_sync::run_pull` adopts/clears the mode and reloads; `stamps::options_like` + plugin 0.1.5 `options_like`; `push::bare_name` for live-owned; `anonymise` blog-aware; New site → From a live site takes a network. L1 `live_sync_pull_into_check` leg 17/17b/17c (a fixture subdirectory network with /shop/: pull → a network on the local domain, up to date, a sub-site post pushed to live's /shop/ on the live domain), the real host (below) |
 | L16 | Status + incremental (14 Oct 2026, owner: "a status button … up to date, behind, ahead; pull/push incremental, never everything again") | ✓ 14 Oct 2026: the base's local half (`stamps.rs`, `CHECKSUM TABLE` + the options content stamp shared with plugin 0.1.3, #859), `status.rs::judge` + `live_sync_status` + the Live tab's Check status card + `rex live … status` + the MCP `live` status's verdict (#860), the incremental pull with the delete rule (#861), the push's default = what changed here, the rollback keeping the local half (#862), the history (`<id>.history.json`, 20), the plugin's Tools page rewritten (connection / how it works / this site; last contact, last pull/push, the kept backup's size; Copy key; confirms). L0 plants ×6, L1 `live_sync_pull_into_check` legs 12–12d + 6, `live_sync_plugin_check` §9, L2 `livetab.js` legs 10–13 |
 | L17 | S3's remainder (15 Oct 2026): per-item conflict choice, anonymise on pull, uploads on demand, resume | ✓ 15 Oct 2026: `PushOptions::skip` + the conflict card's per-item keep/overwrite (#878); `anonymise.rs` rules over the staging copy, `SyncBase::anonymised`, the push's refusal and the picker's badge (#879); `uploads_on_demand.rs` mu-plugin + the site's switches (`live_sync_options`/`set_options`, `rex live … set`; #880); `progress.rs` + plugin 0.1.4 `begin … resume` / `chunk` counts (#881, #882); the plugin check runs on MariaDB with `REXENV_SYNC_ENGINE=mariadb` (#857's other half, #883). L0 plants, L1 `live_sync_pull_into_check` legs 13–16b, `live_sync_plugin_check` §10, L2 `livetab.js` legs 14–16 |
 
@@ -356,7 +371,9 @@ Stages, each shippable on its own:
    ACL on Windows, #597) — no keychain, no Credential Manager, no Secret Service.
 5. **Basic-auth / IP-allowlisted live sites** — DECIDED 10 Oct 2026: HTTP basic auth is an
    optional user:password stored beside the key and sent as `Authorization`; IP allowlists are
-   the host's business (the pull says "a firewall refused").
+   the host's business (the pull says "a firewall refused"). **Proven on a real host 16 Oct 2026**
+   (`auth.rex.bd`, #891): pull, push and rollback through the password; the uploads-on-demand
+   mu-plugin has no password and 404s as before on such a site (documented, #880).
 6. **Anonymise on pull** — DECIDED 10 Oct 2026: later (S3), after push — it is its own feature
    (which columns, which tables, per plugin). **BUILT 15 Oct 2026** (`core/live_sync/anonymise.rs`,
    #879): one rule per table in ONE list (core users/usermeta/comments; WooCommerce orders,

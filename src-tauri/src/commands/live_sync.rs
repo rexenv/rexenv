@@ -602,6 +602,35 @@ async fn run_pull<R: tauri::Runtime>(app: &AppHandle<R>, entry: &Arc<Entry>, sit
     let report = pull::pull_into(&client, &local, prior.as_ref(), &options, &mut on_line).await?;
     // The base for the next pull and push (§2.6).
     base::put(state.platform.as_ref(), &site.id, &report.base)?;
+    // A network (S5): the site row records the mode the copy now has, and the web tier
+    // is reloaded with the network rewrite rules — the same steps `wp_multisite_convert`
+    // takes. A single site pulled over a network clears it.
+    let want = match report.network {
+        Some("subdomain") => crate::state::models::MultisiteMode::Subdomain,
+        Some(_) => crate::state::models::MultisiteMode::Subdirectory,
+        None => crate::state::models::MultisiteMode::None,
+    };
+    if want != site.multisite {
+        let sites = {
+            let conn = lock_db(&state)?;
+            if matches!(want, crate::state::models::MultisiteMode::None) {
+                sites::clear_multisite(&conn, &site.id)?;
+            } else {
+                sites::adopt_multisite(&conn, &site.id, want)?;
+            }
+            sites::list(&conn)?
+        };
+        let checks = {
+            let mut mgr = state.services.lock().await;
+            if mgr.is_running() {
+                mgr.reload(state.platform.as_ref(), &state.ca, &sites, false).await?
+            } else {
+                Vec::new()
+            }
+        };
+        service_manager::await_ready(checks).await?;
+        on_line(&format!("{} is served as a {} now", site.domain, match want { crate::state::models::MultisiteMode::None => "single site".to_string(), m => format!("{} network", m.as_db()) }));
+    }
     Ok(report)
 }
 
@@ -915,9 +944,8 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
 ) -> Result<crate::commands::site_provision::SiteProvisionState> {
     let (pairing_key, auth, client) = client_from(&key, basic_auth_user, basic_auth_password)?;
     let m = client.manifest().await?;
-    if m.multisite {
-        return Err(Error::Other(format!("{} is a multisite network — rexenv cannot copy a network yet (domain mapping and per-site uploads need their own design).", m.site_url)));
-    }
+    // A network is copied too (S5, 16 Oct 2026): the pull writes its constants and the
+    // site row takes the mode. A plugin too old to describe one is refused by the pull.
     let preview = preview_of(&m);
     let php_version = php_version.filter(|v| !v.trim().is_empty()).unwrap_or(preview.php_minor.clone());
     let new_site = crate::state::models::NewSite {

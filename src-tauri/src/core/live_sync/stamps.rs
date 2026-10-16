@@ -26,11 +26,33 @@ pub const VOLATILE_OPTIONS: [&str; 7] = [
     "action\\_scheduler\\_lock\\_%",
 ];
 
-/// The options stamp query — `COUNT(*)` and the CRC32 sum of the non-volatile rows
-/// of `table`, as one tab-separated row.
+/// Tables stamped by CONTENT rather than status — the same rule as the plugin's
+/// `Rexenv_Sync_Reader::options_like` (0.1.5): the options table, every sub-site's
+/// `<prefix><id>_options` on a network, and the network's `sitemeta`; each is written on
+/// every request (transients), so a status stamp never stands still for them. Answers
+/// the (key column, value column, extra column) to stamp over.
+pub fn options_like(prefix: &str, table: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    let bare = table.strip_prefix(prefix)?;
+    if bare == "options" || bare.strip_suffix("_options").is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit())) {
+        return Some(("option_name", "option_value", "autoload"));
+    }
+    if bare == "sitemeta" {
+        return Some(("meta_key", "meta_value", ""));
+    }
+    None
+}
+
+/// The content stamp query for an [`options_like`] table — `COUNT(*)` and the CRC32 sum
+/// of its non-volatile rows, as one tab-separated row.
 pub fn options_stamp_sql(table: &str) -> String {
-    let not = VOLATILE_OPTIONS.iter().map(|p| format!("option_name NOT LIKE '{p}'")).collect::<Vec<_>>().join(" AND ");
-    format!("SELECT COUNT(*), COALESCE(SUM(CRC32(CONCAT_WS('|', option_name, option_value, autoload))), 0) FROM `{}` WHERE {not}", table.replace('`', "``"))
+    let (key, value, extra) = ("option_name", "option_value", "autoload");
+    content_stamp_sql(table, key, value, extra)
+}
+
+pub fn content_stamp_sql(table: &str, key: &str, value: &str, extra: &str) -> String {
+    let not = VOLATILE_OPTIONS.iter().map(|p| format!("`{key}` NOT LIKE '{p}'")).collect::<Vec<_>>().join(" AND ");
+    let concat = if extra.is_empty() { format!("CONCAT_WS('|', `{key}`, `{value}`)") } else { format!("CONCAT_WS('|', `{key}`, `{value}`, `{extra}`)") };
+    format!("SELECT COUNT(*), COALESCE(SUM(CRC32({concat})), 0) FROM `{}` WHERE {not}", table.replace('`', "``"))
 }
 
 /// The companion plugin's own table in a LOCAL copy (`<prefix>rexsync_nonces`): made
@@ -45,8 +67,12 @@ pub fn plugin_own_table(prefix: &str, table: &str) -> bool {
 /// Every table of the local site with its stamp, the plugin's own left out. `prefix`
 /// names the options table.
 pub fn local_stamps(local: &LocalSite<'_>, prefix: &str) -> Result<BTreeMap<String, String>> {
-    let options = format!("{prefix}options");
-    let mut stamps = crate::core::database::table_stamps(local.client, local.port, local.db_name, Some(&options), Some(&options_stamp_sql(&options)))?;
+    let names = local.engine.list_tables(local.client, local.port, local.db_name)?;
+    let content: Vec<(String, String)> = names
+        .iter()
+        .filter_map(|t| options_like(prefix, t).map(|(k, v, e)| (t.clone(), content_stamp_sql(t, k, v, e))))
+        .collect();
+    let mut stamps = crate::core::database::table_stamps(local.client, local.port, local.db_name, &content)?;
     stamps.retain(|t, _| !plugin_own_table(prefix, t));
     Ok(stamps)
 }
@@ -72,6 +98,16 @@ mod tests {
         assert_eq!(theirs, ours, "the plugin's VOLATILE_OPTIONS and rexenv's differ");
         let sql = options_stamp_sql("wp_options");
         assert!(sql.contains("NOT LIKE '\\_transient\\_%'") && sql.contains("NOT LIKE 'cron'") && sql.contains("CRC32"));
+        // The content-stamped set on a network (S5): the main options, each sub-site's, sitemeta.
+        assert_eq!(options_like("wpms_", "wpms_options"), Some(("option_name", "option_value", "autoload")));
+        assert_eq!(options_like("wpms_", "wpms_2_options"), Some(("option_name", "option_value", "autoload")));
+        assert_eq!(options_like("wpms_", "wpms_sitemeta"), Some(("meta_key", "meta_value", "")));
+        assert_eq!(options_like("wpms_", "wpms_2_posts"), None);
+        assert_eq!(options_like("wpms_", "wpms_x_options"), None, "a non-numeric blog id is not a sub-site");
+        assert_eq!(options_like("wp_", "wpms_options"), None, "another prefix");
+        assert!(content_stamp_sql("wpms_sitemeta", "meta_key", "meta_value", "").contains("CONCAT_WS('|', `meta_key`, `meta_value`)"));
+        // The plugin's rule reads the same three shapes.
+        assert!(php.contains("_options$/") && php.contains("$wpdb->sitemeta") && php.contains("public static function options_like"));
     }
 
     /// **The plugin's own nonce table in a local copy is nobody's change** (ledger #860):

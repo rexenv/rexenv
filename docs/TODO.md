@@ -110,6 +110,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** — "WordPress database
+  error Table 'wp_<db>.wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): wp-cli runs
+  `install_network()` without the network tables named on wpdb, and 7.1's `populate_network` reads
+  `$wpdb->site` first. rexenv's own **Convert to multisite** (`wp_multisite_convert` →
+  `wordpress::multisite_convert`) takes the same path and will fail the same way on a 7.1 site — the
+  fixture converts with the `network.php` sequence instead (`live_sync_pull_into_check` leg 17: name
+  `$wpdb->tables('ms_global')` on wpdb, `install_network()`, `populate_network()`, then the six
+  constants). Fix: do that in `core::wordpress::multisite_convert` through `wp eval-file` (or upgrade
+  wp-cli when a fix lands); add an L1 leg on a 7.1 fixture; the Network sub-tab's SMOKE row.
+
 - [x] **App icons on Windows and Linux, Spotlight detection + Re-detect on macOS** (owner, 16 Oct 2026) ✓ 16 Oct 2026 — the GUI rows ran on the Dell, the Ubuntu VM and the macOS VM the same day (SMOKE-TEST rows ticked):
   the browser/editor/terminal pickers on Windows and Linux wore the grey fallback glyph for every app
   (`icon: None` on every row) while macOS showed each app's icon; a client's VS Code in a sub-folder of
@@ -618,8 +628,14 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **WordPress live ↔ local sync — open: real hosts 2–3 (the multisite and basic-auth SMOKE rows,
-  each needs its own live host), S5 multisite, and the owner's read of L13's agent pass.** Closed 15
+- [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
+  the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
+  choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
+  fixture and host 2 are subdirectory networks); plugin 0.1.5 is on both cPanel hosts, the owner's
+  own uploads are their own.** Closed 16 Oct 2026: S5 multisite (L15, #889/#890) and hosts 2–3 (L14:
+  `live-sync.rex.bd` rebuilt as a subdirectory network, `auth.rex.bd` behind basic auth — both stood
+  up through the cPanel UAPI, both `live_sync_real_host_check` ALL PASS; #891), and the LiteSpeed
+  host's throttle + `post_max_size` (#892: two clocks, batch and chunk halving). Closed 15
   Oct 2026: S3's remainder (per-item conflict choice, anonymise on pull, uploads on demand, resume —
   L17, #878–#883; plugin 0.1.4), #857's MariaDB half (measured on 12.3.2, `REXENV_SYNC_ENGINE=mariadb`),
   and the "Check status dispatch delay": measured from inside the webview (`webview_note`, the in-flight

@@ -1034,6 +1034,23 @@ MariaDB — #857's other half: a `RENAME` leaves InnoDB's `Rows` estimate stale 
 row read 0 after the rename on 12.3.2, and a 3-row table read 1 — the previous ANALYZE's
 figure — until the next ANALYZE), and `settle_stats` settles it the same way.
 
+**Hosts 2 and 3 of the real-host run, and a network on the fixture** (16 Oct 2026). Two live
+WordPress sites were stood up on the project's cPanel account through the UAPI alone (no SSH: a
+bootstrap PHP script uploaded with `Fileman/upload_files`, driven by signed POSTs, deleted at the
+end): `https://live-sync.rex.bd` rebuilt as a SUBDIRECTORY network (blog 1, /shop/, /blog/, a post
+and an upload each) and `https://auth.rex.bd` behind HTTP basic auth (`.htaccess` + a bcrypt
+`.htpasswd`). `live_sync_real_host_check` ran ALL PASS against both — `REXENV_LIVE_AUTH_FILE`
+names a 0600 `user:password` file for the second; the network run checks the copy is a
+`Subdirectory` network whose every sub-site reads the local domain (1b). What the host taught:
+it is a LiteSpeed box that delivers a 6 MB file frame at ~100 KB/s (a signed `curl` of 100 files
+took over 120 s) and has `post_max_size` 8M — the client's two clocks and the batch/chunk halving
+came from it (#892). The fixture's network leg (`live_sync_pull_into_check` 17–17c) converts the
+live fixture the way `network.php` does (install + populate with the network tables named on wpdb
+first), because **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3 with "Table
+wp_site doesn't exist"** — a TODO row for rexenv's own Convert to multisite. The fixture live is
+reached as `http://127.0.0.1:<port>`, a host no blog has, so a `sunrise.php` (WordPress's own
+pre-resolution hook) makes every request the main site's — fixture only.
+
 **The app's two serial lanes are watched** (`core/stall_watch.rs`, 15 Oct 2026): a tokio task
 sleeps one tick and logs when it wakes late; a plain thread queues a closure onto the main
 thread every tick and logs when it runs late (`stall: the main thread was busy for N s beyond

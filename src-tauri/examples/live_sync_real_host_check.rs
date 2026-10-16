@@ -7,6 +7,10 @@
 //!
 //! The key comes from a FILE (0600, made with `pbpaste > …`), never an argument or
 //! an env value, so it never lands in shell history. Without the file: SKIPPED, exit 2.
+//! A site behind HTTP basic auth (host 3, `auth.rex.bd`): `REXENV_LIVE_AUTH_FILE` names a
+//! 0600 file holding `user:password`, sent on every request — the plugin's and the
+//! public checks'. A NETWORK (host 2, 16 Oct 2026): the pull writes the constants and
+//! the copy lists its sub-sites on the local domain; the probe post goes to the main site.
 //!
 //! WRITES TO THE LIVE SITE, and undoes it: one probe post and one probe upload are
 //! pushed, checked over public HTTPS, then rolled back and checked gone. Nothing
@@ -139,8 +143,22 @@ async fn main() -> std::process::ExitCode {
         ok &= good;
     };
     let mut sink = |l: &str| println!("  | {l}");
-    let client = Client::new(key).unwrap();
+    let auth: Option<(String, String)> = std::env::var_os("REXENV_LIVE_AUTH_FILE")
+        .and_then(|f| std::fs::read_to_string(f).ok())
+        .and_then(|s| s.trim().split_once(':').map(|(u, p)| (u.to_string(), p.to_string())));
+    let mut client = Client::new(key).unwrap();
+    if let Some((u, p)) = &auth {
+        client = client.with_basic_auth(u, p);
+        println!("basic auth: as {u}");
+    }
     let http = reqwest::Client::builder().timeout(Duration::from_secs(30)).build().unwrap();
+    let get = |url: &str| {
+        let r = http.get(url);
+        match &auth {
+            Some((u, p)) => r.basic_auth(u, Some(p)),
+            None => r,
+        }
+    };
 
     // 1. Pull.
     let pulled = pull::pull_into(&client, &target, None, &pull::PullOptions::default(), &mut sink).await;
@@ -164,6 +182,13 @@ async fn main() -> std::process::ExitCode {
             siteurl.trim() == format!("https://{domain}") && posts.trim().parse::<u32>().unwrap_or(0) >= 1 && cron.trim() == "1" && !active.lines().any(|l| l.trim() == "rexenv-sync") && !pairing,
             &format!("1. the local copy is the live site at https://{domain} ({} posts), cron off, plugin inactive, no pairing row", posts.trim()),
         );
+        // 1b. A network: the copy IS one, on the local domain, every sub-site under it.
+        if pulled.as_ref().map(|r| r.network.is_some()).unwrap_or(false) {
+            let mode = rexenv_lib::core::sites::network_mode_on_disk(&root);
+            let sites = wordpress::network_site_list(&php, &wp, &root).map(|l| l.iter().map(|s| s.url.clone()).collect::<Vec<_>>()).unwrap_or_default();
+            let all_local = !sites.is_empty() && sites.iter().all(|u| u.starts_with(&format!("https://{domain}")) || u.contains(&format!(".{domain}/")));
+            check(mode.is_some() && all_local, &format!("1b. the copy is a {mode:?} network and every sub-site is on the local domain: {sites:?}"));
+        }
 
         // 2. Nothing reads as changed on live right after the pull.
         let m = client.manifest().await.unwrap();
@@ -185,9 +210,9 @@ async fn main() -> std::process::ExitCode {
         let file_url = format!("{live_url}/wp-content/{file_rel}");
         match push::push_from(&client, &target, Some(&base), &opts, &mut sink).await {
             Ok(r) => {
-                let found: serde_json::Value = http.get(&search).send().await.unwrap().json().await.unwrap_or_default();
+                let found: serde_json::Value = get(&search).send().await.unwrap().json().await.unwrap_or_default();
                 let link = found.get(0).and_then(|p| p.get("link")).and_then(|l| l.as_str()).unwrap_or("").to_string();
-                let served = http.get(&file_url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
+                let served = get(&file_url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
                 check(
                     r.files == 1 && link.starts_with(&format!("https://{live_host}")) && served == 200,
                     &format!("3. push: {} file(s) sent; the post is on live at {link:?}; the file answers {served}", r.files),
@@ -198,7 +223,7 @@ async fn main() -> std::process::ExitCode {
                         // 4a. The plugin's own view of the disk (signed `/files/list`) is the
                         // authority: the probe file is gone from it the moment rollback answers.
                         let listed = client.list_files(&pull::DEFAULT_EXCLUDES, None).await.map(|fs| fs.iter().any(|f| f.path == file_rel)).unwrap_or(true);
-                        let found: serde_json::Value = http.get(&search).send().await.unwrap().json().await.unwrap_or_default();
+                        let found: serde_json::Value = get(&search).send().await.unwrap().json().await.unwrap_or_default();
                         let gone = found.as_array().map(|a| a.is_empty()).unwrap_or(false);
                         check(gone && !listed, &format!("4a. rollback {}: the post is gone from live ({gone}) and the file is gone from the site's own file list ({})", r.backup_id, !listed));
                         // 4b. What the public sees, on a FRESH connection each time. On
@@ -209,14 +234,20 @@ async fn main() -> std::process::ExitCode {
                         let fresh = reqwest::Client::builder().timeout(Duration::from_secs(30)).pool_max_idle_per_host(0).build().unwrap();
                         let started = std::time::Instant::now();
                         let mut served = 0u16;
-                        while started.elapsed() < Duration::from_secs(120) {
-                            served = fresh.get(&file_url).send().await.map(|r| r.status().as_u16()).unwrap_or(0);
+                        while started.elapsed() < Duration::from_secs(300) {
+                            // Through the password too (16 Oct 2026): without it a basic-auth host
+                            // answered 401 for 300 s here and read as a front cache holding the file.
+                            let mut req = fresh.get(&file_url);
+                            if let Some((u, p)) = &auth {
+                                req = req.basic_auth(u, Some(p));
+                            }
+                            served = req.send().await.map(|r| r.status().as_u16()).unwrap_or(0);
                             if served == 404 {
                                 break;
                             }
                             tokio::time::sleep(Duration::from_secs(5)).await;
                         }
-                        check(served == 404, &format!("4b. the public URL answers 404 within 120 s (took {} s, fresh connections)", started.elapsed().as_secs()));
+                        check(served == 404, &format!("4b. the public URL answers 404 within 300 s (took {} s, fresh connections; got {served})", started.elapsed().as_secs()));
                     }
                     Err(e) => check(false, &format!("4. rollback {}: {e} — ROLL BACK BY HAND on the live site", r.backup_id)),
                 }

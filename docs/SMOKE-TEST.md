@@ -1223,13 +1223,32 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       the live site, its WordPress, PHP and table count, and which PHP this copy runs; name and domain
       prefill from the host; no admin fields. **Create and pull** → the provision card runs, then the
       new site's Live tab shows the pull running by itself; when it settles the site is the live
-      content at the local domain and logs in with the LIVE users. A multisite key: "cannot copy a
-      network", Create stays off.
+      content at the local domain and logs in with the LIVE users. A multisite key (S5, 16 Oct
+      2026): the preview says "a multisite network (its sub-sites come along…)" and Create stays ON.
       ◐ the macOS 15.8 VM, this tree's release build, 11 Oct 2026: Check → "https://live-sync.rex.bd — WordPress 7.1.3, PHP 8.1.34, 12 tables…", name/domain
       `live-sync`, no admin fields; Create and pull → provision card → the Live tab's pull ran by itself → live
       content at `https://live-sync.rex` (45 links). Found: the line promised "will run PHP 8.1" with 8.1 not
       installed and the site was made on 8.3 — the line now names 8.3 and says why (#855). The multisite half
-      needs a multisite live site.
+      needs a multisite live site — `https://live-sync.rex.bd` IS one since 16 Oct 2026 (the GUI press is the row below).
+- [ ] **A NETWORK from live** (S5, 16 Oct 2026; host 2 = `https://live-sync.rex.bd`, a subdirectory
+      network with /shop/ and /blog/). Live tab → paste its key → Connect → "… 38 tables" → Pull →
+      the log says "wp-config: a subdirectory network — the network constants are in", "URLs: …",
+      then "<domain> is served as a subdirectory network now" → the local site opens at `/`, `/shop/`
+      and `/blog/` with each sub-site's post and upload; wp-admin → My Sites lists the three on the
+      LOCAL domain; the site's Network sub-tab lists them; Check status → "Up to date". Edit a post
+      in /shop/ here → Push to live… → the picker ticks `wpms_2_posts` only (the sub-site's options
+      unticked, "unchanged") → the post is on live's /shop/. New site → From a live site with the
+      same key → "a multisite network" in the preview, Create and pull → the new site is a network.
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 17–17c (fixture network) + `live_sync_real_host_check`
+      ALL PASS against the real host (pull, 1b every sub-site on the local domain, nothing changed, push,
+      rollback), 16 Oct 2026. The GUI press is owed on each OS; a SUBDOMAIN network on a real host too.
+- [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
+      paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
+      connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused
+      with the 401 sentence. "Fetch missing uploads from live" on such a site: a missing upload
+      404s (the mu-plugin carries no password — by design, #880).
+      ◐ macOS: `live_sync_real_host_check` with `REXENV_LIVE_AUTH_FILE` ALL PASS against the real host
+      (pull, nothing changed, push, rollback through the password), 16 Oct 2026. The GUI press is owed on each OS.
 - [x] **Pull, recent uploads only** → old media 404s locally, new media loads; the log says
       "uploads older than … left on live".
       ◐ the macOS 15.8 VM, this tree's release build, 11 Oct 2026: the confirm ("Uploads older than six months stay on the live site and will 404 here"); the log has

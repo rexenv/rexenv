@@ -106,7 +106,7 @@ back unchanged. `null` means done.
 
 | Route | In | Out |
 |---|---|---|
-| `GET /manifest` | — | `{protocol: "rexsync1", plugin: "1.0.0", site_url, wp, php, mysql, prefix, multisite, charset, tables: [{name, rows, bytes, checksum}], free_bytes: n\|null}` |
+| `GET /manifest` | — | `{protocol: "rexsync1", plugin: "1.0.0", site_url, wp, php, mysql, prefix, multisite, subdomain, charset, tables: [{name, rows, bytes, checksum}], free_bytes: n\|null}`. `subdomain` (0.1.5): a network's install type; rexenv writes the local copy's network constants from it |
 | `GET /files/list?cursor=` | `root` = `wp-content` (v1: the only root) | `{files: [{path, size, mtime}], cursor}`. `path` is relative to `root` and always `/`-separated, in SEGMENT-wise lexicographic order (a sorted depth-first walk), so the cursor is just the last path returned. Excluded paths are never listed (§5) |
 | `POST /files/read` | `{paths: [..]}` (≤ 200) | **framed binary** (§4.3) |
 | `GET /db/export?table=&cursor=` | one table | `{table, sql, sha256, rows, cursor}`. The first chunk starts with the session header (`SQL_MODE='NO_AUTO_VALUE_ON_ZERO'`, `SET NAMES`, `FOREIGN_KEY_CHECKS=0` — WordPress's zero-date defaults need it on a strict MySQL), then `DROP TABLE IF EXISTS` + `CREATE TABLE`; later chunks are `INSERT` batches. `sha256` is of this chunk's `sql` |
@@ -119,7 +119,11 @@ back unchanged. `null` means done.
   `ANALYZE TABLE` on what it renamed, so the stamp rexenv reads straight after as its new base
   does not move by itself minutes later (0.1.2, #857 — `wpcs_terms` stopped a push on
   live-sync.rex.bd that no one had touched).
-- **The options table's stamp is a CONTENT stamp** (plugin 0.1.3, 14 Oct 2026):
+- **Every options-like table's stamp is a CONTENT stamp** — the options table (0.1.3, 14 Oct
+  2026), and on a network each sub-site's `<prefix><id>_options` and the network's `sitemeta`
+  (0.1.5, 16 Oct 2026; `Rexenv_Sync_Reader::options_like`, mirrored by rexenv's
+  `stamps::options_like`): every request writes transients into all of them, so a status
+  stamp never stands still and a network could never read "up to date". The options table:
   `opt:<count>:<sum of CRC32(option_name|option_value|autoload)>` over the rows that do not
   move on their own — transients, `cron`, `rewrite_rules`, `recently_activated`, the plugin's
   `rexsync_*` rows, Action Scheduler locks (`Rexenv_Sync_Reader::VOLATILE_OPTIONS`; rexenv's
@@ -243,6 +247,9 @@ to sort signs the wrong string.
   over TLS.
 - **No compression negotiation.** Hosts compress `application/json` themselves. The file frame
   stays raw, because images and zips do not shrink.
-- **No multisite routes** (plan S5).
+- **No multisite routes.** A network needs none (S5, 16 Oct 2026): its tables carry the
+  sub-site id after the prefix (`wp_2_posts`), the manifest lists them all, and the blogs
+  table is data like any other; what differs is rexenv's side (the constants, the
+  network-aware URL move, the content stamps above).
 - **No streaming push of the whole database in one request.** Every write is cursor-bounded,
   like every read.

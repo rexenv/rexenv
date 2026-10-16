@@ -441,8 +441,8 @@ export function NewSiteDialog({
     name.trim() !== "" &&
     domainOk &&
     (!asksAdmin || (adminUser.trim() !== "" && adminPassword !== "")) &&
-    // From a live site: the key has reached its site, and it is not a network.
-    (!fromLive || (!!livePreview && !livePreview.multisite)) &&
+    // From a live site: the key has reached its site (a network is copied too, S5).
+    (!fromLive || !!livePreview) &&
     // Linking is chosen but no usable folder picked yet.
     (!useExisting || !!link) &&
     // Cloning is chosen but the repository hasn't been reached yet. Gating on
@@ -771,14 +771,12 @@ function LiveSourceFields({ p }: { p: LiveSourceProps }) {
         <div
           className={cn(
             "rounded-[9px] border px-[11px] py-2 text-[0.71875rem]",
-            p.preview.multisite ? "border-status-error-border bg-status-error-bg/40 text-status-error-bright" : "border-rex-border-subtle bg-rex-surface-1 text-rex-text-muted",
+            "border-rex-border-subtle bg-rex-surface-1 text-rex-text-muted",
           )}
           data-testid="live-preview"
         >
-          <span className="font-mono text-rex-text">{p.preview.siteUrl}</span> — WordPress {p.preview.wp}, PHP {p.preview.php}, {p.preview.tables} tables.
-          {p.preview.multisite
-            ? " A multisite network: rexenv cannot copy a network yet."
-            : ` ${livePhpSentence(p.preview, p.runs)}`}
+          <span className="font-mono text-rex-text">{p.preview.siteUrl}</span> — WordPress {p.preview.wp}, PHP {p.preview.php}, {p.preview.tables} tables
+          {p.preview.multisite ? ", a multisite network (its sub-sites come along; a mapped domain stops the pull)" : ""}. {livePhpSentence(p.preview, p.runs)}
         </div>
       )}
     </div>

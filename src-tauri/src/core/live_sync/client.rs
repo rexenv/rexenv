@@ -34,6 +34,9 @@ pub struct Manifest {
     pub mysql: String,
     pub prefix: String,
     pub multisite: bool,
+    /// A network's install type (plugin 0.1.5): sub-sites as subdomains, or as paths.
+    #[serde(default)]
+    pub subdomain: bool,
     pub tables: Vec<RemoteTable>,
     pub free_bytes: Option<u64>,
 }
@@ -54,6 +57,10 @@ pub fn plugin_version(version: &str) -> Option<(u32, u32, u32)> {
 
 /// The first plugin that resumes an interrupted push (`/push/begin` with `resume`).
 pub const RESUME_PLUGIN: (u32, u32, u32) = (0, 1, 4);
+
+/// The first plugin a NETWORK can be pulled from: its manifest says `subdomain`, and it
+/// content-stamps every sub-site's options table and `sitemeta` (16 Oct 2026, S5).
+pub const MULTISITE_PLUGIN: (u32, u32, u32) = (0, 1, 5);
 
 /// The refusal for a plugin older than [`MIN_PLUGIN`], or `None`. An unreadable version
 /// is refused too: nothing says it is past the fix.
@@ -297,9 +304,16 @@ impl Client {
         // No redirects: a site that answered with a redirect would send the signed
         // headers on to wherever it pointed — an `http://` URL included, which is
         // the plain-connection pull `parse_key` exists to refuse (review, 10 Oct 2026).
+        // Two clocks, not one (16 Oct 2026, #892): a request may take LONG — a shared host
+        // (the cPanel LiteSpeed box behind live-sync.rex.bd) delivers a 6 MB file frame at
+        // ~100 KB/s, two minutes — but it may never go QUIET: 60 s without a byte is a dead
+        // host. One 60 s total timeout read a throttled, healthy transfer as "error
+        // decoding response body" and failed every pull of the first real cPanel host.
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(30))
+            .read_timeout(Duration::from_secs(60))
+            .timeout(Duration::from_secs(20 * 60))
             .build()
             .map_err(|e| Error::Other(format!("rexenv Sync: {e}")))?;
         let base = key.site_url.clone();
@@ -461,15 +475,28 @@ impl Client {
     /// into place. Returns the records the plugin refused.
     /// `files` = `(path, size)` from `/files/list` (size 0 when unknown); requests are
     /// sized by [`read_batches`].
+    /// A batch the site cannot deliver whole — it stopped answering mid-frame (a host that
+    /// throttles or cuts a long response) — is split in halves and each half asked for
+    /// again, down to one file (#892); only a single file that still fails is an error.
     pub async fn read_files(&self, files: &[(String, u64)], dest: &Path, exclude: &[&str]) -> Result<Vec<FrameRecord>> {
         let globs = exclude.join(",");
         let mut refused = Vec::new();
-        for chunk in read_batches(files) {
+        let mut work: Vec<Vec<String>> = read_batches(files).into_iter().rev().collect();
+        while let Some(chunk) = work.pop() {
             let chunk = chunk.as_slice();
             let asked: HashSet<String> = chunk.iter().cloned().collect();
             let body = serde_json::to_vec(&serde_json::json!({ "paths": chunk })).expect("json");
             let q: Vec<(&str, &str)> = if globs.is_empty() { vec![] } else { vec![("exclude", &globs)] };
-            let frame = self.send(reqwest::Method::POST, "/rexenv-sync/v1/files/read", &q, body).await?;
+            let frame = match self.send(reqwest::Method::POST, "/rexenv-sync/v1/files/read", &q, body).await {
+                Ok(f) => f,
+                Err(e) if chunk.len() > 1 && e.to_string().contains("stopped answering") => {
+                    let (a, b) = chunk.split_at(chunk.len() / 2);
+                    work.push(b.to_vec());
+                    work.push(a.to_vec());
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
             for rec in parse_frame(&frame, &asked)? {
                 if rec.error.is_some() {
                     refused.push(rec);
@@ -557,13 +584,23 @@ impl Client {
     }
 
     /// `/push/file`: the whole file, in ≤ 4 MB pieces appended by offset.
+    /// `/push/file`: the whole file, in ≤ 4 MB pieces appended by offset. A piece the host
+    /// refuses as too large (413 — a `post_max_size` of 8M with the request's own overhead,
+    /// the cPanel host) is halved and sent again from the same offset (#892), down to 64 KB.
     pub async fn push_file(&self, push_id: &str, rel: &str, bytes: &[u8]) -> Result<()> {
-        const PIECE: usize = 4 * 1024 * 1024;
+        let mut piece: usize = 4 * 1024 * 1024;
         let mut offset = 0usize;
         loop {
-            let end = (offset + PIECE).min(bytes.len());
+            let end = (offset + piece).min(bytes.len());
             let off = offset.to_string();
-            self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/file", &[("push_id", push_id), ("path", rel), ("offset", &off)], bytes[offset..end].to_vec()).await?;
+            match self.send(reqwest::Method::POST, "/rexenv-sync/v1/push/file", &[("push_id", push_id), ("path", rel), ("offset", &off)], bytes[offset..end].to_vec()).await {
+                Ok(_) => {}
+                Err(e) if piece > 64 * 1024 && e.to_string().contains("refused a request that large") => {
+                    piece /= 2;
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
             offset = end;
             if offset >= bytes.len() {
                 return Ok(());

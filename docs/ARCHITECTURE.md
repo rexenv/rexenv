@@ -1565,7 +1565,26 @@ honest footer —
   check first) and sends only the tables it does not hold whole and the files it holds short —
   provided nothing changed here since (the record carries the local stamps). The plugin marks a
   table whole only after its last chunk (#882) and keeps ONE open push: a fresh `begin` aborts
-  the others. The push gates are in Rust (#834): the live host typed
+  the others. **A network** (S5, 16 Oct 2026, #889): the manifest says `multisite` + `subdomain`
+  (plugin 0.1.5); the pull writes the six network constants into the local wp-config BEFORE the
+  URL move with `DOMAIN_CURRENT_SITE` as the LIVE host (so wp-cli can list the copy's blogs), moves
+  the URLs network-aware (the Local import's `rehome_urls_on_copy(network = true)`: each sub-site
+  under the host first, the network last; a mapped-domain sub-site fails before any replace),
+  sets the constant to the local domain, and reports the mode; the job then records it on the
+  site row (`sites::adopt_multisite`, or `clear_multisite` when a single site is pulled over a
+  network) and reloads the web tier with the network rewrite rules — the steps `wp_multisite_convert`
+  takes. Every sub-site's `<prefix><id>_options` and the network's `sitemeta` are content-stamped on
+  both sides (`stamps::options_like`, the plugin's `options_like`, #890): transients land in all of
+  them on every request. A sub-site's table carries its blog id after the prefix (`wp_2_comments`),
+  which `push::bare_name` steps over for the live-owned rule and the anonymise rules. **The client
+  runs two clocks** (#892): 60 s without a byte is a dead host, 20 minutes is the most one request
+  may take — the first real cPanel host (LiteSpeed) delivers a 6 MB file frame at ~100 KB/s, and
+  one 60 s total timeout read that as "error decoding response body" on every pull; a file batch
+  the host cuts anyway is split in halves and asked for again, and a push chunk the host refuses
+  as too large (`post_max_size` 8M) is halved. **Behind HTTP basic auth** (#891): the optional
+  user:password beside the key goes out as `Authorization` on every request — proven on
+  `auth.rex.bd`; the uploads-on-demand mu-plugin carries no password, so a missing upload 404s
+  there as before. The push gates are in Rust (#834): the live host typed
   out, a base that exists; live-owned tables (users, comments, orders, entries) start
   unticked. Push and rollback are never an agent tool. New site → From a live site (#835)
   proves the pasted key against the live site before anything exists, stores the pairing in

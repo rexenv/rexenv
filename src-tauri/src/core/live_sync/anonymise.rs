@@ -84,14 +84,14 @@ fn q(name: &str) -> String {
 /// `(full table name, what, sql)`. Pure.
 pub fn statements(prefix: &str, db: &str, present: &[String]) -> Vec<(String, &'static str, String)> {
     let mut out = Vec::new();
+    // Every table whose name without the prefix — and, on a network, without a sub-site's
+    // `<id>_` — is a rule's: `wp_2_comments` gets the comments rule (S5).
     for r in RULES {
-        let full = format!("{prefix}{}", r.table);
-        if !present.contains(&full) {
-            continue;
-        }
-        let t = format!("{}.{}", q(db), q(&full));
-        for s in r.sql {
-            out.push((full.clone(), r.what, s.replace("{t}", &t)));
+        for full in present.iter().filter(|t| t.starts_with(prefix) && super::push::bare_name(prefix, t) == r.table) {
+            let t = format!("{}.{}", q(db), q(full));
+            for s in r.sql {
+                out.push((full.clone(), r.what, s.replace("{t}", &t)));
+            }
         }
     }
     out
@@ -126,10 +126,10 @@ mod tests {
     /// `ends_with` instead of the full name → `wp_notusers` would get the users rule.
     #[test]
     fn rules_apply_by_prefixed_name_to_present_tables_only() {
-        let present: Vec<String> = ["wpx_users", "wpx_posts", "wpx_comments", "wp_users", "wpx_notusers"].iter().map(|s| s.to_string()).collect();
+        let present: Vec<String> = ["wpx_users", "wpx_posts", "wpx_comments", "wp_users", "wpx_notusers", "wpx_2_comments", "wpx_2_posts"].iter().map(|s| s.to_string()).collect();
         let s = statements("wpx_", "site_pull", &present);
         let tables: Vec<&str> = s.iter().map(|(t, _, _)| t.as_str()).collect();
-        assert_eq!(tables, ["wpx_users", "wpx_comments"], "{tables:?}");
+        assert_eq!(tables, ["wpx_users", "wpx_comments", "wpx_2_comments"], "{tables:?}");
         assert!(s[0].2.starts_with("UPDATE `site_pull`.`wpx_users` SET user_email = CONCAT('user', ID, '@example.invalid')"), "{}", s[0].2);
         assert!(s[1].2.contains("comment_author_IP = '0.0.0.0'"));
         // Every rule names at least one statement, and none keeps the live value by accident.

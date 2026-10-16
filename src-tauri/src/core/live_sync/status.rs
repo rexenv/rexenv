@@ -226,6 +226,7 @@ mod tests {
             mysql: "8.4".into(),
             prefix: "wp_".into(),
             multisite: false,
+            subdomain: false,
             tables: tables.iter().map(|(n, c)| RemoteTable { name: n.to_string(), rows: 1, bytes: 1, checksum: c.to_string() }).collect(),
             free_bytes: None,
         }

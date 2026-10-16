@@ -64,6 +64,7 @@ final class Rexenv_Sync_Reader {
 			'mysql'      => $wpdb->db_version(),
 			'prefix'     => $wpdb->base_prefix,
 			'multisite'  => is_multisite(),
+			'subdomain'  => is_multisite() && is_subdomain_install(),
 			'charset'    => $wpdb->charset,
 			'tables'     => $tables,
 			'free_bytes' => false === $free ? null : (int) $free,
@@ -105,22 +106,44 @@ final class Rexenv_Sync_Reader {
 	}
 
 	/**
-	 * The options table's stamp: a CONTENT stamp over the non-volatile rows — row
-	 * count and a sum of each row's CRC32 — never `SHOW TABLE STATUS`, whose
-	 * `Update_time` moves on every transient write. Reads one small table; the
-	 * options table is the one table every request writes.
+	 * Tables stamped by CONTENT, not status (0.1.5): the options table, every sub-site's
+	 * `<prefix><id>_options` on a network, and the network's `sitemeta` — each is written
+	 * on every request (transients), so `SHOW TABLE STATUS` never stands still for them.
+	 * Answers the (key column, value column, extra column or '') to stamp over, or null.
+	 * rexenv's `core/live_sync/stamps.rs::options_like` is the same rule for the local copy.
 	 */
-	public static function options_stamp() {
+	public static function options_like( $name ) {
 		global $wpdb;
+		if ( $name === $wpdb->options || preg_match( '/^' . preg_quote( $wpdb->base_prefix, '/' ) . '\d+_options$/', $name ) ) {
+			return array( 'option_name', 'option_value', 'autoload' );
+		}
+		if ( is_multisite() && $name === $wpdb->sitemeta ) {
+			return array( 'meta_key', 'meta_value', '' );
+		}
+		return null;
+	}
+
+	/**
+	 * A content stamp over the non-volatile rows of `$table` — row count and a sum of
+	 * each row's CRC32 — never `SHOW TABLE STATUS`, whose `Update_time` moves on every
+	 * transient write. Reads one small table. No table given: the options table.
+	 */
+	public static function options_stamp( $table = null ) {
+		global $wpdb;
+		$table = null === $table ? $wpdb->options : $table;
+		$cols  = self::options_like( $table );
+		if ( ! $cols ) {
+			return 'opt:0:0';
+		}
+		$concat = '' === $cols[2] ? "CONCAT_WS('|', `{$cols[0]}`, `{$cols[1]}`)" : "CONCAT_WS('|', `{$cols[0]}`, `{$cols[1]}`, `{$cols[2]}`)";
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared
-		$row = $wpdb->get_row( "SELECT COUNT(*) AS n, COALESCE(SUM(CRC32(CONCAT_WS('|', option_name, option_value, autoload))), 0) AS s FROM `{$wpdb->options}` WHERE " . self::volatile_options_where( 'option_name' ), ARRAY_A );
+		$row = $wpdb->get_row( "SELECT COUNT(*) AS n, COALESCE(SUM(CRC32($concat)), 0) AS s FROM `" . str_replace( '`', '``', $table ) . '` WHERE ' . self::volatile_options_where( $cols[0] ), ARRAY_A );
 		return 'opt:' . ( $row ? (int) $row['n'] : 0 ) . ':' . ( $row ? (string) $row['s'] : '0' );
 	}
 
 	private static function checksum( array $status ) {
-		global $wpdb;
-		if ( isset( $status['Name'] ) && $status['Name'] === $wpdb->options ) {
-			return self::options_stamp();
+		if ( isset( $status['Name'] ) && self::options_like( $status['Name'] ) ) {
+			return self::options_stamp( $status['Name'] );
 		}
 		// `Auto_increment` moves on every INSERT; `Update_time` on InnoDB (MySQL ≥ 5.7,
 		// kept in memory, NULL after a restart) on every write. `Rows` is an estimate

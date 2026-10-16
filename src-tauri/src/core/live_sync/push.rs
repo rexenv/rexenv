@@ -31,10 +31,22 @@ pub const LIVE_OWNED: [&str; 12] = [
     "gf_entry", "wpforms_entries",
 ];
 
-/// Is `table` (full name, with `prefix`) one live owns by default?
+/// Is `table` (full name, with `prefix`) one live owns by default? On a network a
+/// sub-site's table carries its blog id after the prefix (`wp_2_comments`): the id is
+/// stepped over, so every sub-site's comments and orders count as live-owned too (S5).
 pub fn live_owned(prefix: &str, table: &str) -> bool {
-    let bare = table.strip_prefix(prefix).unwrap_or(table);
+    let bare = bare_name(prefix, table);
     LIVE_OWNED.iter().any(|p| bare == *p || bare.starts_with(&format!("{p}_")))
+}
+
+/// The table name without the site prefix and, on a network, without a sub-site's
+/// `<id>_` — `wp_2_comments` → `comments`, `wp_comments` → `comments`. Pure.
+pub fn bare_name<'a>(prefix: &str, table: &'a str) -> &'a str {
+    let bare = table.strip_prefix(prefix).unwrap_or(table);
+    match bare.split_once('_') {
+        Some((id, rest)) if !id.is_empty() && id.bytes().all(|b| b.is_ascii_digit()) && !rest.is_empty() => rest,
+        _ => bare,
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -223,7 +235,9 @@ pub async fn push_from(
         local.engine.import_from_file(local.client, local.port, &copy, &dump_file)?;
         let _ = std::fs::remove_file(&dump_file);
         let live_host = super::pull::host_of(&m.site_url);
-        let n = wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &copy, local.domain, &live_host, false)?;
+        // A network's copy moves network-aware (S5): the local wp-config says so.
+        let network = crate::core::sites::network_mode_on_disk(local.docroot).is_some();
+        let n = wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &copy, local.domain, &live_host, network)?;
         on_line(&format!("URLs: https://{} → https://{live_host} in the copy ({n} replacements)", local.domain));
         Ok(())
     })();
@@ -294,10 +308,28 @@ pub async fn push_from(
             local.engine.dump_tables_to_file(&local.dump, local.port, &copy, &[t.as_str()], &f)?;
             let sql = std::fs::read_to_string(&f)?;
             let _ = std::fs::remove_file(&f);
-            let pieces = chunks(&sql, 4 * 1024 * 1024);
-            for (i, piece) in pieces.iter().enumerate() {
-                client.push_sql(&push_id, t, piece, i + 1, pieces.len()).await?;
-            }
+            // A chunk the host refuses as too large (413: `post_max_size` 8M on the cPanel
+            // host, with the JSON's escaping on top of 4 MB) halves the chunk size and sends
+            // the table again from its first chunk — which drops the shadow table (#892).
+            let mut max = 4 * 1024 * 1024;
+            let pieces = loop {
+                let pieces = chunks(&sql, max);
+                let mut outcome = Ok(());
+                for (i, piece) in pieces.iter().enumerate() {
+                    if let Err(e) = client.push_sql(&push_id, t, piece, i + 1, pieces.len()).await {
+                        outcome = Err(e);
+                        break;
+                    }
+                }
+                match outcome {
+                    Ok(()) => break pieces,
+                    Err(e) if max > 64 * 1024 && e.to_string().contains("refused a request that large") => {
+                        max /= 2;
+                        on_line(&format!("  {t} — the site refused a {} KB chunk; sending it in {} KB chunks", max * 2 / 1024, max / 1024));
+                    }
+                    Err(e) => return Err(e),
+                }
+            };
             on_line(&format!("  {t} — {} in the shadow table", super::count(pieces.len(), "chunk", "chunks")));
         }
         Ok(())
@@ -352,6 +384,11 @@ mod tests {
         assert!(live_owned("wp_", "wp_woocommerce_sessions"));
         assert!(!live_owned("wp_", "wp_posts"));
         assert!(!live_owned("wp_", "wp_userless"), "a prefix of a name is not the name");
+        // A network's sub-site tables (S5): the blog id is stepped over.
+        assert!(live_owned("wpms_", "wpms_2_comments") && live_owned("wpms_", "wpms_12_wc_orders") && !live_owned("wpms_", "wpms_2_posts"));
+        assert_eq!(bare_name("wpms_", "wpms_2_posts"), "posts");
+        assert_eq!(bare_name("wpms_", "wpms_posts"), "posts");
+        assert_eq!(bare_name("wpms_", "wpms_x_posts"), "x_posts");
         let sql = "A;\nB;\nCCCC;\n";
         assert_eq!(chunks(sql, 6), vec!["A;\nB;\n", "CCCC;\n"]);
         assert_eq!(chunks(sql, 100), vec![sql]);

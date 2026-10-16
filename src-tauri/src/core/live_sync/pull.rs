@@ -36,6 +36,15 @@
 //! scrubbed before the swap. "Uploads on demand" (`uploads_on_demand.rs`): the pull
 //! ends by putting the mu-plugin in place, or taking it out, as the site's switch says.
 //!
+//! A NETWORK (S5, 16 Oct 2026): the manifest says `multisite` + `subdomain` (plugin
+//! 0.1.5). The network constants go into the local wp-config BEFORE the URL move — with
+//! `DOMAIN_CURRENT_SITE` as the LIVE host, so wp-cli can list the copy's blogs — then the
+//! move runs network-aware (`rehome_urls_on_copy(network = true)`: each sub-site under
+//! the live host first, the network last), and the constant is set to the local domain
+//! after. The report carries the mode so the command records it on the site row
+//! (`sites::adopt_multisite`) and the web tier gets the network rewrite rules. A pull
+//! of a single site into a copy that WAS a network takes the constants out again.
+//!
 //! MySQL/MariaDB only: a live WordPress is MySQL, and a local PostgreSQL site has
 //! nothing to receive it.
 
@@ -109,6 +118,9 @@ pub struct PullReport {
     pub backup_db: String,
     /// What both sides look like now — the next pull's and push's base (§2.6).
     pub base: SyncBase,
+    /// The live site's network mode, as the local copy is now: `Some("subdomain" |
+    /// "subdirectory")` for a network, `None` for a single site.
+    pub network: Option<&'static str>,
 }
 
 /// The host of `https://host[:port][/path]` — what the copied database says.
@@ -222,8 +234,11 @@ pub async fn pull_into(
         return Err(Error::Other("a live WordPress database can only be pulled into a MySQL or MariaDB site".into()));
     }
     let m = client.manifest().await?;
-    if m.multisite {
-        return Err(Error::Other("pulling a multisite network is not supported yet (plan S5)".into()));
+    if m.multisite && super::client::plugin_version(&m.plugin) < Some(super::client::MULTISITE_PLUGIN) {
+        return Err(Error::Other(format!(
+            "rexenv Sync: {} is a network, and its plugin ({}) is older than 0.1.5, the first that describes one — update it (Download plugin here, Upload Plugin there).",
+            m.site_url, m.plugin
+        )));
     }
     let prior = if options.full { None } else { prior };
     on_line(&format!("live: {} — WordPress {}, {} tables{}", m.site_url, m.wp, m.tables.len(), if prior.is_some() { " (only what changed since the last sync)" } else { "" }));
@@ -342,13 +357,49 @@ pub async fn pull_into(
     }
     on_line("wp-config: DISABLE_WP_CRON true (a pulled copy never fires the live site's scheduled jobs on its own)");
     let from = host_of(&m.site_url);
-    match wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &stage, &from, local.domain, false) {
+    // A network's constants, with the LIVE host first: the URL move lists the copy's blogs
+    // through them (see the module doc). A single site takes them out of a copy that
+    // was a network.
+    let was_network = crate::core::sites::network_mode_on_disk(local.docroot).is_some();
+    if m.multisite {
+        let sets: [(&str, &str); 6] = [
+            ("MULTISITE", "true"),
+            ("SUBDOMAIN_INSTALL", if m.subdomain { "true" } else { "false" }),
+            ("DOMAIN_CURRENT_SITE", from.as_str()),
+            ("PATH_CURRENT_SITE", "/"),
+            ("SITE_ID_CURRENT_SITE", "1"),
+            ("BLOG_ID_CURRENT_SITE", "1"),
+        ];
+        for (k, v) in sets {
+            let raw = matches!(k, "MULTISITE" | "SUBDOMAIN_INSTALL" | "SITE_ID_CURRENT_SITE" | "BLOG_ID_CURRENT_SITE");
+            let mut args = vec!["config", "set", k, v, "--type=constant"];
+            if raw {
+                args.push("--raw");
+            }
+            if let Err(e) = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &args) {
+                return Err(restore_prefix(&format!("writing the network constant {k} failed: {e}")));
+            }
+        }
+        on_line(&format!("wp-config: a {} network — the network constants are in", if m.subdomain { "subdomain" } else { "subdirectory" }));
+    } else if was_network {
+        for k in ["MULTISITE", "SUBDOMAIN_INSTALL", "DOMAIN_CURRENT_SITE", "PATH_CURRENT_SITE", "SITE_ID_CURRENT_SITE", "BLOG_ID_CURRENT_SITE", "WP_ALLOW_MULTISITE"] {
+            let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "delete", k, "--type=constant"]);
+        }
+        on_line("wp-config: the live site is a single site — the network constants are out");
+    }
+    match wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &stage, &from, local.domain, m.multisite) {
         Ok(n) => {
             report.replacements = n;
             on_line(&format!("URLs: https://{from} → https://{} ({n} replacements)", local.domain));
         }
         Err(e) => return Err(restore_prefix(&format!("moving the URLs failed: {e}"))),
     }
+    if m.multisite {
+        if let Err(e) = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "set", "DOMAIN_CURRENT_SITE", local.domain, "--type=constant"]) {
+            return Err(restore_prefix(&format!("moving DOMAIN_CURRENT_SITE to {} failed: {e}", local.domain)));
+        }
+    }
+    report.network = m.multisite.then_some(if m.subdomain { "subdomain" } else { "subdirectory" });
 
     // ── 3. the swap — ONE statement ─────────────────────────────────────
     local.engine.drop_database(local.client, local.port, &backup)?;
@@ -483,7 +534,11 @@ pub async fn pull_into(
     // The plugin came along with the files; a local copy answering as a sync
     // endpoint means nothing (plan §2.8). BEFORE the local stamps: deactivating
     // writes `active_plugins`, and the stamp must be of the copy as it is left.
-    let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["plugin", "deactivate", "rexenv-sync", "--skip-plugins", "--skip-themes"]);
+    let mut deactivate = vec!["plugin", "deactivate", "rexenv-sync", "--skip-plugins", "--skip-themes"];
+    if m.multisite {
+        deactivate.push("--network"); // network-activated on live (the bootstrap, or Network Activate)
+    }
+    let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &deactivate);
     // The LOCAL half (ledger #863): what the pull REPLACED is stamped fresh (live's
     // version is what is here now); what it KEPT keeps the prior base's stamp, so a
     // local edit made before the pull is still "ahead" after it. The Dell run

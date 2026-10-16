@@ -474,6 +474,74 @@ async fn main() -> std::process::ExitCode {
         &format!("16b. the next push continues the open one — the first file not sent again — and swaps ({:?})", again.as_ref().map(|r| (r.files_resumed, r.files)).ok()),
     );
 
+    // ── S5 (16 Oct 2026): a NETWORK ──────────────────────────────────────────
+    // 17. The live fixture becomes a subdirectory network with a sub-site `shop` holding a
+    //     post; a fresh local site pulls it: the copy is a network on the local domain, the
+    //     sub-site and its post are there, status reads up to date, and a sub-site post
+    //     made here pushes to live's /shop/.
+    let local2 = make(format!("lcm{pid}.rex")).await;
+    let local2_root = local2.served_root();
+    // `wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3 with "Table
+    // wp_site doesn't exist" (16 Oct 2026, a TODO row): the fixture converts the way
+    // network.php does — the network tables named on wpdb first, then install + populate —
+    // and writes the constants itself.
+    std::fs::write(live_root.join("rex-convert.php"), format!("<?php\nglobal $wpdb; foreach ($wpdb->tables('ms_global') as $t => $n) {{ $wpdb->$t = $n; }}\nrequire_once ABSPATH . 'wp-admin/includes/upgrade.php'; require_once ABSPATH . 'wp-admin/includes/network.php';\nif (!defined('WP_INSTALLING_NETWORK')) {{ define('WP_INSTALLING_NETWORK', true); }}\n$made = dbDelta(wp_get_db_schema('global'));\n$r = populate_network(1, '{d}', get_option('admin_email'), 'Fixture Network', '/', false);\nif (is_wp_error($r)) {{ echo $r->get_error_message(); exit(1); }}\necho 'converted';\n", d = live.domain)).unwrap();
+    let converted = wordpress::wp_run(&php, &wp, &live_root, &["eval-file", &live_root.join("rex-convert.php").to_string_lossy()]).and_then(|_| {
+        for (k, v, raw) in [("MULTISITE", "true", true), ("SUBDOMAIN_INSTALL", "false", true), ("DOMAIN_CURRENT_SITE", live.domain.as_str(), false), ("PATH_CURRENT_SITE", "/", false), ("SITE_ID_CURRENT_SITE", "1", true), ("BLOG_ID_CURRENT_SITE", "1", true)] {
+            let mut args = vec!["config", "set", k, v, "--type=constant"];
+            if raw {
+                args.push("--raw");
+            }
+            wordpress::wp_run(&php, &wp, &live_root, &args)?;
+        }
+        // The fixture live is reached as `http://127.0.0.1:<port>`, a host no network blog
+        // has: a `sunrise.php` (WordPress's own hook before the network is resolved — what
+        // domain-mapping plugins use) makes every request the main site's. Fixture only —
+        // and AFTER the conversion: `is_multisite()` reads a defined `SUNRISE` as "a network"
+        // (legacy MU detection), so defined earlier it made the single site boot as one.
+        wordpress::wp_run(&php, &wp, &live_root, &["config", "set", "SUNRISE", "true", "--raw", "--type=constant"])?;
+        std::fs::write(live_root.join("wp-content/sunrise.php"), "<?php\nif (defined('DOMAIN_CURRENT_SITE')) { $_SERVER['HTTP_HOST'] = DOMAIN_CURRENT_SITE; }\n")?;
+        Ok("ok".to_string())
+    });
+    let _ = std::fs::remove_file(live_root.join("rex-convert.php"));
+    let shop_id = wordpress::network_site_create(&php, &wp, &live_root, "shop", &live.domain).map(|s| s.trim().to_string());
+    let shop_url = format!("https://{}/shop/", live.domain);
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=SHOP-ON-LIVE", "--post_status=publish", &format!("--url={shop_url}")]);
+    let target2 = pull::LocalSite { db_name: &local2.db_name, domain: &local2.domain, docroot: &local2_root, ..target };
+    let net_pull = pull::pull_into(&client, &target2, None, &pull::PullOptions::default(), &mut sink).await;
+    let db2 = &local2.db_name;
+    let net_why = match &net_pull { Ok(r) => format!("network {:?}, {} tables", r.network, r.tables), Err(e) => e.to_string() };
+    let mode2 = rexenv_lib::core::sites::network_mode_on_disk(&local2_root);
+    let sites2 = wordpress::network_site_list(&php, &wp, &local2_root).map(|l| l.iter().map(|s| s.url.clone()).collect::<Vec<_>>()).unwrap_or_default();
+    check(
+        converted.is_ok() && shop_id.as_deref().map(|s| s == "2").unwrap_or(false) && net_pull.as_ref().map(|r| r.network == Some("subdirectory")).unwrap_or(false)
+            && mode2 == Some(rexenv_lib::state::models::MultisiteMode::Subdirectory)
+            && sites2.iter().any(|u| u == &format!("https://{}/", local2.domain)) && sites2.iter().any(|u| u == &format!("https://{}/shop/", local2.domain))
+            && query(&mysql, db2, "SELECT COUNT(*) FROM wp_2_posts WHERE post_title='SHOP-ON-LIVE'") == "1"
+            && query(&mysql, db2, "SELECT option_value FROM wp_2_options WHERE option_name='siteurl'") == format!("https://{}/shop", local2.domain),
+        &format!("17. a subdirectory network pulls: the copy is a network on the local domain, its sub-site /shop/ and post came along ({net_why}; mode {mode2:?}; sites {sites2:?}; convert {:?}, shop id {:?})", converted.as_ref().map(|_| "ok").map_err(|e| e.to_string()), shop_id),
+    );
+    let net_base = net_pull.as_ref().map(|r| r.base.clone()).ok();
+    // 17b. Up to date straight after, with the content stamps on the sub-site's options and sitemeta.
+    let s17 = status_now(&client, &target2, net_base.as_ref()).await;
+    let opt2 = s17.tables.iter().find(|t| t.name == "wp_2_options").map(|t| (t.live, t.local));
+    check(s17.verdict == status::Verdict::UpToDate && opt2 == Some((status::Change::Same, status::Change::Same)), &format!("17b. a network reads up to date after its pull (got {:?}; wp_2_options {opt2:?}; behind {} ahead {})", s17.verdict, s17.tables_behind, s17.tables_ahead));
+    // 17c. A post made HERE in the sub-site pushes to live's /shop/. (`wp_blogs.last_updated`
+    //      and a sub-site option move with the post, so they ride along as changed here.)
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let _ = wordpress::wp_run(&php, &wp, &local2_root, &["post", "create", "--post_title=SHOP-FROM-LOCAL", "--post_status=publish", &format!("--url=https://{}/shop/", local2.domain)]);
+    let net_push = push::push_from(&client, &target2, net_base.as_ref(), &push::PushOptions { tables: None, files: false, override_items: vec![], skip: vec![] }, &mut sink).await;
+    let push_why = match &net_push { Ok(r) => format!("tables {:?}", r.tables), Err(push::PushStop::Conflicts(c)) => format!("conflicts {c:?}"), Err(push::PushStop::Failed(e)) => e.to_string() };
+    check(
+        net_push.as_ref().map(|r| r.tables.contains(&"wp_2_posts".to_string()) && !r.tables.contains(&"wp_posts".to_string())).unwrap_or(false)
+            && query(&mysql, live_db, "SELECT COUNT(*) FROM wp_2_posts WHERE post_title='SHOP-FROM-LOCAL'") == "1"
+            && query(&mysql, live_db, "SELECT option_value FROM wp_2_options WHERE option_name='siteurl'") == format!("https://{}/shop", live.domain),
+        &format!("17c. a sub-site post pushes to live's /shop/ on the LIVE domain; the main site's posts, unchanged here, stay out ({push_why})"),
+    );
+    if let Ok(r) = &net_push {
+        let _ = client.push_rollback(&r.backup_id).await;
+    }
+
     // 11. The scoped import: a hostile stream cannot leave the staging database.
     {
         let stage = format!("{db}_hostile_probe_stage");
@@ -512,8 +580,10 @@ async fn main() -> std::process::ExitCode {
     {
         let state = handle.state::<AppState>();
         let conn = state.db.lock().unwrap();
-        for s in [&live, &local] {
+        for s in [&live, &local, &local2] {
             let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &s.db_name);
+            let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &format!("{}_prepull", s.db_name));
+            let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &format!("{}_pull", s.db_name));
             let _ = sites::teardown(&conn, state.platform.as_ref(), &s.id);
         }
         let _ = DbEngine::Mysql.drop_database(&mysql, database::MYSQL_PORT, &backup);
