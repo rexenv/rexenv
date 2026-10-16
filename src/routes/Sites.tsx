@@ -8,7 +8,8 @@ import { toast, toastBackendError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
-import { useAllSitesEnabled, useSiteEnabled } from "@/lib/useSiteEnabled";
+import { SITE_ENABLED_KEY, useAllSitesEnabled, useSiteEnabled } from "@/lib/useSiteEnabled";
+import { usePendingVariables } from "@/lib/usePendingVariables";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { siteTypeMeta } from "@/lib/siteType";
@@ -751,6 +752,7 @@ export function Sites() {
     servingMap.get(site.domain) ? "running" : "stopped";
 
   const toggle = useSiteEnabled();
+  const togglingSites = usePendingVariables<{ site: Site }>(SITE_ENABLED_KEY);
   const bulk = useAllSitesEnabled();
   // The two numbers the bulk menu needs, over PROVISIONED sites only — a
   // half-provisioned site is skipped by the backend, so counting it here would
@@ -1164,7 +1166,7 @@ export function Sites() {
                 onRetry={() => retry.mutate(site)}
                 onKeep={isScratch(site) ? () => setKeepTarget(site) : undefined}
                 stoppedByUser={site.enabled === false}
-                togglePending={toggle.isPending && toggle.variables?.site.id === site.id}
+                togglePending={togglingSites.some((t) => t.site.id === site.id)}
                 onToggleEnabled={
                   /* A half-provisioned site has no serving surface to switch:
                      Retry is its verb, and the backend refuses this one anyway

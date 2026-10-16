@@ -4,6 +4,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { AlertTriangle, Check, ChevronRight, Cloud, Copy, Lightbulb, Share2, Square } from "lucide-react";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { cn } from "@/lib/utils";
+import { usePendingVariables } from "@/lib/usePendingVariables";
 import { TopBar } from "@/components/shell/TopBar";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
@@ -69,7 +70,9 @@ export function Tunnels() {
     wpSites.filter((_, i) => credQueries[i].data === true).map((s) => s.id),
   );
 
+  const sharing = usePendingVariables<{ id: string }>(["tunnel-share"]);
   const share = useMutation({
+    mutationKey: ["tunnel-share"],
     mutationFn: async ({ id, on }: { id: string; on: boolean }) => {
       if (!on) {
         await stopTunnel(id);
@@ -178,7 +181,7 @@ export function Tunnels() {
                   key={s.id}
                   site={s}
                   tunnel={byDomain.get(s.domain)}
-                  busy={share.isPending && share.variables?.id === s.id}
+                  busy={sharing.some((t) => t.id === s.id)}
                   defaultCreds={defaultCredIds.has(s.id)}
                   onToggle={(on) => share.mutate({ id: s.id, on })}
                 />

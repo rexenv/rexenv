@@ -49,9 +49,14 @@ export function useAllSitesEnabled() {
   });
 }
 
+export const SITE_ENABLED_KEY = ["site-enabled"] as const;
+
 export function useSiteEnabled() {
   const qc = useQueryClient();
   return useMutation({
+    // Keyed so a list reads EVERY site in flight (`usePendingVariables`), not
+    // the last one pressed.
+    mutationKey: SITE_ENABLED_KEY,
     mutationFn: ({ site, enabled }: { site: Site; enabled: boolean }) =>
       setSiteEnabled(site.id, enabled),
     onSuccess: (report, { site, enabled }) => {

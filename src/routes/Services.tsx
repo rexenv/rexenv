@@ -7,6 +7,7 @@ import { Placeholder } from "@/components/common/Placeholder";
 import { StatusPill } from "@/components/common/StatusPill";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { cn } from "@/lib/utils";
+import { usePendingVariables } from "@/lib/usePendingVariables";
 import { defaultTld, dnsStatus, openExternal, runtimeProblem, servicesStatus, setDefaultPhpVersion, startDatabase, startMail, stopDatabase, stopMail } from "@/lib/ipc";
 import type { ServiceInfo, ServiceKind } from "@/types";
 
@@ -261,7 +262,9 @@ export function Services() {
   });
 
   // Per-row start/stop for the INDEPENDENT services (DB engines, Mailpit).
+  const togglingServices = usePendingVariables<{ key: string }>(["service-toggle"]);
   const toggleService = useMutation({
+    mutationKey: ["service-toggle"],
     mutationFn: ({ key, start }: { key: string; start: boolean }) => {
       if (key === "mailpit") return start ? startMail() : stopMail();
       return start ? startDatabase(key) : stopDatabase(key);
@@ -370,10 +373,7 @@ export function Services() {
                         onSetDefault={(minor) => setDefault.mutate(minor)}
                         onOpenDatabases={() => navigate("/databases")}
                         onOpenMail={() => navigate("/mail")}
-                        toggleBusy={
-                          toggleService.isPending &&
-                          toggleService.variables?.key === svc.serviceKey
-                        }
+                        toggleBusy={togglingServices.some((t) => t.key === svc.serviceKey)}
                         onToggle={(key, start) => toggleService.mutate({ key, start })}
                       />
                     ))}
