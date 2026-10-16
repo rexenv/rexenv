@@ -679,6 +679,12 @@ is still L3").
 - [ ] **Offline afterwards.** Quit, disconnect, relaunch. The selected patch still
   resolves from cache and the pool starts — a selection must be as offline-safe as
   a pin. **Open: no run recorded.**
+- [ ] **Two installs at once.** Settings → PHP versions → press Install on one
+  uninstalled minor, then at once on a second. BOTH buttons stay "…" until each
+  download lands, then each turns into the remove icon. **Tell:** the first row's
+  button back on "Install" while the sidebar still says it is downloading — the busy
+  state was read off the mutation's last call only (16 Oct 2026, 8.0 then 8.1).
+  The frontend is common, so one OS's run covers all three. **Open: no run recorded.**
 - [ ] **Nothing running.** Stop all, then press Update on a minor with an offer.
   Expect the toast to say the version **will be used**, not that it "is now on" it
   — there is no pool to be now-on. **Tell:** "PHP 8.2 is now on 8.2.32" with the

@@ -10,7 +10,7 @@ import licenseText from "../../LICENSE?raw";
 import noticesText from "../../THIRD-PARTY-NOTICES.md?raw";
 import { ResolverConsentFor, ResolverHandBackRow } from "@/routes/Import";
 import { agoLabel } from "@/routes/Sites";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, Download, FileText, FolderOpen, Github, Globe, Info, Lock, RefreshCw, ScrollText, Server, Settings as SettingsIcon, Settings2, Shield, ShieldCheck, Star, Trash2, type LucideIcon } from "lucide-react";
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
@@ -735,13 +735,20 @@ export function PhpVersionsSetting() {
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
+  // Install/remove and make-default are read back per minor from the mutation
+  // CACHE, not off the hook: `toggle.variables` holds only the LAST call, so
+  // pressing Install on 8.0 then 8.1 put 8.0's button back to "Install" while
+  // its download was still running (16 Oct 2026). Every pending call is in the
+  // cache until it settles, so a row is busy exactly as long as its own call.
   const toggle = useMutation({
+    mutationKey: ["php-toggle"],
     mutationFn: ({ minor, installed }: { minor: string; installed: boolean }) =>
       setPhpVersionInstalled(minor, installed),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["php-versions"] }),
     onError: (e) => toastBackendError(e),
   });
   const makeDefault = useMutation({
+    mutationKey: ["php-make-default"],
     mutationFn: (minor: string) => setDefaultPhpVersion(minor),
     onSuccess: () => {
       // Services' PHP rows show the default too — keep both views in sync.
@@ -782,10 +789,16 @@ export function PhpVersionsSetting() {
     setApplying((s) => new Set(s).add(minor));
     update.mutate({ minor, patch });
   };
+  const toggling = useMutationState({
+    filters: { mutationKey: ["php-toggle"], status: "pending" },
+    select: (m) => (m.state.variables as { minor: string } | undefined)?.minor,
+  });
+  const defaulting = useMutationState({
+    filters: { mutationKey: ["php-make-default"], status: "pending" },
+    select: (m) => m.state.variables as string | undefined,
+  });
   const busyFor = (minor: string) =>
-    (toggle.isPending && toggle.variables?.minor === minor) ||
-    (makeDefault.isPending && makeDefault.variables === minor) ||
-    applying.has(minor);
+    toggling.includes(minor) || defaulting.includes(minor) || applying.has(minor);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   if (isLoading) {
