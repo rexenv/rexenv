@@ -697,6 +697,19 @@ async fn main() -> std::process::ExitCode {
     }
     let _ = std::fs::remove_file(live_root.join("wp-content/uploads/2026/big-from-local.bin"));
 
+    // 18b. The SUBDOMAIN convert: WordPress probes a random `<hex>.<domain>` and answers
+    //      `no_wildcard_dns` when it cannot reach it — a warning network.php goes past
+    //      (the macOS VM's GUI press died on it, 16 Oct 2026). A sub-site follows.
+    let local5 = make(format!("lcs{pid}.rex")).await;
+    let local5_root = local5.served_root();
+    let conv5 = wordpress::multisite_convert(&php, &wp, &local5_root, &local5.domain, true);
+    let mode5 = rexenv_lib::core::sites::network_mode_on_disk(&local5_root);
+    let sub5 = wordpress::network_site_create(&php, &wp, &local5_root, "site1", &local5.domain).map(|s| s.trim().to_string());
+    check(
+        conv5.is_ok() && mode5 == Some(rexenv_lib::state::models::MultisiteMode::Subdomain) && sub5.is_ok(),
+        &format!("18b. a SUBDOMAIN convert goes past WordPress's wildcard-DNS warning (convert {:?}; mode {mode5:?}; sub-site {:?})", conv5.as_deref().map_err(|e| e.to_string()), sub5.as_deref().map_err(|e| e.to_string())),
+    );
+
     // 17d. An incremental pull with NOTHING moved on live keeps every table from here —
     //      the blogs table included, on the local domain — and still succeeds (the VM's third
     //      network pull, 16 Oct 2026, died: the constant named live while the kept blogs said

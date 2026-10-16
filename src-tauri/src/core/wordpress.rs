@@ -2059,7 +2059,10 @@ pub fn user_delete(
 /// 'wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): it calls
 /// `install_network()` without naming the `ms_global` tables on wpdb, and 7.1's
 /// `populate_network` reads `$wpdb->site` before anything created it. Naming them is
-/// the one line network.php has that wp-cli does not (ledger #894).
+/// the one line network.php has that wp-cli does not (ledger #894). Like network.php,
+/// `no_wildcard_dns` is a warning, not a failure — the macOS VM's subdomain convert
+/// (16 Oct 2026) died on it: WordPress probes a random `<hex>.<domain>` over HTTPS and a
+/// PHP without the local CA cannot verify it — and so is `siteid_exists` (a re-run).
 const MULTISITE_CONVERT_PHP: &str = "<?php
 global $wpdb;
 if (is_multisite()) { echo 'already a network'; exit(0); }
@@ -2069,7 +2072,10 @@ require_once ABSPATH . 'wp-admin/includes/network.php';
 if (!defined('WP_INSTALLING_NETWORK')) { define('WP_INSTALLING_NETWORK', true); }
 dbDelta(wp_get_db_schema('global'));
 $r = populate_network(1, '%DOMAIN%', get_option('admin_email'), get_option('blogname') . ' Sites', '/', %SUBDOMAIN%);
-if (is_wp_error($r)) { fwrite(STDERR, $r->get_error_message()); exit(1); }
+// Two answers are not failures: `no_wildcard_dns` is populate_network's own warning after it
+// has written the network (network.php shows it and goes on to step 2), and `siteid_exists`
+// means an earlier run already wrote it (a convert that stopped before the constants).
+if (is_wp_error($r) && array_diff($r->get_error_codes(), array('no_wildcard_dns', 'siteid_exists'))) { fwrite(STDERR, $r->get_error_message()); exit(1); }
 echo 'converted';
 ";
 
@@ -3042,6 +3048,8 @@ mod copy_rehome_tests {
         assert!(super::multisite_convert_script("dirs.rex", false).contains("'/', false);"));
         assert!(s.contains("if (is_multisite()) { echo 'already a network'; exit(0); }"), "idempotent on a network");
         assert!(s.contains("define('WP_INSTALLING_NETWORK', true)"));
+        // The wildcard-DNS warning and a re-run are not failures; anything else is.
+        assert!(s.contains("array_diff($r->get_error_codes(), array('no_wildcard_dns', 'siteid_exists'))"), "{s}");
         // A domain cannot break out of its PHP string.
         assert!(!super::multisite_convert_script("a'.rex", false).contains("a'.rex"));
     }

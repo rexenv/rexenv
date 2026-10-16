@@ -1866,7 +1866,15 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       OS since 16 Oct 2026:** the convert no longer runs `wp core multisite-convert` (wp-cli 2.12.0
       dies on WordPress 7.1.3 "Table wp_site doesn't exist" — every fresh site is 7.1.x now) but
       WordPress's own network installer through `wp eval-file` + the six constants (#894; L1 leg 18
-      of `live_sync_pull_into_check` on macOS).
+      of `live_sync_pull_into_check` on macOS). ✓ **Re-pressed on all three OSes, 16 Oct 2026, fresh
+      WordPress 7.1.3 sites, this tree's debug builds:** macOS 15.8 VM `conv71.rex` SUBDOMAIN — the first
+      press of the new code FAILED "wp eval-file failed (exit 1): Warning! Wildcard DNS may not be
+      configured correctly … cURL error 60" (populate_network's own probe of a random `<hex>.conv71.rex`;
+      network.php treats it as a warning) — fixed, and the re-press over that half-converted site read
+      "Converted to subdomain multisite", `https://site1.conv71.rex/` 200 "Site1". Windows 10 (the Dell)
+      `conv71w.rex` SUBDIRECTORY → the Network tab "Subdirectory", `https://conv71w.rex/site1/` 200
+      "Site1". Ubuntu 22.04 (the UTM VM) `conv71l.rex` SUBDOMAIN → "Subdomain", the sub-site list shows
+      #2 `site1.conv71l.rex`, `https://site1.conv71l.rex/` 200 "Site1".
 - [x] Create a sub-site; it appears in the list and loads. ✓ 18 Sep 2026 (clean 15.6.1 VM,
       `39610cc7` + self-update to 0.7.2).
 
