@@ -109,11 +109,14 @@ async function magicLoginUrl(site: Pick<Site, "id" | "domain">): Promise<string>
 
 /** Web servers with real backends — labels only; the switch is refused in core where a
  *  server does not ship (OpenLiteSpeed on Windows). */
-const SERVERS: { value: WebServer; label: string }[] = [
-  { value: "nginx", label: "Nginx" },
-  { value: "frankenphp", label: "FrankenPHP" },
-  { value: "apache", label: "Apache (.htaccess)" },
-  { value: "openlitespeed", label: "OpenLiteSpeed (.htaccess + LSCache)" },
+/** `name` heads the Web server card; `label` is the select's option. The card is a
+ *  third of the row, so the long label there wrapped and pushed the select out of
+ *  the card (OpenLiteSpeed, 16 Oct 2026). */
+const SERVERS: { value: WebServer; name: string; label: string }[] = [
+  { value: "nginx", name: "Nginx", label: "Nginx" },
+  { value: "frankenphp", name: "FrankenPHP", label: "FrankenPHP" },
+  { value: "apache", name: "Apache", label: "Apache (.htaccess)" },
+  { value: "openlitespeed", name: "OpenLiteSpeed", label: "OpenLiteSpeed (.htaccess + LSCache)" },
 ];
 
 const SELECT_CLS =
@@ -579,7 +582,7 @@ function Overview({
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
-  const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.label ?? site.webServer;
+  const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.name ?? site.webServer;
 
   // The site's OWN version's EOL date, when core says it has one. Read from the
   // same option rows the select renders, so the badge and the list can never
@@ -646,7 +649,7 @@ function Overview({
               value={site.webServer}
               disabled={switchServerPending}
               onChange={(e) => onServer(e.target.value as WebServer)}
-              className={SELECT_CLS}
+              className={cn(SELECT_CLS, "min-w-0 max-w-full")}
             >
               {!SERVERS.some((s) => s.value === site.webServer) && (
                 <option value={site.webServer}>{site.webServer}</option>
@@ -1684,7 +1687,7 @@ function RecentLogs({
 /** A mini-card inside the Environment grid: label + a value/control row. */
 function EnvMini({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
+    <div className="min-w-0 rounded-[11px] border border-rex-border-subtle bg-rex-well px-[14px] py-[13px]">
       <div className="mb-[9px] text-[0.75rem] text-rex-text-muted">{label}</div>
       {/* flex-wrap: native selects can't shrink below their content, so at the
           980px min window the control reflows under the value instead of

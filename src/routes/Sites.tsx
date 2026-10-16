@@ -119,15 +119,23 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
   );
 }
 
+/** The web-server column is a fixed 84px so rows align; a name longer than
+ *  "frankenphp" spilled out of it ("openlitespeed", 16 Oct 2026), so it shows
+ *  a short form and the full name rides the tooltip. */
+const SERVER_BADGE: Partial<Record<string, string>> = { openlitespeed: "litespeed" };
+
 function Badge({
   children,
   className,
+  title,
 }: {
   children: React.ReactNode;
   className?: string;
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={cn(
         "flex-none rounded-[6px] border border-rex-border-strong bg-rex-surface-1 px-[7px] py-[3px] font-mono text-[0.65625rem] text-rex-text-bright",
         className,
@@ -438,7 +446,9 @@ export function SiteRow({
         )}
       </span>
       <Badge>{site.phpVersion}</Badge>
-      <Badge className="w-[84px] text-center">{site.webServer}</Badge>
+      <Badge className="w-[84px] truncate text-center" title={site.webServer}>
+        {SERVER_BADGE[site.webServer] ?? site.webServer}
+      </Badge>
       {worktreeBranch && (
         <span
           className="flex max-w-[160px] flex-none items-center gap-1 truncate whitespace-nowrap rounded-full border border-rex-accent-blue-border bg-rex-accent-blue-bg px-2 py-1 font-mono text-[0.625rem] text-rex-accent-blue"
