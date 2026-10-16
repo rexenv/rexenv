@@ -1253,8 +1253,20 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       live, anonymise on) then FAILED "moving the URLs failed … Site 'live-sync.rex.bd/' not found" and left the
       copy's `DOMAIN_CURRENT_SITE` as the live host (the site 500 until set back by hand): the kept blogs table
       said the local domain while the constant named live — fixed (#889: the constant follows the copy's blogs
-      table; wp-config is restored on any failure; L1 leg 17d). The Windows and Linux presses are owed; a
-      SUBDOMAIN network on a real host too.
+      table; wp-config is restored on any failure; L1 leg 17d). ✓ **Windows 10 22H2 (the Dell), this tree's
+      debug exe, 16 Oct 2026:** `l14w.rex` Disconnect → the network's key → Connect → Pull from live →
+      "Pulled 38 tables (473 rows) and 454 files" (≈19 min over the Cloudflare tunnel) → `/`, `/shop/`
+      ("Shop") and `/blog/` ("Blog") 200 from the Dell's own edge → Check status "Up to date — nothing to pull
+      or push". ✓ **Ubuntu 22.04 (the UTM VM), this tree's debug build, 16 Oct 2026, the NEW-SITE path:** New
+      site → WordPress → From a live site → the key → Check → name `l16lx` → Create and pull: the site came up
+      as a network (`MULTISITE`, `DOMAIN_CURRENT_SITE 'l16lx.rex'` in wp-config; `/`, `/shop/`, `/blog/` 200)
+      but the create's pull FAILED on its files: "this computer's clock is too far off the site's — check the
+      date and time — the next pull continues from the files already fetched" — the VM's clock had fallen 11,
+      then 22 minutes behind during the 15-minute pull (timesyncd "synchronized: yes" and still wrong; the
+      plugin's window is 300 s). With the clock held (a timesyncd restart every 30 s) the next Pull read "Pulled
+      0 tables (0 rows) and 454 files; 38 tables and 0 files the interrupted pull had already copied were
+      reused" (the resume row's Linux press, for free) and Check status "Up to date — nothing to pull or push".
+      A SUBDOMAIN network on a real host is still owed.
 - [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
       paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
       connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused
@@ -1431,7 +1443,13 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       tables (0 rows) and 1 file — 38 tables and 453 files unchanged on live were kept as they are here;
       personal data anonymised in 8 tables" → `wp user list`: `admin  user1@example.invalid  User 1`;
       `wp comment list`: `Commenter 1  commenter1@example.invalid  0.0.0.0` (a network: the main site's and
-      both sub-sites' users/comments tables). The picker's badge and the Windows and Linux presses are owed.
+      both sub-sites' users/comments tables). ✓ **Windows 10 (the Dell) and Ubuntu 22.04 (the UTM VM), 16 Oct
+      2026, the same press on the same network host** (`l14w.rex`, `l16lx.rex`): the tick → the confirm's
+      "Personal data … is anonymised in the copy before it is swapped in" (the dialog grows a line: a
+      scripted press aimed at the old Pull button misses it) → "Pulled 0 tables (0 rows) and 0 files — 38
+      tables and 454 files unchanged on live were kept as they are here; personal data anonymised in 8
+      tables" → `wp user list` `admin  user1@example.invalid  User 1`, `wp comment list` `Commenter 1
+      commenter1@example.invalid  0.0.0.0` on both. The picker's badge press is owed.
 - [ ] **Fetch missing uploads from live** (the switch, on by default) → **Pull, recent uploads
       only** → open a post whose image is older than six months: it RENDERS (the file is fetched
       from live on first view and is now under `wp-content/uploads/…`; the response carried
