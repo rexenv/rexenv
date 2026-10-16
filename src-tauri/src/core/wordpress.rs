@@ -2825,13 +2825,17 @@ pub fn network_rehome_pairs(
     blog_domains: &[String],
 ) -> std::result::Result<Vec<(String, String)>, String> {
     let under = format!(".{from}");
+    // A blog already under `to` is home (a live-sync incremental pull keeps the blogs
+    // table from the local copy, 16 Oct 2026): its label still names a sub-site whose
+    // OTHER tables may carry `from`.
+    let under_to = format!(".{to}");
     let mut labels: Vec<String> = Vec::new();
     for d in blog_domains {
         let d = crate::core::sites::normalize_hostname(d);
-        if d == from {
+        if d == from || d == to {
             continue;
         }
-        match d.strip_suffix(&under) {
+        match d.strip_suffix(&under).or_else(|| d.strip_suffix(&under_to)) {
             Some(label) if !label.is_empty() => labels.push(label.to_string()),
             _ => {
                 return Err(format!(
@@ -3078,6 +3082,12 @@ mod copy_rehome_tests {
         );
         let err = network_rehome_pairs("multi.local", "multi.rex", &doms(&["multi.local", "shop.local"])).unwrap_err();
         assert!(err.contains("shop.local") && err.contains("Nothing in the copy was changed"), "{err}");
+        // A blog already under `to` (a live-sync pull that kept the blogs table from the
+        // local copy, 16 Oct 2026) is home, and its label still moves the sub-site's other
+        // tables off `from`. The network's own `to` is skipped like its `from`.
+        let kept = network_rehome_pairs("multi.local", "multi.rex", &doms(&["multi.rex", "ea1.multi.rex"])).unwrap();
+        assert!(kept.iter().any(|(a, b)| a == "https://ea1.multi.local" && b == "https://ea1.multi.rex"), "{kept:?}");
+        assert_eq!(kept.last().map(|(a, _)| a.as_str()), Some("multi.local"));
     }
 
     /// The proof: every blog reads `https://` on the new name or a subdomain of

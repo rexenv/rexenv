@@ -361,11 +361,36 @@ pub async fn pull_into(
     // through them (see the module doc). A single site takes them out of a copy that
     // was a network.
     let was_network = crate::core::sites::network_mode_on_disk(local.docroot).is_some();
+    // The domain the STAGING copy's blogs table holds: live's when this pull exported it,
+    // the local one when it was kept from here (an incremental pull with nothing moved on
+    // live — the macOS VM's third network pull, 16 Oct 2026, failed with "Site
+    // 'live-sync.rex.bd/' not found" because the constant named live while the kept
+    // table said l14vm.rex). `wp site list` resolves the copy through this constant.
+    let blogs_table = format!("{}blogs", m.prefix);
+    let copy_domain: &str = if changed.iter().any(|t| t.name == blogs_table) { from.as_str() } else { local.domain };
+    let prior_domain = if was_network { wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "get", "DOMAIN_CURRENT_SITE", "--type=constant"]).ok().map(|s| s.trim().to_string()) } else { None };
+    // Whatever fails from here on, the local wp-config is left as it was: the constant
+    // back to its previous value, or the six constants out of a copy that was single.
+    let restore_network = |why: &str| -> Error {
+        if m.multisite {
+            match &prior_domain {
+                Some(d) if !d.is_empty() => {
+                    let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "set", "DOMAIN_CURRENT_SITE", d, "--type=constant"]);
+                }
+                _ => {
+                    for k in ["MULTISITE", "SUBDOMAIN_INSTALL", "DOMAIN_CURRENT_SITE", "PATH_CURRENT_SITE", "SITE_ID_CURRENT_SITE", "BLOG_ID_CURRENT_SITE"] {
+                        let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "delete", k, "--type=constant"]);
+                    }
+                }
+            }
+        }
+        restore_prefix(why)
+    };
     if m.multisite {
         let sets: [(&str, &str); 6] = [
             ("MULTISITE", "true"),
             ("SUBDOMAIN_INSTALL", if m.subdomain { "true" } else { "false" }),
-            ("DOMAIN_CURRENT_SITE", from.as_str()),
+            ("DOMAIN_CURRENT_SITE", copy_domain),
             ("PATH_CURRENT_SITE", "/"),
             ("SITE_ID_CURRENT_SITE", "1"),
             ("BLOG_ID_CURRENT_SITE", "1"),
@@ -377,7 +402,7 @@ pub async fn pull_into(
                 args.push("--raw");
             }
             if let Err(e) = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &args) {
-                return Err(restore_prefix(&format!("writing the network constant {k} failed: {e}")));
+                return Err(restore_network(&format!("writing the network constant {k} failed: {e}")));
             }
         }
         on_line(&format!("wp-config: a {} network — the network constants are in", if m.subdomain { "subdomain" } else { "subdirectory" }));
@@ -392,11 +417,11 @@ pub async fn pull_into(
             report.replacements = n;
             on_line(&format!("URLs: https://{from} → https://{} ({n} replacements)", local.domain));
         }
-        Err(e) => return Err(restore_prefix(&format!("moving the URLs failed: {e}"))),
+        Err(e) => return Err(restore_network(&format!("moving the URLs failed: {e}"))),
     }
-    if m.multisite {
+    if m.multisite && copy_domain != local.domain {
         if let Err(e) = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["config", "set", "DOMAIN_CURRENT_SITE", local.domain, "--type=constant"]) {
-            return Err(restore_prefix(&format!("moving DOMAIN_CURRENT_SITE to {} failed: {e}", local.domain)));
+            return Err(restore_network(&format!("moving DOMAIN_CURRENT_SITE to {} failed: {e}", local.domain)));
         }
     }
     report.network = m.multisite.then_some(if m.subdomain { "subdomain" } else { "subdirectory" });

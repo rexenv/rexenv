@@ -541,6 +541,19 @@ async fn main() -> std::process::ExitCode {
     if let Ok(r) = &net_push {
         let _ = client.push_rollback(&r.backup_id).await;
     }
+    // 17d. An incremental pull with NOTHING moved on live keeps every table from here —
+    //      the blogs table included, on the local domain — and still succeeds (the VM's third
+    //      network pull, 16 Oct 2026, died: the constant named live while the kept blogs said
+    //      the local domain); the constant reads the local domain after, the network serves.
+    let base17 = net_push.as_ref().map(|_| ()).ok().and(net_base.clone());
+    let s17d = status_now(&client, &target2, base17.as_ref()).await;
+    let again17 = pull::pull_into(&client, &target2, base17.as_ref(), &pull::PullOptions::default(), &mut sink).await;
+    let dom17 = wordpress::wp_run(&php, &wp, &local2_root, &["config", "get", "DOMAIN_CURRENT_SITE", "--type=constant"]).unwrap_or_default();
+    check(
+        again17.as_ref().map(|r| r.network == Some("subdirectory")).unwrap_or(false) && dom17.trim() == local2.domain
+            && wordpress::network_site_list(&php, &wp, &local2_root).map(|l| l.len() >= 2).unwrap_or(false),
+        &format!("17d. a network pull that keeps its blogs table from here succeeds and leaves DOMAIN_CURRENT_SITE on the local domain ({:?}; before it the status read {:?}; constant {:?})", again17.as_ref().map(|r| (r.tables, r.tables_kept)).map_err(|e| e.to_string()), s17d.verdict, dom17.trim()),
+    );
 
     // 11. The scoped import: a hostile stream cannot leave the staging database.
     {

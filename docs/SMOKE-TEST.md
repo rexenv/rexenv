@@ -1249,8 +1249,12 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       VM's own edge. Check status then read "behind — 21 tables": the host's MySQL had restarted during the
       pull (every written table's `Update_time` NULL, `Rows` re-sampled) — plugin 0.1.6 (#893) came from this
       press; the next Pull brought "21 tables (54 rows) and 3 files — 17 tables and 451 files unchanged on live
-      were kept" and Check status read "Up to date — nothing to pull or push". The Windows and Linux presses
-      are owed; a SUBDOMAIN network on a real host too.
+      were kept" and Check status read "Up to date — nothing to pull or push". A THIRD pull (nothing moved on
+      live, anonymise on) then FAILED "moving the URLs failed … Site 'live-sync.rex.bd/' not found" and left the
+      copy's `DOMAIN_CURRENT_SITE` as the live host (the site 500 until set back by hand): the kept blogs table
+      said the local domain while the constant named live — fixed (#889: the constant follows the copy's blogs
+      table; wp-config is restored on any failure; L1 leg 17d). The Windows and Linux presses are owed; a
+      SUBDOMAIN network on a real host too.
 - [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
       paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
       connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused
@@ -1420,9 +1424,14 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       <domain> push --confirm <host> --tables <prefix>users` → refused: "holds anonymised data
       here … it is never pushed". Untick the switch → Pull → the tables live changed since come
       back with real data (the ones live did not touch stay scrubbed until live changes them).
-      ◐ macOS: L1 `live_sync_pull_into_check` legs 14–14d; L2 `livetab.js` legs 15–16. The GUI
-      press against the real host is owed on each OS — the live host's data is the owner's
-      (live-sync.rex.bd holds no real customers: the probe users of the L14 runs).
+      ◐ macOS: L1 `live_sync_pull_into_check` legs 14–14d; L2 `livetab.js` legs 15–16. ✓ **the macOS 15.8
+      VM, this tree's debug build, 16 Oct 2026, against the network host:** tick the switch (`rex live l14vm.rex
+      set` reads "anonymise on pull on") → Pull from live → the confirm's "Personal data (e-mails, names,
+      addresses, IPs, form entries) is anonymised in the copy before it is swapped in" → the card "Pulled 0
+      tables (0 rows) and 1 file — 38 tables and 453 files unchanged on live were kept as they are here;
+      personal data anonymised in 8 tables" → `wp user list`: `admin  user1@example.invalid  User 1`;
+      `wp comment list`: `Commenter 1  commenter1@example.invalid  0.0.0.0` (a network: the main site's and
+      both sub-sites' users/comments tables). The picker's badge and the Windows and Linux presses are owed.
 - [ ] **Fetch missing uploads from live** (the switch, on by default) → **Pull, recent uploads
       only** → open a post whose image is older than six months: it RENDERS (the file is fetched
       from live on first view and is now under `wp-content/uploads/…`; the response carried
