@@ -788,7 +788,7 @@ export function PhpVersionsSetting() {
     setApplying((s) => new Set(s).add(minor));
     update.mutate({ minor, patch });
   };
-  const toggling = usePendingVariables<{ minor: string }>(["php-toggle"]);
+  const toggling = usePendingVariables<{ minor: string; installed: boolean }>(["php-toggle"]);
   const defaulting = usePendingVariables<string>(["php-make-default"]);
   const busyFor = (minor: string) =>
     toggling.some((t) => t.minor === minor) || defaulting.includes(minor) || applying.has(minor);
@@ -821,7 +821,17 @@ export function PhpVersionsSetting() {
       {versions.map((v) => (
         <PhpVersionRow
           key={v.minor}
-          v={v}
+          // A minor whose Install call is still running reads as NOT installed,
+          // whatever the registry says. The backend records `installed` before
+          // it downloads, so another install landing refetched the list and
+          // this row flipped to its installed controls — trash and star greyed
+          // out, no progress — while its own download was still going
+          // (16 Oct 2026). Its Install button stays on "…" until its call ends.
+          v={
+            toggling.some((t) => t.minor === v.minor && t.installed)
+              ? { ...v, installed: false }
+              : v
+          }
           busy={busyFor(v.minor)}
           expanded={expanded === v.minor}
           onToggle={(installed) => toggle.mutate({ minor: v.minor, installed })}

@@ -681,7 +681,10 @@ is still L3").
   a pin. **Open: no run recorded.**
 - [ ] **Two installs at once.** Settings → PHP versions → press Install on one
   uninstalled minor, then at once on a second. BOTH buttons stay "…" until each
-  download lands, then each turns into the remove icon. **Tell:** the first row's
+  download lands, then each turns into the remove icon, and the sidebar's
+  "Downloading k of 2" stays until the LAST one lands. **Tell:** the footer gone, or
+  a row showing greyed trash/star with no "…", while a download still runs (the
+  batch was replaced, #897). **Tell:** the first row's
   button back on "Install" while the sidebar still says it is downloading — the busy
   state was read off the mutation's last call only (16 Oct 2026, 8.0 then 8.1).
   The same holds for Sites (stop two sites), Services (start two databases) and

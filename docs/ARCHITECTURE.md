@@ -910,6 +910,15 @@ Live-proven end to end by `site_stop_start_check`.
   total` with `done` counting only successes, so a first run whose six downloads all gave
   up (clean VM, dead DNS relay) read `Downloading 1 of 6` over a full indeterminate bar,
   beside six failed rows. Now `done + failed < total`; the panel header says `n failed`.
+- **A new batch JOINS a running one, never replaces it** (`Hub::begin_batch`, #897,
+  16 Oct 2026). Install PHP 8.0, then 8.1: the second batch replaced the first, so the
+  footer vanished the moment 8.1 landed while 8.0 was still downloading. The prior
+  batch's still-moving rows now carry into the new count and its action stays named
+  (`Install PHP 8.0 + Install PHP 8.1`); a batch whose rows had all settled is not
+  carried. The Settings PHP row follows the same rule from its side: a minor whose
+  Install call is still pending renders as not installed (Install "…"), because the
+  backend records `installed` before it downloads and another install's refetch flipped
+  it to greyed installed controls mid-download.
 - **A planned download row never outlives its resolve** (`Hub::item_settled`, called
   by `prefetch` for each item the moment its resolve returns). The resolvers' early
   returns — the cache hit, a failure before the first byte — report nothing, and a

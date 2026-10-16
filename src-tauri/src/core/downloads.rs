@@ -141,7 +141,7 @@ struct Item {
 }
 
 struct HubState {
-    batch: Option<(String, Vec<String>)>, // (action, missing item ids)
+    batch: Option<(Vec<String>, Vec<String>)>, // (actions, missing item ids)
     items: Vec<Item>,
 }
 
@@ -621,13 +621,34 @@ impl Hub {
     /// every planned item gets a visible row (cached ones as `Cached`), and the
     /// batch counts only the missing ones. In-flight items from another action
     /// keep streaming untouched.
+    ///
+    /// **A new batch JOINS a running one; it never replaces it.** The prior
+    /// batch's still-moving rows are carried into the new count and its action
+    /// stays named. Replacing it dropped them from the count: Install PHP 8.0,
+    /// then 8.1, and the footer vanished the moment 8.1 landed while 8.0 was
+    /// still downloading (16 Oct 2026) — "nothing in flight" read off a batch
+    /// that had forgotten half its work.
     pub fn begin_batch(&self, action: &str, planned: &[Planned]) {
         self.mutate(|s| {
+            let (mut actions, mut missing) = match s.batch.take() {
+                Some((actions, ids)) => {
+                    let moving: Vec<String> = ids
+                        .into_iter()
+                        .filter(|id| {
+                            s.items.iter().any(|i| &i.snap.id == id && !i.snap.phase.is_terminal())
+                        })
+                        .collect();
+                    if moving.is_empty() { (Vec::new(), Vec::new()) } else { (actions, moving) }
+                }
+                None => (Vec::new(), Vec::new()),
+            };
+            if !actions.iter().any(|a| a == action) {
+                actions.push(action.to_string());
+            }
             s.items.retain(|i| !i.snap.phase.is_terminal());
-            let mut missing = Vec::new();
             for p in planned {
                 let id = item_id(&p.name, &p.version);
-                if !p.cached {
+                if !p.cached && !missing.contains(&id) {
                     missing.push(id.clone());
                 }
                 if s.items.iter().any(|i| i.snap.id == id) {
@@ -648,7 +669,7 @@ impl Hub {
                     samples: VecDeque::new(),
                 });
             }
-            s.batch = Some((action.to_string(), missing));
+            s.batch = Some((actions, missing));
         });
     }
 
@@ -773,14 +794,14 @@ impl Hub {
         // a snapshot never claims to be newer than it is.
         let seq = *self.tx.borrow();
         let s = self.state.lock().unwrap_or_else(|p| p.into_inner());
-        let batch = s.batch.as_ref().map(|(action, ids)| {
+        let batch = s.batch.as_ref().map(|(actions, ids)| {
             let count = |pred: fn(Phase) -> bool| {
                 ids.iter()
                     .filter(|id| s.items.iter().any(|i| &i.snap.id == *id && pred(i.snap.phase)))
                     .count()
             };
             BatchSnapshot {
-                action: action.clone(),
+                action: actions.join(" + "),
                 done: count(Phase::is_complete),
                 failed: count(|p| p == Phase::Failed),
                 total: ids.len(),
@@ -1267,6 +1288,33 @@ mod tests {
         let names: Vec<(&str, &str)> =
             plan.iter().map(|p| (p.name.as_str(), p.version.as_str())).collect();
         assert_eq!(names, vec![("mailpit", binaries::pins().mailpit)]);
+    }
+
+    /// **A second action's batch keeps the first one's downloads in its count.**
+    /// Install PHP 8.0, then 8.1: when 8.1 lands, 8.0 is still moving, so the
+    /// batch is not over and the footer must still say Downloading.
+    #[test]
+    fn a_new_batch_carries_the_running_batch_s_downloads() {
+        let h = fresh();
+        h.begin_batch("Install PHP 8.0", &[planned("php-fpm", "8.0.30", false)]);
+        h.item_started("php-fpm", "8.0.30");
+        h.begin_batch("Install PHP 8.1", &[planned("php-fpm", "8.1.34", false)]);
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!((b.done, b.total), (0, 2), "8.0 still counts");
+        assert_eq!(b.action, "Install PHP 8.0 + Install PHP 8.1");
+
+        h.item_started("php-fpm", "8.1.34");
+        h.item_done("php-fpm-8.1.34");
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!(b.in_flight(), 1, "8.1 landed; 8.0 is still moving — the footer stays");
+
+        h.item_done("php-fpm-8.0.30");
+        assert_eq!(h.snapshot().batch.unwrap().in_flight(), 0);
+
+        // A batch that had settled is NOT carried: the next action starts fresh.
+        h.begin_batch("Start all", &[planned("nginx", "1.30.3", false)]);
+        let b = h.snapshot().batch.unwrap();
+        assert_eq!((b.action.as_str(), b.total), ("Start all", 1));
     }
 
     #[test]
