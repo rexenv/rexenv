@@ -487,7 +487,10 @@ for name in $names; do
 done
 
 # Pass or fail, the example binaries go (~8 GB); the logs that matter stay in $logdir.
-bash scripts/disk-guard.sh after
+# This script runs from src-tauri/ (the cd above): a bare `scripts/disk-guard.sh` was
+# exit 127 here, which under `set -e` ended the run before the FAILED summary below
+# and stopped verify-full before its wk-checks (found cutting 0.9.0, 17 Oct 2026).
+bash ../scripts/disk-guard.sh after
 echo
 if [ -n "$failed" ]; then
   echo "live-checks($cmd): FAILED —$failed"
