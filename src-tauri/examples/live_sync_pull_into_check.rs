@@ -66,6 +66,87 @@ fn query(mysql: &SqlClient, db: &str, sql: &str) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
+
+/// A shared-host stand-in between the client and the fixture's `php -S` (#892): it cuts the
+/// FIRST `/files/read` answer that carries more than one path mid-body (a host that throttles
+/// a long response), and answers 413 to any `/push/file` or `/push/db` body over `limit`
+/// bytes (a `post_max_size` smaller than a 4 MB piece). Everything else passes through
+/// unchanged. Counts what it did, so a leg can prove the path was exercised.
+struct Hostile {
+    cut: std::sync::atomic::AtomicUsize,
+    refused_file: std::sync::atomic::AtomicUsize,
+    refused_db: std::sync::atomic::AtomicUsize,
+}
+
+fn hostile_proxy(listen: u16, upstream: u16, limit: usize) -> std::sync::Arc<Hostile> {
+    use std::io::{Read, Write};
+    use std::sync::atomic::Ordering;
+    let h = std::sync::Arc::new(Hostile { cut: 0.into(), refused_file: 0.into(), refused_db: 0.into() });
+    let hh = h.clone();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", listen)).expect("the hostile proxy's port");
+    std::thread::spawn(move || {
+        for conn in listener.incoming() {
+            let Ok(mut c) = conn else { break };
+            let h = hh.clone();
+            std::thread::spawn(move || {
+                let _ = c.set_read_timeout(Some(Duration::from_secs(120)));
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 65536];
+                let head_end = loop {
+                    if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                        break i + 4;
+                    }
+                    match c.read(&mut tmp) {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                    }
+                };
+                let head = String::from_utf8_lossy(&buf[..head_end]).to_string();
+                let len: usize = head
+                    .lines()
+                    .find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.trim().parse().ok()))
+                    .unwrap_or(0);
+                while buf.len() < head_end + len {
+                    match c.read(&mut tmp) {
+                        Ok(0) | Err(_) => return,
+                        Ok(n) => buf.extend_from_slice(&tmp[..n]),
+                    }
+                }
+                let body = &buf[head_end..head_end + len];
+                let line = head.lines().next().unwrap_or_default().replace("%2F", "/");
+                let route = |r: &str| line.contains(&format!("rest_route=/rexenv-sync/v1{r}"));
+                if (route("/push/file") || route("/push/db")) && len > limit {
+                    if route("/push/db") { h.refused_db.fetch_add(1, Ordering::SeqCst); } else { h.refused_file.fetch_add(1, Ordering::SeqCst); }
+                    let _ = c.write_all(b"HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 33\r\n\r\n{\"code\":\"too_large\",\"message\":\"\"}");
+                    return;
+                }
+                let many = route("/files/read") && serde_json::from_slice::<serde_json::Value>(body).ok().and_then(|v| v["paths"].as_array().map(|a| a.len())).unwrap_or(0) > 1;
+                // Forward with `Connection: close` so the upstream answer ends at EOF.
+                let mut fwd = String::new();
+                for l in head.trim_end().lines() {
+                    if l.to_ascii_lowercase().starts_with("connection:") { continue; }
+                    fwd.push_str(l); fwd.push_str("\r\n");
+                }
+                fwd.push_str("Connection: close\r\n\r\n");
+                let Ok(mut up) = std::net::TcpStream::connect(("127.0.0.1", upstream)) else { return };
+                if up.write_all(fwd.as_bytes()).is_err() || up.write_all(body).is_err() { return; }
+                let mut resp = Vec::new();
+                let _ = up.read_to_end(&mut resp);
+                let cut_now = many && h.cut.compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst).is_ok();
+                if cut_now {
+                    if let Some(i) = resp.windows(4).position(|w| w == b"\r\n\r\n") {
+                        let half = i + 4 + (resp.len() - i - 4) / 2;
+                        let _ = c.write_all(&resp[..half]);
+                        return; // dropped mid-body
+                    }
+                }
+                let _ = c.write_all(&resp);
+            });
+        }
+    });
+    h
+}
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let plat = rexenv_lib::platform::current();
@@ -507,6 +588,9 @@ async fn main() -> std::process::ExitCode {
     let shop_id = wordpress::network_site_create(&php, &wp, &live_root, "shop", &live.domain).map(|s| s.trim().to_string());
     let shop_url = format!("https://{}/shop/", live.domain);
     let _ = wordpress::wp_run(&php, &wp, &live_root, &["post", "create", "--post_title=SHOP-ON-LIVE", "--post_status=publish", &format!("--url={shop_url}")]);
+    // The plugin active PER SITE too (the main site's Plugins → Activate writes that blog's
+    // `active_plugins`, beside any network activation) — the pull must leave it off in both.
+    let _ = wordpress::wp_run(&php, &wp, &live_root, &["option", "update", "active_plugins", "[\"rexenv-sync/rexenv-sync.php\"]", "--format=json", &format!("--url=https://{}/shop/", live.domain)]);
     let target2 = pull::LocalSite { db_name: &local2.db_name, domain: &local2.domain, docroot: &local2_root, ..target };
     let net_pull = pull::pull_into(&client, &target2, None, &pull::PullOptions::default(), &mut sink).await;
     let db2 = &local2.db_name;
@@ -541,6 +625,78 @@ async fn main() -> std::process::ExitCode {
     if let Ok(r) = &net_push {
         let _ = client.push_rollback(&r.backup_id).await;
     }
+    // 17e. The plugin came along but is active NOWHERE in the copy: not network-wide, not on
+    //      the main site, not on /shop/ where live ran it per site (ledger #896).
+    let still_on: Vec<String> = wordpress::network_site_list(&php, &wp, &local2_root)
+        .unwrap_or_default()
+        .iter()
+        .filter(|site| {
+            wordpress::wp_run(&php, &wp, &local2_root, &["plugin", "list", "--status=active,active-network", "--field=name", "--skip-plugins", &format!("--url={}", site.url)])
+                .unwrap_or_default()
+                .lines()
+                .any(|l| l.trim() == "rexenv-sync")
+        })
+        .map(|site| site.url.clone())
+        .collect();
+    check(still_on.is_empty(), &format!("17e. after a network pull the sync plugin is active on no site of the copy (still on: {still_on:?})"));
+
+    // 18. rexenv's OWN Convert to multisite on this WordPress (the pin is 7.1.x, where
+    //     `wp core multisite-convert` dies "Table wp_site doesn't exist"): a fresh single site
+    //     converts to a subdirectory network, a sub-site is created and listed (ledger #894).
+    let local3 = make(format!("lcv{pid}.rex")).await;
+    let local3_root = local3.served_root();
+    let conv = wordpress::multisite_convert(&php, &wp, &local3_root, &local3.domain, false);
+    let conv_mode = rexenv_lib::core::sites::network_mode_on_disk(&local3_root);
+    let conv_sub = wordpress::network_site_create(&php, &wp, &local3_root, "shop", &local3.domain).map(|s| s.trim().to_string());
+    let conv_list = wordpress::network_site_list(&php, &wp, &local3_root).map(|l| l.iter().map(|x| x.url.clone()).collect::<Vec<_>>());
+    let conv_again = wordpress::multisite_convert(&php, &wp, &local3_root, &local3.domain, false);
+    check(
+        conv.as_deref().map(|o| o.contains("converted")).unwrap_or(false)
+            && conv_mode == Some(rexenv_lib::state::models::MultisiteMode::Subdirectory)
+            && conv_sub.is_ok()
+            && conv_list.as_ref().map(|l| l.len() == 2 && l.iter().any(|u| u.ends_with("/shop/"))).unwrap_or(false)
+            && conv_again.as_deref().map(|o| o.contains("already a network")).unwrap_or(false),
+        &format!("18. rexenv's own Convert to multisite works on this WordPress: a subdirectory network with a sub-site (convert {:?}; mode {:?}; sub-site {:?}; list {:?}; again {:?})", conv.as_deref().map_err(|e| e.to_string()), conv_mode, conv_sub.as_deref().map_err(|e| e.to_string()), conv_list.as_ref().map_err(|e| e.to_string()), conv_again.as_deref().map_err(|e| e.to_string())),
+    );
+
+    // 19. A SHARED HOST between the client and the site (#892): the first long `/files/read`
+    //     answer is cut mid-body → the batch is split and the pull still lands every file;
+    //     a push piece or dump chunk over 300 KB is refused 413 → halved until it fits.
+    const PROXY_PORT: u16 = 13393;
+    let hostile = hostile_proxy(PROXY_PORT, PORT, 300 * 1024);
+    let hostile_client = Client::new(key.clone()).unwrap().with_base_url(&format!("http://127.0.0.1:{PROXY_PORT}")).with_backoff(vec![Duration::from_millis(300); 3]);
+    let local4 = make(format!("lchp{pid}.rex")).await;
+    let local4_root = local4.served_root();
+    let target4 = pull::LocalSite { db_name: &local4.db_name, domain: &local4.domain, docroot: &local4_root, dump: mysqldump.clone(), ..target };
+    let hp = pull::pull_into(&hostile_client, &target4, None, &pull::PullOptions::default(), &mut sink).await;
+    let cut = hostile.cut.load(std::sync::atomic::Ordering::SeqCst);
+    check(
+        hp.is_ok() && cut == 1 && std::fs::read(local4_root.join("wp-content/uploads/2026/rexsync-probe.txt")).ok() == std::fs::read(live_root.join("wp-content/uploads/2026/rexsync-probe.txt")).ok()
+            && std::fs::read(local4_root.join("wp-includes/version.php")).ok() == std::fs::read(live_root.join("wp-includes/version.php")).ok(),
+        &format!("19a. a file batch the host cut mid-answer is split and the pull lands every file (pull {:?}; cuts {cut})", hp.as_ref().map(|r| (r.tables, r.files)).map_err(|e| e.to_string())),
+    );
+    let base19 = hp.ok().map(|r| r.base);
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let big: Vec<u8> = (0..(1024 * 1024u32)).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+    std::fs::write(local4_root.join("wp-content/uploads/2026/big-from-local.bin"), &big).unwrap();
+    for i in 0..12 {
+        let body = "shared-host-chunk ".repeat(2600); // ≈ 47 KB a post → a 500 KB+ dump
+        let _ = wordpress::wp_run(&php, &wp, &local4_root, &["post", "create", &format!("--post_title=BIG-{i}"), "--post_status=publish", &format!("--post_content={body}")]);
+    }
+    let opts19 = push::PushOptions { tables: Some(vec!["wp_posts".into()]), files: true, override_items: vec![], skip: vec![] };
+    let hpush = push::push_from(&hostile_client, &target4, base19.as_ref(), &opts19, &mut sink).await;
+    let (rf, rd) = (hostile.refused_file.load(std::sync::atomic::Ordering::SeqCst), hostile.refused_db.load(std::sync::atomic::Ordering::SeqCst));
+    let live_big = std::fs::read(live_root.join("wp-content/uploads/2026/big-from-local.bin")).ok();
+    check(
+        hpush.is_ok() && rf >= 1 && rd >= 1 && live_big.as_deref() == Some(big.as_slice())
+            && query(&mysql, &live.db_name, "SELECT COUNT(*) FROM wp_posts WHERE post_title LIKE 'BIG-%'") == "12",
+        &format!("19b. a 413 on a file piece and on a dump chunk halves each until the host takes it; the file and the 12 posts are on live whole (push {:?}; 413s file {rf} db {rd}; live file {:?} bytes)", hpush.as_ref().map(|r| (r.tables.clone(), r.files)).map_err(|e| format!("{e:?}")), live_big.as_ref().map(|b| b.len())),
+    );
+    if let Ok(r) = &hpush {
+        let _ = client.push_rollback(&r.backup_id).await;
+    }
+    let _ = std::fs::remove_file(live_root.join("wp-content/uploads/2026/big-from-local.bin"));
+
     // 17d. An incremental pull with NOTHING moved on live keeps every table from here —
     //      the blogs table included, on the local domain — and still succeeds (the VM's third
     //      network pull, 16 Oct 2026, died: the constant named live while the kept blogs said

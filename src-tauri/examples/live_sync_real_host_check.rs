@@ -176,11 +176,11 @@ async fn main() -> std::process::ExitCode {
         let siteurl = wordpress::wp_run(&php, &wp, &root, &["option", "get", "siteurl"]).unwrap_or_default();
         let posts = wordpress::wp_run(&php, &wp, &root, &["post", "list", "--post_type=post", "--format=count"]).unwrap_or_default();
         let cron = wordpress::wp_run(&php, &wp, &root, &["config", "get", "DISABLE_WP_CRON", "--type=constant"]).unwrap_or_default();
-        let active = wordpress::wp_run(&php, &wp, &root, &["plugin", "list", "--status=active", "--field=name", "--skip-plugins"]).unwrap_or_default();
+        let active = wordpress::wp_run(&php, &wp, &root, &["plugin", "list", "--status=active,active-network", "--field=name", "--skip-plugins"]).unwrap_or_default();
         let pairing = wordpress::wp_run(&php, &wp, &root, &["option", "get", "rexsync_pairing"]).is_ok();
         check(
             siteurl.trim() == format!("https://{domain}") && posts.trim().parse::<u32>().unwrap_or(0) >= 1 && cron.trim() == "1" && !active.lines().any(|l| l.trim() == "rexenv-sync") && !pairing,
-            &format!("1. the local copy is the live site at https://{domain} ({} posts), cron off, plugin inactive, no pairing row", posts.trim()),
+            &format!("1. the local copy is the live site at https://{domain} ({} posts), cron off, plugin inactive, no pairing row (siteurl {:?}; DISABLE_WP_CRON {:?}; active {:?}; pairing row {pairing})", posts.trim(), siteurl.trim(), cron.trim(), active.lines().map(str::trim).collect::<Vec<_>>()),
         );
         // 1b. A network: the copy IS one, on the local domain, every sub-site under it.
         if pulled.as_ref().map(|r| r.network.is_some()).unwrap_or(false) {

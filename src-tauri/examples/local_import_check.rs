@@ -241,7 +241,7 @@ async fn main() -> std::process::ExitCode {
         &Default::default(),
     )
     .expect("install the network's WordPress");
-    wordpress::multisite_convert(&php8, &wp, &net_root, true).expect("convert to a subdomain network");
+    wordpress::multisite_convert(&php8, &wp, &net_root, "multi.local", true).expect("convert to a subdomain network");
     let made = wordpress::wp_run(&php8, &wp, &net_root, &["site", "create", "--slug=ea1", "--title=EA1"]);
     check.is("fixture: the network gained a subsite", made.is_ok(), &format!("{made:?}"));
 

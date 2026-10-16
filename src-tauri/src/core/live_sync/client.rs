@@ -476,7 +476,9 @@ impl Client {
     /// `files` = `(path, size)` from `/files/list` (size 0 when unknown); requests are
     /// sized by [`read_batches`].
     /// A batch the site cannot deliver whole — it stopped answering mid-frame (a host that
-    /// throttles or cuts a long response) — is split in halves and each half asked for
+    /// throttles or cuts a long response), or closed a length-less answer early so the frame
+    /// "runs past the end" (leg 19a, 16 Oct 2026: a cut body with no `Content-Length` arrives
+    /// as a short but complete HTTP answer) — is split in halves and each half asked for
     /// again, down to one file (#892); only a single file that still fails is an error.
     pub async fn read_files(&self, files: &[(String, u64)], dest: &Path, exclude: &[&str]) -> Result<Vec<FrameRecord>> {
         let globs = exclude.join(",");
@@ -487,17 +489,28 @@ impl Client {
             let asked: HashSet<String> = chunk.iter().cloned().collect();
             let body = serde_json::to_vec(&serde_json::json!({ "paths": chunk })).expect("json");
             let q: Vec<(&str, &str)> = if globs.is_empty() { vec![] } else { vec![("exclude", &globs)] };
+            let split = |work: &mut Vec<Vec<String>>| {
+                let (a, b) = chunk.split_at(chunk.len() / 2);
+                work.push(b.to_vec());
+                work.push(a.to_vec());
+            };
             let frame = match self.send(reqwest::Method::POST, "/rexenv-sync/v1/files/read", &q, body).await {
                 Ok(f) => f,
                 Err(e) if chunk.len() > 1 && e.to_string().contains("stopped answering") => {
-                    let (a, b) = chunk.split_at(chunk.len() / 2);
-                    work.push(b.to_vec());
-                    work.push(a.to_vec());
+                    split(&mut work);
                     continue;
                 }
                 Err(e) => return Err(e),
             };
-            for rec in parse_frame(&frame, &asked)? {
+            let records = match parse_frame(&frame, &asked) {
+                Ok(r) => r,
+                Err(e) if chunk.len() > 1 && e.to_string().contains("runs past the end") => {
+                    split(&mut work);
+                    continue;
+                }
+                Err(e) => return Err(e),
+            };
+            for rec in records {
                 if rec.error.is_some() {
                     refused.push(rec);
                     continue;

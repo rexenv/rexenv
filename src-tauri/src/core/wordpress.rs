@@ -2051,20 +2051,69 @@ pub fn user_delete(
     wp_run(php_bin, wp_phar, docroot, &args)
 }
 
-/// Convert a single-site WordPress install to a network (`wp core
-/// multisite-convert [--subdomains]`), writing the network constants into
-/// wp-config. `subdomains` chooses subdomain vs subdirectory install (§10.1).
+/// The conversion WordPress's own network installer runs (`wp-admin/network.php`),
+/// as a `wp eval-file` script: the network tables named on `$wpdb` FIRST, the global
+/// schema created, then `populate_network`. `%DOMAIN%` and `%SUBDOMAIN%` are filled in.
+///
+/// `wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3 with "Table
+/// 'wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): it calls
+/// `install_network()` without naming the `ms_global` tables on wpdb, and 7.1's
+/// `populate_network` reads `$wpdb->site` before anything created it. Naming them is
+/// the one line network.php has that wp-cli does not (ledger #894).
+const MULTISITE_CONVERT_PHP: &str = "<?php
+global $wpdb;
+if (is_multisite()) { echo 'already a network'; exit(0); }
+foreach ($wpdb->tables('ms_global') as $t => $n) { $wpdb->$t = $n; }
+require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+require_once ABSPATH . 'wp-admin/includes/network.php';
+if (!defined('WP_INSTALLING_NETWORK')) { define('WP_INSTALLING_NETWORK', true); }
+dbDelta(wp_get_db_schema('global'));
+$r = populate_network(1, '%DOMAIN%', get_option('admin_email'), get_option('blogname') . ' Sites', '/', %SUBDOMAIN%);
+if (is_wp_error($r)) { fwrite(STDERR, $r->get_error_message()); exit(1); }
+echo 'converted';
+";
+
+/// The script for `domain`, subdomain or subdirectory. Pure.
+pub fn multisite_convert_script(domain: &str, subdomains: bool) -> String {
+    MULTISITE_CONVERT_PHP
+        .replace("%DOMAIN%", &domain.replace(['\\', '\''], ""))
+        .replace("%SUBDOMAIN%", if subdomains { "true" } else { "false" })
+}
+
+/// Convert a single-site WordPress install to a network (§10.1): WordPress's own
+/// `network.php` sequence through `wp eval-file` ([`MULTISITE_CONVERT_PHP`] — not
+/// `wp core multisite-convert`, which cannot convert a 7.1 site), then the six
+/// network constants into wp-config (`DOMAIN_CURRENT_SITE` = `domain`).
+/// `subdomains` chooses subdomain vs subdirectory install.
 pub fn multisite_convert(
     php_bin: &Path,
     wp_phar: &Path,
     docroot: &Path,
+    domain: &str,
     subdomains: bool,
 ) -> Result<String> {
-    let mut args: Vec<&str> = vec!["core", "multisite-convert"];
-    if subdomains {
-        args.push("--subdomains");
+    let script = docroot.join(format!(".rexenv-multisite-convert-{}.php", std::process::id()));
+    std::fs::write(&script, multisite_convert_script(domain, subdomains))?;
+    let ran = wp_run(php_bin, wp_phar, docroot, &["eval-file", &script.to_string_lossy()]);
+    let _ = std::fs::remove_file(&script);
+    let out = ran?;
+    let sub = if subdomains { "true" } else { "false" };
+    for (k, v, raw) in [
+        ("WP_ALLOW_MULTISITE", "true", true),
+        ("MULTISITE", "true", true),
+        ("SUBDOMAIN_INSTALL", sub, true),
+        ("DOMAIN_CURRENT_SITE", domain, false),
+        ("PATH_CURRENT_SITE", "/", false),
+        ("SITE_ID_CURRENT_SITE", "1", true),
+        ("BLOG_ID_CURRENT_SITE", "1", true),
+    ] {
+        let mut args = vec!["config", "set", k, v, "--type=constant"];
+        if raw {
+            args.push("--raw");
+        }
+        wp_run(php_bin, wp_phar, docroot, &args)?;
     }
-    wp_run(php_bin, wp_phar, docroot, &args)
+    Ok(out)
 }
 
 // ── Network / multisite management (§10.3) ───────────────────────────────────
@@ -2978,6 +3027,25 @@ pub fn rehome_urls_on_copy(
 
 #[cfg(test)]
 mod copy_rehome_tests {
+    /// **The conversion names the network tables on wpdb BEFORE anything reads them, and
+    /// runs WordPress's own `populate_network` for the asked mode** (ledger #894) — the one
+    /// line wp-cli 2.12.0 lacks, which kills `wp core multisite-convert` on WordPress 7.1.3.
+    /// Plant: drop the `tables('ms_global')` line → red; swap the flag → red.
+    #[test]
+    fn the_conversion_names_the_network_tables_first_and_takes_the_mode() {
+        let s = super::multisite_convert_script("multi.rex", true);
+        let name = s.find("$wpdb->tables('ms_global')").expect("the network tables named on wpdb");
+        let schema = s.find("dbDelta(wp_get_db_schema('global'))").expect("the global schema");
+        let populate = s.find("populate_network(1, 'multi.rex', get_option('admin_email')").expect("populate_network for the domain");
+        assert!(name < schema && schema < populate, "named first, then the schema, then populate: {s}");
+        assert!(s.contains("' Sites', '/', true);"), "a subdomain network: {s}");
+        assert!(super::multisite_convert_script("dirs.rex", false).contains("'/', false);"));
+        assert!(s.contains("if (is_multisite()) { echo 'already a network'; exit(0); }"), "idempotent on a network");
+        assert!(s.contains("define('WP_INSTALLING_NETWORK', true)"));
+        // A domain cannot break out of its PHP string.
+        assert!(!super::multisite_convert_script("a'.rex", false).contains("a'.rex"));
+    }
+
     use super::*;
 
     /// The schemes move to HTTPS on the new name, the escaped spelling too, and

@@ -564,6 +564,16 @@ pub async fn pull_into(
         deactivate.push("--network"); // network-activated on live (the bootstrap, or Network Activate)
     }
     let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &deactivate);
+    // On a network the plugin may ALSO be active per site — Activate on the main site's
+    // Plugins screen writes that blog's `active_plugins`, which `--network` never touches
+    // (ledger #896: sd.rex.bd, 16 Oct 2026, a copy whose main site still ran the plugin).
+    // Every sub-site, by its local URL.
+    if m.multisite {
+        for site in wordpress::network_site_list(local.php, local.wp_phar, local.docroot).unwrap_or_default() {
+            let url = format!("--url={}", site.url);
+            let _ = wordpress::wp_run(local.php, local.wp_phar, local.docroot, &["plugin", "deactivate", "rexenv-sync", "--skip-plugins", "--skip-themes", &url]);
+        }
+    }
     // The LOCAL half (ledger #863): what the pull REPLACED is stamped fresh (live's
     // version is what is here now); what it KEPT keeps the prior base's stamp, so a
     // local edit made before the pull is still "ahead" after it. The Dell run

@@ -106,17 +106,63 @@ impl From<std::io::Error> for PushStop {
     }
 }
 
-/// Split a dump at statement ends into pieces of at most `max` bytes.
+/// One statement without the `--` comment lines and blank lines in front of it.
+fn bare_statement(stmt: &str) -> &str {
+    let mut rest = stmt;
+    loop {
+        let t = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+        if let Some(after) = t.strip_prefix("--") {
+            rest = after.split_once('\n').map(|(_, r)| r).unwrap_or("");
+        } else {
+            return t;
+        }
+    }
+}
+
+/// A dump's session statement: `/*!40101 SET … */;` — the character set, time zone,
+/// SQL mode and check switches the dump's own rows rely on.
+fn is_session_set(bare: &str) -> bool {
+    bare.starts_with("/*!") && bare.contains(" SET ")
+}
+
+/// Split a dump at statement ends into pieces of at most `max` bytes, EACH ONE
+/// SELF-CONTAINED (ledger #895). The plugin runs every piece on its own request — its
+/// own database connection — so a session setting made in the first piece is gone by
+/// the second: every later piece starts with the dump's session header again (`SET NAMES
+/// utf8mb4`, `SQL_MODE`, `TIME_ZONE`, the check switches — without them a later piece's
+/// rows would be read in the connection's defaults), and the footer's restores (`SET
+/// TIME_ZONE=@OLD_TIME_ZONE` …) are dropped: in a fresh connection `@OLD_TIME_ZONE` is
+/// NULL and MySQL refuses it — the hostile-host leg (19b, 16 Oct 2026) died exactly so
+/// once a 413 made the chunks small. A real table over 4 MB met the same on any host.
 pub fn chunks(sql: &str, max: usize) -> Vec<String> {
+    let stmts: Vec<&str> = sql.split_inclusive(";\n").collect();
+    let mut header = String::new();
+    for s in &stmts {
+        let bare = bare_statement(s);
+        if bare.is_empty() {
+            continue;
+        }
+        if !is_session_set(bare) {
+            break;
+        }
+        header.push_str(bare);
+    }
     let mut out = Vec::new();
     let mut cur = String::new();
-    for stmt in sql.split_inclusive(";\n") {
-        if !cur.is_empty() && cur.len() + stmt.len() > max {
+    let mut body_in_cur = false;
+    for stmt in stmts {
+        if bare_statement(stmt).contains("=@OLD_") {
+            continue; // a restore of a session variable this connection never saved
+        }
+        if body_in_cur && cur.len() + stmt.len() > max {
             out.push(std::mem::take(&mut cur));
+            cur.push_str(&header);
+            body_in_cur = false;
         }
         cur.push_str(stmt);
+        body_in_cur |= !is_session_set(bare_statement(stmt)) && !bare_statement(stmt).is_empty();
     }
-    if !cur.trim().is_empty() {
+    if body_in_cur {
         out.push(cur);
     }
     out
@@ -392,6 +438,33 @@ mod tests {
         let sql = "A;\nB;\nCCCC;\n";
         assert_eq!(chunks(sql, 6), vec!["A;\nB;\n", "CCCC;\n"]);
         assert_eq!(chunks(sql, 100), vec![sql]);
+    }
+
+    /// **Every piece of a pushed dump runs on its own connection, so every piece carries
+    /// the dump's session header and none restores a variable it never saved** (ledger
+    /// #895). Plant: drop the header re-push → the second piece has no `SET NAMES`, red;
+    /// keep the restores → `SET TIME_ZONE=@OLD_TIME_ZONE` survives, red.
+    #[test]
+    fn every_dump_piece_is_self_contained() {
+        let dump = "-- MySQL dump 10.13\n--\n\n/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;\n/*!50503 SET NAMES utf8mb4 */;\n/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;\n/*!40103 SET TIME_ZONE='+00:00' */;\n/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n\n--\n-- Table structure\n--\n\nDROP TABLE IF EXISTS `wp_posts`;\nCREATE TABLE `wp_posts` (id int);\nINSERT INTO `wp_posts` VALUES (1,'é one');\nINSERT INTO `wp_posts` VALUES (2,'two');\nINSERT INTO `wp_posts` VALUES (3,'three');\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;\n/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;\n\n-- Dump completed\n";
+        let pieces = chunks(dump, 330);
+        assert!(pieces.len() >= 3, "small pieces: {pieces:#?}");
+        for (i, p) in pieces.iter().enumerate() {
+            assert!(p.contains("SET NAMES utf8mb4") && p.contains("SET TIME_ZONE='+00:00'") && p.contains("SQL_MODE='NO_AUTO_VALUE_ON_ZERO'"), "piece {i} lacks the session header: {p}");
+            assert!(!p.contains("=@OLD_"), "piece {i} restores a variable it never saved: {p}");
+            assert!(p.contains("INSERT INTO") || p.contains("CREATE TABLE") || p.contains("DROP TABLE"), "piece {i} is header only: {p}");
+        }
+        // Every statement of the body is in exactly one piece, in order.
+        let all = pieces.concat();
+        for row in ["DROP TABLE", "CREATE TABLE", "(1,'é one')", "(2,'two')", "(3,'three')"] {
+            assert_eq!(all.matches(row).count(), 1, "{row}");
+        }
+        assert!(all.find("(1,").unwrap() < all.find("(3,").unwrap());
+        // One piece when it all fits: the header once, no restores.
+        let one = chunks(dump, 1 << 20);
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].matches("SET NAMES").count(), 1);
+        assert!(!one[0].contains("=@OLD_TIME_ZONE */"));
     }
 
     /// **A table the pull anonymised is never pushed, and an item in `skip` is left out

@@ -110,7 +110,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** — "WordPress database
+- [x] **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3** ✓ 16 Oct 2026 — `wordpress::multisite_convert` now runs WordPress's own `network.php` sequence through `wp eval-file` (the network tables named on wpdb first, `dbDelta(wp_get_db_schema('global'))`, `populate_network`), then writes the six constants itself; L0 plant + L1 `live_sync_pull_into_check` leg 18 on the 7.1 pin (ledger #894). Original row: "WordPress database
   error Table 'wp_<db>.wp_site' doesn't exist" (16 Oct 2026, the live-sync fixture): wp-cli runs
   `install_network()` without the network tables named on wpdb, and 7.1's `populate_network` reads
   `$wpdb->site` first. rexenv's own **Convert to multisite** (`wp_multisite_convert` →

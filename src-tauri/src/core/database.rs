@@ -186,6 +186,11 @@ pub(crate) fn dump_tables_to_file(dump: &Path, port: u16, name: &str, tables: &[
     // ("unknown variable") and would break every export; mariadb-dump
     // 11.4/12.3 only WARNS and ignores it, dead weight spraying a warning per
     // export. So this one path keeps an unbounded connect (B25).
+    // `--net-buffer-length=65536`: no extended INSERT grows past 64 KB (the default lets one
+    // statement reach 1 MB). A live-sync push sends a dump in chunks split BETWEEN statements
+    // and halves the chunk when the host answers 413 (#892) — a statement bigger than what the
+    // host takes can never be halved (leg 19b, 16 Oct 2026: 12 × 47 KB posts in one 560 KB
+    // INSERT were refused at every chunk size). Both mysqldump and mariadb-dump take it.
     let out = crate::platform::command(dump)
         .args([
             "--no-defaults",
@@ -193,6 +198,7 @@ pub(crate) fn dump_tables_to_file(dump: &Path, port: u16, name: &str, tables: &[
             "--host=127.0.0.1",
             &format!("--port={port}"),
             "--user=root",
+            "--net-buffer-length=65536",
             &format!("--result-file={}", dest.display()),
             name,
         ])

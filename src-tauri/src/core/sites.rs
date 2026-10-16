@@ -1508,9 +1508,9 @@ pub fn set_web_server_on(
     get(conn, id)
 }
 
-/// Convert a WordPress site to a multisite network (§10.1): run `wp core
-/// multisite-convert` (subdomain or subdirectory) to write the network constants,
-/// then persist the mode so `rebuild_configs` regenerates nginx with the matching
+/// Convert a WordPress site to a multisite network (§10.1): WordPress's own
+/// network installer through `wp eval-file` (`wordpress::multisite_convert` —
+/// subdomain or subdirectory), which writes the network constants, then persist the mode so `rebuild_configs` regenerates nginx with the matching
 /// rewrite template. The caller reloads the edge afterward (no docroot/cert/DB
 /// rebuild). Returns the updated site, or `None` if the id doesn't exist.
 pub fn convert_multisite(
@@ -1533,10 +1533,14 @@ pub fn convert_multisite(
     if let Some(existing) = network_mode_on_disk(docroot) {
         return adopt_multisite(conn, id, existing);
     }
+    let Some(site) = get(conn, id)? else {
+        return Ok(None);
+    };
     crate::core::wordpress::multisite_convert(
         php_bin,
         wp_phar,
         docroot,
+        &site.domain,
         matches!(mode, MultisiteMode::Subdomain),
     )?;
     if !store::set_site_multisite(conn, id, mode.as_db())? {

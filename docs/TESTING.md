@@ -1046,10 +1046,19 @@ it is a LiteSpeed box that delivers a 6 MB file frame at ~100 KB/s (a signed `cu
 took over 120 s) and has `post_max_size` 8M — the client's two clocks and the batch/chunk halving
 came from it (#892); and its MySQL restarted between a 15-minute pull and the next status, which
 read "21 tables changed" with nothing written — plugin 0.1.6 remembers each table's last
-`Update_time` + `Rows` for exactly that (#893, the plugin test's §11). The fixture's network leg (`live_sync_pull_into_check` 17–17c) converts the
+`Update_time` + `Rows` for exactly that (#893, the plugin test's §11). **A shared host on demand**
+(16 Oct 2026): leg 19 of `live_sync_pull_into_check` puts `hostile_proxy` — a plain TCP stand-in
+in the example — between the client and the fixture's `php -S`: it cuts the first multi-file
+`/files/read` answer mid-body and answers 413 to every push body over 300 KB. Its first run found
+three gaps no real host had shown yet (a length-less cut read as a short complete answer; one
+1 MB INSERT that no halving can fit; pieces that were not self-contained, #895) — a fixture that
+misbehaves on purpose finds what a polite host never will. The fixture's network leg (`live_sync_pull_into_check` 17–17c) converts the
 live fixture the way `network.php` does (install + populate with the network tables named on wpdb
 first), because **`wp core multisite-convert` (wp-cli 2.12.0) dies on WordPress 7.1.3 with "Table
-wp_site doesn't exist"** — a TODO row for rexenv's own Convert to multisite. The fixture live is
+wp_site doesn't exist"** — and since 16 Oct 2026 rexenv's own Convert to multisite
+(`wordpress::multisite_convert`) runs that same sequence through `wp eval-file`, proven by leg 18 on
+the 7.1 pin (#894); `multisite_check` (network tier, starts the whole stack) is the GUI-path example
+and cannot run beside the owner's stack. The fixture live is
 reached as `http://127.0.0.1:<port>`, a host no blog has, so a `sunrise.php` (WordPress's own
 pre-resolution hook) makes every request the main site's — fixture only.
 

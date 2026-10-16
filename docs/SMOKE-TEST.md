@@ -1266,7 +1266,11 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       plugin's window is 300 s). With the clock held (a timesyncd restart every 30 s) the next Pull read "Pulled
       0 tables (0 rows) and 454 files; 38 tables and 0 files the interrupted pull had already copied were
       reused" (the resume row's Linux press, for free) and Check status "Up to date — nothing to pull or push".
-      A SUBDOMAIN network on a real host is still owed.
+      ✓ **A SUBDOMAIN network on a real host, 16 Oct 2026 (L1, macOS):** `https://sd.rex.bd` (the owner's
+      cPanel; `shop.sd.rex.bd`, `blog.sd.rex.bd`) — `live_sync_real_host_check` ALL PASS: the copy a
+      subdomain network on `https://<local>/`, `https://shop.<local>/`, `https://blog.<local>/`; it found
+      the plugin left active on the main site (#896, fixed). The GUI press of a subdomain network is owed
+      (the copy's sub-sites need the local wildcard: `*.<site>.rex`).
 - [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
       paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
       connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused
@@ -1858,7 +1862,11 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [x] Convert the WP site to multisite. **The convert panel starts on subdomain**, matching
       New Site's toggle (8 Aug — the two screens used to default differently, and the mode
       can't be changed afterwards). Pick either; Network tab shows the mode + sub-site list.
-      ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update to 0.7.2).
+      ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update to 0.7.2). **Re-press owed on each
+      OS since 16 Oct 2026:** the convert no longer runs `wp core multisite-convert` (wp-cli 2.12.0
+      dies on WordPress 7.1.3 "Table wp_site doesn't exist" — every fresh site is 7.1.x now) but
+      WordPress's own network installer through `wp eval-file` + the six constants (#894; L1 leg 18
+      of `live_sync_pull_into_check` on macOS).
 - [x] Create a sub-site; it appears in the list and loads. ✓ 18 Sep 2026 (clean 15.6.1 VM,
       `39610cc7` + self-update to 0.7.2).
 

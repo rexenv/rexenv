@@ -1580,8 +1580,13 @@ honest footer —
   runs two clocks** (#892): 60 s without a byte is a dead host, 20 minutes is the most one request
   may take — the first real cPanel host (LiteSpeed) delivers a 6 MB file frame at ~100 KB/s, and
   one 60 s total timeout read that as "error decoding response body" on every pull; a file batch
-  the host cuts anyway is split in halves and asked for again, and a push chunk the host refuses
-  as too large (`post_max_size` 8M) is halved. **A MySQL restart on live moves no stamp**
+  the host cuts anyway (a reset, or a length-less answer cut short) is split in halves and asked
+  for again, and a push chunk the host refuses as too large (`post_max_size` 8M) is halved. **Every
+  pushed dump piece is self-contained** (#895): each runs on its own connection, so every piece
+  carries the dump's session header (`SET NAMES utf8mb4`, `TIME_ZONE`, `SQL_MODE`) and none
+  restores an `@OLD_` variable it never saved; dumps are written with `--net-buffer-length=65536`
+  so no INSERT outgrows a halved chunk. Before this a table over 4 MB pushed its second piece
+  without `SET NAMES` and died on the footer's `SET TIME_ZONE=@OLD_TIME_ZONE`. **A MySQL restart on live moves no stamp**
   (plugin 0.1.6, #893): `Update_time` is InnoDB memory and the `Rows` estimate is re-sampled
   after a restart, which read as 21 tables changed on the cPanel host minutes after a pull;
   the plugin remembers each table's last non-NULL `Update_time` with its `Rows` and hands them
@@ -1768,7 +1773,9 @@ honest footer —
   it (#571); an allowed TLD keeps its name. A multisite NETWORK imports too (12 Sep 2026,
   `docs/archive/PLAN-local-multisite.md`): its mode comes from the registry's `multiSite` and is
   RECORDED after the ordinary provision (`core::sites::adopt_multisite`) — never by
-  running `multisite-convert`, which every other path to a network runs and which would
+  running the conversion (`wordpress::multisite_convert`: WordPress's own `network.php`
+  sequence through `wp eval-file` since 16 Oct 2026, #894 — `wp core multisite-convert`
+  dies on 7.1), which every other path to a network runs and which would
   rewrite a live network's wp-config and tables. The batch's one reload serves it (the
   network rewrites, and `*.domain` for subdomains). Refused with the reason: a subsite on
   a mapped domain (a `multiSiteDomains` host outside the network's name). The row shows
