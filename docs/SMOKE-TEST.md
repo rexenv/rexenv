@@ -1269,8 +1269,14 @@ Needs a live WordPress over HTTPS you may write a plugin into (the project's own
       ✓ **A SUBDOMAIN network on a real host, 16 Oct 2026 (L1, macOS):** `https://sd.rex.bd` (the owner's
       cPanel; `shop.sd.rex.bd`, `blog.sd.rex.bd`) — `live_sync_real_host_check` ALL PASS: the copy a
       subdomain network on `https://<local>/`, `https://shop.<local>/`, `https://blog.<local>/`; it found
-      the plugin left active on the main site (#896, fixed). The GUI press of a subdomain network is owed
-      (the copy's sub-sites need the local wildcard: `*.<site>.rex`).
+      the plugin left active on the main site (#896, fixed). ✓ **The GUI press, macOS 15.8 VM, 16 Oct 2026:**
+      `l14vm.rex` (a subdirectory network until then) Disconnect → the sd.rex.bd key → Connect → Pull
+      (anonymise on): the log "wp-config: a subdomain network — the network constants are in", "URLs:
+      https://sd.rex.bd → https://l14vm.rex (29 replacements)", anonymised the main site's AND both
+      sub-sites' comments/postmeta → "38 tables, 454 files" (≈ 75 min at the host's rate); the site row
+      now reads `subdomain`, and `https://l14vm.rex/` ("Live Subdomain"), `https://shop.l14vm.rex/`
+      ("Shop") and `https://blog.l14vm.rex/` ("Blog") all 200 from the VM's edge — a subdirectory copy
+      re-pulled as a subdomain one. Windows and Linux presses of the subdomain row are owed.
 - [ ] **A site behind HTTP basic auth** (host 3 = `https://auth.rex.bd`, 16 Oct 2026). Live tab →
       paste the key → "The live site is behind an HTTP password…" → user + password → Connect →
       connected; Pull → the copy; Push → live; Roll back. Without the password: Connect refused
