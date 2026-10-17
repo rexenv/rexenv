@@ -103,6 +103,50 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ◐ 0.9.0 — DRAFTED on `rexenv/rexenv` by CI (17 Oct 2026) — §A0, §A, the deb, Defender green; the Dell's tail and the Win11 VM owed
+
+**Run 39004017989, source `571525be` (tag `v0.9.0`, pushed), every lane green, 16 assets, the body the
+tag's verbatim.** dmg `40a00f06…`, `.app.tar.gz` `50424653…`, arm64 deb `a696f204…`, aarch64 AppImage
+`972db2a1…`, setup.exe `f7e1fe16…`, zip `2ee70d89…`; `shasum -c` against the attached `.sha256`: all OK.
+**Defender (RELEASING step 3) ✅ on the Dell, signatures `1.461.65.0` updated the same day:**
+`MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
+**The fixture on all three was a 0.8.13 DEV build, not the published one** (macOS `b7a8ad41-dirty`, the
+Ubuntu VM `b7a8ad41-dirty`, the Dell `8e69eadbf6-dirty`) — the test machines carried 16 Oct's dev builds.
+On the Ubuntu VM the published 0.8.13 deb was reinstalled first and correctly REFUSED the data (schema
+v45 > its v44, "Nothing was changed"), so a real published-0.8.13 → 0.9.0 run needs a data reset there.
+**No binary pin moved between `v0.8.13` and `v0.9.0`** (only phpMyAdmin 5.2.3 + BooDark 1.2.0 are new),
+so every run below exercised the ADOPT path of #898, not the re-pinned-binary swap (`b7a8ad41`,
+`d1a145e1`) — that path is L0 + the dev-build runs only, and the first release that moves a pin runs it.
+**§A0 ✅ by hand:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update key
+×2 in each slice; `minos 13.0`; codesign valid; Info.plist `0.9.0` — on the dmg's app AND the archive's;
+one top-level `rexenv.app/`, no AppleDouble; dmg app == archive app (`diff -rq`).
+**§A ✅ on the 15.8 VM (now `192.168.65.3`), stack running:** hash re-checked on the VM; app quit, agent
+booted out (sites still 200 — services outlive the app); app replaced, synthetic quarantine →
+**"rexenv" Not Opened**, Done → no process; `xattr -rd` → `rex 0.9.0 (571525b)`, crash reports 0 → 0,
+the agent back by itself. **#898: no Stop all/Start all** — `smoke1.rex` 200 at +20 s (the agent's own
+return; it was booted out by hand), then six sites 200; the log says "adopted 8 running service(s)", no
+restart. `phpmyadmin.rexenv.rex` 200 ("phpMyAdmin 5.2.3", no login form), Adminer 200; `rex worktree
+list` / `adoptable` answer; `rex live status` refuses a foreign pairing and reports a diverged one (reads
+only); `rex doctor` all ✓ but "rex not on PATH" (the VM never installed the CLI).
+**Linux ✅ on the 22.04 arm64 VM, stack running:** `apt-get install ./…arm64.deb` 8 s → `dpkg -s` 0.9.0;
+`gtk-launch` → `rex 0.9.0 (571525b) · app rexenv 0.9.0 (571525b)` in 1 s, every service pid unchanged
+(adopted); **#898:** at +2 s all 9 hosts answered the codes they gave before the install (0.04–0.23 s).
+P1: a fresh `.rex` name → 127.0.0.1 on `rexenv0`, `~rex` on `rexenv0` only, `example.com` via `enp0s1`;
+`rexenv-dns-route`, `rexenv-edge` and the agent active; `/var/crash` empty; doctor 7/7 ✓. phpMyAdmin 200,
+BooDark staged with `.rexenv-theme`; `rex worktree wtl.rex list` → `feature-x`; the AppImage extracts and
+its `rex` says 0.9.0 (not run as the app: it would repoint the deb's units). Observation:
+`rex live <site> status` on an unpaired site says "not connected to a live site" but exits 0.
+**Windows ◐ on the Dell (Windows 10 22H2 x64), stack + agent running:** `setup.exe /S` → exit 0 in 6 s,
+`rexenv.exe` and Apps & Features 0.9.0, the install folder still user-owned, the agent back on `udp 53`
+(pid 3408 → 25176), every service pid kept; launched through the interactive task → `rex 0.9.0
+(571525b)`; **#898:** from +4 s `w7check.rex`, `smoke1w.rex`, `wtw.rex` HTTPS 200 on every probe for 33 s
+(172–487 ms). **Then the Dell dropped off the network** (ssh timeout, ping 100 % loss, the tunnel "bad
+handshake") — **owed there:** phpMyAdmin's host, `rex worktree list`, `rex live status`, `rex doctor`.
+**Owed: the Win11 ARM VM's** `/S`-over-running + sites-answer row (not started: 8 GB beside two VMs).
+**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the GUI
+presses on the release build (pill, Databases card, Live tab, worktree UI — proven on 16 Oct dev builds);
+§M (needs Publish).
+
 ## A) ✅ 0.8.13 — PUBLISHED 9 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 
 **Run 37907730103, source `75f7b3ed` (tag `v0.8.13`, pushed), every lane green, 16 assets, the body the
