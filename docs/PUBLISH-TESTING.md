@@ -103,15 +103,16 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ◐ 0.9.0 — DRAFTED on `rexenv/rexenv` by CI (17 Oct 2026) — §A0, §A, the deb, Defender green; the Dell's tail and the Win11 VM owed
+## A) ✅ 0.9.0 — DRAFTED on `rexenv/rexenv` by CI (17 Oct 2026) — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender green
 
 **Run 39004017989, source `571525be` (tag `v0.9.0`, pushed), every lane green, 16 assets, the body the
 tag's verbatim.** dmg `40a00f06…`, `.app.tar.gz` `50424653…`, arm64 deb `a696f204…`, aarch64 AppImage
 `972db2a1…`, setup.exe `f7e1fe16…`, zip `2ee70d89…`; `shasum -c` against the attached `.sha256`: all OK.
 **Defender (RELEASING step 3) ✅ on the Dell, signatures `1.461.65.0` updated the same day:**
 `MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
-**The fixture on all three was a 0.8.13 DEV build, not the published one** (macOS `b7a8ad41-dirty`, the
-Ubuntu VM `b7a8ad41-dirty`, the Dell `8e69eadbf6-dirty`) — the test machines carried 16 Oct's dev builds.
+**The fixture was a 0.8.13 DEV build on three machines** (macOS `b7a8ad41-dirty`, the Ubuntu VM
+`b7a8ad41-dirty`, the Dell `8e69eadbf6-dirty`) — they carried 16 Oct's dev builds; **only the Win11 VM
+went from the PUBLISHED 0.8.13 (`75f7b3e`).**
 On the Ubuntu VM the published 0.8.13 deb was reinstalled first and correctly REFUSED the data (schema
 v45 > its v44, "Nothing was changed"), so a real published-0.8.13 → 0.9.0 run needs a data reset there.
 **No binary pin moved between `v0.8.13` and `v0.9.0`** (only phpMyAdmin 5.2.3 + BooDark 1.2.0 are new),
@@ -142,7 +143,17 @@ its `rex` says 0.9.0 (not run as the app: it would repoint the deb's units). Obs
 (571525b)`; **#898:** from +4 s `w7check.rex`, `smoke1w.rex`, `wtw.rex` HTTPS 200 on every probe for 33 s
 (172–487 ms). **Then the Dell dropped off the network** (ssh timeout, ping 100 % loss, the tunnel "bad
 handshake") — **owed there:** phpMyAdmin's host, `rex worktree list`, `rex live status`, `rex doctor`.
-**Owed: the Win11 ARM VM's** `/S`-over-running + sites-answer row (not started: 8 GB beside two VMs).
+**Windows ✅ on the Win11 ARM VM, from the PUBLISHED 0.8.13, app + stack + agent running** (12/12 after
+`rex start`; 8 sites 200 before): `setup.exe /S` (`F7E1FE16…` re-checked) → exit 0 in 6 s on the first try
+(no exit 2), Apps & Features and `rexenv.exe` 0.9.0, the Run key's `--hidden` kept, the `dns-agent` task
+Running, the agent on `udp 53` (pid 5312 → 3388), every service pid kept (77 php-cgi); launched through
+the interactive task → `rex 0.9.0 (571525b) · app rexenv 0.9.0 (571525b)`; **#898:** all 8 sites 200 on
+the first probe, +0.4 s to +6.9 s, "adopted 12 running service(s)". `rex db console phpmyadmin` installed
+5.2.3 in 52.8 s → `phpmyadmin.rexenv.rex` 200 (`phpMyAdmin 5.2.3`, no login form, `X-Frame-Options:
+SAMEORIGIN`; pmahomme under a light `.rexenv-theme`, boodark staged), the console set back to Adminer
+(200); `rex worktree lm.rex list` → none, exit 0; `rex live lm.rex status` → "not connected", exit 0 (as
+on Linux); doctor ✓ but "rex not on PATH" (the CLI never installed on the VM). No UAC (per-user `/S`).
+The Dell's owed rows are covered here; the Dell is still off the network.
 **Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the GUI
 presses on the release build (pill, Databases card, Live tab, worktree UI — proven on 16 Oct dev builds);
 §M (needs Publish).
