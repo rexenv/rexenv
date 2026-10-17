@@ -363,8 +363,9 @@ which told a user who had quit that the app was still open; the words now live i
 
 ### Requirements
 
-- **Windows 11 x64.** Windows 10 22H2 is best-effort — it left mainstream support on
-  14 Oct 2025. **arm64 is unsupported**: the x64 build runs under emulation, but the
+- **Windows 10 22H2 or Windows 11, x64** — both supported (D6 amended 18 Oct 2026; the 0.8.13 and
+  0.9.0 Windows gates ran on the Dell's Windows 10 22H2 beside a Windows 11 VM). Windows 10 left
+  mainstream support on 14 Oct 2025. **arm64 is unsupported**: the x64 build runs under emulation, but the
   official PHP Windows builds are x86/x64 only and PostgreSQL's portable build is x64
   only, so nothing native exists to ship (D6, ruled 13 Sep 2026).
 - An internet connection on **first run** — rexenv downloads its components (PHP, Caddy,

@@ -3185,7 +3185,7 @@ mechanism is not a step a Windows tester can pass or fail.
 **Where this section has run** (the ✓ rows name which): the **clean Windows 11 Pro 24H2 VM**
 (26100.4349 — UTM on the Mac, an ARM guest running the x64 build under emulation, so timings
 are not a PC's; D6) — runs 1–6, 19–21 Sep 2026, driven from a screenshot-guarded click helper
-over SSH; and the **Dell, Windows 10 22H2 x64** (the best-effort floor) — the `rex` copy (16
+over SSH; and the **Dell, Windows 10 22H2 x64** (supported since D6's 18 Oct 2026 amendment) — the `rex` copy (16
 Sep), the installer's running-app sentence (21 Sep) and the 0.8.5 → 0.8.8 in-app update (28
 Sep). Until 28 Sep each ticked row here carried its evidence and then the original step text
 glued on after it, and three rows still described states later runs had closed; reconciled
@@ -3201,7 +3201,7 @@ the interactive uninstaller's closing box, Firefox's typed addresses; the tray's
 had not been updated.) (Apps & Features without the in-app step leaving a live agent closed 5 Oct 2026, #787;
 the pre-#695 `.bak` was answered "why not" on 2 Oct.)
 
-Environment: Windows ____ (11 x64 supported · 10 22H2 best-effort — D6) · rexenv version ____
+Environment: Windows ____ (10 22H2 or 11, x64 — D6) · rexenv version ____
 
 ### Typed addresses in Firefox (ledger #706 — proven on macOS and Windows)
 - [x] Settings → Firefox → **Open typed addresses in Firefox** → Enable; restart Firefox; type

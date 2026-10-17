@@ -75,7 +75,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 
 | Promise | macOS | Windows | Linux (Ubuntu) |
 |---|---|---|---|
-| Supported floor | 13+ (13/14 = legacy pin tiers, `PLAN-macos-13-floor`) | 11 x64; 10 22H2 best-effort (D6) | 22.04+ x86_64 / aarch64 (glibc ≤ 2.34 asserted) |
+| Supported floor | 13+ (13/14 = legacy pin tiers, `PLAN-macos-13-floor`) | 10 22H2 + 11, x64 (D6, amended 18 Oct 2026) | 22.04+ x86_64 / aarch64 (glibc ≤ 2.34 asserted) |
 | Webview (what the UI really runs in) | WKWebView | WebView2 | webkitgtk |
 | `*.rex` routed to the resolver | `/etc/resolver/<tld>` (root) | NRPT rule `.rex → 127.0.0.1` (UAC) | dummy link `rexenv0` carrying `192.0.2.53/32` + `resolvectl` link-scoped domains; markers `/etc/rexenv/dns.d/<tld>`; `rexenv-dns-route.service` (#717, #734) |
 | Resolver port (`platform::RESOLVER_PORT`) | UDP 15353 | UDP **53** (NRPT has no port field — D2) | UDP 15353 |

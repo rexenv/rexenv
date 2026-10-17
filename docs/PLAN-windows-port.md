@@ -639,7 +639,9 @@ owner's repository and key; the change is a PR there, not a commit here.
 
 **D6 — Supported Windows and architectures.** **RULED 13 Sep 2026: accepted** — Windows 11
 x64 supported; Windows 10 22H2 best-effort; arm64 runs the x64 build under emulation,
-unsupported.
+unsupported. **AMENDED 18 Oct 2026 by the owner: Windows 10 22H2 is SUPPORTED too** — the
+release gates already ran on the Dell's Windows 10 22H2 beside the Win11 VM (PUBLISH-TESTING §A
+0.8.13, 0.9.0), so "best-effort" understated what each release proves; the website now says 10 and 11.
 Windows 10 left mainstream support on 14 Oct 2025. Official PHP Windows builds are
 x86/x64 only (no arm64), and PostgreSQL's portable build is x64 only.
 
