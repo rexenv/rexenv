@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.0 — DRAFTED on `rexenv/rexenv` by CI (17 Oct 2026) — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender green
+## A) ✅ 0.9.0 — PUBLISHED 17 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 
 **Run 39004017989, source `571525be` (tag `v0.9.0`, pushed), every lane green, 16 assets, the body the
 tag's verbatim.** dmg `40a00f06…`, `.app.tar.gz` `50424653…`, arm64 deb `a696f204…`, aarch64 AppImage
@@ -157,6 +157,44 @@ The Dell's owed rows are covered here; the Dell is still off the network.
 **Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the GUI
 presses on the release build (pill, Databases card, Live tab, worktree UI — proven on 16 Oct dev builds);
 §M (needs Publish).
+
+**PUBLISHED 17 Oct 2026, 17:49:45Z.** `release-published.yml` → the tap's Update cask, Install scripts and
+website notify green; `brew fetch --cask rexenv/tap/rexenv` ✔︎ 0.9.0, the cask's sha256 `40a00f06…` = the
+dmg's. `brew audit --cask --online` exited 1 on the dev Mac's outdated Command Line Tools (a host fact,
+not the cask). The macOS descriptor's dry run (serial 20 → 21, sha `50424653…` = the archive hashed for
+§A0), then the six publishes approved together and `check-app-manifest.sh` ×6 all green (macOS and the
+four Linux documents serial 21, Windows 16); `rexenv/apt` published (KEEP=3) and `check-apt-repo.sh`
+green (InRelease signed, amd64 and arm64 at 0.9.0).
+**§M — the 0.8.13 → 0.9.0 in-app update, on all three.** 0.9.0's data is schema v45 and the published
+0.8.13 refuses it, so on each VM the 0.9.0 app data was RENAMED aside (`*.0.9.0-keep`), the published
+0.8.13 installed onto a fresh profile, updated in-app, and the kept data renamed back (the fresh one
+kept as `*.m-fixture`). So the stack was stopped or fresh during the swap — unlike 0.8.13's §M — and
+**the new update pill could not be seen: it is 0.9.0 code; 0.8.13 shows its old badge.** The pill's
+first released proof is the update FROM 0.9.0.
+- **macOS 15.8 VM:** 0.8.13 logged "0.9.0 can be installed (serial 21)", the toast and the `0.9.0`
+  badge; About "rexenv 0.9.0 · 30.6 MB has been published" → Install → "swapped to 0.9.0 (AtomicSwap)"
+  12 s later → the dialog → OK → **reopened as `rex 0.9.0 (571525b)` in ~2 s**, the toast "updated from
+  0.8.13", 0 crash reports, the agent back; `relaunch.log`: "parent 864 exited after 0.0s … opened
+  /Applications/rexenv.app (open exit 0)". After the restore `smoke1`, `l14vm`, `phpmyadmin.rexenv`,
+  `adminer.rexenv` 200, "CA trusted", the login keychain still ONE rexenv CA (`7D7DBEAE…`, unchanged).
+  **Found:** with the root edge daemon live, the rename made launchd recreate the app's `logs/` as
+  root, and the fresh app died on `mkdir …/ca: Permission denied` until chowned — a TODO row.
+- **Ubuntu 22.04 arm64 VM** (the published 0.8.13 deb onto a fresh profile, started from GNOME): About
+  "rexenv 0.9.0 · 15.8 MB has been published" → Install → ONE polkit naming the update → `dpkg -s` 0.9.0
+  → the dialog → OK → **reopened as 0.9.0 within ~0.5 s, at Sites**; "swapped to 0.9.0 (RenamePair)",
+  "rexenv is now 0.9.0 (updated from 0.8.13)"; `relaunch.log`: "parent 2024 was already gone … after
+  0.0s" → "started /usr/bin/rexenv (pid 3212)"; `/var/crash` empty. The stack was 0/5 (the VM had
+  restarted when the host disk filled). The fresh onboarding replaced the system store's
+  `rexenv-local-ca.crt` with its own CA, so after the restore Domains & SSL was re-run (one polkit) —
+  the store's fingerprint then matched the restored CA; 7/7, 11 hosts' codes as before.
+- **Win11 ARM VM** (the published 0.8.13 `/S` onto a fresh profile, its CA dir seeded with the kept
+  data's already-trusted CA so onboarding's UAC step was never needed): the `0.9.0` badge; About "rexenv
+  0.9.0 · 14.6 MB has been published" → Install → "swapped to 0.9.0 (RenamePair)" → the dialog → OK →
+  **back as 0.9.0 in ~4 s**; `relaunch.log`: "parent 2992 was already gone … after 0.0s" → "started
+  …\rexenv.exe (pid 1692)"; EXE and Apps & Features 0.9.0, the agent on `udp 53`. After the restore and
+  `rex start` (a VM reboot had stopped the stack) `lm`, `lv`, `smk74`, `smk85`, `laravel` 200; one rexenv
+  CA in `CurrentUser\Root` (`1A6A20BE…`). The reboot left no console session; a one-shot Winlogon
+  autologon was set to get one and all five values removed as soon as it existed (checked empty after).
 
 ## A) ✅ 0.8.13 — PUBLISHED 9 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 

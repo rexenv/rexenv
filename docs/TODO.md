@@ -259,6 +259,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
 
+- [ ] **macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes**
+  (found 18 Oct 2026 running 0.9.0's §M on the 15.8 VM). With the edge LaunchDaemon live, renaming
+  `~/Library/Application Support/dev.rexenv.rexenv` aside made launchd recreate `…/dev.rexenv.rexenv/logs`
+  root-owned within a second — the daemon plist's `StandardOutPath`/`StandardErrorPath` point into the
+  user's app data (`platform/macos/mod.rs`, the edge plist) — and the next app start died on
+  `mkdir …/ca: Permission denied` until the folder was chowned by hand. Not a 0.9.0 regression; reached
+  by a user who deletes or moves the app data while the edge runs (a reset, a cleanup tool). Open: point
+  the daemon's log outside the user tree, or have the app refuse that state with the fix instead of a
+  bare EACCES; check what Linux's `rexenv-edge` unit and Windows do in the same move.
+
 ## Ledger-driven proof backlog
 
 The test metric is `docs/CLAIM-LEDGER.md`. **Do not copy the tally here** — this line
