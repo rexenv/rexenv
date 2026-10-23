@@ -3388,14 +3388,14 @@ mod tests {
         );
         // …and it holds on a PHP that CAN reach PostgreSQL — the WordPress
         // refusal must not be quietly resting on the runtime one.
-        assert!(crate::core::php::pdo_pgsql_supported("8.4.23"));
+        assert!(crate::core::php::pdo_pgsql_supported("8.4.27"));
 
         // The second refusal has a different subject: the PHP MINOR, not the
         // site type. Both types are allowed on a runtime with the driver and
         // refused on one without, and the two messages must not be confusable —
         // only one of them names a way forward, because only one has one.
         for t in [SiteType::Laravel, SiteType::Php] {
-            for good in ["8.1.34", "8.5.8"] {
+            for good in ["8.1.34", "8.5.12"] {
                 assert!(
                     ensure_engine_supports(t, SiteDbEngine::Postgres, good).is_ok(),
                     "{t:?} on PostgreSQL must be allowed on PHP {good}"

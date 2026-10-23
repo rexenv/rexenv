@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 const CADDY_VERSION: &str = "2.11.4";
 /// Default PHP version (static-php build; provides `php` cli and `php-fpm`).
 /// Used where a single version is implied (Phase 1 paths). Must be in [`PHP_VERSIONS`].
-const PHP_VERSION: &str = "8.3.32";
+const PHP_VERSION: &str = "8.3.36";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
@@ -37,7 +37,7 @@ const PHP_VERSION: &str = "8.3.32";
 /// machine get the driver too. The digests differ from upstream's for the same
 /// version string, which is exactly what `cache_matches_pin` exists to notice.
 const PHP_VERSIONS: &[&str] =
-    &["7.4.33", "8.0.30", "8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"];
+    &["7.4.33", "8.0.30", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"];
 /// PHP minor used for the **debug build** (Xdebug compiled in) that backs the §8.2
 /// per-site Xdebug debug pool. The stock static-php "bulk" builds ship NO Xdebug
 /// and a static PHP can't `dlopen` an external `xdebug.so` (§8.1), so this is a
@@ -87,15 +87,15 @@ const WP_CLI_VERSION: &str = "2.12.0";
 const COMPOSER_VERSION: &str = "2.10.2";
 /// Pinned FrankenPHP version (one static binary: embedded PHP + Caddy). Used as a
 /// per-site override server on an internal loopback port — Phase 2 §2.
-const FRANKENPHP_VERSION: &str = "1.12.4";
+const FRANKENPHP_VERSION: &str = "1.13.3";
 /// The PHP compiled INTO the pinned FrankenPHP binary. FrankenPHP does not use
 /// rexenv's php-fpm pools — a FrankenPHP site is served by THIS PHP whatever its
 /// `php_version` says. Recorded as data (it was only ever a sentence in the
 /// re-pin comment below) so `core::sites` can refuse a combination FrankenPHP
 /// cannot honour, instead of the site quietly running something else.
 /// **Moves with `FRANKENPHP_VERSION`** — the re-pin procedure prints it
-/// (`frankenphp version` → "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4").
-const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.8";
+/// (`frankenphp version` → "FrankenPHP v1.13.3 PHP 8.5.12 Caddy v2.11.7").
+const FRANKENPHP_EMBEDDED_PHP: &str = "8.5.12";
 /// Default PostgreSQL version (theseus-rs portable build — a full bin/lib/share
 /// tree, like MySQL). Phase 2 §5.3. Must be in [`POSTGRES_VERSIONS`].
 const POSTGRES_VERSION: &str = "18.6.0";
@@ -707,7 +707,8 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 //   8.0.30 was pinned 2026-07-11, downloaded, hashed, extracted and RUN.
 //
 // One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned
-// together. The 8.2-8.5 rows below are `php-8x-8`'s (7 Oct 2026) and 8.1's are
+// together. The 8.2-8.5 rows below are `php-8x-9`'s (23 Oct 2026, from the publisher's
+// own download, cross-checked against a second one) and 8.1's are
 // `php-8x-10`'s (23 Oct 2026, hashed from full downloads, equal to its SHA256SUMS),
 // taken from the
 // release's own `.sha256` files by script — one re-hashed from the downloaded bytes
@@ -721,22 +722,22 @@ const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "bb44afd78d7dcc7087adaa6808069c3b9
 const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "b267d8cf7076dc40b9cb0dffeac04f13e35623c6dd184fe69c5e7462bebd1cce";
 const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "8532d8d041e448499c0604f67cc3153731db19e51fcd27bc6ce11c4aa5834d64";
 const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "3c407d3a83e22ab319161448149e4b85b8723d77c591b1b4f2ebf426a43ea7c9";
-const PHP_8_2_32_CLI_MAC_ARM64_SHA256: &str = "02ea49ab2c9c84c3737f56b9e42db8ec0b47270d63403dd119acc95de3b91d79";
-const PHP_8_2_32_CLI_MAC_AMD64_SHA256: &str = "9efa75a5026d56f3a1ee9c6f92bf3cfd800c82de86d293783c74ad70b467b023";
-const PHP_8_2_32_FPM_MAC_ARM64_SHA256: &str = "ea1bf86bc68c158a4ae9c3a0d30e9d948286685fd961e8449192913d3cfc7756";
-const PHP_8_2_32_FPM_MAC_AMD64_SHA256: &str = "252075699821d82cbb0a5b6872f156c08df279f50e2b7e0f685ec1cf7537cd45";
-const PHP_8_3_32_CLI_MAC_ARM64_SHA256: &str = "16fb452002ccfad2d573dcf9854165b2f4bae26e0275633da207b40b169caf8a";
-const PHP_8_3_32_CLI_MAC_AMD64_SHA256: &str = "33b464bb48f98548226efe646ef0bbe8e17f6958c8763afa2449a4f2f6f3712b";
-const PHP_8_3_32_FPM_MAC_ARM64_SHA256: &str = "6e552ecc3f6c450b519127883c5328566b1643aa8ea487f80bcc86bd84da6e62";
-const PHP_8_3_32_FPM_MAC_AMD64_SHA256: &str = "5b3d4a472af4ba08c5ae439d65cb6e17d06acce23c2b3e7a2e4cdfe53b6e1cd9";
-const PHP_8_4_23_CLI_MAC_ARM64_SHA256: &str = "f1af64a7efa39e6f67dc2908789311a7600a7124d724cc0396f1626c2649ded9";
-const PHP_8_4_23_CLI_MAC_AMD64_SHA256: &str = "68dc6b9c66fbd011ab4cc6d4ce222ed6b758921c66535a92f16cb3d7c9f40d6c";
-const PHP_8_4_23_FPM_MAC_ARM64_SHA256: &str = "9b9c3866617561263952ee27e2c2cdd753bf4c59abf909ad64dc8d4cec9fede2";
-const PHP_8_4_23_FPM_MAC_AMD64_SHA256: &str = "e0ba0f9ef202c3bc02bb6353a071cadac2622f77e95760b35dcea84d5f1f70dd";
-const PHP_8_5_8_CLI_MAC_ARM64_SHA256: &str = "3a7ea95df6624a6a5100263f555958aa451ab2ace84b725af599dbcd544bbbe7";
-const PHP_8_5_8_CLI_MAC_AMD64_SHA256: &str = "f7aca67fefec6a0c3c3f768d488efe8641848886703a1fd5d085514fab46b5cc";
-const PHP_8_5_8_FPM_MAC_ARM64_SHA256: &str = "3ef91a1374dd895b6df2ea11852be8026f2b6a512df0bc7fea507b31083ca881";
-const PHP_8_5_8_FPM_MAC_AMD64_SHA256: &str = "2026df1ae4a0e579239aaded109c573e1148a68f290617b5ada886f0ff97effd";
+const PHP_8_2_35_CLI_MAC_ARM64_SHA256: &str = "56630a8210355cd0a90852f75615e45b5934f9be9ba77e3338a2d38fdf9b5a93";
+const PHP_8_2_35_CLI_MAC_AMD64_SHA256: &str = "ab7ef453c7909b877837940139c2196669b6872b68500add928a446cf4a55cb6";
+const PHP_8_2_35_FPM_MAC_ARM64_SHA256: &str = "a09376fc622afc63c26e1106db94d5bafbf279224ab75230964a14dfbb1af84c";
+const PHP_8_2_35_FPM_MAC_AMD64_SHA256: &str = "c7182b4d868973263fb37b11dc3be04d3767c4af235ca910d48edc52ff300631";
+const PHP_8_3_36_CLI_MAC_ARM64_SHA256: &str = "189281cbd160b226839ce0005667b77b2126556a9e5c5090dc54226e8c21cff2";
+const PHP_8_3_36_CLI_MAC_AMD64_SHA256: &str = "aa296e2ddf135c72e2988f47ba8fe34b2628f20095c6f87fd5f2f55dc54466d1";
+const PHP_8_3_36_FPM_MAC_ARM64_SHA256: &str = "40e705f868cb57ea0414ea29bbcc97235b95876db74193d74aecf719222e29fd";
+const PHP_8_3_36_FPM_MAC_AMD64_SHA256: &str = "c9556821162555b7010ab28464df2fff8e285304de358b5945eadf9e1d9bf669";
+const PHP_8_4_27_CLI_MAC_ARM64_SHA256: &str = "349951db3f0807ab9019e916932badbceb3af75971d589bbb4f1785f1d6dfa6d";
+const PHP_8_4_27_CLI_MAC_AMD64_SHA256: &str = "6bd860f985817b2928cc470127b2d0a53540ed0d1f8a4fd6770bfa608ae57b88";
+const PHP_8_4_27_FPM_MAC_ARM64_SHA256: &str = "fd9240ee3ff847b58279885a03574eb9152bacc694247a45e63af3042c7d8b82";
+const PHP_8_4_27_FPM_MAC_AMD64_SHA256: &str = "4d0f8a301bff662efeffc531f16035b91e471e8ef52f5c776623dfb549166faa";
+const PHP_8_5_12_CLI_MAC_ARM64_SHA256: &str = "a667e1d7caed6aa2763e57666b63fe5adbeeb1c88dc57d4355249c873107d4df";
+const PHP_8_5_12_CLI_MAC_AMD64_SHA256: &str = "dd94bb62947bd3c77bbc4751fe9cc088c0550e63c8009f3067f04b9fdb785078";
+const PHP_8_5_12_FPM_MAC_ARM64_SHA256: &str = "927f0aae32afcc83d95cd7a4a3ea9653bd13dd42cf7fc1f6bdccc9f08c1c277f";
+const PHP_8_5_12_FPM_MAC_AMD64_SHA256: &str = "ad4d36b21ca3c9ef9e760fe15183e4b964f9001647e04d6c898d601d8d830156";
 
 // nginx — OURS since 30 Aug 2026 (`rexenv/runtimes`, release `nginx-1.30.4-2`,
 // immutable), and the reason is the macOS FLOOR, not the version.
@@ -884,8 +885,36 @@ const CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256: &str = "d7a66b525fe76820da6e5406611
 // `php/frankenphp`, commit e41b848e; both run — arm64 natively and x86_64 under
 // Rosetta: "FrankenPHP v1.12.4 PHP 8.5.8 Caddy v2.11.4" (embedded PHP unchanged,
 // so `FRANKENPHP_EMBEDDED_PHP` stays).
-const FRANKENPHP_1_12_4_MAC_ARM64_SHA256: &str = "fb38e69514a04875b83900da0e1585d611fe0f52f3a904c50bef5605347e5dec";
-const FRANKENPHP_1_12_4_MAC_AMD64_SHA256: &str = "0e97b3e2bb8e98c0f8c6275921e1d44fb6459abfaa3bc0525e56c07ae13aa55b";
+//
+// **1.13.2 (23 Oct 2026), and the two Mac arches now come from two places.** 1.13.2 is
+// upstream's security release (PHP 8.5.12, the CVE-2026-109618/109619 fix, plus four
+// FrankenPHP advisories) and it moved to static-php-cli v3, which dropped the Intel Mac
+// asset ("On Intel Macs, build from source with `build-static.sh`"). So:
+// - arm64: upstream's asset, re-pinned by the procedure above — API `digest` equal to a
+//   full download; the attestation names `frankenphp-mac-arm64` as subject, workflow
+//   `.github/workflows/static.yaml` of php/frankenphp, commit 8c7b44a8; "FrankenPHP
+//   v1.13.2 PHP 8.5.12 Caddy v2.11.7".
+// - x86_64: OURS (`rexenv/runtimes` `build-frankenphp.sh`, release
+//   [`FRANKENPHP_MAC_X86_64_TAG`], immutable) — upstream's own build-static.sh at the
+//   v1.13.2 commit, held to upstream's arm64 asset: same version and PHP, no extension,
+//   internal function or Go module missing. We distribute it, so its licences are pinned
+//   too (`licenses_spec`).
+//
+// **1.13.3 (23 Oct 2026, same PHP 8.5.12)** — pinned instead of 1.13.2, same day. It
+// fixes `SIGILL` in upstream's musl Linux binaries on CPUs without SHA-NI
+// (`hash('sha256')` died; they were built for the build host's CPU), which are the
+// Linux pins below. arm64 + Linux: API `digest` equal to a full download, attested by
+// `.github/workflows/static.yaml` at `refs/tags/v1.13.3`, commit ae3d5b94; "FrankenPHP
+// v1.13.3 PHP 8.5.12 Caddy v2.11.7". Intel: ours again, at the v1.13.3 commit —
+// run 39972116759: 80/80 extensions, 2199/2199 functions, 175/175 Go modules at the same
+// versions, `vcs.modified=false`; digests from full downloads, equal to SHA256SUMS.
+// (`frankenphp-1.13.2-1` exists and passed parity, but stamped `vcs.modified=true`; it
+// is not pinned.)
+const FRANKENPHP_1_13_3_MAC_ARM64_SHA256: &str = "53f69626e8d7c656dfafdbbf65825b24d0e72ff55e71e520e06b988c8e3ced62";
+const FRANKENPHP_1_13_3_MAC_AMD64_SHA256: &str = "8d2a9d26541852c1056401d020dc4e88c86724200cef23936141feb837c8db32";
+const FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256: &str = "62cdbb9c03eb75c981372240815436161f12aab088b5d952697fd02800cb6d6b";
+/// The `rexenv/runtimes` release serving the Intel Mac FrankenPHP.
+pub(crate) const FRANKENPHP_MAC_X86_64_TAG: &str = "frankenphp-1.13.3-1";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
@@ -1061,7 +1090,7 @@ const XDEBUG_PHP84_VENTURA_BOTTLE_AMD64_SHA256: &str = "e6a028aa2b5feaaad579ea5c
 /// PHP 8.0.30 is static-php.dev's build and `minos 14.0` on arm64; there is no
 /// older artifact to pin (they rebuild in place) and no self-build (its x86_64
 /// build aborts — see `php_self_hosted_tag`). So a 13 host is not offered it.
-const LEGACY13_PHP_VERSIONS: &[&str] = &["7.4.33", "8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"];
+const LEGACY13_PHP_VERSIONS: &[&str] = &["7.4.33", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"];
 
 /// One PHP minor's Xdebug row: the version pinned FOR THAT MINOR, the tap
 /// formula, and the two arch digests. Kept as one struct so the four facts can
@@ -1349,12 +1378,6 @@ fn mysql_arch(arch: Arch) -> &'static str {
         Arch::X86_64 => "x86_64",
     }
 }
-fn frankenphp_arch(arch: Arch) -> &'static str {
-    match arch {
-        Arch::Arm64 => "arm64",
-        Arch::X86_64 => "x86_64",
-    }
-}
 fn postgres_arch(arch: Arch) -> &'static str {
     match arch {
         Arch::Arm64 => "aarch64",
@@ -1394,10 +1417,10 @@ fn php_windows_sha256(version: &str) -> Option<&'static str> {
         "7.4.33" => Some("14ae3250d4447c8ccfc4c45a70d90adfbcd61e728d85f0be56a7ddf8f9c8aace"),
         "8.0.30" => Some("dfb70498ffa2c617f2f655a155564697e3c9cca41709938fd1a5997d1d5b0785"),
         "8.1.34" => Some("9cfe246cb144076c16f5913a3ef88a474c3dd7e60f0f0c8bb95faf68674016cc"),
-        "8.2.32" => Some("44e561948d6e336ac91cba3e59f074b687e22d9ceb824056f28ed8dfbbfdbe35"),
-        "8.3.32" => Some("67c724e7b675b50d8f0476d816c3e2a3064ce3a53d572575d63c321cc0a3a6cf"),
-        "8.4.23" => Some("826efa189b21f46314ad497ff31467de9f0953292f42b235542be4feea182b48"),
-        "8.5.8" => Some("63a3f6493f37c9ff3e288ec16621222a6cda5167dd1abffec0019e7f18c8e7e9"),
+        "8.2.35" => Some("798ffa4b9ce22a820d57048e9695df7245bf917ed067917f256942a10918a8cc"),
+        "8.3.36" => Some("3c9242622c7402b47c38d2ec2ed779cef3a290fd6f2bde6c35f9c482699e7900"),
+        "8.4.27" => Some("93bd8a815a52156606fb906d0573437908c61f96e2cc52c03a51e36a41bf5236"),
+        "8.5.12" => Some("2ab242af38d76bdf417cde5ec048b1bcd76a5a40f39a3d15d5f046f38571c477"),
         _ => None,
     }
 }
@@ -1531,8 +1554,19 @@ const MAILPIT_1_30_3_LINUX_AMD64_SHA256: &str = "6c7af993fb4054def4adfc7c85b40f9
 const MAILPIT_1_30_3_LINUX_ARM64_SHA256: &str = "4211e158fcf46862b9b15bacd1fb10253a1865617ed5f38f27cbec230f89ec84";
 const CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256: &str = "5861a10a438fe8ddcfebb3b830f83966cbf193edafce0fe2eeb198fbae1f7a22";
 const CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256: &str = "59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb";
-const FRANKENPHP_1_12_4_LINUX_X86_64_SHA256: &str = "db0f336e97f841eb3a606279cf6787d68f7fe9016b1c331489844d2c07e1aa5e";
-const FRANKENPHP_1_12_4_LINUX_AARCH64_SHA256: &str = "6fafdaa593b223391b96ba2b7aaf65da3e4c5092efd15411724ca6c1355808c5";
+// 1.13.3: API `digest` equal to full downloads, attested like the macOS arm64 (static.yaml,
+// refs/tags/v1.13.3, ae3d5b94). Built for the baseline CPU — 1.13.2's died with SIGILL without SHA-NI.
+const FRANKENPHP_1_13_3_LINUX_X86_64_SHA256: &str = "d802c743a5b1020371a4e788b5a98a435ffa6e5588bead55286b29ef6ce9327a";
+const FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256: &str = "49f09d389ab7b9e4511001ad670fd8952055f37976ea20ca63d113bf2f5ff802";
+
+/// Where a Linux PHP comes from: our release for the versions we build, static-php.dev otherwise.
+fn php_linux_url(kind: &str, version: &str, arch: Arch) -> String {
+    if php_linux_licenses_sha256(version).is_some() {
+        format!("{RUNTIMES_RELEASE_BASE}/{PHP_8X_LINUX_TAG}/php-{version}-{kind}-linux-{}.tar.gz", linux_arch(arch))
+    } else {
+        format!("https://dl.static-php.dev/static-php-cli/bulk/php-{version}-{kind}-linux-{}.tar.gz", linux_arch(arch))
+    }
+}
 
 /// The Linux spelling of an arch as static-php, jirutka, theseus-rs, FrankenPHP and
 /// Oracle name it (`x86_64`/`aarch64`); Caddy, Mailpit and cloudflared use Go's
@@ -1541,22 +1575,28 @@ fn linux_arch(arch: Arch) -> &'static str {
     php_arch(arch)
 }
 
-/// static-php.dev's Linux builds: `(aarch64, x86_64)` per `(kind, version)`.
+/// The Linux PHP builds: `(aarch64, x86_64)` per `(kind, version)`. 8.0.30 is static-php.dev's;
+/// **8.1-8.5 are OURS since `php-8x-linux-1`** (23 Oct 2026, [`PHP_8X_LINUX_TAG`]) — the bulk
+/// Linux builds had the macOS ones' `pdo_pgsql` hole AND stopped at 8.5.8/8.4.23/8.3.32/8.2.32,
+/// so no Linux build of the CVE-2026-109618/109619 patches existed to pin. Same script and gates
+/// as macOS (`rexenv/runtimes` `build-php.sh`), fully static musl, function and configure-flag
+/// parity proven against upstream's Linux 8.3.32. Hashed from full downloads over the real
+/// `releases/download` URLs, equal to the release's own `SHA256SUMS` (23 Oct 2026).
 fn php_linux_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match (kind, version) {
         ("cli", "8.0.30") => ("2c3fbc72d878862cf3b3d18849d4ab2ca7c02d38821d880eb8fb74a2e6f5c1d3", "805fadfc7eaa97541344d53a5ef2912d7be1e6bdeab753fddc2ce0c63b40c1a5"),
         ("fpm", "8.0.30") => ("b693b0c1150b12287bfe915a67bd57d3189a791e8b0c0de534e803e04fade625", "08176de6fe5125b7c1486f723f601f5c1273663bc5f719abc9c62adaa55cafc7"),
-        ("cli", "8.1.34") => ("fcaad73ceadad5afe6820ab3510de4452dadc875b3a295bf22dc2678845922b2", "e2932192836731163bf8d16d634f4bdda76c422ceb40c2c4d7c55ae63680f1aa"),
-        ("fpm", "8.1.34") => ("a020585084d0d624e10ab795430816f160a73ad4e827130c55bc030be4f9ceb3", "c20b1283a4a635d4c062b473858a46d687e94bf8ef623f26e356592557065b15"),
-        ("cli", "8.2.32") => ("e94cc88f535f4e20a931093bbd36aa74b1b48f4121954aa6d7310912a8aad26e", "866532d2b463ff256d063432d529e966cc53e4a039109ccbfc4ee4dc51d649f1"),
-        ("fpm", "8.2.32") => ("d16bd173d30d8d8d663146bddc785d4350f584d5ce105c52f0a0c85305ba5e51", "e324b63d961bedb7273c1a3585f9b209cc1e057016056ed34b8bb1b32526db3e"),
-        ("cli", "8.3.32") => ("4c29858ecfa30d93e854d17494f422b593afa6da8ec80ae979191e69604dc955", "7928396c17aabcd5bb074fe82e07b4cb693c6d04360a4415799a143a9f9686c6"),
-        ("fpm", "8.3.32") => ("f0d50fa3d8c5114a93cef02b44a1c01642018bc1dab96644d29ef2d1034eb624", "02964d89c54810471c35bbd3877e1a420693305cb2e33aab18636d0db29ff7bc"),
-        ("cli", "8.4.23") => ("1faabbea9c500daab9ba202cb75ea9876191a2a8f902244e9d0464addb9b55b1", "5fa2b5f1cc9d7f79b19718926b4f4f0bb6949db52073b2fabf8ae52de3993af5"),
-        ("fpm", "8.4.23") => ("8ca6b8d44f12f981cdd96b5aa31f6bf5373a89d201a4a49ed0feb5f242631dec", "40e341db82e5e90450122462aa6038fe653b63da951c1da1f10b15d0da4a26a0"),
-        ("cli", "8.5.8") => ("86ea1fe2f6d2415eff78c2e0bcb479b221d5637c89d72e19809b65c4c0527c27", "bfaa12e0f6f5788259bc20d0d3f08e1e851bce7f05d43e38fb77041e12a32663"),
-        ("fpm", "8.5.8") => ("4bd94d191f1f8f620a1ca76236f679d2e2491ecfa987036fc6d7a7c08e663f3b", "d2a5c031ae23a72b97ed5ab739bd5b8fe75dd09754d2f406a9216b7d7c8311d8"),
-        _ => return None,
+                ("cli", "8.1.34") => ("8d38a3991c7385c5fffd94e51ab389fb44a66fe3d4abfbd148733b4d2ae58cca", "671593badf791f54010b542e87e9a46202a20b7e2285b66104fb84e336343c8c"),
+        ("cli", "8.2.35") => ("f7b6d114c8852003ca2c8083bb7422320b91f079ed458be79c1e05ea41635ed1", "a13b0c7706debd0499b76fa9b7e1575ac9580ede2aa43214df3c2334653eb2c2"),
+        ("cli", "8.3.36") => ("fcd7b95a6a2ddc559f2b7591b844eca1ab87601bbe04f0ebf68f3589bdfd7e25", "6d800701104dd35a0cbab0b38530f0ce8e1a4818696bca6410177269e3794f5c"),
+        ("cli", "8.4.27") => ("a815372bdcdbb08a4fc0b0b255a10a694d8b8a9c0291c884af070be104029b5f", "9792f35de78474ddbe20634c350e81d4f89d9f827b340eaf1c75bd766f5d0c48"),
+        ("cli", "8.5.12") => ("857c95773451edc55aa89c371fe836a4c70f449cd46d8c0f18bb67f2013c2a52", "77ba72255e5992fc030d5c7fd572ea7721b4e2d10ef616f10c4e60e9dac37f0f"),
+        ("fpm", "8.1.34") => ("519d4ce7fa20c2bde894dbb456a9ae77e58bad560a6a482414e9f1b470fe4f17", "36c2e579a7c7a177618fe05f23f9f4012bafe1fd907e2a4a4d332aebea6ecd5a"),
+        ("fpm", "8.2.35") => ("b53e6e1811d90bca7da31ace283eb067ea46897d0f72e5c2c6cd60a042094f60", "d86facc602bdb72e13fbe5b4e6001f03e6d79e9a3badc4b7dc5d127d4f7935d5"),
+        ("fpm", "8.3.36") => ("44973925349bc149fc9ecb4bf429a4098443bae5a547406087a58c48832415cd", "6f6bd263132489c31d480601493e97be0d3e82a60f5ad28ad003e1693001d3ba"),
+        ("fpm", "8.4.27") => ("a9945966d5b91499e3ac6187477eae6873d8ed6ba3599f3c8fa46c2577c95a0b", "286be22da1aa1b8f44a5034f8860af48ee3926b4a3957b141527b5ba7c0b4f5a"),
+        ("fpm", "8.5.12") => ("007aac2f423254b9fe0984a62a506776358edd8eeac64d54464399ee231d1a77", "a95d402ec91b18df2a7176379a1a6f7f9e884a3a8bcf33cef8361f4afdd31324"),
+_ => return None,
     };
     Some(match arch {
         Arch::Arm64 => arm,
@@ -1685,10 +1725,16 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // identical. 8.2-8.5's fixed patches (php-8x-9) reach installs via the signed
         // manifest: pinning them here would move Linux too, where no build exists yet.
         "8.1.34" => Some("php-8x-10"),
-        "8.2.32" => Some("php-8x-8"),
-        "8.3.32" => Some("php-8x-8"),
-        "8.4.23" => Some("php-8x-8"),
-        "8.5.8" => Some("php-8x-8"),
+        //
+        // -9 (23 Oct 2026): 8.2.35, 8.3.36, 8.4.27 and 8.5.12 — php.net's fix for
+        // CVE-2026-109618/109619 ("PHP2Shell", unauthenticated RCE through FPM/CGI).
+        // Every artifact of both arches diffed against -8's patches: internal functions,
+        // classes, constants, `php -m`, PDO drivers, configure flags and `php-fpm -m`
+        // identical. -8 stays published and immutable.
+        "8.2.35" => Some("php-8x-9"),
+        "8.3.36" => Some("php-8x-9"),
+        "8.4.27" => Some("php-8x-9"),
+        "8.5.12" => Some("php-8x-9"),
 
         _ => None,
     }
@@ -2068,6 +2114,22 @@ const PHP_7_4_33_FPM_LINUX_X86_64_SHA256: &str = "57d13af8842659526e28de657c625f
 /// `licenses-linux-<arch>.tar.gz` of the same release — a different closure from the macOS
 /// tarball (musl, and the Linux pre-built deps), so its own two pins.
 const PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256: &str = "3ae6cef515773ada807557a332fc3294abc85e12199cd9cae2337458015ebb96";
+/// The Linux 8.1-8.5 release (`rexenv/runtimes`, immutable): its own tag series, because a
+/// published macOS release is never amended with a second OS.
+pub(crate) const PHP_8X_LINUX_TAG: &str = "php-8x-linux-1";
+
+/// `licenses-php-<version>-linux-<arch>.tar.gz` of [`PHP_8X_LINUX_TAG`]: `(aarch64, x86_64)`.
+/// `Some` exactly for the Linux versions rexenv builds, which is also how a Linux URL is chosen.
+fn php_linux_licenses_sha256(version: &str) -> Option<(&'static str, &'static str)> {
+    match version {
+        "8.1.34" => Some(("20dd621ba9e4aa94c73fabf75049ff5e97a41192a394c8ce18e030bc31301400", "0188cd3f6fdcf94854903d748692f921b4e6f2f5d875de2c87793570f7ca32d9")),
+        "8.2.35" => Some(("01a35e33c5b2cc664c8853d04a1626445874b06a9a83d0ecfcfea8c67c60de01", "ba8d08690d7d488f1c4c1e1576eea1e7bd4d4982d6f7bbc2741759d3ee3ee585")),
+        "8.3.36" => Some(("f74e76c85d10480a99d6e0488d5560c50bebc332232f3ed9c15472408d0ee05a", "489d322dca70b55748d93fab894c302a6c64410992ca821660923684c6981cdd")),
+        "8.4.27" => Some(("022ee4cb9fe8fc6ab11a315ea77a5de1d8d08d192c14548249b4972d602e72db", "3fbe6d365b3f94552cc8d3c0de20defd390714b9ed4ef6b76d3958293cd83b41")),
+        "8.5.12" => Some(("489a0e32ad571475878de2cfb8992cac13261f998a06ba525d79bdd00e06dee9", "13dc005becf3ea30a7450cdef63fee03889f3ad68c189d7c736aa3256c7aad85")),
+        _ => None,
+    }
+}
 const PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256: &str = "d1922baab9eda3bf1a9c5ec0a8cfe2de5d37d8284e2a29908b57873afe33d045";
 
 // ── The licence texts that travel with a PHP we BUILT ────────────────────────
@@ -2086,14 +2148,14 @@ const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "31db20400311c77222a866d71ba6
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "b8b88400ba21c9e4cbccb4cace1fee203caf7288ee1fb4e87121e51bbd11c4cc";
 const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "ef509e12088d178a987f33a0f33a1d6d72c4cefa927978e0bc90d511fc4d9a8a";
 const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "2adfda52949a8cdb084b5426c71019756d662c7283295dc3857c35768f1d0abf";
-const PHP_8_2_32_LICENSES_MAC_ARM64_SHA256: &str = "dc40b9b54ca3d28577a6f32072726fbbc3f5b30c7cf4da34c4812b142ef5b19b";
-const PHP_8_2_32_LICENSES_MAC_AMD64_SHA256: &str = "c114168d75d882b3ace7f4eca6c5d73d785cef1c9907d8002ea618e3f7c49ae2";
-const PHP_8_3_32_LICENSES_MAC_ARM64_SHA256: &str = "aaf6b1ca771ff0628695ac7a4473372e1f4576f646664d38c4e5c3f246257cdf";
-const PHP_8_3_32_LICENSES_MAC_AMD64_SHA256: &str = "03c180b59929bbaaae94f6717015d6e75dc0bcb257c9f8239856382d80da201e";
-const PHP_8_4_23_LICENSES_MAC_ARM64_SHA256: &str = "83bbe88a5f8aec7952fbdd19bfe85ca7735c2fb6337e74d27be4496f3f0c74c1";
-const PHP_8_4_23_LICENSES_MAC_AMD64_SHA256: &str = "bcff75e69e8e1b1d35fe48aee4063fdd11809e23297982426536835ddf8a1235";
-const PHP_8_5_8_LICENSES_MAC_ARM64_SHA256: &str = "6830c598cf2a326c5aa5d6e06eeda630058e13a40d2a81714db01b1ad0ca805a";
-const PHP_8_5_8_LICENSES_MAC_AMD64_SHA256: &str = "918653046a2b4907bf130f16b990861e055e537bf8359d84dfeb5262d74ef738";
+const PHP_8_2_35_LICENSES_MAC_ARM64_SHA256: &str = "efe7478d061f2313728ea5d3e1272b543320f2b33236da81ae2b48e082611cfe";
+const PHP_8_2_35_LICENSES_MAC_AMD64_SHA256: &str = "74ff181f3080740a0b52b99583fbc79cf13bec9bbc7d87b77bd2981953871c44";
+const PHP_8_3_36_LICENSES_MAC_ARM64_SHA256: &str = "866a63e43a15696b986789478f69f06e9223f2f80bf6e5019c43825f4557e75b";
+const PHP_8_3_36_LICENSES_MAC_AMD64_SHA256: &str = "ef9e900aa02ff0bd4fd18113e4381d3f52949c140806c3e174f0dc93c9949b00";
+const PHP_8_4_27_LICENSES_MAC_ARM64_SHA256: &str = "99e4d5811a41446b4f3b48046689c40f3718031b77d2460891ee2cba44086115";
+const PHP_8_4_27_LICENSES_MAC_AMD64_SHA256: &str = "1fd430868cfa88e1439faad3b96f42e398ea0c7db70f9da4592f49d2c67942cd";
+const PHP_8_5_12_LICENSES_MAC_ARM64_SHA256: &str = "b334a1faa3695f92ddeb3e3987d2946f61919fe81513b1680a21fc957bf45f84";
+const PHP_8_5_12_LICENSES_MAC_AMD64_SHA256: &str = "011dc01356ddadf8f649cb650cada52ca9a864042a93c1244597c9a0f5416700";
 
 /// Directory inside a published cache dir holding the artifact's licence texts.
 /// Matches the tarball's own top-level dir, so extraction is `strip = 0`.
@@ -2223,7 +2285,12 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     // The Linux 7.4 is told from the macOS one by its URL (the artifact name carries the OS),
     // never by the host: the sweep resolves every OS from a Mac.
     let linux_74 = version == "7.4.33" && url.contains("-linux-");
+    let linux_8x = url.contains("-linux-") && php_linux_licenses_sha256(version).is_some();
     let (arm, amd, file) = match (name, version) {
+        ("php", v) | ("php-fpm", v) if linux_8x => {
+            let (arm, amd) = php_linux_licenses_sha256(v).unwrap_or(("", ""));
+            (arm, amd, format!("licenses-php-{v}-linux-{}.tar.gz", php_arch(arch)))
+        }
         ("php", "7.4.33") | ("php-fpm", "7.4.33") if linux_74 => (
             PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256,
             PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256,
@@ -2239,25 +2306,25 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             PHP_8_1_34_LICENSES_MAC_AMD64_SHA256,
             format!("licenses-php-8.1.34-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.2.32") | ("php-fpm", "8.2.32") => (
-            PHP_8_2_32_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_2_32_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.2.32-{}.tar.gz", php_arch(arch)),
+        ("php", "8.2.35") | ("php-fpm", "8.2.35") => (
+            PHP_8_2_35_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_2_35_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.2.35-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.3.32") | ("php-fpm", "8.3.32") => (
-            PHP_8_3_32_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_3_32_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.3.32-{}.tar.gz", php_arch(arch)),
+        ("php", "8.3.36") | ("php-fpm", "8.3.36") => (
+            PHP_8_3_36_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_3_36_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.3.36-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.4.23") | ("php-fpm", "8.4.23") => (
-            PHP_8_4_23_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_4_23_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.4.23-{}.tar.gz", php_arch(arch)),
+        ("php", "8.4.27") | ("php-fpm", "8.4.27") => (
+            PHP_8_4_27_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_4_27_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.4.27-{}.tar.gz", php_arch(arch)),
         ),
-        ("php", "8.5.8") | ("php-fpm", "8.5.8") => (
-            PHP_8_5_8_LICENSES_MAC_ARM64_SHA256,
-            PHP_8_5_8_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-php-8.5.8-{}.tar.gz", php_arch(arch)),
+        ("php", "8.5.12") | ("php-fpm", "8.5.12") => (
+            PHP_8_5_12_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_5_12_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.5.12-{}.tar.gz", php_arch(arch)),
         ),
         // One release, four targets: the file name carries os AND arch, and the os is read
         // from the artifact's own URL (the sweep resolves every OS from one host).
@@ -2270,6 +2337,13 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             };
             (arm, amd, format!("licenses-openlitespeed-{version}-{os}-{}.tar.gz", php_arch(arch)))
         }
+        // Only the Intel Mac binary is ours (arm64 and Linux are upstream's, and owe nothing
+        // here), so there is no arm64 licence digest to pin.
+        ("frankenphp", "1.13.3") => (
+            "",
+            FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-frankenphp-{version}-mac-x86_64.tar.gz"),
+        ),
         ("nginx", "1.30.4") => (
             NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
             NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256,
@@ -2364,14 +2438,14 @@ fn php_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
         ("fpm", "8.0.30") => (PHP_8_0_30_FPM_MAC_ARM64_SHA256, PHP_8_0_30_FPM_MAC_AMD64_SHA256),
         ("cli", "8.1.34") => (PHP_8_1_34_CLI_MAC_ARM64_SHA256, PHP_8_1_34_CLI_MAC_AMD64_SHA256),
         ("fpm", "8.1.34") => (PHP_8_1_34_FPM_MAC_ARM64_SHA256, PHP_8_1_34_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.2.32") => (PHP_8_2_32_CLI_MAC_ARM64_SHA256, PHP_8_2_32_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.2.32") => (PHP_8_2_32_FPM_MAC_ARM64_SHA256, PHP_8_2_32_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.3.32") => (PHP_8_3_32_CLI_MAC_ARM64_SHA256, PHP_8_3_32_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.3.32") => (PHP_8_3_32_FPM_MAC_ARM64_SHA256, PHP_8_3_32_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.4.23") => (PHP_8_4_23_CLI_MAC_ARM64_SHA256, PHP_8_4_23_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.4.23") => (PHP_8_4_23_FPM_MAC_ARM64_SHA256, PHP_8_4_23_FPM_MAC_AMD64_SHA256),
-        ("cli", "8.5.8") => (PHP_8_5_8_CLI_MAC_ARM64_SHA256, PHP_8_5_8_CLI_MAC_AMD64_SHA256),
-        ("fpm", "8.5.8") => (PHP_8_5_8_FPM_MAC_ARM64_SHA256, PHP_8_5_8_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.2.35") => (PHP_8_2_35_CLI_MAC_ARM64_SHA256, PHP_8_2_35_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.2.35") => (PHP_8_2_35_FPM_MAC_ARM64_SHA256, PHP_8_2_35_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.3.36") => (PHP_8_3_36_CLI_MAC_ARM64_SHA256, PHP_8_3_36_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.3.36") => (PHP_8_3_36_FPM_MAC_ARM64_SHA256, PHP_8_3_36_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.4.27") => (PHP_8_4_27_CLI_MAC_ARM64_SHA256, PHP_8_4_27_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.4.27") => (PHP_8_4_27_FPM_MAC_ARM64_SHA256, PHP_8_4_27_FPM_MAC_AMD64_SHA256),
+        ("cli", "8.5.12") => (PHP_8_5_12_CLI_MAC_ARM64_SHA256, PHP_8_5_12_CLI_MAC_AMD64_SHA256),
+        ("fpm", "8.5.12") => (PHP_8_5_12_FPM_MAC_ARM64_SHA256, PHP_8_5_12_FPM_MAC_AMD64_SHA256),
         _ => return None,
     };
     let v = match arch {
@@ -2626,16 +2700,17 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGzTree,
             member: "bin/postgres", // primary binary within the extracted tree
         }),
-        ("frankenphp", "macos", "1.12.4") => Some(BinarySpec {
-            // One static binary per arch (raw, not an archive).
-            url: format!(
-                "https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-mac-{}",
-                frankenphp_arch(arch)
-            ),
+        ("frankenphp", "macos", "1.13.3") => Some(BinarySpec {
+            // One static binary per arch (raw, not an archive). arm64 is upstream's asset;
+            // x86_64 is ours, because upstream stopped publishing one (see the pins).
+            url: match arch {
+                Arch::Arm64 => format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-mac-arm64"),
+                Arch::X86_64 => format!("{RUNTIMES_RELEASE_BASE}/{FRANKENPHP_MAC_X86_64_TAG}/frankenphp-mac-x86_64"),
+            },
             checksum: Checksum::Sha256(pick(
                 arch,
-                FRANKENPHP_1_12_4_MAC_ARM64_SHA256,
-                FRANKENPHP_1_12_4_MAC_AMD64_SHA256,
+                FRANKENPHP_1_13_3_MAC_ARM64_SHA256,
+                FRANKENPHP_1_13_3_MAC_AMD64_SHA256,
             )),
             archive: Archive::Raw,
             member: "frankenphp",
@@ -2755,14 +2830,15 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // static-php.dev's Linux builds — the same publisher and the same tarball shape as
         // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
+        // 8.1-8.5: ours (`PHP_8X_LINUX_TAG`); 8.0.30: static-php.dev's bulk build.
         ("php", "linux", v) => php_linux_sha256("cli", v, arch).map(|hex| BinarySpec {
-            url: format!("https://dl.static-php.dev/static-php-cli/bulk/php-{v}-cli-linux-{}.tar.gz", linux_arch(arch)),
+            url: php_linux_url("cli", v, arch),
             checksum: Checksum::Sha256(hex.to_string()),
             archive: Archive::TarGz,
             member: "php",
         }),
         ("php-fpm", "linux", v) => php_linux_sha256("fpm", v, arch).map(|hex| BinarySpec {
-            url: format!("https://dl.static-php.dev/static-php-cli/bulk/php-{v}-fpm-linux-{}.tar.gz", linux_arch(arch)),
+            url: php_linux_url("fpm", v, arch),
             checksum: Checksum::Sha256(hex.to_string()),
             archive: Archive::TarGz,
             member: "php-fpm",
@@ -2793,9 +2869,9 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::TarGzTree,
             member: "bin/postgres",
         }),
-        ("frankenphp", "linux", "1.12.4") => Some(BinarySpec {
+        ("frankenphp", "linux", "1.13.3") => Some(BinarySpec {
             url: format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-linux-{}", linux_arch(arch)),
-            checksum: Checksum::Sha256(pick(arch, FRANKENPHP_1_12_4_LINUX_AARCH64_SHA256, FRANKENPHP_1_12_4_LINUX_X86_64_SHA256)),
+            checksum: Checksum::Sha256(pick(arch, FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256, FRANKENPHP_1_13_3_LINUX_X86_64_SHA256)),
             archive: Archive::Raw,
             member: "frankenphp",
         }),
@@ -4776,7 +4852,7 @@ mod tier_tests {
         // Legacy13: every engine row, both slices, own bytes.
         let l13 = PinSet::for_tier(BinaryTier::Legacy13);
         assert!(!l13.php_versions.contains(&"8.0.30"), "8.0.30 is minos 14.0 on arm64");
-        assert!(l13.php_versions.contains(&"7.4.33") && l13.php_versions.contains(&"8.5.8"));
+        assert!(l13.php_versions.contains(&"7.4.33") && l13.php_versions.contains(&"8.5.12"));
         for (name, versions) in [("mysql", l13.mysql_versions), ("postgres", &["16.4.0"][..])] {
             for v in versions {
                 let a = manifest(name, v, "macos", Arch::Arm64).unwrap();
@@ -5496,13 +5572,13 @@ mod tests {
     fn sweep_stale_trees_removes_only_the_asides() {
         let base = std::env::temp_dir().join(format!("rexenv-sst-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        for d in [".php-8.3.32.stale-9068", ".nginx-1.30.4.stale-12", "php-8.3.32", ".staging-php-8.3.32-1-0", "stale-1", ".x.stale-abc"] {
+        for d in [".php-8.3.36.stale-9068", ".nginx-1.30.4.stale-12", "php-8.3.36", ".staging-php-8.3.36-1-0", "stale-1", ".x.stale-abc"] {
             std::fs::create_dir_all(base.join(d).join("ext")).unwrap();
         }
         let mut gone = sweep_stale_trees_in(&base);
         gone.sort();
-        assert_eq!(gone, vec![".nginx-1.30.4.stale-12".to_string(), ".php-8.3.32.stale-9068".to_string()]);
-        for kept in ["php-8.3.32", ".staging-php-8.3.32-1-0", "stale-1", ".x.stale-abc"] {
+        assert_eq!(gone, vec![".nginx-1.30.4.stale-12".to_string(), ".php-8.3.36.stale-9068".to_string()]);
+        for kept in ["php-8.3.36", ".staging-php-8.3.36-1-0", "stale-1", ".x.stale-abc"] {
             assert!(base.join(kept).exists(), "{kept} must survive");
         }
         let _ = std::fs::remove_dir_all(&base);
@@ -5514,7 +5590,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         assert!(!has_any_cache_in(&base, "nginx"), "empty");
-        for d in ["php-fpm-8.3.32", "phpmyadmin-5.2.3", ".staging-nginx-1.30.4-1-0", "nginx-old"] {
+        for d in ["php-fpm-8.3.36", "phpmyadmin-5.2.3", ".staging-nginx-1.30.4-1-0", "nginx-old"] {
             std::fs::create_dir_all(base.join(d)).unwrap();
         }
         std::fs::write(base.join("caddy-2.11.4"), b"").unwrap();
@@ -6236,7 +6312,7 @@ mod tests {
     fn a_stale_tree_is_retired_whole() {
         let bin = std::env::temp_dir().join(format!("rexenv-retire-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&bin);
-        let dir = bin.join("php-8.4.23");
+        let dir = bin.join("php-8.4.27");
         std::fs::create_dir_all(dir.join("ext")).unwrap();
         std::fs::write(dir.join("php.exe"), "x").unwrap();
         std::fs::write(dir.join("ext/php_curl.dll"), "x").unwrap();
@@ -6254,10 +6330,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("rexenv-addon-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("ext")).unwrap();
-        assert!(!addons_satisfied(&dir, "php", "8.4.23", "windows"));
+        assert!(!addons_satisfied(&dir, "php", "8.4.27", "windows"));
         std::fs::write(dir.join("ext/php_imap.dll"), "x").unwrap();
-        assert!(addons_satisfied(&dir, "php", "8.4.23", "windows"));
-        assert!(addons_satisfied(&dir, "php", "8.3.32", "windows"), "nothing owed");
+        assert!(addons_satisfied(&dir, "php", "8.4.27", "windows"));
+        assert!(addons_satisfied(&dir, "php", "8.3.36", "windows"), "nothing owed");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -7217,7 +7293,8 @@ mod tests {
     #[test]
     fn manifest_pins_frankenphp_as_raw_binary() {
         let arm = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::Arm64).unwrap();
-        assert!(arm.url.ends_with("v1.12.4/frankenphp-mac-arm64"));
+        assert!(arm.url.ends_with("v1.13.3/frankenphp-mac-arm64"), "{}", arm.url);
+        assert!(!is_self_distributed(&arm.url), "arm64 is upstream's asset");
         assert_eq!(arm.archive, Archive::Raw);
         assert_eq!(arm.member, "frankenphp");
         assert!(matches!(arm.checksum, Checksum::Sha256(_)));
@@ -7225,6 +7302,14 @@ mod tests {
         let amd = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("frankenphp-mac-x86_64"));
         assert_ne!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum));
+        // 1.13.x has no upstream Intel Mac asset: ours, from its own release, with licences.
+        assert!(amd.url.contains(&format!("/{FRANKENPHP_MAC_X86_64_TAG}/")), "{}", amd.url);
+        assert!(is_self_distributed(&amd.url));
+        let lic = licenses_spec(&amd.url, "frankenphp", FRANKENPHP_VERSION, Arch::X86_64)
+            .unwrap()
+            .expect("we distribute it, so we owe its licences");
+        assert!(lic.url.ends_with(&format!("/{FRANKENPHP_MAC_X86_64_TAG}/licenses-frankenphp-{FRANKENPHP_VERSION}-mac-x86_64.tar.gz")), "{}", lic.url);
+        assert!(licenses_spec(&arm.url, "frankenphp", FRANKENPHP_VERSION, Arch::Arm64).unwrap().is_none());
     }
 
     #[test]
@@ -7397,7 +7482,7 @@ mod tests {
             ("cloudflared", CLOUDFLARED_VERSION, "cloudflared-windows-amd64.exe", Archive::Raw, "cloudflared.exe"),
             ("mysql", MYSQL_VERSION, "archives/mysql-8.4/mysql-8.4.6-winx64.zip", Archive::ZipTree { strip: 1 }, "bin/mysqld.exe"),
             ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-pc-windows-msvc.tar.gz", Archive::TarGzTree, "bin/postgres.exe"),
-            ("php", PHP_VERSION, "archives/php-8.3.32-nts-Win32-vs16-x64.zip", Archive::ZipTree { strip: 0 }, "php.exe"),
+            ("php", PHP_VERSION, "archives/php-8.3.36-nts-Win32-vs16-x64.zip", Archive::ZipTree { strip: 0 }, "php.exe"),
         ];
         for (name, version, tail, archive, member) in cases {
             let arm = manifest(name, version, "windows", Arch::Arm64)
@@ -7410,7 +7495,7 @@ mod tests {
             assert_eq!(checksum_hex(&arm.checksum), checksum_hex(&amd.checksum), "{name}");
         }
         // The toolset in PHP's file name follows the minor.
-        for (v, toolset) in [("7.4.33", "vc15"), ("8.0.30", "vs16"), ("8.3.32", "vs16"), ("8.4.23", "vs17"), ("8.5.8", "vs17")] {
+        for (v, toolset) in [("7.4.33", "vc15"), ("8.0.30", "vs16"), ("8.3.36", "vs16"), ("8.4.27", "vs17"), ("8.5.12", "vs17")] {
             let url = manifest("php", v, "windows", Arch::X86_64).unwrap().url;
             assert!(url.ends_with(&format!("php-{v}-nts-Win32-{toolset}-x64.zip")), "{url}");
         }
@@ -7509,8 +7594,8 @@ mod tests {
     fn manifest_pins_the_linux_artifacts_for_both_archs() {
         let cases: &[(&str, &str, &str, &str, Archive, &str)] = &[
             ("caddy", CADDY_VERSION, "caddy_2.11.4_linux_amd64.tar.gz", "caddy_2.11.4_linux_arm64.tar.gz", Archive::TarGz, "caddy"),
-            ("php", PHP_VERSION, "php-8.3.32-cli-linux-x86_64.tar.gz", "php-8.3.32-cli-linux-aarch64.tar.gz", Archive::TarGz, "php"),
-            ("php-fpm", PHP_VERSION, "php-8.3.32-fpm-linux-x86_64.tar.gz", "php-8.3.32-fpm-linux-aarch64.tar.gz", Archive::TarGz, "php-fpm"),
+            ("php", PHP_VERSION, "php-8.3.36-cli-linux-x86_64.tar.gz", "php-8.3.36-cli-linux-aarch64.tar.gz", Archive::TarGz, "php"),
+            ("php-fpm", PHP_VERSION, "php-8.3.36-fpm-linux-x86_64.tar.gz", "php-8.3.36-fpm-linux-aarch64.tar.gz", Archive::TarGz, "php-fpm"),
             ("nginx", NGINX_VERSION, "nginx-binaries/nginx-1.30.4-x86_64-linux", "nginx-binaries/nginx-1.30.4-aarch64-linux", Archive::Raw, "nginx"),
             ("mysql", MYSQL_VERSION, "mysql-8.4.6-linux-glibc2.28-x86_64.tar.xz", "mysql-8.4.6-linux-glibc2.28-aarch64.tar.xz", Archive::TarXzTree, "bin/mysqld"),
             ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-unknown-linux-gnu.tar.gz", "postgresql-18.6.0-aarch64-unknown-linux-gnu.tar.gz", Archive::TarGzTree, "bin/postgres"),
