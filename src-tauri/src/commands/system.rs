@@ -231,6 +231,26 @@ pub struct StartupNotice {
     /// user's behalf, never for something it merely noticed.
     pub level: &'static str,
     pub message: String,
+    /// Where to look, when the PRODUCER knows. The frontend renders exactly what it
+    /// is sent and invents nothing: until 23 Oct 2026 it attached "Open Tunnels" to
+    /// every `warn`, so the self-update's "did not take" warning offered a door to
+    /// the Tunnels page (`docs/PLAN-unified-updates.md` T0).
+    pub action: Option<NoticeAction>,
+}
+
+/// A door a notice may carry — a label and the app route it opens.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoticeAction {
+    pub label: &'static str,
+    pub route: &'static str,
+}
+
+impl NoticeAction {
+    /// The tunnel sweeps: a stopped share is explained on the Tunnels page.
+    pub const TUNNELS: NoticeAction = NoticeAction { label: "Open Tunnels", route: "/tunnels" };
+    /// The self-update's launch verdict: the update card is under Settings → About.
+    pub const ABOUT: NoticeAction = NoticeAction { label: "Open About", route: "/settings?section=about" };
 }
 
 impl StartupNotices {
@@ -238,8 +258,14 @@ impl StartupNotices {
     /// than taking the app down over a toast, and the same fact is already in
     /// `rexenv.log` — the log is the record, this is the courtesy.
     pub fn push(&self, level: &'static str, message: String) {
+        self.push_with(level, message, None);
+    }
+
+    /// Queue a notice that names where to look. Only the producer knows the right
+    /// door, so only the producer may attach one.
+    pub fn push_with(&self, level: &'static str, message: String, action: Option<NoticeAction>) {
         if let Ok(mut q) = self.0.lock() {
-            q.push(StartupNotice { level, message });
+            q.push(StartupNotice { level, message, action });
         }
     }
 
@@ -843,7 +869,7 @@ mod tests {
             );
         }
     }
-    use super::{summarize, StartupNotices};
+    use super::{summarize, NoticeAction, StartupNotices};
 
     /// Pins the fix: `global_status` running/total/summary come from RUNNING
     /// SERVICES, never site DB rows — so the footer (global_status) and the
@@ -882,6 +908,23 @@ mod tests {
     /// zero times (an event emitted before any window exists) and not on every
     /// reload (a toast that keeps reappearing reads as a fault that keeps
     /// happening).
+    /// A notice carries a door only when its producer attached one. The frontend
+    /// used to attach "Open Tunnels" to every `warn` itself, so a warning about a
+    /// half-applied app update pointed at the Tunnels page (T0 of
+    /// `docs/PLAN-unified-updates.md`).
+    #[test]
+    fn a_notice_carries_an_action_only_when_its_producer_attached_one() {
+        let q = StartupNotices::default();
+        q.push_with("warn", "Stopped 1 public share(s)".into(), Some(NoticeAction::TUNNELS));
+        q.push("warn", "The update to rexenv 0.9.1 did not take".into());
+        let got = q.drain();
+        let tunnels = got[0].action.expect("the tunnel sweep names its page");
+        assert_eq!((tunnels.label, tunnels.route), ("Open Tunnels", "/tunnels"));
+        assert!(got[1].action.is_none(), "a bare `warn` must not grow a door the producer never attached");
+        let json = serde_json::to_value(&got[1]).unwrap();
+        assert!(json["action"].is_null(), "the wire shape must say `action: null`, not omit the field: {json}");
+    }
+
     #[test]
     fn startup_notices_survive_until_read_and_are_read_once() {
         let q = StartupNotices::default();

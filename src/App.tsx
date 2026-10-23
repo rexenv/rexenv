@@ -20,7 +20,6 @@ import {
   onAboutMenu,
   onServiceHealth,
   onTrayRoute,
-  startupNotices,
   appUpdateState,
   onAppUpdate,
   onCheckUpdatesMenu,
@@ -28,6 +27,7 @@ import {
 import { toast, toastBackendError } from "@/lib/toast";
 import { ABOUT_PATH, useCheckForUpdates } from "@/lib/useCheckForUpdates";
 import { Toaster } from "@/components/ui/toaster";
+import { StartupNoticeHost } from "@/components/shell/StartupNoticeHost";
 import { DialogHost } from "@/components/ui/dialog";
 
 /** First launch: route to onboarding until system setup is complete for THIS
@@ -245,36 +245,6 @@ function AppUpdateEventWatch() {
  *  emitted event would have been emitted to nobody, and a share rexenv stopped
  *  on the user's behalf is the one thing they must not have to find in a log.
  *  Draining is what keeps a reload from re-toasting what they already read. */
-function StartupNoticeHost() {
-  const shown = useRef(false);
-  const navigate = useNavigate();
-  useEffect(() => {
-    if (shown.current) return; // StrictMode double-mount must not drain twice
-    shown.current = true;
-    startupNotices()
-      .then((list) => {
-        for (const n of list) {
-          // There is no "warning" toast kind, and `error` would be a lie — the
-          // app did the right thing. A `warn` notice gets the ACTION form
-          // instead: it names where to look and stays up 10s rather than 4,
-          // which is the difference between telling someone and technically
-          // having told them.
-          if (n.level === "warn") {
-            toast.info(n.message, { label: "Open Tunnels", onClick: () => navigate("/tunnels") });
-          } else {
-            toast.info(n.message);
-          }
-        }
-      })
-      .catch(() => {
-        // A failed drain loses a courtesy, never a record: the same facts are
-        // in rexenv.log, and a toast is not worth an error screen.
-      });
-    // `navigate` is stable for the app's lifetime and the ref guard makes a
-    // re-run a no-op anyway; it is listed so the hooks rule stays a rule.
-  }, [navigate]);
-  return null;
-}
 
 export function App() {
   // Gate the whole app on backend init (task 1.2 / H3): if the DB/CA failed to load,

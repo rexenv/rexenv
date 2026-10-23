@@ -449,7 +449,10 @@ pub fn run() {
                         core::app_update::finish_at_launch(&conn, &*platform)
                     {
                         log::info!("app update: {message}");
-                        notices.push(level, message);
+                        // Only the WARN ("did not take") needs a door; the info is a
+                        // plain "you are now on X".
+                        let action = (level == "warn").then_some(commands::system::NoticeAction::ABOUT);
+                        notices.push_with(level, message, action);
                     }
                     // B20 §4 Phase B: record each existing override site's port
                     // BEFORE any site is read or adopted. One-time + idempotent;
@@ -532,13 +535,14 @@ pub fn run() {
                         log::warn!(
                             "tunnels: killed {orphaned} tunnel(s) still sharing after a crash"
                         );
-                        notices.push(
+                        notices.push_with(
                             "warn",
                             format!(
                                 "Stopped {orphaned} public share(s) left running by a crashed \
                                  session — their links are dead now. Share again from the \
                                  Tunnels page if you still need them."
                             ),
+                            Some(commands::system::NoticeAction::TUNNELS),
                         );
                     }
                     // Backstop for the class "DB and process table disagree"
@@ -551,13 +555,14 @@ pub fn run() {
                         log::warn!(
                             "tunnels: stopped {rowless} PUBLIC share(s) this app had no record of"
                         );
-                        notices.push(
+                        notices.push_with(
                             "warn",
                             format!(
                                 "Stopped {rowless} public share(s) this app had no record of — \
                                  they were serving a site to the internet. Nothing else on this \
                                  Mac could see them; check the Tunnels page if that is a surprise."
                             ),
+                            Some(commands::system::NoticeAction::TUNNELS),
                         );
                     }
                     // First run: create the sites root (~/rexenv/Sites, or the

@@ -968,6 +968,9 @@ export interface WpUpdateProgress {
 export interface StartupNotice {
   level: "info" | "warn";
   message: string;
+  /** A door the PRODUCER attached — label + app route. Rendered verbatim; the
+   *  frontend never invents one (it used to attach "Open Tunnels" to every warn). */
+  action: { label: string; route: string } | null;
 }
 
 /** A core language row (mirrors the Rust WpLanguage DTO / `wp language core list`). */

@@ -684,6 +684,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (23 Oct 2026): `uireview.js` `notices` → `notices`** (#901, PLAN-unified-updates T0) —
+  the REAL `StartupNoticeHost` (`view=notices`) over three queued notices: a tunnel sweep WITH
+  its door, a `warn` WITHOUT one, a plain info. The toasts are found by their fixture text,
+  never by count — the shell toasts other things in the harness too (the update offer, a health
+  report), and the first draft counted `[role=status] > div` and read 5. **What it cost:** the
+  host gave every `warn` an "Open Tunnels" button itself, so the self-update's "did not take"
+  warning pointed at Tunnels. Planted (that rule restored) → both widths red.
 - **Probes (23 Oct 2026): `uireview.js` `card-overridable` → `overridable`** (#900, PUBLISH-TESTING
   N17) — the Database tab's card over a refused-but-overridable job (`dbjob=overridable`, the
   live run's MySQL 26.7 sentence verbatim): the sentence AND an **Import anyway** button, then the

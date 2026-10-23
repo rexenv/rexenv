@@ -23,6 +23,8 @@
  *               goes away with "also copy databases" unticked — the control that
  *               makes the sentence a rule and not a decoration (#900)
  *    toast    — the long revert-then-delete refusal toast + friends
+ *    notices  — the REAL StartupNoticeHost over three queued notices; only the
+ *               one whose producer attached a door may render a button (T0, #901)
  *    agents   — the AI-agents (MCP) card. `astate=off|idle|working|erroring`
  *               drives the status line, `feed=empty` empties the activity list,
  *               `site=1` also shows the per-site SiteDetail section
@@ -66,6 +68,7 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
 import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { StartupNoticeHost } from "@/components/shell/StartupNoticeHost";
 import { TopBar } from "@/components/shell/TopBar";
 import { emit } from "@tauri-apps/api/event";
 import { Tunnels as TunnelsScreen } from "@/routes/Tunnels";
@@ -1600,6 +1603,15 @@ export function DevUiReview() {
         }
         case "db_import_leftovers":
           return [];
+        // `view=notices` (T0, #901): three queued startup notices — a tunnel sweep WITH
+        // its door, a warn WITHOUT one (the self-update's shape before its producer
+        // attached About), and a plain info. Exactly one toast may carry a button.
+        case "startup_notices":
+          return [
+            { level: "warn", message: "Stopped 1 public share(s) left running by a crashed session — their links are dead now.", action: { label: "Open Tunnels", route: "/tunnels" } },
+            { level: "warn", message: "The update to rexenv 0.9.1 did not take — rexenv 0.9.0 is still running.", action: null },
+            { level: "info", message: "rexenv is now 0.9.1 (updated from 0.9.0).", action: null },
+          ];
         case "unresolvable_tlds":
           return [];
         case "resolver_drift_records":
@@ -1776,6 +1788,7 @@ export function DevUiReview() {
         {view === "wppackages" && <WpCliPackagesCard />}
         {view === "onboarding" && <OnboardingDone />}
         {view === "toast" && <ToastView />}
+        {view === "notices" && <StartupNoticeHost />}
         {view === "pills" && <PillsView />}
         {view === "phpversions" && <PhpVersionsView />}
         {view === "adminer" && (

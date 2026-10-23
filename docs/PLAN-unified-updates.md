@@ -1,9 +1,9 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **PLANNED, 23 Oct 2026 — nothing built.** Owner ask (23 Oct 2026): "I want every kind
-of update to notify the same way — Adminer, PHP, the app itself — so the user notices them
-all alike and updates quickly." §8 lists the three decisions the owner still has to make;
-everything else is decided here.
+Status: **IN FLIGHT — T0 built 23 Oct 2026 (ledger #901); T1–T7 next.** Owner ask (23 Oct
+2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
+the user notices them all alike and updates quickly." §8's three questions were answered by the
+owner the same day, all three as recommended.
 
 Builds on: `docs/archive/PLAN-self-update.md` (the app's signed channel, D3 "how loud"),
 `docs/archive/PLAN-binary-updates.md` (the PHP/Adminer/phpMyAdmin manifest), `docs/archive/
@@ -192,13 +192,18 @@ three rows settle with their measured effects, and the pill goes away. The same 
 Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex status` and
 `stack_status` tell the same three before, none after.
 
-## 8. Open questions for the owner
+## 8. Owner decisions (asked and answered 23 Oct 2026)
 
-- **Q1 — WordPress updates on the page?** A read-only line per site ("ab12.rex: 3 plugin
-  updates → open the site") — informational only, never in Update all. Recommendation: **yes,
-  read-only**, behind the existing two-pass check so no extra wordpress.org traffic.
-- **Q2 — Does Update all include the app?** Recommendation: **yes, last**, with its own restart
-  prompt as today; a checkbox "also rexenv itself" unticked by default is the alternative.
-- **Q3 — Where does the page live?** Recommendation: **Settings → Updates** (a new section;
-  About keeps version/licences). The alternative is the About card growing rows, which makes
-  "About" the busiest screen in the app.
+- **D1 — WordPress updates on the page: YES, read-only.** One line per site ("ab12.rex: 3
+  plugin updates → open the site"), behind the existing two-pass check so no extra
+  wordpress.org traffic; never in Update all.
+- **D2 — Update all includes the app: YES, last**, with its own restart prompt as today.
+- **D3 — The page is Settings → Updates**, a new section; About keeps version and licences.
+
+## 9. Build log
+
+- **T0 — 23 Oct 2026.** `StartupNotice.action: Option<NoticeAction>` (label + route), `push_with`;
+  the two tunnel sweeps attach `NoticeAction::TUNNELS`, the self-update's launch WARN attaches
+  `NoticeAction::ABOUT`, the info none. `StartupNoticeHost` moved to its own file and renders the
+  door it is sent. L0 planted; L2 `uireview.js` `notices` planted (the probe finds the three
+  toasts by text — the shell toasts other things in the harness, and a count read 5). Ledger #901.

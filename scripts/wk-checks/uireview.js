@@ -93,6 +93,9 @@ const SCENARIOS = [
   // not being copied.
   ["import-local-stopped", "view=import", []],
   ["toasts", "view=toast", []],
+  // #901 (PLAN-unified-updates T0): a startup notice's button is the PRODUCER's, not a
+  // frontend rule about `warn` — one button among three toasts, on the tunnel one.
+  ["notices", "view=notices", []],
   // Every StatusPill state + every StartStopToggle state — the states the
   // other fixtures never render (they hardcode `running`).
   ["pills", "view=pills", []],
@@ -1056,6 +1059,34 @@ const PROBES = {
   // values of `dbServerRunning` (false / true / null) — one sentence, under the false
   // row only. The control: untick "also copy databases" and the sentence must go,
   // because a warning about a copy nobody asked for would be noise on every row.
+  // Startup notices (#901). Before: App.tsx gave EVERY `warn` an "Open Tunnels" button,
+  // so a half-applied app update pointed at Tunnels. Now the button is whatever the
+  // backend attached. Three toasts, one door — the two without one are the control.
+  notices: async (page) => {
+    // The app shell toasts other things too (the update offer, a health report), so the
+    // three startup notices are found by their fixture text, never by count.
+    const MINE = [/public share/, /did not take/, /is now 0\.9\.1/];
+    await page
+      .waitForFunction(
+        (res) => res.every((r) => [...document.querySelectorAll('[role="status"] > div')].some((t) => new RegExp(r).test(t.textContent))),
+        MINE.map((r) => r.source),
+        { timeout: 5000 },
+      )
+      .catch(() => {});
+    return page.evaluate((res) => {
+      const out = [];
+      const all = [...document.querySelectorAll('[role="status"] > div')];
+      const mine = res.map((r) => all.find((t) => new RegExp(r).test(t.textContent)));
+      if (mine.some((t) => !t)) return [`a queued startup notice never became a toast (${mine.filter(Boolean).length} of 3 found)`];
+      const doors = (t) => [...t.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label") !== "Dismiss");
+      const [tunnel, update, info] = mine;
+      if (doors(tunnel).length !== 1 || doors(tunnel)[0].textContent.trim() !== "Open Tunnels")
+        out.push("the tunnel sweep's toast lacks the door its producer attached (\"Open Tunnels\")");
+      if (doors(update).length) out.push("the update warning grew a button its producer never attached");
+      if (doors(info).length) out.push("the plain info grew a button");
+      return out;
+    }, MINE.map((r) => r.source));
+  },
   importLocalStopped: async (page) => {
     const problems = [];
     const SEL = '[data-probe="import-local-db-stopped"]';
@@ -1281,6 +1312,7 @@ function probeFor(name) {
   if (name === "card-thissite") return PROBES.thisSite;
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "import-local-stopped") return PROBES.importLocalStopped;
+  if (name === "notices") return PROBES.notices;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached
   // to the first scenario only — attaching it to all six would run the same
