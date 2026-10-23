@@ -6,6 +6,11 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 23 Oct 2026, before the 0.9.1 cut** (HEAD `76521238`, v0.9.0 + 20 commits): 1 ticked block moved by
+the script (Now — the Local → rexenv database-import fix, #900). Shape 3 (narrative in an open row): 1 rewritten — the
+unified-updates row now opens with its one open reason (the three SMOKE rows, which need the first manifest published
+after this release); its build log is the plan's Status line. Shapes 1, 2, 4: 0. Open after the pass: 32 rows.
+
 **Reconciled 17 Oct 2026, before the 0.9.0 cut** (HEAD `d1a145e1`, v0.8.13 + 119 commits): 7 ticked blocks moved by
 the script, all from Now (the post-update dead sites #898, multisite-convert on WP 7.1.3, the Windows/Linux app icons +
 Spotlight detection, the update notice, "Check for Updates…" re-reads, the Databases console + phpMyAdmin and its
@@ -116,30 +121,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **One update channel — every "something newer exists" (rexenv, PHP patch, Adminer, phpMyAdmin) noticed
-  the same way and installed from one page, with Update all** (owner, 23 Oct 2026). Today only the app's own
-  release has a toast/pills/tray item; PHP and the consoles offer themselves only when their own screen is
-  open, with no poller and no skip. Plan: `docs/PLAN-unified-updates.md` — T0–T7, §8 holds three owner
-  decisions — all three answered as recommended (plan §8). **T0–T2 built** 23 Oct 2026 (ledger #901: a startup
-  notice's door is the producer's; #902: `core/update_hub.rs`, the one live inventory, app last; #903: one gate,
-  one poller, both documents, `updates-changed`; #904: pills, toast, tray over the inventory in one vocabulary;
-  #905: Settings → Updates, one page installs every kind, the About card retired; #906: Update all — sequential, app
-  last, stops at the first failure; #907: `rex status` + MCP `stack_status.updates` read the same list). **Open:** the
-  three SMOKE rows live per OS (need a published manifest naming a PHP patch newer than the pin — the first
-  release after this). D1 (the read-only WordPress line per site, #908) built 23 Oct 2026.
-
-- [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
-  (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row
-  says "start this site in Local first" BEFORE the run (`db_server_running`, a stat of the site's socket);
-  the import's target engine follows the source's vendor while the site has no database here yet
-  (`store::set_site_db_engine` — a MariaDB Local or DBngin source no longer meets "set this site's
-  engine to MariaDB", which no screen offered); an overridable verdict marks the job `overridable` and
-  the card's **Import anyway** retries with `accept_override` (the gate took the flag since Stage 2;
-  nothing ever passed it). Live on the dev Mac against Local 10.1.2 (stopped → the sentence; started →
-  12 tables, connect verified, 200; a renamed second site in one batch; the row sentence in WebKit, `uireview.js` `import-local-stopped`; N16 and N17 run the same day with a MariaDB 12.3.2 and a
-  MySQL 26.7 serving Local's `ab12` socket — engine followed, Import anyway copied; the MCP `status`
-  view gained the `overridable` flag it had promised). Windows and Linux offer no Local scan (#641),
-  the engine/override legs compiled only there.
+- [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
+  same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
+  a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1. The channel
+  itself is BUILT (owner ask 23 Oct 2026; `docs/PLAN-unified-updates.md` T0–T7 + D1, ledger #901–#908, L0 + WebKit on
+  the dev Mac, Windows and Linux compiled): one poller behind one setting, one inventory (`core/update_hub.rs`, app
+  last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
+  failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

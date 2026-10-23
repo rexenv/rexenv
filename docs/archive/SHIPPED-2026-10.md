@@ -2410,3 +2410,21 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
     launch keeps the pin + the effective version, refuses an empty keep-set, never touches the
     theme dir; ledger #874.
 
+
+## Reconcile of 23 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
+  (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row
+  says "start this site in Local first" BEFORE the run (`db_server_running`, a stat of the site's socket);
+  the import's target engine follows the source's vendor while the site has no database here yet
+  (`store::set_site_db_engine` — a MariaDB Local or DBngin source no longer meets "set this site's
+  engine to MariaDB", which no screen offered); an overridable verdict marks the job `overridable` and
+  the card's **Import anyway** retries with `accept_override` (the gate took the flag since Stage 2;
+  nothing ever passed it). Live on the dev Mac against Local 10.1.2 (stopped → the sentence; started →
+  12 tables, connect verified, 200; a renamed second site in one batch; the row sentence in WebKit, `uireview.js` `import-local-stopped`; N16 and N17 run the same day with a MariaDB 12.3.2 and a
+  MySQL 26.7 serving Local's `ab12` socket — engine followed, Import anyway copied; the MCP `status`
+  view gained the `overridable` flag it had promised). Windows and Linux offer no Local scan (#641),
+  the engine/override legs compiled only there.
+
