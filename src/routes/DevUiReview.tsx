@@ -1148,6 +1148,45 @@ export function DevUiReview() {
           if (cmd === "phpmyadmin_update_apply") return { ...mockDbConsoleStatus, phpmyadminStaged: "5.2.4", phpmyadminEffective: "5.2.4", phpmyadminUpdatable: null };
           return { offers: [], restartPending: null, checkedAt: "2026-09-06 09:00:00", autoCheck: true, checkProblem: null };
         }
+        // Update all (T5), scripted: `?run=stop` fails the SECOND row (Adminer) so the third
+        // (the app) is never reached; otherwise every row settles ok. One row advances per
+        // poll, so the probe sees the run move and then freeze where it stopped.
+        case "updates_apply_all": {
+          const w = window as unknown as { __rexRun?: { rows: unknown[]; status: string; id: string; appSwapped: unknown; tick: number } };
+          const rows = (params.get("inv") ?? "php,adminer").split(",").filter(Boolean).map((k) =>
+            k === "php"
+              ? { kind: { kind: "php", minor: "8.3" }, display: "PHP 8.3.28", status: "queued", effect: null, error: null }
+              : k === "adminer"
+                ? { kind: { kind: "adminer" }, display: "Adminer 6.1.2", status: "queued", effect: null, error: null }
+                : { kind: { kind: "phpMyAdmin" }, display: "phpMyAdmin 5.2.4", status: "queued", effect: null, error: null },
+          );
+          rows.push({ kind: { kind: "app" }, display: "rexenv 0.6.0", status: "queued", effect: null, error: null });
+          w.__rexRun = { id: "run-1", rows, status: "running", appSwapped: null, tick: 0 };
+          return { id: "run-1", rows, status: "running", appSwapped: null };
+        }
+        case "updates_apply_all_state": {
+          const w = window as unknown as { __rexRun?: { rows: { display: string; status: string; effect: string | null; error: string | null }[]; status: string; id: string; appSwapped: unknown; tick: number } };
+          const r = w.__rexRun;
+          if (!r) return null;
+          const i = r.rows.findIndex((x) => x.status === "queued" || x.status === "running");
+          if (i >= 0 && r.status === "running") {
+            const row = r.rows[i];
+            if (row.status === "queued") {
+              row.status = "running";
+            } else if (params.get("run") === "stop" && i === 1) {
+              row.status = "failed";
+              row.error = "Adminer 6.1.2 does not bind to rexenv's login gate — nothing was changed.";
+              for (const later of r.rows.slice(i + 1)) if (later.status === "queued") later.status = "notReached";
+              r.status = "failed";
+            } else {
+              row.status = "ok";
+              row.effect = row.display.startsWith("PHP") ? "PHP 8.3 is now on 8.3.28" : row.display.startsWith("Adminer") ? "Adminer is now on 6.1.2" : row.display.startsWith("phpMyAdmin") ? "phpMyAdmin is now on 5.2.4" : "rexenv 0.6.0 is installed — it takes effect when rexenv next opens";
+              if (row.display.startsWith("rexenv")) r.appSwapped = ["0.6.0", "FIXTURE restart notice from the backend — rendered verbatim."];
+              if (r.rows.every((x) => x.status === "ok")) r.status = "ok";
+            }
+          }
+          return { id: r.id, rows: r.rows.map((x) => ({ ...x })), status: r.status, appSwapped: r.appSwapped };
+        }
         case "updates_inventory": {
           const w = window as unknown as { __rexStateReads?: number; __rexOfferNow?: boolean };
           w.__rexStateReads = (w.__rexStateReads ?? 0) + 1;

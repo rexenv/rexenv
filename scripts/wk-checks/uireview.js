@@ -172,6 +172,9 @@ const SCENARIOS = [
   ["appupdate-auto-off", "view=appupdate&state=auto-off", []],
   ["appupdate-installed-pending", "view=appupdate&state=installed-pending", []],
   ["appupdate-installed-undecided", "view=appupdate&state=installed-undecided", []],
+  // #906 (PLAN-unified-updates T5): Update all over three rows, stopping at the second.
+  ["updateall-stops", "view=appupdate&state=offered&inv=php,adminer&run=stop", []],
+  ["updateall-completes", "view=appupdate&state=offered&inv=php,adminer", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
   // what `theme activate` takes. The third fixture row has no title at all.
@@ -1059,6 +1062,47 @@ const PROBES = {
   // values of `dbServerRunning` (false / true / null) — one sentence, under the false
   // row only. The control: untick "also copy databases" and the sentence must go,
   // because a warning about a copy nobody asked for would be noise on every row.
+  // Update all (#906). The whole claim is ORDER and STOPPING: rows settle one after another in
+  // the inventory's order, the app last; the first failure leaves every later row "not
+  // reached" and the run says where it stopped, in the family's own sentence; a run that
+  // reaches the app shows the restart dialog ONCE and nothing restarts without OK. The
+  // scripted mock advances one row per poll, so a page that ran rows in parallel, skipped
+  // past a failure, or restarted on its own is visible here.
+  updateAll: async (page, name) => {
+    const problems = [];
+    const button = page.locator('[data-probe="update-all"]');
+    if ((await button.count()) !== 1) return ["no Update all button with three rows pending"];
+    if (!/Update all \(3\)/.test(await button.innerText())) problems.push(`the button does not count the rows: "${await button.innerText()}"`);
+    await button.click();
+    const statuses = () =>
+      page.evaluate(() => [...document.querySelectorAll('[data-probe="update-row"]')].map((r) => r.querySelector('[data-probe="update-row-verdict"]')?.getAttribute("data-status") ?? "queued"));
+    // Row order never changes and nothing runs in parallel: at most one "running" at a time.
+    const seen = [];
+    for (let i = 0; i < 14; i++) {
+      await page.waitForTimeout(450);
+      const s = await statuses();
+      seen.push(s.join(","));
+      if (s.filter((x) => x === "running").length > 1) problems.push(`two rows ran at once: ${s.join(",")}`);
+      if (!s.includes("running") && !s.includes("queued")) break;
+    }
+    const last = (await statuses()).join(",");
+    if (name === "updateall-stops") {
+      if (last !== "ok,failed,notReached") problems.push(`expected ok,failed,notReached, got ${last} (seen: ${seen.join(" → ")})`);
+      const stopped = page.locator('[data-probe="update-all-stopped"]');
+      if ((await stopped.count()) !== 1) problems.push("no sentence saying where Update all stopped");
+      else if (!/Adminer 6\.1\.2.*does not bind/.test(await stopped.innerText())) problems.push(`the stop sentence is not the family's own: "${await stopped.innerText()}"`);
+      if ((await page.getByRole("button", { name: "OK", exact: true }).count()) !== 0) problems.push("a restart dialog appeared though the app row was never reached");
+      if (!/Not reached/.test(await page.locator('[data-probe="update-row"]').nth(2).innerText())) problems.push("the app row does not say it was not reached");
+    } else {
+      if (last !== "ok,ok,ok") problems.push(`expected ok,ok,ok, got ${last} (seen: ${seen.join(" → ")})`);
+      const ok = page.getByRole("button", { name: "OK", exact: true });
+      if ((await ok.count()) !== 1) problems.push("the app row swapped and no restart dialog asked before restarting");
+      const restarts = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "app_update_restart").length);
+      if (restarts !== 0) problems.push(`${restarts} restart(s) fired before OK`);
+      if (!(await page.locator("body").innerText()).includes("FIXTURE restart notice from the backend")) problems.push("the dialog did not render the backend's restart sentence");
+    }
+    return problems;
+  },
   // Startup notices (#901). Before: App.tsx gave EVERY `warn` an "Open Tunnels" button,
   // so a half-applied app update pointed at Tunnels. Now the button is whatever the
   // backend attached. Three toasts, one door — the two without one are the control.
@@ -1313,6 +1357,7 @@ function probeFor(name) {
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "import-local-stopped") return PROBES.importLocalStopped;
   if (name === "notices") return PROBES.notices;
+  if (name.startsWith("updateall-")) return PROBES.updateAll;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached
   // to the first scenario only — attaching it to all six would run the same

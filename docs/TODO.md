@@ -123,7 +123,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   decisions — all three answered as recommended (plan §8). **T0–T2 built** 23 Oct 2026 (ledger #901: a startup
   notice's door is the producer's; #902: `core/update_hub.rs`, the one live inventory, app last; #903: one gate,
   one poller, both documents, `updates-changed`; #904: pills, toast, tray over the inventory in one vocabulary;
-  #905: Settings → Updates, one page installs every kind, the About card retired); T5–T7 + D1 next.
+  #905: Settings → Updates, one page installs every kind, the About card retired; #906: Update all — sequential, app
+  last, stops at the first failure); T6–T7 + D1 next.
 
 - [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
   (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row

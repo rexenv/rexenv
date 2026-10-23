@@ -500,3 +500,181 @@ mod tests {
         assert!(inv.offers.is_empty(), "{:?}", inv.offers);
     }
 }
+
+// ── Update all: the plan and its bookkeeping (T5) ──────────────────────────────────────
+//
+// "Update all" is ONE button over the rows the page already shows. The plan is the
+// inventory's pending offers in the inventory's order — PHP minors, the consoles, the app
+// LAST — and the run is sequential: a row settles before the next starts, and the FIRST
+// failure stops the chain, leaving every later row `not reached` (the bar freezes where
+// the work stopped; `importbar.js`'s rule). The applies themselves are the four family
+// commands, unchanged; this module owns only the order and the bookkeeping, so both are L0.
+
+/// One row of an Update-all run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunRow {
+    pub kind: UpdateKind,
+    /// The offer's short spelling ("PHP 8.3.28"), as the page's rows say it.
+    pub display: String,
+    /// `queued` · `running` · `ok` · `failed` · `notReached`.
+    pub status: &'static str,
+    /// On `ok`: the effect the family MEASURED ("PHP 8.3 is now on 8.3.28").
+    pub effect: Option<String>,
+    /// On `failed`: the family's own sentence.
+    pub error: Option<String>,
+}
+
+/// The whole run, as the page polls it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunState {
+    pub id: String,
+    pub rows: Vec<RunRow>,
+    /// `running` · `ok` · `failed`.
+    pub status: &'static str,
+    /// Set once the app row swapped: the version and Rust's restart sentence. The page
+    /// shows the dialog and only its OK restarts — the run never restarts anything itself.
+    pub app_swapped: Option<(String, String)>,
+}
+
+/// The plan: every pending offer, in inventory order. Pure; the order IS the rule, and the
+/// app is last because `inventory` put it there — asserted here so a reorder upstream
+/// cannot silently make the restart prompt land before a pool swap reports.
+pub fn plan_all(inv: &UpdateInventory) -> Vec<UpdateOffer> {
+    let plan: Vec<UpdateOffer> = inv.pending().into_iter().cloned().collect();
+    if let Some(i) = plan.iter().position(|o| o.kind == UpdateKind::App) {
+        debug_assert_eq!(i, plan.len() - 1, "the app must be the last step of Update all");
+    }
+    plan
+}
+
+impl RunState {
+    pub fn new(id: String, plan: &[UpdateOffer]) -> Self {
+        RunState {
+            id,
+            rows: plan
+                .iter()
+                .map(|o| RunRow { kind: o.kind.clone(), display: o.display.clone(), status: "queued", effect: None, error: None })
+                .collect(),
+            status: "running",
+            app_swapped: None,
+        }
+    }
+
+    /// The next row to run, marked `running` — `None` when the run is over.
+    pub fn start_next(&mut self) -> Option<usize> {
+        if self.status != "running" || self.rows.iter().any(|r| r.status == "running") {
+            return None;
+        }
+        let i = self.rows.iter().position(|r| r.status == "queued")?;
+        self.rows[i].status = "running";
+        Some(i)
+    }
+
+    /// Record row `i`'s outcome. A failure stops the chain: every later row becomes
+    /// `notReached` and the run is `failed`; the last success settles the run `ok`.
+    pub fn settle(&mut self, i: usize, outcome: std::result::Result<String, String>) {
+        match outcome {
+            Ok(effect) => {
+                self.rows[i].status = "ok";
+                self.rows[i].effect = Some(effect);
+                if self.rows.iter().all(|r| r.status == "ok") {
+                    self.status = "ok";
+                }
+            }
+            Err(error) => {
+                self.rows[i].status = "failed";
+                self.rows[i].error = Some(error);
+                for r in self.rows.iter_mut().skip(i + 1) {
+                    if r.status == "queued" {
+                        r.status = "notReached";
+                    }
+                }
+                self.status = "failed";
+            }
+        }
+    }
+
+    /// Settled rows over all rows, for a bar that never rolls back.
+    pub fn pct(&self) -> u8 {
+        if self.rows.is_empty() {
+            return 100;
+        }
+        let done = self.rows.iter().filter(|r| r.status == "ok" || r.status == "failed").count();
+        (done * 100 / self.rows.len()) as u8
+    }
+}
+
+#[cfg(test)]
+mod run_tests {
+    use super::*;
+
+    fn offer(kind: UpdateKind, display: &str) -> UpdateOffer {
+        UpdateOffer {
+            label: kind.label(),
+            display: display.into(),
+            installed: "x".into(),
+            offered: "y".into(),
+            size_bytes: None,
+            consent: None,
+            effect: String::new(),
+            skipped: false,
+            kind,
+        }
+    }
+
+    fn three() -> Vec<UpdateOffer> {
+        vec![
+            offer(UpdateKind::Php { minor: "8.3".into() }, "PHP 8.3.28"),
+            offer(UpdateKind::Adminer, "Adminer 6.1.2"),
+            offer(UpdateKind::App, "rexenv 0.9.1"),
+        ]
+    }
+
+    /// Sequential, in plan order, the app last, and the run settles `ok` only when every row did.
+    #[test]
+    fn update_all_runs_the_plan_in_order_and_settles_ok_after_the_last_row() {
+        let mut run = RunState::new("r".into(), &three());
+        assert_eq!(run.pct(), 0);
+        let a = run.start_next().unwrap();
+        assert_eq!((a, run.rows[0].status), (0, "running"));
+        assert_eq!(run.start_next(), None, "one row at a time: nothing starts while a row runs");
+        run.settle(0, Ok("PHP 8.3 is now on 8.3.28".into()));
+        assert_eq!(run.status, "running");
+        assert_eq!(run.pct(), 33);
+        let b = run.start_next().unwrap();
+        run.settle(b, Ok("Adminer is now on 6.1.2".into()));
+        let c = run.start_next().unwrap();
+        assert_eq!(run.rows[c].kind, UpdateKind::App, "the app is the LAST step");
+        run.settle(c, Ok("swapped".into()));
+        assert_eq!(run.status, "ok");
+        assert_eq!(run.pct(), 100);
+        assert_eq!(run.start_next(), None);
+    }
+
+    /// The FIRST failure stops the chain: later rows are `notReached`, never started, and the
+    /// run is `failed` — the app row included, so a broken pool swap never ends in a restart prompt.
+    #[test]
+    fn update_all_stops_at_the_first_failure_and_marks_the_rest_not_reached() {
+        let mut run = RunState::new("r".into(), &three());
+        let a = run.start_next().unwrap();
+        run.settle(a, Err("PHP 8.3 did not come back on 8.3.28, so it was put back on 8.3.27".into()));
+        assert_eq!(run.status, "failed");
+        assert_eq!(run.rows[0].status, "failed");
+        assert_eq!(run.rows[0].error.as_deref().unwrap_or(""), "PHP 8.3 did not come back on 8.3.28, so it was put back on 8.3.27");
+        assert_eq!(run.rows[1].status, "notReached");
+        assert_eq!(run.rows[2].status, "notReached");
+        assert_eq!(run.start_next(), None, "nothing after the failure may start");
+        assert_eq!(run.pct(), 33, "the bar freezes where the work stopped");
+    }
+
+    /// The plan is the pending offers in inventory order; a set-aside offer is not in it.
+    #[test]
+    fn the_plan_is_the_pending_offers_in_inventory_order() {
+        let mut inv = UpdateInventory { offers: three(), ..Default::default() };
+        inv.offers[1].skipped = true;
+        let plan = plan_all(&inv);
+        assert_eq!(plan.iter().map(|o| o.display.as_str()).collect::<Vec<_>>(), ["PHP 8.3.28", "rexenv 0.9.1"]);
+    }
+}

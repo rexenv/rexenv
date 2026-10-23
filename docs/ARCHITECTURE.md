@@ -1278,7 +1278,14 @@ honest footer —
   the About card did (`data-probe="app-update"`, `data-phase`); one auto-check switch for every kind;
   one footer that keeps "couldn't reach", "refused what it published" and "checked N ago" three
   sentences (`check_problem` + `check_refusal`). The About section keeps the version and the
-  licences. Each row installs through its family's own command and says the MEASURED effect. The
+  licences. Each row installs through its family's own command and says the MEASURED effect.
+  **Update all** (T5, ledger #906; the button appears with more than one pending row) is ONE run
+  (`updates_apply_all`, polled by `updates_apply_all_state`): the pending rows in inventory order,
+  one at a time, each through the same family command its own Install uses — PHP pools and the
+  consoles first, the app LAST; the first failure stops the chain, every later row reads "not
+  reached", a sentence above the rows says where it stopped in the family's own words, and the
+  swapped app is acknowledged once (the page's dialog; only OK restarts) — the run restarts
+  nothing itself. `core::update_hub::RunState` holds the order and the bookkeeping, so both are L0. The
   three family screens no longer fetch the manifest on mount — the poller does, and
   `updates-changed` refreshes them. Both pills only navigate: the idle
   button calls `useCheckForUpdates` — the same door the menu event uses, About with `check=1`,

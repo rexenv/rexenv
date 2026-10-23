@@ -684,6 +684,16 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (23 Oct 2026): `uireview.js` `updateall-stops` / `updateall-completes` → `updateAll`**
+  (#906, PLAN-unified-updates T5) — the Updates page's **Update all** over a scripted mock that
+  advances ONE row per poll (`?run=stop` fails the second row): statuses settle `ok,failed,notReached`
+  in order with at most one `running` at a time, the stop sentence is the family's own, no restart
+  dialog when the app row was never reached; the completing run shows the dialog once, with the
+  backend's sentence, and fires no restart before OK. **What it cost:** the first run saw three rows
+  "queued" forever — a poll in flight before the press overwrote the seeded run and, keyed on
+  `running`, stopped the polling; the second saw a fast run end with no verdicts because they were
+  hidden on `ok`. Planted (the "Not reached" sentence dropped) → both widths red; the Rust driver is
+  planted separately (the `notReached` marking removed).
 - **Probes (23 Oct 2026): `uireview.js` `notices` → `notices`** (#901, PLAN-unified-updates T0) —
   the REAL `StartupNoticeHost` (`view=notices`) over three queued notices: a tunnel sweep WITH
   its door, a `warn` WITHOUT one, a plain info. The toasts are found by their fixture text,

@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { UpdateInventory, UpdateKind, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
+import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
@@ -881,6 +881,19 @@ export async function updatesSkip(kind: UpdateKind, version: string | null): Pro
 export async function updatesCheckNow(): Promise<UpdateInventory> {
   if (!isTauri()) return mockUpdateInventory;
   return invoke<UpdateInventory>("updates_check_now");
+}
+
+/** Start "Update all": every pending offer in inventory order, the app last, one after
+ *  another through each family's own command; the first failure stops the chain. */
+export async function updatesApplyAll(): Promise<UpdateRun> {
+  if (!isTauri()) return { id: "dev", rows: [], status: "ok", appSwapped: null };
+  return invoke<UpdateRun>("updates_apply_all");
+}
+
+/** The current (or last) Update-all run, polled by the page while it runs. */
+export async function updatesApplyAllState(): Promise<UpdateRun | null> {
+  if (!isTauri()) return null;
+  return invoke<UpdateRun | null>("updates_apply_all_state");
 }
 
 /** Subscribe to `updates-changed`: EITHER signed document (the app's descriptor or the

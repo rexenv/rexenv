@@ -10,6 +10,8 @@ import {
   appUpdateState,
   phpUpdateApply,
   phpmyadminUpdateApply,
+  updatesApplyAll,
+  updatesApplyAllState,
   updatesCheckNow,
   updatesInventory,
   updatesSkip,
@@ -21,7 +23,7 @@ import { agoLabel } from "@/routes/Sites";
 import { APP_UPDATE_CHECK_MUTATION, CHECK_FLAG } from "@/lib/useCheckForUpdates";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
 import { DB_CONSOLE_QUERY } from "@/lib/dbconsole";
-import type { DownloadsSnapshot, UpdateKind, UpdateOffer } from "@/types";
+import type { DownloadsSnapshot, UpdateKind, UpdateOffer, UpdateRunRow } from "@/types";
 
 /**
  * Settings → Updates: every kind of thing newer than what runs here — rexenv itself, a
@@ -212,6 +214,53 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
       }),
   });
 
+  // Update all (T5): ONE run at a time, polled while it runs. The rows below render the
+  // run's verdict for their kind — a spinner, the measured effect, the family's own
+  // failure sentence, or "not reached" after the first failure. When the app row swapped,
+  // the page asks ONCE before anything restarts (`appupdaterestart.js`'s rule).
+  const { data: run } = useQuery({
+    queryKey: ["updates-run"],
+    queryFn: updatesApplyAllState,
+    refetchInterval: (q) => (q.state.data?.status === "running" ? 800 : false),
+  });
+  const startAll = useMutation({
+    mutationFn: updatesApplyAll,
+    onSuccess: async (first) => {
+      // Cancel a poll already in flight BEFORE seeding: one that started before the press
+      // resolves to the previous run (or null) after this write, and would overwrite the
+      // seed — with `refetchInterval` keyed on `running`, that also stopped the polling
+      // (the WebKit check saw three rows "queued" forever, 23 Oct 2026).
+      await qc.cancelQueries({ queryKey: ["updates-run"] });
+      qc.setQueryData(["updates-run"], first);
+    },
+    onError: (e) => toastBackendError(e),
+  });
+  const settledRun = useRef<string | null>(null);
+  useEffect(() => {
+    if (!run || run.status === "running" || settledRun.current === run.id) return;
+    settledRun.current = run.id;
+    refreshAll();
+    const swapped = run.appSwapped;
+    if (swapped) {
+      void (async () => {
+        const go = await acknowledge({
+          title: `rexenv ${swapped[0]} is installed`,
+          message: swapped[1],
+          confirmLabel: "OK",
+        });
+        if (go) await appUpdateRestart().catch(toastBackendError);
+      })();
+    }
+    // `refreshAll` closes over a stable query client; the run id is the real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run]);
+  const running = run?.status === "running";
+  // The verdict stays on the row after the run settles — ok or not — until the inventory
+  // refresh removes an installed row; hiding it on success left a fast run looking like
+  // nothing had happened (the WebKit check, 23 Oct 2026).
+  const runRow = (o: UpdateOffer): UpdateRunRow | undefined =>
+    run?.rows.find((r) => JSON.stringify(r.kind) === JSON.stringify(o.kind));
+
   if (!st?.enabled) return null;
 
   const offers = inv?.offers ?? [];
@@ -300,9 +349,26 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
           <div className="text-[0.84375rem] font-medium text-rex-text">Updates</div>
           <div className="mt-0.5 text-[0.75rem] text-rex-text-muted">{headline}</div>
         </div>
+        {/* Update all: offered only when there is more than one thing to do (one row's
+            Install IS the whole job otherwise). Sequential, the app last, stops at the
+            first failure — the run's rows below say where it stopped. */}
+        {pending.length > 1 && !restartPending && (
+          <button
+            data-probe="update-all"
+            onClick={() => startAll.mutate()}
+            disabled={running || startAll.isPending || check.isPending || appInstalling || applying.size > 0}
+            title="Installs every row below, one after another, the way each row's own Install does — PHP pools and the consoles first, rexenv last. Stops at the first failure and says where."
+            className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-brand/40 bg-brand-active px-[13px] text-[0.78125rem] font-medium text-brand-tint transition-colors hover:border-brand disabled:opacity-60"
+          >
+            {running && (
+              <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+            )}
+            {running ? "Updating…" : `Update all (${pending.length})`}
+          </button>
+        )}
         <button
           onClick={() => check.mutate()}
-          disabled={check.isPending || appInstalling}
+          disabled={check.isPending || appInstalling || running}
           className="flex h-8 flex-none items-center gap-[7px] rounded-[9px] border border-rex-border-strong bg-rex-surface-2 px-[13px] text-[0.78125rem] font-medium text-rex-text-bright transition-colors hover:bg-rex-surface-2-hover disabled:opacity-60"
         >
           {check.isPending && (
@@ -312,10 +378,24 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
         </button>
       </div>
 
+      {/* A settled run that stopped: say where, above the rows, in the family's own words.
+          The rows after it read "not reached" — the bar froze where the work stopped. */}
+      {run && run.status === "failed" && (
+        <div
+          data-probe="update-all-stopped"
+          className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-status-warning-bright"
+        >
+          Update all stopped at {run.rows.find((r) => r.status === "failed")?.display}:{" "}
+          {run.rows.find((r) => r.status === "failed")?.error} The rows after it were not touched —
+          install them one at a time, or press Update all again once the cause is fixed.
+        </div>
+      )}
+
       {/* One row per offer, ONE shape, in Update-all order (the app last). */}
       {offers.map((o) => {
         const isApp = o.kind.kind === "app";
-        const busy = isApp ? appInstalling : applying.has(rowKey(o));
+        const verdict = runRow(o);
+        const busy = isApp ? appInstalling : applying.has(rowKey(o)) || verdict?.status === "running";
         const refusal = isApp && !o.skipped ? ready?.refusal ?? null : null;
         return (
           <div
@@ -334,9 +414,24 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
               </span>
             </div>
 
-            {/* Skipped: the version is remembered, not a flag — so a LATER release still
-                offers itself, and this row says which one was set aside. */}
-            {o.skipped ? (
+            {/* The Update-all run's verdict for this row, while a run is on or after it
+                stopped: the spinner, the MEASURED effect, the family's own failure sentence,
+                or "not reached" — never a guess about what a row that did not run would do. */}
+            {verdict && verdict.status !== "queued" ? (
+              <div
+                data-probe="update-row-verdict"
+                data-status={verdict.status}
+                className="mt-2 flex items-center gap-2 text-[0.75rem] text-rex-text-muted"
+              >
+                {verdict.status === "running" && (
+                  <span className="h-3 w-3 rounded-full border-2 border-brand/30 border-t-brand animate-rex-spin motion-reduce:animate-none" />
+                )}
+                {verdict.status === "running" && <span>Installing {o.display}…</span>}
+                {verdict.status === "ok" && <span className="text-status-running-bright">{verdict.effect}</span>}
+                {verdict.status === "failed" && <span className="text-status-error-bright">{verdict.error}</span>}
+                {verdict.status === "notReached" && <span>Not reached — Update all stopped before this row.</span>}
+              </div>
+            ) : o.skipped ? (
               <div className="mt-2 flex items-center gap-3 text-[0.75rem] text-rex-text-muted">
                 <span>
                   <span className="font-mono">{o.display}</span> was set aside. A newer{" "}

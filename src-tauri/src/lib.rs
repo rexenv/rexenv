@@ -402,6 +402,7 @@ pub fn run() {
             app.manage(commands::site_provision::ProvisionJobs::default());
             app.manage(commands::valet_import::ImportJobs::default());
             app.manage(commands::db_import::DbImportJobs::default());
+            app.manage(commands::update_hub::UpdateAllJobs::default());
             app.manage(commands::live_sync::LiveSyncJobs::default());
             // Registry of live per-site public tunnels (§9.1) + its health
             // prober (step 2 status honesty: dead children settled and public
@@ -1400,6 +1401,8 @@ pub fn run() {
             commands::update_hub::updates_inventory,
             commands::update_hub::updates_skip,
             commands::update_hub::updates_check_now,
+            commands::update_hub::updates_apply_all,
+            commands::update_hub::updates_apply_all_state,
             commands::php::php_update_apply,
             commands::database::adminer_status,
             commands::database::adminer_set_theme,
@@ -2404,7 +2407,7 @@ fn render_menu(
 ///    renders without disturbing an open menu;
 /// 3. anything else (a site added, an update offer appearing) → a real rebuild.
 ///    Rare, and there is no way to add a row to an open menu anyway.
-fn refresh_tray(app: &tauri::AppHandle) {
+pub(crate) fn refresh_tray(app: &tauri::AppHandle) {
     // No state yet: leave whatever is up. Replacing a menu with the bootstrap
     // one would be a menu going BACKWARDS in front of the user.
     let Some(model) = tray_model(app) else {

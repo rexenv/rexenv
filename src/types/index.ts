@@ -874,6 +874,27 @@ export interface UpdateInventory {
   checkProblem: string | null;
 }
 
+/** One row of an Update-all run (mirrors the Rust `RunRow`). */
+export interface UpdateRunRow {
+  kind: UpdateKind;
+  display: string;
+  status: "queued" | "running" | "ok" | "failed" | "notReached";
+  /** On ok: the effect the family MEASURED. */
+  effect: string | null;
+  /** On failed: the family's own sentence. */
+  error: string | null;
+}
+
+/** An Update-all run: sequential, inventory order, the app LAST, the first failure stops
+ *  the chain (every later row `notReached`). `appSwapped` = [version, restart sentence]
+ *  once the app row swapped; only the page's OK restarts. */
+export interface UpdateRun {
+  id: string;
+  rows: UpdateRunRow[];
+  status: "running" | "ok" | "failed";
+  appSwapped: [string, string] | null;
+}
+
 export interface AppUpdateReadiness {
   /** `null` when the update can be installed; otherwise why it cannot, with a
    *  copy-paste fix on the last line where one exists. */

@@ -116,3 +116,129 @@ pub fn updates_skip(
     }
     updates_inventory(state)
 }
+
+// ── Update all (T5) ───────────────────────────────────────────────────────────────────
+
+/// The one Update-all run (at most one at a time), kept for the page to poll.
+#[derive(Default)]
+pub struct UpdateAllJobs(std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<core::update_hub::RunState>>>>);
+
+impl UpdateAllJobs {
+    fn current(&self) -> Option<std::sync::Arc<std::sync::Mutex<core::update_hub::RunState>>> {
+        self.0.lock().ok().and_then(|g| g.clone())
+    }
+}
+
+/// Start "Update all": every pending offer, in inventory order (the app LAST), one after
+/// another, through each family's own apply command; the first failure stops the chain.
+/// Returns the run's first snapshot; `updates_apply_all_state` is polled for the rest.
+#[tauri::command]
+pub fn updates_apply_all(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    jobs: State<'_, UpdateAllJobs>,
+) -> Result<core::update_hub::RunState> {
+    if let Some(cur) = jobs.current() {
+        if cur.lock().map(|r| r.status == "running").unwrap_or(false) {
+            return Err(Error::Other("an Update all is already running — wait for it to settle".into()));
+        }
+    }
+    let inv = updates_inventory(state)?;
+    let plan = core::update_hub::plan_all(&inv);
+    if plan.is_empty() {
+        return Err(Error::Other("nothing is pending — every offer is installed or set aside".into()));
+    }
+    let run = std::sync::Arc::new(std::sync::Mutex::new(core::update_hub::RunState::new(
+        uuid::Uuid::new_v4().to_string(),
+        &plan,
+    )));
+    let snapshot = run.lock().map(|r| r.clone()).map_err(|_| Error::Other("update-all lock poisoned".into()))?;
+    if let Ok(mut g) = jobs.0.lock() {
+        *g = Some(run.clone());
+    }
+    tauri::async_runtime::spawn(run_all(app, plan, run));
+    Ok(snapshot)
+}
+
+/// The current (or last) Update-all run, if any.
+#[tauri::command]
+pub fn updates_apply_all_state(jobs: State<'_, UpdateAllJobs>) -> Option<core::update_hub::RunState> {
+    jobs.current().and_then(|r| r.lock().ok().map(|r| r.clone()))
+}
+
+async fn run_all(
+    app: tauri::AppHandle,
+    plan: Vec<core::update_hub::UpdateOffer>,
+    run: std::sync::Arc<std::sync::Mutex<core::update_hub::RunState>>,
+) {
+    use tauri::{Emitter, Manager};
+    loop {
+        let next = run.lock().ok().and_then(|mut r| r.start_next());
+        let Some(i) = next else { break };
+        let outcome = apply_one(&app, &plan[i]).await;
+        let Ok(mut r) = run.lock() else { break };
+        match outcome {
+            Ok((effect, swapped)) => {
+                if swapped.is_some() {
+                    r.app_swapped = swapped;
+                }
+                r.settle(i, Ok(effect));
+            }
+            Err(e) => r.settle(i, Err(e.to_string())),
+        }
+    }
+    // The facts moved: republish the tray's snapshot and tell every surface.
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(conn) = state.db.lock() {
+            if let Ok(inv) = core::update_hub::gather(&conn, state.platform.as_ref(), &[], false, &document()) {
+                core::update_hub::publish(&inv);
+            }
+        }
+    }
+    if let Err(e) = app.emit(crate::UPDATES_EVENT, ()) {
+        log::warn!("update all: could not tell the window: {e}");
+    }
+    crate::refresh_tray(&app);
+}
+
+/// One row, through its family's own command — the same code the row's own Install runs —
+/// answering the effect the family MEASURED, plus (the app only) the swap the page must
+/// acknowledge before anything restarts. The run never restarts anything itself.
+async fn apply_one(
+    app: &tauri::AppHandle,
+    o: &core::update_hub::UpdateOffer,
+) -> Result<(String, Option<(String, String)>)> {
+    use tauri::Manager;
+    let state = app.state::<AppState>();
+    match &o.kind {
+        core::update_hub::UpdateKind::Php { minor } => {
+            let out = crate::commands::php::php_update_apply(state, minor.clone(), o.offered.clone()).await?;
+            Ok((
+                if out.restarted {
+                    format!("PHP {minor} is now on {}", out.patch)
+                } else {
+                    format!("PHP {minor} will use {} — nothing was running to restart", out.patch)
+                },
+                None,
+            ))
+        }
+        core::update_hub::UpdateKind::Adminer => {
+            let st = crate::commands::database::adminer_update_apply(state, o.offered.clone()).await?;
+            Ok((format!("Adminer is now on {}", st.staged.unwrap_or(st.effective)), None))
+        }
+        core::update_hub::UpdateKind::PhpMyAdmin => {
+            let st = crate::commands::database::phpmyadmin_update_apply(state, o.offered.clone()).await?;
+            Ok((
+                format!("phpMyAdmin is now on {}", st.phpmyadmin_staged.unwrap_or(st.phpmyadmin_effective)),
+                None,
+            ))
+        }
+        core::update_hub::UpdateKind::App => {
+            let out = crate::commands::app_update::app_update_apply(state).await?;
+            Ok((
+                format!("rexenv {} is installed — it takes effect when rexenv next opens", out.version),
+                Some((out.version, out.notice)),
+            ))
+        }
+    }
+}

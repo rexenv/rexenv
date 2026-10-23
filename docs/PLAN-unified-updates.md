@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0–T4 built 23 Oct 2026 (ledger #901–#905); T5–T7 next. D1 (the read-only WordPress lines) is its own small task after T5.** Owner ask (23 Oct
+Status: **IN FLIGHT — T0–T5 built 23 Oct 2026 (ledger #901–#906); T6–T7 + D1 next.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -252,3 +252,13 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   passive `["downloads"]` read logged a "no queryFn" error on every render. D1 (read-only WordPress
   lines) deferred to after T5 — it needs a per-site update count the two-pass check only produces
   when a site's panel is open. Ledger #905.
+- **T5 — 23 Oct 2026.** `core::update_hub::{plan_all, RunState}` own the order and the bookkeeping
+  (one row at a time, the app last, the first failure → later rows `notReached`, `pct` frozen);
+  `commands::update_hub::updates_apply_all` spawns `run_all`, which drives each row through the
+  SAME family command its own Install uses (`php_update_apply`, `adminer_update_apply`,
+  `phpmyadmin_update_apply`, `app_update_apply`) and republishes the tray snapshot + `updates-changed`
+  when it settles; `updates_apply_all_state` is polled. The page: **Update all (n)** with more than one
+  pending row, per-row verdicts (spinner / measured effect / the family's sentence / "Not reached"),
+  a stop sentence above the rows, the restart dialog once when the app swapped. Two bugs found by the
+  L2: the in-flight poll overwriting the seed (now cancelled first) and verdicts hidden on `ok`. MCP
+  parity: both commands `Never`. Ledger #906.

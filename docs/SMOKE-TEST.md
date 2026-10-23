@@ -2811,6 +2811,17 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   Databases cards no longer fetch on open (no "manifest accepted" line when they mount). **Tell:** a
   row that installs without its consent sentence; a footer saying "up to date"; an About card still
   offering the app. Open: macOS · Windows · Linux.
+- [ ] **Update all** (`docs/PLAN-unified-updates.md` T5, ledger #906). With a PHP patch, a console
+  version and a rexenv release pending, press **Update all (3)**: the rows settle one after another,
+  top to bottom — "PHP 8.3 is now on 8.3.28" (green), then the console, then the rexenv row — and only
+  then the dialog "rexenv X is installed" with Rust's restart sentence; press OK → rexenv reopens on
+  X, the pill and tray item gone. Then the stopping case: make the console row fail (point its row at
+  a version the manifest lists but whose asset is unreachable, or pull the network mid-run) → the run
+  stops at that row with the family's own sentence in red, a line above the rows says where it
+  stopped, the rows after it read "Not reached — Update all stopped before this row", NO restart
+  dialog appears, the pill's count shows what is still pending. **Tell:** two rows installing at
+  once; a row after a failure that ran anyway; a restart with no dialog; "Update all" offered with
+  one row. Open: macOS · Windows · Linux.
   each OS's section.
 - [x] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
   item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise

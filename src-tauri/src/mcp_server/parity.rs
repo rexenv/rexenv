@@ -73,6 +73,8 @@ mod tests {
         ("updates_inventory", Gap("T6 of docs/PLAN-unified-updates.md — stack_status.updates + a read-only `updates` tool")),
         ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
         ("updates_check_now", Never("an interactive check is the person pressing a button, as app_update_check is (UPDATE_FLOW)")),
+        ("updates_apply_all", Never("Update all ends in the app's own install (UPDATE_FLOW); the per-kind installs an agent may run are the php / stack tools' apply actions")),
+        ("updates_apply_all_state", Never("the run is the person's page to watch; stack_status shows the inventory it leaves behind")),
         // ── valet_import: the banner's generation-keyed feed (#807); `valet_import` action
         //    `drift` reaches the same `drifted_takeover_records` (it reports the TLDs).
         ("resolver_drift_records", Tool("valet_import")),
