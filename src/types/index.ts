@@ -1283,6 +1283,8 @@ export interface PlatformWords {
   searchingBrowsers: string;
   /** Why OpenLiteSpeed cannot be chosen here — shown only where it is not offered (Windows). */
   openlitespeedUnavailable: string;
+  /** Why Apache cannot be chosen here — shown only where it is not offered (Linux, for now). */
+  apacheUnavailable: string;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

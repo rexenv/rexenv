@@ -340,8 +340,8 @@ export function NewSiteDialog({
 
   // The web-server picker offers what create would ACCEPT. The list comes from core
   // (`sites::offered_web_servers`, the same gate that refuses); SERVERS above is only where
-  // the labels live. On Windows neither Apache nor FrankenPHP has a pin (D4), so they are
-  // ABSENT rather than offered and then refused at create time (W10, ledger #643).
+  // the labels live. A server with no pin on this OS (OpenLiteSpeed on Windows, Apache on
+  // Linux) is ABSENT rather than offered and then refused at create time (W10, ledger #643).
   // Until the first answer arrives the picker shows the full list — what it always showed —
   // and narrows when core replies. A default built from SERVERS itself would be this module
   // deciding again, which is the shape the guard forbids.
@@ -359,9 +359,11 @@ export function NewSiteDialog({
       setWebServer(offeredServers[0].value);
     }
   }, [offered, offeredServers, webServer]);
-  // OpenLiteSpeed is not "not yet" anywhere it is missing — it has no Windows build at all —
-  // so its sentence is core's (`PlatformWords::openlitespeed_unavailable`), not this one.
-  const notYet = missingServers.filter((s) => s.value !== "openlitespeed");
+  // OpenLiteSpeed and Apache each have a per-OS sentence in core (`PlatformWords::
+  // openlitespeed_unavailable` — no Windows build exists at all — and `apache_unavailable`,
+  // which names the servers THIS OS offers instead); only a server with neither gets the
+  // generic "not yet" below.
+  const notYet = missingServers.filter((s) => s.value !== "openlitespeed" && s.value !== "apache");
   const serverNote =
     [
       notYet.length === 0
@@ -369,6 +371,7 @@ export function NewSiteDialog({
         : `${notYet.map((s) => s.label.replace(/ \(.*\)$/, "")).join(" and ")} ${
             notYet.length === 1 ? "isn't" : "aren't"
           } part of rexenv on ${words.osName} yet — rexenv only offers a server it has a pinned build for.`,
+      missingServers.some((s) => s.value === "apache") ? words.apacheUnavailable : undefined,
       missingServers.some((s) => s.value === "openlitespeed") ? words.openlitespeedUnavailable : undefined,
     ]
       .filter(Boolean)

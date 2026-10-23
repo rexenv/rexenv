@@ -8,50 +8,50 @@ App version **0.9.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 - `TODO.md:124` One update channel — open for the three SMOKE rows live per OS
 - `TODO.md:133` Windows: per-site servers — Apache and FrankenPHP
-- `TODO.md:143` Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM
-- `TODO.md:154` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
-- `TODO.md:171` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:221` PostgreSQL self-build for macOS 13/14
-- `TODO.md:227` Windows: two per-OS answers still read off macOS builds
-- `TODO.md:232` Windows: PHP's own curl has no CA bundle
-- `TODO.md:235` winget: PR 437674 waits for a moderator
-- `TODO.md:238` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
-- `TODO.md:241` Linux: the tunnel guard's normal-stop leg
-- `TODO.md:244` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:271` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:282` Radicle-hosted repos are unverified
-- `TODO.md:284` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:287` Windows `setup.exe /S` over a running app + agent sometimes exits 2
-- `TODO.md:297` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
+- `TODO.md:145` Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM
+- `TODO.md:156` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
+- `TODO.md:173` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:223` PostgreSQL self-build for macOS 13/14
+- `TODO.md:229` Windows: two per-OS answers still read off macOS builds
+- `TODO.md:234` Windows: PHP's own curl has no CA bundle
+- `TODO.md:237` winget: PR 437674 waits for a moderator
+- `TODO.md:240` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
+- `TODO.md:243` Linux: the tunnel guard's normal-stop leg
+- `TODO.md:246` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:273` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:284` Radicle-hosted repos are unverified
+- `TODO.md:286` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:289` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:299` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:317` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:319` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:381` The in-app update's remaining human rows (macOS)
-- `TODO.md:391` Release 5.4 — clean-Mac smoke test
-- `TODO.md:397` Tunnel probe session
-- `TODO.md:401` Intel spot-run
-- `TODO.md:406` In-app verifies owed
-- `TODO.md:422` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:434` The live pool swap is still L3
-- `TODO.md:438` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:446` Install WordPress into an empty LINKED folder
-- `TODO.md:453` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:383` The in-app update's remaining human rows (macOS)
+- `TODO.md:393` Release 5.4 — clean-Mac smoke test
+- `TODO.md:399` Tunnel probe session
+- `TODO.md:403` Intel spot-run
+- `TODO.md:408` In-app verifies owed
+- `TODO.md:424` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:436` The live pool swap is still L3
+- `TODO.md:440` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:448` Install WordPress into an empty LINKED folder
+- `TODO.md:455` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:460` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:499` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:510` Xdebug on PHP 8.0
-- `TODO.md:515` SMAppService privileged helper
-- `TODO.md:517` Developer ID signing + notarization
+- `TODO.md:462` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:501` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:512` Xdebug on PHP 8.0
+- `TODO.md:517` SMAppService privileged helper
+- `TODO.md:519` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:522` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:524` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
@@ -65,7 +65,7 @@ App version **0.9.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
 | `docs/PLAN-unified-updates.md` | **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compil… |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
-| `docs/PLAN-windows-servers.md` | **IN FLIGHT — T1 (the mirror, `httpd-windows-1`), T2 (the catalog) and T3 (the layout, the stop event) landed 24 Oct… |
+| `docs/PLAN-windows-servers.md` | **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909: the mirror `httpd-windows-1`, the catalog arms, `apache::Layout`… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)

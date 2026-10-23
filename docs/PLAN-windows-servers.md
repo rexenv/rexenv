@@ -1,6 +1,6 @@
 # PLAN — per-site web servers on Windows: Apache and FrankenPHP (OpenLiteSpeed stays refused)
 
-Status: **IN FLIGHT — T1 (the mirror, `httpd-windows-1`), T2 (the catalog) and T3 (the layout, the stop event) landed 24 Oct 2026 (ledger #909); next T4 FrankenPHP mail catch, T5 UI/words, T7 the run on the Win11 VM. Written 24 Oct 2026 (owner ask: "Windows has only nginx; add the other
+Status: **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909: the mirror `httpd-windows-1`, the catalog arms, `apache::Layout`, the stop event; T4 `frankenphp::MailCatchIni` — SMTP ini keys on Windows, forward-slash conf paths; T5 `apache_unavailable` per OS, the SiteDetail switch filtered by the offered set); next T7 the run on the Win11 VM, then T6's remaining doc sweep. Written 24 Oct 2026 (owner ask: "Windows has only nginx; add the other
 servers, plan first, then one task at a time"). T1–T7 below; each lands as its own commit with
 its docs, the Windows proof comes from a build run on the Win11 VM (W4's debt, PLAN-windows-port
 §4).**

@@ -119,6 +119,9 @@ fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
         // Not "yet": OpenLiteSpeed is a POSIX server with no Windows port anywhere. The
         // sentence is the platform's, so it can say what is true of THIS OS.
         Err(Error::Other(crate::platform::words::for_os(os).openlitespeed_unavailable.to_string()))
+    } else if server == WebServer::Apache {
+        // The platform's sentence too: it names the servers THIS OS does offer instead.
+        Err(Error::Other(crate::platform::words::for_os(os).apache_unavailable.to_string()))
     } else {
         Err(Error::Other(format!(
             "web server {} is not available on this platform yet",
@@ -3311,12 +3314,13 @@ mod tests {
         for server in [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache] {
             assert!(ensure_server_available_on(server, "windows").is_ok(), "{server:?} on Windows");
         }
-        // Linux: no Apache pin yet — the refusal names the server and says "yet".
+        // Linux: no Apache pin yet — the refusal is the platform's sentence, which names the
+        // servers Linux DOES offer and says "yet".
         let e = ensure_server_available_on(WebServer::Apache, "linux")
             .expect_err("no Linux Apache pin")
             .to_string();
-        assert!(e.contains("apache"), "the refusal must name the server: {e}");
-        assert!(e.contains("not available on this platform yet"), "{e}");
+        assert_eq!(e, crate::platform::words::for_os("linux").apache_unavailable);
+        assert!(e.contains("Apache") && e.contains("yet") && e.contains("OpenLiteSpeed"), "{e}");
         // OpenLiteSpeed (ledger #774): rexenv's own build for macOS and Linux, and NO Windows
         // build anywhere — so the Windows refusal is the permanent sentence, never "yet".
         for os in ["macos", "linux"] {

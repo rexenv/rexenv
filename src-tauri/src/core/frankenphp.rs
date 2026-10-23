@@ -143,6 +143,47 @@ pub fn generate_config(
     env: &[(String, String)],
     sendmail_path: Option<&str>,
 ) -> String {
+    let os = std::env::consts::OS;
+    generate_config_on(os, docroot, port, mode, env, sendmail_path.map(|s| MailCatchIni::for_os(os, s)))
+}
+
+/// How a FrankenPHP site's `mail()` reaches the catch-all — the per-OS half of #514
+/// (docs/PLAN-windows-servers.md D3). PHP on macOS/Linux has no mail sender of its own:
+/// `sendmail_path` names the Mailpit shim. PHP on Windows has a built-in SMTP sender and
+/// no `sh` to run a shim with, so the ini keys are `SMTP` + `smtp_port` — exactly what the
+/// php-cgi groups set (`php_cgi::render_ini`). One rule, keyed by `os` as data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MailCatchIni<'a> {
+    /// `php_ini sendmail_path "<shim>"` — the pools' shim string, verbatim.
+    Sendmail(&'a str),
+    /// `php_ini SMTP 127.0.0.1` + `php_ini smtp_port <port>` — Mailpit's SMTP port.
+    Smtp(u16),
+}
+
+impl<'a> MailCatchIni<'a> {
+    /// The rendering `os` needs, given the pools' shim string.
+    pub fn for_os(os: &str, shim: &'a str) -> Self {
+        if os == "windows" {
+            MailCatchIni::Smtp(crate::core::mail::MAILPIT_SMTP_PORT)
+        } else {
+            MailCatchIni::Sendmail(shim)
+        }
+    }
+}
+
+/// [`generate_config`] for a named `os` — the pure render every test calls with the OS
+/// spelled out, so neither half depends on the machine running it. Paths are written with
+/// forward slashes on Windows: the Caddyfile lexer treats a backslash inside quotes as an
+/// escape, and Caddy on Windows opens `C:/Users/...` fine.
+pub fn generate_config_on(
+    os: &str,
+    docroot: &Path,
+    port: u16,
+    mode: RewriteMode,
+    env: &[(String, String)],
+    catch: Option<MailCatchIni<'_>>,
+) -> String {
+    let root = crate::core::apache::path_for_conf(os, docroot);
     format!(
         "{{\n\
          \tauto_https off\n\
@@ -159,8 +200,8 @@ pub fn generate_config(
          \t}}\n\
          {body}\
          }}\n",
-        franken = frankenphp_block(sendmail_path),
-        root = docroot.display(),
+        franken = frankenphp_block(catch),
+        root = root,
         body = site_body(mode, env),
     )
 }
@@ -183,13 +224,16 @@ pub fn generate_config(
 /// quotes and keeps the single ones, and `ini_get('sendmail_path')` came back
 /// as the shim verbatim; a real `mail()` then ran the fake sendmail at a path
 /// with a space with the right argv.
-fn frankenphp_block(sendmail_path: Option<&str>) -> String {
-    match sendmail_path {
+fn frankenphp_block(catch: Option<MailCatchIni<'_>>) -> String {
+    match catch {
         None => String::new(),
-        Some(shim) => format!(
+        Some(MailCatchIni::Sendmail(shim)) => format!(
             " {{\n\t\tphp_ini sendmail_path \"\\\"{}\\\"\"\n\t}}",
             crate::core::site_env::escape_value(shim)
         ),
+        Some(MailCatchIni::Smtp(port)) => {
+            format!(" {{\n\t\tphp_ini SMTP 127.0.0.1\n\t\tphp_ini smtp_port {port}\n\t}}")
+        }
     }
 }
 
@@ -285,7 +329,7 @@ mod tests {
     #[test]
     fn the_catch_all_reaches_a_frankenphp_backend_as_php_ini_and_env() {
         let shim = super::super::mail::sendmail_path(Path::new("/Users/x/Application Support/mailpit"));
-        let cfg = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &[], Some(&shim));
+        let cfg = generate_config_on("macos", Path::new("/d"), 8200, RewriteMode::Single, &[], Some(MailCatchIni::Sendmail(&shim)));
         assert!(
             cfg.contains(&format!("\tfrankenphp {{\n\t\tphp_ini sendmail_path \"\\\"{shim}\\\"\"\n\t}}\n")),
             "the shim must sit in the global frankenphp block, wrapped in an inner pair of \
@@ -302,7 +346,7 @@ mod tests {
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect();
-        let with_env = generate_config(Path::new("/d"), 8200, RewriteMode::Single, &env, Some(&shim));
+        let with_env = generate_config_on("macos", Path::new("/d"), 8200, RewriteMode::Single, &env, Some(MailCatchIni::Sendmail(&shim)));
         for (k, v) in &env {
             assert!(with_env.contains(&format!("\t\tenv {k} \"{v}\"\n")), "missing env {k}: {with_env}");
         }
@@ -314,6 +358,29 @@ mod tests {
         // And a config with the catch differs from one without, which is what
         // makes the toggle's `reconcile_override_backends` a respawn.
         assert_ne!(cfg, off);
+    }
+
+    /// docs/PLAN-windows-servers.md D3 — **on Windows the catch is the SMTP ini keys, never a
+    /// sendmail shim** (PHP there has a built-in SMTP sender and no `sh`), the same keys the
+    /// php-cgi groups set; and the Caddyfile's paths are written with forward slashes, since
+    /// the lexer reads a backslash inside quotes as an escape.
+    #[test]
+    fn on_windows_the_catch_is_smtp_ini_keys_and_paths_use_forward_slashes() {
+        let shim = "'C:\\x\\mailpit.exe' sendmail -t";
+        assert_eq!(MailCatchIni::for_os("windows", shim), MailCatchIni::Smtp(super::super::mail::MAILPIT_SMTP_PORT));
+        assert_eq!(MailCatchIni::for_os("macos", shim), MailCatchIni::Sendmail(shim));
+        assert_eq!(MailCatchIni::for_os("linux", shim), MailCatchIni::Sendmail(shim));
+        let win = generate_config_on("windows", Path::new("C:\\Users\\Linkon Miyan\\Sites\\fp\\public"), 8200, RewriteMode::Single, &[], Some(MailCatchIni::for_os("windows", shim)));
+        assert!(win.contains("\tfrankenphp {\n\t\tphp_ini SMTP 127.0.0.1\n\t\tphp_ini smtp_port 11025\n\t}\n"), "{win}");
+        assert!(!win.contains("sendmail_path"), "a shim no Windows PHP can run: {win}");
+        assert!(win.contains("root * \"C:/Users/Linkon Miyan/Sites/fp/public\""), "{win}");
+        // (The regex escapes in the site body are Caddy's own; only PATHS must not carry one.)
+        for line in win.lines().filter(|l| l.contains("root *") || l.contains("php_server") || l.contains("file_server")) {
+            assert!(!line.contains('\\'), "a backslash reached a Caddyfile path: {line}");
+        }
+        // The macOS render of the same site is untouched by the rule.
+        let mac = generate_config_on("macos", Path::new("/Sites/fp/public"), 8200, RewriteMode::Single, &[], Some(MailCatchIni::for_os("macos", shim)));
+        assert!(mac.contains("sendmail_path") && !mac.contains("smtp_port"), "{mac}");
     }
 
     #[test]

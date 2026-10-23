@@ -125,6 +125,11 @@ pub struct PlatformWords {
     /// build) and the sentence is never shown; on Windows it is the permanent truth — no
     /// OpenLiteSpeed build exists for Windows at all, so "not available yet" would be a promise.
     pub openlitespeed_unavailable: &'static str,
+    /// Why Apache cannot be chosen on this OS. macOS (the Homebrew bottle bundle) and Windows
+    /// (Apache Lounge's build, mirrored — docs/PLAN-windows-servers.md) ship it and never show
+    /// the sentence; Linux has no pin yet (Homebrew's httpd bottles are x86_64-only and
+    /// unrelinked, PORTS D-L8), so there it is "yet" — a build is possible, nobody has made one.
+    pub apache_unavailable: &'static str,
     /// Exit codes that mean the program never ran because the OS loader could not start it, and
     /// what to do — said in place of a bare number wherever a child's exit is reported
     /// (`core::proc::exit_text`). Windows: php.net's PHP and Oracle's MySQL link the Microsoft
@@ -171,6 +176,7 @@ pub const MACOS: PlatformWords = PlatformWords {
          Apple developer signature yet, so each build is a new identity to it.",
     searching_browsers: "Chrome and Safari",
     openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
+    apache_unavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
     loader_failures: &[],
 };
 
@@ -208,7 +214,8 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     update_replaces: "rexenv's program files (your data folder is not touched)",
     update_reprompt: "",
     searching_browsers: "Chrome and Edge",
-    openlitespeed_unavailable: "OpenLiteSpeed has no Windows build — it exists for macOS and Linux only. Choose Nginx for this site.",
+    openlitespeed_unavailable: "OpenLiteSpeed has no Windows build — it exists for macOS and Linux only. Choose Nginx, Apache or FrankenPHP for this site.",
+    apache_unavailable: "Apache is not installed in this build of rexenv — choose Nginx or FrankenPHP.",
     loader_failures: &[
         // STATUS_DLL_NOT_FOUND
         (
@@ -261,7 +268,8 @@ pub const LINUX: PlatformWords = PlatformWords {
     update_replaces: "rexenv's program files",
     update_reprompt: "",
     searching_browsers: "Chrome and Firefox",
-    openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
+    openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx or FrankenPHP.",
+    apache_unavailable: "Apache is not part of rexenv on Linux yet — choose Nginx, FrankenPHP or OpenLiteSpeed.",
     loader_failures: &[],
 };
 

@@ -80,6 +80,18 @@ impl Layout {
     }
 }
 
+/// A path as a generated server conf spells it on `os`: forward slashes on Windows
+/// (httpd and Caddy both accept `C:/…`, and a backslash inside a quoted Caddyfile string
+/// is an escape), the path as-is elsewhere. Shared with `core::frankenphp`.
+pub fn path_for_conf(os: &str, path: &Path) -> String {
+    let s = path.display().to_string();
+    if os == "windows" {
+        s.replace('\\', "/")
+    } else {
+        s
+    }
+}
+
 /// The layout for THIS host.
 pub fn layout() -> Layout {
     Layout::for_os(std::env::consts::OS)
@@ -214,11 +226,11 @@ pub fn generate_config(
          RewriteRule .* - [E=HTTPS:on]\n\
          RewriteRule \"(^|/)\\.(?!well-known(/|$))\" - [R=404,L]\n\
          {routing}",
-        basedir = basedir.display(),
+        basedir = path_for_conf(os, basedir),
         mime = layout.mime_types,
-        run = run_dir.display(),
-        logs = log_dir.display(),
-        docroot = docroot.display(),
+        run = path_for_conf(os, run_dir),
+        logs = path_for_conf(os, log_dir),
+        docroot = path_for_conf(os, docroot),
         routing = routing(mode),
     )
 }
@@ -387,6 +399,18 @@ mod tests {
         assert_eq!(win_modules.len(), MODULES.len());
         assert_eq!(Layout::for_os("windows").bin, "bin/httpd.exe");
         assert_eq!(Layout::for_os("linux").bin, "bin/httpd", "every POSIX host reads the bottle layout");
+        // Windows paths are spelled with forward slashes everywhere the conf names one.
+        let win_paths = generate_config(
+            "windows",
+            Path::new("C:\\Users\\Linkon Miyan\\AppData\\Local\\rexenv\\rexenv\\data\\bin\\httpd-2.4.69"),
+            Path::new("C:\\Users\\Linkon Miyan\\Sites\\ap site\\public"),
+            "ap.rex", 8300, 9783, RewriteMode::Single, &[],
+            Path::new("C:\\data\\run"), Path::new("C:\\data\\logs"),
+        );
+        assert!(win_paths.contains("ServerRoot \"C:/Users/Linkon Miyan/AppData/Local/rexenv/rexenv/data/bin/httpd-2.4.69\""), "{win_paths}");
+        assert!(win_paths.contains("DocumentRoot \"C:/Users/Linkon Miyan/Sites/ap site/public\""), "{win_paths}");
+        assert!(win_paths.contains("PidFile \"C:/data/run/apache-ap.rex.pid\""), "{win_paths}");
+        assert_eq!(path_for_conf("macos", Path::new("/a b/c")), "/a b/c");
     }
 
     #[test]

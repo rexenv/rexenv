@@ -62,6 +62,7 @@ import {
   listSites,
   logTargets,
   moveSiteDocroot,
+  offeredWebServers,
   openExternal,
   pickFolder,
   regenerateSiteCert,
@@ -583,6 +584,17 @@ function Overview({
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.name ?? site.webServer;
+  // The switch offers what core would ACCEPT (the New Site dialog's rule, ledger #643): a
+  // server with no pin on this OS is absent, not listed-then-refused. The site's current
+  // server stays selectable even when it is not offered (a blueprint or an older build set it).
+  const { data: offeredServerValues } = useQuery({
+    queryKey: ["offered-web-servers"],
+    queryFn: offeredWebServers,
+    staleTime: Infinity,
+  });
+  const offeredServers = offeredServerValues
+    ? SERVERS.filter((s) => offeredServerValues.includes(s.value) || s.value === site.webServer)
+    : SERVERS;
 
   // The site's OWN version's EOL date, when core says it has one. Read from the
   // same option rows the select renders, so the badge and the list can never
@@ -654,7 +666,7 @@ function Overview({
               {!SERVERS.some((s) => s.value === site.webServer) && (
                 <option value={site.webServer}>{site.webServer}</option>
               )}
-              {SERVERS.map((s) => (
+              {offeredServers.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>

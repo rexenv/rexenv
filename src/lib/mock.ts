@@ -37,6 +37,7 @@ export const mockPlatformWords: PlatformWords = {
   pathSep: "/",
   searchingBrowsers: "Chrome and Safari",
   openlitespeedUnavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
+  apacheUnavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
 };
 
 export const mockAppInfo: AppInfo = {
