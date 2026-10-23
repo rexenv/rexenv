@@ -2797,6 +2797,12 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   (3)…`. Skip the PHP patch (T4's row) → the count drops to 2 everywhere at once. **Tell:** a pill that
   names only rexenv while a PHP patch is pending; three toasts; a tray item that disagrees with the
   pill. Open (needs a published manifest naming a newer PHP patch than the pin): macOS · Windows · Linux.
+  ◐ **The one-offer shape ran on Windows** — **Windows, the Win11 ARM VM, the 0.9.1 release build (`setup.exe`), 24 Oct 2026, GUI through the
+  foreground-guarded click task:** the live manifest offered Adminer 6.1.2 over the
+  6.1.1 pin, so on Sites the TopBar pill read `↑ Update to Adminer 6.1.2` (whole, at 1448 wide), the sidebar
+  `● Update ready`, and `rex status` printed `update   Adminer 6.1.2 can be installed from Settings → Updates`.
+  Not seen: the toast (it fired at the `--hidden` login launch, before the window was watched) and the tray
+  item; the PHP kind and the count shape stay open on every OS.
 - [ ] **Settings → Updates installs every kind from one page** (`docs/PLAN-unified-updates.md` T4,
   ledger #905). Click any pill, toast or the tray item → Settings → **Updates** (a new section; About
   keeps version + licences). One row per offer, one shape: `PHP 8.3  8.3.27 → 8.3.28`, `Adminer
@@ -2814,6 +2820,14 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   come back to Settings → Updates → a line "<domain> · N plugin updates — open the site" under the
   rows, NOT counted in the pill or Update all; a site whose tab was never opened has no line. Open:
   macOS · Windows · Linux.
+  ◐ **The Adminer kind ran on Windows, end to end** — **Windows, the Win11 ARM VM, the 0.9.1 release build (`setup.exe`), 24 Oct 2026, GUI through the
+  foreground-guarded click task:** the pill → Settings → **Updates**: header
+  "Adminer 6.1.2 has been published", one row `Adminer  6.1.1 → 6.1.2` with **Install Adminer 6.1.2** + **Skip
+  this version**, the D1 sentence, the one switch ("rexenv, PHP, Adminer and phpMyAdmin alike"), footer "Release
+  lists from rexenv, checked 4m ago"; Install → within ~12 s the toast "Adminer is now on 6.1.2", the row gone,
+  the header "rexenv 0.9.1 is what you are running, and nothing newer is offered", the pill and the rail gone, the
+  `rex status` line gone, `bin/adminer-6.1.2` staged, `adminer.rexenv.rex` 200. Not run: Skip/Undo, Check now,
+  the switch off, the PHP row, the D1 line with a checked site — and the row's running state was not caught (L2).
 - [ ] **Update all** (`docs/PLAN-unified-updates.md` T5, ledger #906). With a PHP patch, a console
   version and a rexenv release pending, press **Update all (3)**: the rows settle one after another,
   top to bottom — "PHP 8.3 is now on 8.3.28" (green), then the console, then the rexenv row — and only

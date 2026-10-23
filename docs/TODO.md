@@ -123,7 +123,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
-  a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1. The channel
+  a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer
+  kind ran on Windows on the 0.9.1 release build, 24 Oct 2026 — pill → page → Install → gone; SMOKE's ◐ notes). The channel
   itself is BUILT (owner ask 23 Oct 2026; `docs/PLAN-unified-updates.md` T0–T7 + D1, ledger #901–#908, L0 + WebKit on
   the dev Mac, Windows and Linux compiled): one poller behind one setting, one inventory (`core/update_hub.rs`, app
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first

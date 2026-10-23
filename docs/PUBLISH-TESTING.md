@@ -140,16 +140,25 @@ Mailpit 2196 kept; 11 sites answered the codes their content gives (`conv71l`, `
 pull fixtures 404 — **from PHP**: `X-Powered-By: PHP/8.3.36` / `PHP/7.4.33` on every 404), phpMyAdmin and Adminer
 200 on every probe (+6 s → +42 s). P1: a fresh `.rex` name → 127.0.0.1, `example.com` via `enp0s1`; `/var/crash`
 empty; the agent kickstarted the same way. The AppImage was hashed, not run (it would repoint the deb's units).
-**Windows ◐ on the Win11 ARM VM (`192.168.65.4`), from the PUBLISHED 0.9.0 — NO console session (the VM had
-rebooted; `query user` empty), so the app, the stack and the agent were down:** `setup.exe /S` → exit 0 in 6 s;
+**Windows ✅ on the Win11 ARM VM (`192.168.65.4`), from the PUBLISHED 0.9.0 — installed with NO console session
+(the VM had rebooted; app, stack and agent down), then the owner signed in:** `setup.exe /S` → exit 0 in 6 s;
 `rexenv.exe` and Apps & Features 0.9.1, the Run key's `--hidden` kept, the `\rexenv\dns-agent` task Ready,
 `uninstall.exe` present, `rex 0.9.1 (6c83224)`, NotSigned (as ruled). The install folder's owner read
-`BUILTIN\Administrators` through the elevated SSH token (0.9.0's Dell run read user-owned from its own token —
-re-read from the console). **Owed on Windows, needs a signed-in desktop:** the launch (`rex … · app rexenv 0.9.1`),
-the agent back on `udp 53`, #898's php-cgi group moving onto php.net's 8.3.36, sites 200.
-**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the three
-unified-updates SMOKE rows (`docs/PLAN-unified-updates.md` — nothing in the published manifest is newer than
-0.9.1's pins, so no pill/row/Update all can appear until the first manifest published after this release);
+`BUILTIN\Administrators` through the elevated SSH token (0.9.0's Dell run read user-owned from its own token).
+**The sign-in was #898's shape (b) for real** — the Run key launched 0.9.1 `--hidden`, the agent came up on
+`udp 53`, then `php: fetching 8.2's/8.3's/8.4's/8.5's missing or incomplete binaries` (php.net's 8.2.35, 8.3.36,
+8.4.27, 8.5.12; ~6 s each) with `auto-start: waiting for the launch's binary repair before starting`, and the stack
+came up by itself: 12/12, every php-cgi group on the new build (`X-Powered-By: PHP/8.3.36`, `/7.4.33`, `/8.0.30`,
+`/8.1.34`, `/8.4.27`, `/8.5.12` on the smk sites), `laravel.rex` and `phpmyadmin.rexenv.rex` 200 after a cold
+first request (the first probe at 10 s timed out), Adminer 200. **And the unified channel's first GUI run on a
+release build** (the manifest offered Adminer 6.1.2 over the 6.1.1 pin): `rex status` printed `update   Adminer
+6.1.2 can be installed from Settings → Updates`; the TopBar pill `↑ Update to Adminer 6.1.2` + the rail `● Update
+ready` → click → Settings → Updates (one row, Install + Skip, the D1 sentence, the switch, "checked 4m ago") →
+Install → "Adminer is now on 6.1.2", the row, pill, rail and status line gone — SMOKE's two ◐ notes.
+**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the
+unified-updates SMOKE rows beyond the Adminer kind on Windows (`docs/PLAN-unified-updates.md` — no PHP patch
+newer than 0.9.1's pins is published, so the PHP row, the count shape and Update all wait for the first manifest
+after this release; macOS and Linux had nothing pending at all);
 §M (needs Publish — and the 0.9.0 → 0.9.1 in-app update IS the first released proof of the new pill, on the
 three VMs, which still carry the published 0.9.0 data).
 

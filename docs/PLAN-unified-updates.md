@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compiled; OWED: the three SMOKE rows live on each OS (they need a published manifest naming a newer PHP patch than the pin, i.e. the first release after this), D1 built the same day (ledger #908).** Owner ask (23 Oct
+Status: **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compiled; OWED: the three SMOKE rows live on each OS (they need a published manifest naming a newer PHP patch than the pin, i.e. the first release after this); the Adminer kind ran on Windows on the 0.9.1 release build (24 Oct 2026), D1 built the same day (ledger #908).** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
