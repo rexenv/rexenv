@@ -2779,7 +2779,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   TopBar pill → About (card: "rexenv 0.8.13 · 28.6 MB has been published"); sidebar pill → About
   (focus ring on the pill); Sites → Settings → General. **The first run found the pill PUSHED PAST
   the window's edge at the minimum width (980):** Sites' header is three buttons wide and the
-  search was a fixed 190 px — fixed the same day (the search shrinks to 100 px, the pill never
+  search was a fixed 190 px — fixed the same day (the search shrinks to 100 px — 80 px since 23 Oct 2026, for "Update to PHP 8.3.28" — the pill never
   shrinks, `appupdate.js` pins its fixture at 980 with Sites' real cluster and asserts the pill is
   inside the bar; the review fixture had carried ONE button). Re-run on the fixed build: the pill
   whole at 980, the search reading "Filter sit". Skip this version → the TopBar shows only the
@@ -2788,6 +2788,15 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   the backend WITHDRAWS a skipped offer — fixed the same day (row on `st.skipped && !offered`,
   fixture reshaped, L2 leg + plant); re-run on that build: Skip → "rexenv 0.8.13 was set aside. A
   newer release will still offer itself. Undo", both pills gone; Undo → the offer and both pills back. Windows (Dell, Win10) and Linux (Ubuntu VM): the same four notice legs ✓, see
+- [ ] **Every kind of update is noticed the same way** (`docs/PLAN-unified-updates.md` T3, ledger #904).
+  With a PHP patch published for an installed minor and NO newer rexenv: on Sites the TopBar pill
+  reads `↑ Update to PHP 8.3.28` (the version whole at the 980 minimum), the sidebar `● Update ready`,
+  a toast "PHP 8.3.28 can be installed → Show update" once, the tray item `Update to PHP 8.3.28…`.
+  With a PHP patch, an Adminer version AND a rexenv release published: `↑ 3 updates`, `● Updates
+  ready`, ONE toast "3 updates can be installed → Show updates" (never one per kind), tray `Updates
+  (3)…`. Skip the PHP patch (T4's row) → the count drops to 2 everywhere at once. **Tell:** a pill that
+  names only rexenv while a PHP patch is pending; three toasts; a tray item that disagrees with the
+  pill. Open (needs a published manifest naming a newer PHP patch than the pin): macOS · Windows · Linux.
   each OS's section.
 - [x] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
   item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise
@@ -3509,7 +3518,8 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar — and with
       Windows' title bar ABOVE the page, the pill stays visible and clickable at the narrowest
-      window. The push row too (window open across a background check). ✓ **16 Oct 2026, the Dell
+      window. The main body's "Every kind of update is noticed the same way" row runs here too
+      (the tray item is the only menu path on Windows, so its `Updates (3)…` title matters most). The push row too (window open across a background check). ✓ **16 Oct 2026, the Dell
       (Win10 22H2)**, `rexenv_0.8.12_x64-setup.exe` built there from this tree (version pinned so the
       live Windows manifest, serial 15, offered 0.8.13), installed `/S`, launched on the desktop:
       pills on Sites at first paint (push, relaunch form); TopBar pill → About (13.6 MB offer, Install
@@ -4120,7 +4130,8 @@ rexenv0 <name>` and read `Current Scopes:`.
       Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
       Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar, and the push
-      row (window open across a background check). ✓ **16 Oct 2026, Ubuntu 22.04 arm64 UTM VM**, this
+      row (window open across a background check); the main body's "Every kind of update is
+      noticed the same way" row runs here too (the appindicator item `Updates (3)…`). ✓ **16 Oct 2026, Ubuntu 22.04 arm64 UTM VM**, this
       tree's binary built in the linux-check container (0.8.12-pinned, `TAURI_CONFIG` devUrl null)
       installed over `/usr/bin/rexenv`, launched on the GNOME desktop: pills on Sites at first paint;
       TopBar pill → About (14.8 MB offer); sidebar pill → About (tooltip "An update is ready — open

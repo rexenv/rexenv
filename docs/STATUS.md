@@ -53,7 +53,7 @@ App version **0.9.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 754 · ◐ 127 · 🔨 5 · 🚫 17** of 903 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 754 · ◐ 128 · 🔨 5 · 🚫 17** of 904 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -61,7 +61,7 @@ App version **0.9.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 |---|---|
 | `docs/PLAN-linux-port.md` | SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open ro… |
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
-| `docs/PLAN-unified-updates.md` | **IN FLIGHT — T0–T2 built 23 Oct 2026 (ledger #901–#903); T3–T7 next.** Owner ask (23 Oct |
+| `docs/PLAN-unified-updates.md` | **IN FLIGHT — T0–T3 built 23 Oct 2026 (ledger #901–#904); T4–T7 next.** Owner ask (23 Oct |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
@@ -71,6 +71,6 @@ App version **0.9.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
   SQLite schema version              v45
   commands/wordpress.rs commands     65
   commands/repo.rs commands          26
-  src/lib/ipc/index.ts exports       301
+  src/lib/ipc/index.ts exports       302
   rex commands (cli_server arms)     110
 ```

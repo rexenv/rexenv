@@ -20,10 +20,10 @@ import {
   onAboutMenu,
   onServiceHealth,
   onTrayRoute,
-  appUpdateState,
   onAppUpdate,
   onUpdatesChanged,
   onCheckUpdatesMenu,
+  updatesInventory,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import { ABOUT_PATH, useCheckForUpdates } from "@/lib/useCheckForUpdates";
@@ -164,24 +164,29 @@ function FatalError({ message }: { message: string }) {
 function UpdateWatch() {
   const navigate = useNavigate();
   const told = useRef<string | null>(null);
-  const { data: st } = useQuery({
-    queryKey: ["app-update"],
-    queryFn: appUpdateState,
-    // No refetch loop: the launch check and the 6 h poller are the backend's
-    // cadence, and this reads whatever the card's own query already has.
+  // The ONE inventory (PLAN-unified-updates T3): rexenv, PHP patches, Adminer,
+  // phpMyAdmin in one list, the app last. Told, never polling: `updates-changed`
+  // and `app-update` invalidate it.
+  const { data: inv } = useQuery({
+    queryKey: ["updates"],
+    queryFn: updatesInventory,
     staleTime: Infinity,
   });
-  const offered = st?.offered?.version ?? null;
+  const pending = (inv?.offers ?? []).filter((o) => !o.skipped);
+  // One toast per SET of pending offers per run: a run that sees three offers
+  // says "3 updates", not three toasts; a fourth arriving later is a new set.
+  const key = pending.map((o) => `${JSON.stringify(o.kind)}:${o.offered}`).join("|");
   useEffect(() => {
-    if (!offered || told.current === offered) return;
-    told.current = offered;
+    if (!key || told.current === key) return;
+    told.current = key;
+    const one = pending.length === 1 ? pending[0] : null;
     // "Show update", not "Install…": the click only NAVIGATES, and the consent
-    // sentence in front of the one Install button is on the card (S5).
-    toast.info(`rexenv ${offered} can be installed`, {
-      label: "Show update",
+    // sentence in front of each Install button is on the page (S5).
+    toast.info(one ? `${one.display} can be installed` : `${pending.length} updates can be installed`, {
+      label: one ? "Show update" : "Show updates",
       onClick: () => navigate(ABOUT_PATH),
     });
-  }, [offered, navigate]);
+  }, [key, pending, navigate]);
   return null;
 }
 
@@ -226,6 +231,8 @@ function AppUpdateEventWatch() {
     onAppUpdate(() => {
       void qc.invalidateQueries({ queryKey: ["app-update"] });
       void qc.invalidateQueries({ queryKey: ["app-update-readiness"] });
+      // The app's offer is one row of the inventory.
+      void qc.invalidateQueries({ queryKey: ["updates"] });
     })
       .then((f) => {
         if (disposed) f();

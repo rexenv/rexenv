@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
+import type { UpdateInventory, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
@@ -27,6 +27,7 @@ import {
   mockAdminerStatus,
   mockDbConsoleStatus,
   mockAppUpdateState,
+  mockUpdateInventory,
   mockAppUpdateReadiness,
   mockPhpVersions,
   mockResolverDrift,
@@ -873,6 +874,14 @@ export async function onAppUpdate(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen("app-update", () => cb());
+}
+
+/** The ONE update inventory — every kind newer than what runs here, the app last
+ *  (`core::update_hub`). The pills and the toast read it with `staleTime: Infinity`:
+ *  told by `updates-changed` / `app-update`, never polling. */
+export async function updatesInventory(): Promise<UpdateInventory> {
+  if (!isTauri()) return mockUpdateInventory;
+  return invoke<UpdateInventory>("updates_inventory");
 }
 
 /** Subscribe to `updates-changed`: EITHER signed document (the app's descriptor or the

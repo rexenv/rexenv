@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, DbConsoleStatus, AppInfo, AppUpdateState, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
+import type { AdminerStatus, DbConsoleStatus, AppInfo, AppUpdateState, UpdateInventory, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
 
 /** macOS's platform words — the browser shell's answer, and `usePlatformWords`' answer until the backend's
  *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
@@ -431,3 +431,12 @@ export function mockAllSiteDomains(): Record<string, string[]> {
   }
   return out;
 }
+
+/** The dev-server inventory: nothing newer, nothing pending. */
+export const mockUpdateInventory: UpdateInventory = {
+  offers: [],
+  restartPending: null,
+  checkedAt: null,
+  autoCheck: true,
+  checkProblem: null,
+};

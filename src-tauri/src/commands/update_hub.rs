@@ -40,24 +40,10 @@ pub fn updates_inventory(state: State<'_, AppState>) -> Result<core::update_hub:
         .map(|f| f.homebrew)
         .unwrap_or(false);
     let conn = lock(&state)?;
-    let catalog = core::updates::cached(&conn);
-    let arch = core::updates::catalog_arch(platform.binaries().arch());
-    let app = core::app_update::state(&conn, &document());
-    let php = core::php::list_versions(&conn, &running, &catalog, arch)?;
-    let adminer_have = core::adminer::effective_version(platform, &conn);
-    let adminer_new = catalog.newer_than(core::updates::Family::Adminer, &adminer_have, arch);
-    let pma_have = core::phpmyadmin::effective_version(platform, &conn);
-    let pma_new = catalog.newer_than(core::updates::Family::PhpMyAdmin, &pma_have, arch);
-    Ok(core::update_hub::inventory(
-        &conn,
-        &core::update_hub::Facts {
-            app: &app,
-            homebrew,
-            php: &php,
-            adminer: (&adminer_have, adminer_new.as_deref()),
-            phpmyadmin: (&pma_have, pma_new.as_deref()),
-        },
-    ))
+    let inv = core::update_hub::gather(&conn, platform, &running, homebrew, &document())?;
+    // The tray reads a snapshot, never the database: publish what was just computed.
+    core::update_hub::publish(&inv);
+    Ok(inv)
 }
 
 /// "Check now": BOTH signed documents on the interactive deadline, then the inventory.

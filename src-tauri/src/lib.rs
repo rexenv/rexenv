@@ -1946,6 +1946,7 @@ async fn check_for_app_update(app: &tauri::AppHandle, state: &state::app::AppSta
                 }
                 (None, None) => log::info!("app update: nothing to offer"),
             }
+            publish_update_snapshot(&conn, state);
             true
         }
         Err(e) => {
@@ -1992,6 +1993,7 @@ async fn check_for_runtime_updates(app: &tauri::AppHandle, state: &state::app::A
             if let Err(e) = core::update_hub::store_checked(&conn) {
                 log::warn!("runtime updates: could not record the check: {e}");
             }
+            publish_update_snapshot(&conn, state);
             true
         }
         Err(e) => {
@@ -2004,6 +2006,20 @@ async fn check_for_runtime_updates(app: &tauri::AppHandle, state: &state::app::A
         announce_updates_changed(app);
     }
     accepted
+}
+
+/// Recompute the ONE inventory under the lock the caller already holds and publish the
+/// tray's snapshot (`update_hub::publish`). The tray may not read the database or verify a
+/// signature while drawing (#437/#438), so whoever changes the facts tells it here. The
+/// pools' running patches and the Homebrew fact are irrelevant to the count and skipped.
+fn publish_update_snapshot(conn: &rusqlite::Connection, state: &state::app::AppState) {
+    let document = core::app_update::this_document(
+        platform::current().app_bundle().descriptor_variant().as_deref(),
+    );
+    match core::update_hub::gather(conn, state.platform.as_ref(), &[], false, &document) {
+        Ok(inv) => core::update_hub::publish(&inv),
+        Err(e) => log::warn!("updates: could not compute the inventory for the tray: {e}"),
+    }
 }
 
 /// Tell every surface that reads the ONE inventory (`["updates"]`, `staleTime: Infinity`)
@@ -2300,9 +2316,14 @@ fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
         total,
         sites,
         mcp_on,
-        // The snapshot, never a read of the descriptor: drawing a menu must not
-        // verify a signature, and the tray may not block (#437/#438).
-        update: core::app_update::current_offer().map(|o| o.version),
+        // The snapshot, never a read of the descriptor or the database: drawing a menu
+        // must not verify a signature and may not block (#437/#438). Since
+        // PLAN-unified-updates T3 it is the hub's — every kind, the app among them.
+        update: core::update_hub::snapshot().and_then(|s| match (s.count, s.only) {
+            (0, _) => None,
+            (1, Some(display)) => Some(core::tray::TrayUpdate::One(display)),
+            (n, _) => Some(core::tray::TrayUpdate::Many(n)),
+        }),
         // A compiled-in constant, not a read: is there a key to check against.
         update_enabled: core::app_update::enabled(),
         stale: !fresh,
@@ -2561,8 +2582,8 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
         // that replaces the app itself.
         core::tray::TrayAction::UpdateTo(_) => {
             show_main_window(app);
-            if let Err(e) = app.emit(TRAY_ROUTE_EVENT, "/settings?section=about") {
-                log::warn!("tray: could not route to the update card: {e}");
+            if let Err(e) = app.emit(TRAY_ROUTE_EVENT, core::tray::UPDATES_ROUTE) {
+                log::warn!("tray: could not route to the updates: {e}");
             }
         }
         // "Check for Updates…" — the SAME event the macOS app menu raises, so
@@ -3320,13 +3341,15 @@ mod tests {
         assert!(body.contains("TrayModel"), "sliced the wrong function");
 
         assert!(
-            body.contains(&format!("app_update::current_{}", "offer()")),
-            "the tray must read the published snapshot"
+            body.contains(&format!("update_hub::{}", "snapshot()")),
+            "the tray must read the published snapshot (the hub's, since PLAN-unified-updates T3)"
         );
         for banned in [
             format!("app_update::{}", "cached("),
             format!("app_update::{}", "fetch("),
             format!("app_update::{}", "state("),
+            format!("update_hub::{}", "gather("),
+            format!("update_hub::{}", "inventory("),
         ] {
             assert!(
                 !body.contains(&banned),

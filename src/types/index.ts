@@ -848,8 +848,10 @@ export type UpdateKind =
 /** One live offer in the ONE inventory (`core::update_hub`, PLAN-unified-updates). */
 export interface UpdateOffer {
   kind: UpdateKind;
-  /** "PHP 8.3", "Adminer", "phpMyAdmin", "rexenv". */
+  /** "PHP 8.3", "Adminer", "phpMyAdmin", "rexenv" — the row's name. */
   label: string;
+  /** The short spelling every notice uses: "PHP 8.3.28", "Adminer 6.1.2", "rexenv 0.9.1". */
+  display: string;
   installed: string;
   offered: string;
   sizeBytes: number | null;
@@ -868,6 +870,8 @@ export interface UpdateInventory {
   restartPending: string | null;
   checkedAt: string | null;
   autoCheck: boolean;
+  /** What the last interactive check could not do ("couldn't reach" / "refused"); null from a read. */
+  checkProblem: string | null;
 }
 
 export interface AppUpdateReadiness {

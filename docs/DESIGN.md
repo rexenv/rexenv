@@ -46,8 +46,13 @@ the shipped UI toward one.
   A notice needs a verb or an icon that says what the value is for: the TopBar pill reads
   `↑ Update to 0.6.0` / `Restart to finish 0.6.0`, the sidebar's says `Update ready` with no
   version at all, and both are doors to Settings → About, never installers
-  (`UpdatePill.tsx`, ledger #885, `docs/archive/PLAN-update-notice.md`). **At the window's minimum
-  width the pill is what stays whole and the SEARCH is what gives** (190 → 100 px, `TopBar.tsx`):
+  (`UpdatePill.tsx`, ledger #885, `docs/archive/PLAN-update-notice.md`). **Since
+  `docs/PLAN-unified-updates.md` T3 the same pill carries every kind in ONE vocabulary**
+  (ledger #904): one pending offer by its short name — the app's bare version, otherwise
+  `↑ Update to PHP 8.3.28` / `Adminer 6.1.2` — several as a count, `↑ 3 updates` (the count in
+  mono), the rail `Updates ready`; the toast and the tray item ("Update to PHP 8.3.28…" /
+  "Updates (3)…") say the same words, and a set-aside offer is counted nowhere. **At the window's minimum
+  width the pill is what stays whole and the SEARCH is what gives** (190 → 80 px, `TopBar.tsx`):
   the first macOS run found the pill pushed past the window's edge on Sites, version and all,
   because the search was a fixed width and the review fixture had one header button where Sites
   has three (16 Oct 2026). A flex item cannot shrink below its nowrap text, so "the label

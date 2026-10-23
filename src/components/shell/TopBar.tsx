@@ -41,14 +41,17 @@ export function TopBar({
         )}
       </div>
       <div className="no-drag flex min-w-0 items-center gap-2.5">
-        {/* The search SHRINKS (to 100 px) before anything else does: at the window's
+        {/* The search SHRINKS (to 80 px) before anything else does: at the window's
             minimum width (980) the Sites header — three buttons plus the update
             pill — is wider than the bar, and a fixed 190 px input pushed the pill
             past the window's edge, version and all (the 15.8 UTM VM, 16 Oct 2026; the
             review fixture had carried ONE button, so the WebKit check never saw
-            the real cluster). */}
+            the real cluster). 100 px held the app's "Update to 0.9.1"; the longest
+            single offer the unified pill can carry, "Update to PHP 8.3.28", overflowed
+            by 11 px at that floor (23 Oct 2026), so the floor is 80 — the icon and a
+            few typed characters, which is what a filter box at its narrowest is for. */}
         {showSearch && (
-          <div className="relative w-[190px] min-w-[100px] shrink">
+          <div className="relative w-[190px] min-w-[80px] shrink">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 h-[15px] w-[15px] -translate-y-1/2 text-rex-text-dim"
               strokeWidth={1.9}

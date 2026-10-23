@@ -1261,8 +1261,12 @@ honest footer —
   skipped version), a spinner while the CARD's check is in flight (it reads the card's
   mutation by key, `useIsMutating`, and never starts one), `↑ Update to <version>` with an
   offer (installable or refused — the card says why), `Restart to finish <version>` with a
-  swapped build pending, and nothing with no key pinned. The rail pill exists only with a
-  notice, says `Update ready` / `Restart to finish update` with NO version, and links to
+  swapped build pending, and nothing with no key pinned. **Since `docs/PLAN-unified-updates.md`
+  T3 it reads the ONE inventory** (`["updates"]`, `core::update_hub`): one pending offer of any
+  kind by its short `display` (`↑ Update to PHP 8.3.28`, the app keeps its bare version), several
+  as `↑ 3 updates`; the toast says "PHP 8.3.28 can be installed" or "3 updates can be installed"
+  once per SET of offers per run; a set-aside offer is counted nowhere (ledger #904). The rail pill exists only with a
+  notice, says `Update ready` / `Updates ready` / `Restart to finish update` with NO version, and links to
   `/settings?section=about` as a SIBLING of the Settings link (a link inside a link is dead in
   WKWebView); Settings itself keeps going to General. **It replaced a bare mono `0.6.0` badge
   on Settings**, which users read as the running version. Both pills only navigate: the idle
@@ -2214,7 +2218,9 @@ words (the browser shell's mock and two dev review pages excepted).
   path to the check. Like the update item, it fetches nothing, takes no lock and installs
   nothing (#535).
 - **The update item is the ONE thing in the menu about the app itself** (ledger #535). It
-  appears only when a verified offer exists, reads `Update to 0.6.0…`, and OPENS Settings →
+  appears only when a verified offer exists, reads `Update to rexenv 0.6.0…` — since T3 of
+  `docs/PLAN-unified-updates.md` any one pending kind by its short name (`Update to PHP 8.3.28…`)
+  or a count (`Updates (3)…`), from the hub's published snapshot (`update_hub::snapshot`) — and OPENS Settings →
   About — the ellipsis is the promise. It never installs: the consent sentence and the button
   live in one place, and a menu item that skipped them would be a second path past the only
   sentence telling a user what pressing it costs. The version rides in the item's id, like a

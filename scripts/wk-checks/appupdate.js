@@ -109,6 +109,45 @@ const STATES = [
       if (nested) fails.push(`${tag}: ${nested} <a> nested inside an <a>`);
     }
 
+    // 3b. PLAN-unified-updates T3 — the SAME pill over the ONE inventory: a PHP patch
+    // alone names itself ("Update to PHP 8.3 8.3.28"); three kinds count ("3 updates", the
+    // count in mono); the rail says "Updates ready"; the toast says the count once.
+    // The control is the app-only legs above: their words did not change.
+    await page.goto(`${view("none")}&inv=php`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-probe="updatenotice-view"]', { timeout: 5000 });
+    await page.waitForTimeout(400);
+    {
+      const text = await bar().first().innerText();
+      if (!/Update to/.test(text) || !text.includes("PHP 8.3.28")) fails.push(`${width}/inv=php: the pill says "${text}", expected the PHP row by name`);
+      // And it FITS, version whole, at the window's minimum width — the longest single
+      // offer the pill can carry ("PHP 8.3.28"); "PHP 8.3 8.3.28" did not (23 Oct 2026).
+      const fit = await bar().first().evaluate((el) => {
+        const bar = el.closest("header").getBoundingClientRect();
+        const me = el.getBoundingClientRect();
+        const ver = el.querySelector(".font-mono");
+        return { inside: me.right <= bar.right + 0.5, whole: ver.scrollWidth <= ver.clientWidth + 0.5 && ver.getBoundingClientRect().right <= me.right + 0.5, right: Math.round(me.right), barRight: Math.round(bar.right) };
+      });
+      if (!fit.inside) fails.push(`${width}/inv=php: the pill overflows the bar (right ${fit.right} > ${fit.barRight})`);
+      if (!fit.whole) fails.push(`${width}/inv=php: the version is clipped inside the pill`);
+      if ((await bar().first().getAttribute("data-phase")) !== "offered") fails.push(`${width}/inv=php: a PHP offer alone must read as offered`);
+      if ((await rail().count()) !== 1 || !/Update ready/.test(await rail().first().innerText())) fails.push(`${width}/inv=php: the rail pill must say "Update ready" for one offer`);
+      const toasts = await page.locator('[role="status"] > div').allInnerTexts();
+      if (!toasts.some((t) => /PHP 8\.3\.28 can be installed/.test(t))) fails.push(`${width}/inv=php: no toast naming the PHP offer (${JSON.stringify(toasts)})`);
+    }
+    await page.goto(`${view("offered")}&inv=php,adminer`, { waitUntil: "networkidle" });
+    await page.waitForSelector('[data-probe="updatenotice-view"]', { timeout: 5000 });
+    await page.waitForTimeout(400);
+    {
+      const text = await bar().first().innerText();
+      if (!/3\s*updates/.test(text)) fails.push(`${width}/inv=many: the pill says "${text}", expected "3 updates"`);
+      if ((await bar().first().getAttribute("data-count")) !== "3") fails.push(`${width}/inv=many: data-count is not 3`);
+      if (!/Updates ready/.test(await rail().first().innerText().catch(() => ""))) fails.push(`${width}/inv=many: the rail must say "Updates ready"`);
+      const toasts = await page.locator('[role="status"] > div').allInnerTexts();
+      const counted = toasts.filter((t) => /3 updates can be installed/.test(t)).length;
+      if (counted !== 1) fails.push(`${width}/inv=many: ${counted} count toasts (expected exactly one; never one per kind) — ${JSON.stringify(toasts)}`);
+      if (toasts.some((t) => /rexenv 0\.6\.0 can be installed/.test(t))) fails.push(`${width}/inv=many: the app got its own toast beside the count`);
+    }
+
     // 4. The card's check in flight → the pill's spinner. The pill reads the
     // mutation; the CARD's button is what starts it (app_update_check never
     // settles in this fixture).

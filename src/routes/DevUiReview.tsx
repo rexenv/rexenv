@@ -1125,6 +1125,26 @@ export function DevUiReview() {
               return { ...base, noOfferReason: "nothing newer" };
           }
         }
+        // The ONE inventory (T3), derived from the SAME app-state fixture so the two
+        // cannot disagree, plus `?inv=php,adminer,phpmyadmin` for the other kinds. Reads
+        // count toward `__rexStateReads` too: a pill that polled the inventory would show
+        // up exactly like one that polled the app state.
+        case "updates_inventory": {
+          const w = window as unknown as { __rexStateReads?: number; __rexOfferNow?: boolean };
+          w.__rexStateReads = (w.__rexStateReads ?? 0) + 1;
+          const st = params.get("state");
+          const offers = [];
+          for (const k of (params.get("inv") ?? "").split(",").filter(Boolean)) {
+            if (k === "php") offers.push({ kind: { kind: "php", minor: "8.3" }, label: "PHP 8.3", display: "PHP 8.3.28", installed: "8.3.27", offered: "8.3.28", sizeBytes: null, consent: null, effect: "Downloads PHP 8.3.28 and restarts the 8.3 pool onto it — put back on 8.3.27 if the pool does not come up.", skipped: false });
+            if (k === "adminer") offers.push({ kind: { kind: "adminer" }, label: "Adminer", display: "Adminer 6.1.2", installed: "6.1.1", offered: "6.1.2", sizeBytes: null, consent: null, effect: "Downloads Adminer 6.1.2, checks it still binds to rexenv's login gate and frame protections, and restages the console onto it.", skipped: false });
+            if (k === "phpmyadmin") offers.push({ kind: { kind: "phpMyAdmin" }, label: "phpMyAdmin", display: "phpMyAdmin 5.2.4", installed: "5.2.3", offered: "5.2.4", sizeBytes: null, consent: null, effect: "Downloads phpMyAdmin 5.2.4, verifies the tree, and restages the console onto it.", skipped: false });
+          }
+          const appOffered = w.__rexOfferNow || st === "offered" || st === "refused" || st === "installing";
+          if (appOffered) offers.push({ kind: { kind: "app" }, label: "rexenv", display: "rexenv 0.6.0", installed: "0.5.0", offered: "0.6.0", sizeBytes: 31_400_000, consent: "FIXTURE CONSENT", effect: "Downloads rexenv 0.6.0, verifies it, replaces the running copy, then asks before restarting.", skipped: false });
+          if (st === "skipped") offers.push({ kind: { kind: "app" }, label: "rexenv", display: "rexenv 0.6.0", installed: "0.5.0", offered: "0.6.0", sizeBytes: null, consent: null, effect: "", skipped: true });
+          const restartPending = st === "installed-pending" || st === "installed-undecided" ? "0.6.0" : null;
+          return { offers, restartPending, checkedAt: "2026-09-06 09:00:00", autoCheck: st !== "auto-off", checkProblem: null };
+        }
         case "app_update_readiness":
           switch (params.get("state")) {
             case "refused":

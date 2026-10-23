@@ -32,6 +32,38 @@ pub struct TraySite {
     pub domain: String,
 }
 
+/// The pending updates, as the menu names them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrayUpdate {
+    /// Exactly one, in the inventory's short spelling: "Update to PHP 8.3.28…" /
+    /// "Update to rexenv 0.9.1…".
+    One(String),
+    /// Several: "Updates (3)…".
+    Many(usize),
+}
+
+impl TrayUpdate {
+    /// The item's title — the ONE vocabulary the pill and the toast use too.
+    pub fn title(&self) -> String {
+        match self {
+            TrayUpdate::One(display) => format!("Update to {display}…"),
+            TrayUpdate::Many(n) => format!("Updates ({n})…"),
+        }
+    }
+    /// The payload that rides in the action id, so a menu rebuilt between the render and
+    /// the click never carries a stale title over a new offer (the id changes with it).
+    fn payload(&self) -> String {
+        match self {
+            TrayUpdate::One(display) => display.clone(),
+            TrayUpdate::Many(n) => format!("{n} updates"),
+        }
+    }
+}
+
+/// Where the tray's update item and the pills open: Settings → About until
+/// PLAN-unified-updates T4 moves the rows to Settings → Updates (one constant to change).
+pub const UPDATES_ROUTE: &str = "/settings?section=about";
+
 /// Everything the menu is allowed to know. Assembled by the caller from the
 /// SAME sources the UI reads; nothing in here is measured by this module.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,14 +80,15 @@ pub struct TrayModel {
     pub total: u32,
     /// Most-recent-first, already capped or not — `build` caps it.
     pub sites: Vec<TraySite>,
-    /// A version a VERIFIED update offer names, if there is one.
+    /// What is pending in the ONE update inventory, if anything — a single offer by name
+    /// ("PHP 8.3" 8.3.28, "rexenv" 0.9.1) or a count (`docs/PLAN-unified-updates.md` T3).
     ///
-    /// Read from an in-process snapshot the app updates on every successful
-    /// check — never from the database, never from the network. The tray must
+    /// Read from an in-process snapshot (`update_hub::snapshot`) the app publishes on every
+    /// successful check — never from the database, never from the network. The tray must
     /// not measure anything and must not block on a lock (`PLAN-menubar-tray.md`
     /// §3), and a menu that fetched would do both a centimetre from the user's
     /// cursor.
-    pub update: Option<String>,
+    pub update: Option<TrayUpdate>,
     /// A release-signing key is pinned in this build (`app_update::enabled`), so
     /// there is something to check against. False in a dev build: the
     /// **Check for Updates…** item is then OMITTED rather than greyed — a door to
@@ -135,9 +168,9 @@ pub enum TrayAction {
     /// "About rexenv" opens, through the SAME event, so the two can never
     /// drift into two different About screens.
     About,
-    /// Show the window on Settings → About, where the update lives.
+    /// Show the window where the updates live ([`UPDATES_ROUTE`]).
     ///
-    /// The version rides in the id for the same reason a site's domain does:
+    /// What is offered rides in the id for the same reason a site's domain does:
     /// the menu is rebuilt every few seconds, and an index would open whatever
     /// slid into that position between the render and the click. **This never
     /// installs** — the consent sentence and the button live in ONE place, and
@@ -386,10 +419,10 @@ pub fn build(m: &TrayModel) -> MenuSpec {
     // rather than the stack, and it is the reason someone opens this menu on a
     // day when nothing is wrong. It OPENS the card — it does not install, and
     // the ellipsis says so.
-    if let Some(v) = &m.update {
+    if let Some(u) = &m.update {
         entries.push(MenuEntry::Item {
-            title: format!("Update to {v}…"),
-            action: TrayAction::UpdateTo(v.clone()),
+            title: u.title(),
+            action: TrayAction::UpdateTo(u.payload()),
             enabled: true,
             checked: None,
         });
@@ -754,17 +787,25 @@ mod tests {
         );
 
         let mut m = model();
-        m.update = Some("0.6.0".into());
+        m.update = Some(TrayUpdate::One("rexenv 0.6.0".into()));
         let spec = build(&m);
         let got = titles(&spec);
         // FIRST item in the menu: it is the one thing here about the app itself
         // rather than the stack, and it is why someone opens this menu on a day
         // when nothing is wrong.
-        assert_eq!(got.first().map(String::as_str), Some("Update to 0.6.0…"), "{got:?}");
+        assert_eq!(got.first().map(String::as_str), Some("Update to rexenv 0.6.0…"), "{got:?}");
         // The ellipsis is the promise: this opens something, it does not do it.
         assert!(got[0].ends_with('…'));
+        // Any kind by name, or a count — the one vocabulary (PLAN-unified-updates T3).
+        m.update = Some(TrayUpdate::One("PHP 8.3.28".into()));
+        assert_eq!(titles(&build(&m))[0], "Update to PHP 8.3.28…");
+        m.update = Some(TrayUpdate::Many(3));
+        assert_eq!(titles(&build(&m))[0], "Updates (3)…");
+        // A rebuilt menu whose offer changed carries a different id: the click can never
+        // land a stale title on a new offer.
+        assert_ne!(TrayAction::UpdateTo(TrayUpdate::Many(3).payload()), TrayAction::UpdateTo(TrayUpdate::Many(2).payload()));
 
-        let (_, enabled, checked) = item(&spec, &TrayAction::UpdateTo("0.6.0".into()));
+        let (_, enabled, checked) = item(&spec, &TrayAction::UpdateTo("rexenv 0.6.0".into()));
         assert!(enabled);
         assert_eq!(checked, None, "an update is not a toggle");
 
@@ -830,7 +871,7 @@ mod tests {
         m.sites.clear();
         m.summary = "stopped";
         m.running = 0;
-        for update in [None, Some("9.9.9".to_string())] {
+        for update in [None, Some(TrayUpdate::One("rexenv 9.9.9".into()))] {
             m.update = update;
             let spec = build(&m);
             let (title, enabled, checked) = item(&spec, &TrayAction::About);
@@ -889,7 +930,7 @@ mod tests {
         let base = build(&model());
 
         let mut added = model();
-        added.update = Some("0.7.0".into());
+        added.update = Some(TrayUpdate::One("rexenv 0.7.0".into()));
         assert!(!base.same_shape(&build(&added)), "an update offer adds a row");
 
         let mut dev = model();
@@ -999,14 +1040,14 @@ mod tests {
 
         // An offer: the update first, the check right under it, one group.
         let mut m = model();
-        m.update = Some("0.6.0".into());
+        m.update = Some(TrayUpdate::One("rexenv 0.6.0".into()));
         let offered = build(&m);
-        assert_eq!(&titles(&offered)[..2], ["Update to 0.6.0…", "Check for Updates…"]);
+        assert_eq!(&titles(&offered)[..2], ["Update to rexenv 0.6.0…", "Check for Updates…"]);
         no_double_separators(&offered);
 
         // A dev build: no Check item, with or without an offer, and no stray
         // separator where the group was.
-        for update in [None, Some("0.6.0".to_string())] {
+        for update in [None, Some(TrayUpdate::One("rexenv 0.6.0".into()))] {
             let mut dev = model();
             dev.update_enabled = false;
             dev.update = update;

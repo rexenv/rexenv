@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0–T2 built 23 Oct 2026 (ledger #901–#903); T3–T7 next.** Owner ask (23 Oct
+Status: **IN FLIGHT — T0–T3 built 23 Oct 2026 (ledger #901–#904); T4–T7 next.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -226,3 +226,15 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   `["updates"]`, `["php-versions"]`, `["adminer-status"]`, `["db-console"]`. The three screens'
   mount-time fetches stay until T4 replaces them (their wrappers would otherwise be uncalled).
   Scan test widened to both checks, planted. Ledger #903.
+- **T3 — 23 Oct 2026.** `UpdatePill` reads the ONE inventory beside the app state: one pending
+  offer by its short `display` ("Update to PHP 8.3.28"; the app keeps its bare version), several as
+  "3 updates" (count in mono, `data-count`), rail "Updates ready"; `UpdateWatch` toasts once per SET
+  of offers ("PHP 8.3.28 can be installed" / "3 updates can be installed → Show updates"); the tray
+  item is `TrayUpdate::One(display)` / `Many(n)` over `update_hub::snapshot()` — published by the
+  background checks, the command and a skip (`publish`), never read from the database while drawing
+  (the lib.rs scan now demands the hub's snapshot and bans `gather`/`inventory` there). `gather()`
+  moved fact-gathering into core so the command, the checks and the tray compute one list. Found
+  on the way: "Update to PHP 8.3 8.3.28" overflowed the bar by 11 px → one `display` per offer and
+  the TopBar search floor 100 → 80 px, with a fit leg in `appupdate.js`. IPC `updatesInventory`
+  lands with its first callers. The tray item and the pills still open About (`UPDATES_ROUTE`, one
+  constant) until T4. Ledger #904.

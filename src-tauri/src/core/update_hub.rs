@@ -25,9 +25,11 @@
 
 use crate::core::app_update::AppUpdateState;
 use crate::error::Result;
+use crate::platform::traits::Platform;
 use crate::state::models::PhpVersionView;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 
 /// Which thing the offer is about. `kind` is the wire tag; a PHP offer carries its minor
 /// because each minor is its own pool and its own install.
@@ -69,8 +71,12 @@ impl UpdateKind {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateOffer {
     pub kind: UpdateKind,
-    /// "PHP 8.3", "Adminer", "phpMyAdmin", "rexenv".
+    /// "PHP 8.3", "Adminer", "phpMyAdmin", "rexenv" — the row's name on the page.
     pub label: String,
+    /// The offer in the ONE short spelling the pill, the toast and the tray item all use:
+    /// "PHP 8.3.28", "Adminer 6.1.2", "rexenv 0.9.1". (The PHP label's minor is implied by
+    /// its patch; "PHP 8.3 8.3.28" overflowed the TopBar at 1200 px, 23 Oct 2026.)
+    pub display: String,
     /// What runs now — the EFFECTIVE version (the selection floored by the pin), never the pin.
     pub installed: String,
     /// What the signed document offers.
@@ -134,6 +140,7 @@ pub fn inventory(conn: &Connection, facts: &Facts<'_>) -> UpdateInventory {
             let kind = UpdateKind::Php { minor: row.minor.clone() };
             offers.push(UpdateOffer {
                 label: kind.label(),
+                display: format!("PHP {target}"),
                 skipped: skipped_version(conn, &kind).as_deref() == Some(target),
                 installed: row.patch.clone(),
                 offered: target.to_string(),
@@ -151,6 +158,7 @@ pub fn inventory(conn: &Connection, facts: &Facts<'_>) -> UpdateInventory {
         if let Some(target) = updatable {
             offers.push(UpdateOffer {
                 label: kind.label(),
+                display: format!("{} {target}", kind.label()),
                 skipped: skipped_version(conn, &kind).as_deref() == Some(target),
                 installed: have.to_string(),
                 offered: target.to_string(),
@@ -166,6 +174,7 @@ pub fn inventory(conn: &Connection, facts: &Facts<'_>) -> UpdateInventory {
         offers.push(UpdateOffer {
             kind: UpdateKind::App,
             label: UpdateKind::App.label(),
+            display: format!("rexenv {}", offer.version),
             installed: facts.app.running.clone(),
             offered: offer.version.clone(),
             size_bytes: Some(offer.size_bytes),
@@ -179,6 +188,7 @@ pub fn inventory(conn: &Connection, facts: &Facts<'_>) -> UpdateInventory {
         offers.push(UpdateOffer {
             kind: UpdateKind::App,
             label: UpdateKind::App.label(),
+            display: format!("rexenv {v}"),
             installed: facts.app.running.clone(),
             offered: v.clone(),
             size_bytes: None,
@@ -222,6 +232,65 @@ pub fn refusal_sentence(what: &str, reason: &str) -> String {
 /// The sentence for a check that could not reach the server at all.
 pub fn unreachable_sentence(reason: &str) -> String {
     format!("Couldn't reach the update server just now ({reason}). The last answer stands.")
+}
+
+/// Gather the four families' facts from the database and this machine, then judge them.
+/// The command layer, the background checks and the tray all call this ONE function, so
+/// no surface can compute a different list. `running` is what the pools execute (for the
+/// PHP rows' `serving`, irrelevant to the offers — the tray passes none); `homebrew` only
+/// changes the app row's consent sentence.
+pub fn gather(conn: &Connection, platform: &dyn Platform, running: &[String], homebrew: bool, document: &str) -> Result<UpdateInventory> {
+    let catalog = crate::core::updates::cached(conn);
+    let arch = crate::core::updates::catalog_arch(platform.binaries().arch());
+    let app = crate::core::app_update::state(conn, document);
+    let php = crate::core::php::list_versions(conn, running, &catalog, arch)?;
+    let adminer_have = crate::core::adminer::effective_version(platform, conn);
+    let adminer_new = catalog.newer_than(crate::core::updates::Family::Adminer, &adminer_have, arch);
+    let pma_have = crate::core::phpmyadmin::effective_version(platform, conn);
+    let pma_new = catalog.newer_than(crate::core::updates::Family::PhpMyAdmin, &pma_have, arch);
+    Ok(inventory(
+        conn,
+        &Facts {
+            app: &app,
+            homebrew,
+            php: &php,
+            adminer: (&adminer_have, adminer_new.as_deref()),
+            phpmyadmin: (&pma_have, pma_new.as_deref()),
+        },
+    ))
+}
+
+/// What the tray draws: the pending count and, when there is exactly one, its name.
+///
+/// Published in-process by whoever last computed the inventory — a background check, the
+/// command, a skip — and read by `tray_model`, which may neither block on a lock nor
+/// measure anything (ledger #437/#438; the app's `current_offer` has the same shape).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingSummary {
+    pub count: usize,
+    /// The one pending offer's `display` ("PHP 8.3.28"), when `count == 1`.
+    pub only: Option<String>,
+    pub restart_pending: Option<String>,
+}
+
+static SNAPSHOT: RwLock<Option<PendingSummary>> = RwLock::new(None);
+
+/// Publish what the tray may show. Called after every computation of the inventory.
+pub fn publish(inv: &UpdateInventory) {
+    let pending = inv.pending();
+    let summary = PendingSummary {
+        count: pending.len(),
+        only: (pending.len() == 1).then(|| pending[0].display.clone()),
+        restart_pending: inv.restart_pending.clone(),
+    };
+    if let Ok(mut s) = SNAPSHOT.write() {
+        *s = Some(summary);
+    }
+}
+
+/// The last published summary — for surfaces that may not block (the tray).
+pub fn snapshot() -> Option<PendingSummary> {
+    SNAPSHOT.read().ok().and_then(|s| s.clone())
 }
 
 /// The version set aside for `kind`, if any — the app's through its own key.
@@ -338,6 +407,8 @@ mod tests {
         assert_eq!(inv.offers[0].installed, "8.3.27");
         assert_eq!(inv.offers[0].offered, "8.3.28");
         assert_eq!(inv.offers[0].label, "PHP 8.3");
+        assert_eq!(inv.offers[0].display, "PHP 8.3.28", "the short spelling every notice uses");
+        assert_eq!(inv.offers[2].display, "rexenv 0.9.1");
         assert!(inv.offers[2].consent.as_deref().unwrap().contains("0.9.1"), "the app row carries Rust's consent sentence");
         assert_eq!(inv.offers[2].size_bytes, Some(31_000_000));
         assert_eq!(inv.pending().len(), 3);
@@ -393,6 +464,26 @@ mod tests {
         let now = store_checked(&c).unwrap();
         assert_eq!(inventory(&c, &facts).checked_at, Some(now), "once recorded, the hub's own stamp wins");
         assert!(inventory(&c, &facts).check_problem.is_none(), "a read never carries a problem; only an interactive check does");
+    }
+
+    /// The tray's snapshot names the ONE pending offer, counts several, and does not count a
+    /// skipped one — the pill, the toast and the tray item all read this same arithmetic.
+    #[test]
+    fn the_published_summary_names_one_and_counts_many_skipping_the_set_aside() {
+        let c = conn();
+        let a = app(Some("0.9.1"), None);
+        let rows = [php("8.3", "8.3.27", Some("8.3.28"))];
+        let mut inv = inventory(&c, &Facts { app: &a, homebrew: false, php: &rows, adminer: ("6.1.1", Some("6.1.2")), phpmyadmin: ("5.2.3", None) });
+        publish(&inv);
+        let s = snapshot().unwrap();
+        assert_eq!((s.count, s.only.clone()), (3, None));
+        inv.offers.retain(|o| o.kind == UpdateKind::Adminer);
+        publish(&inv);
+        assert_eq!(snapshot().unwrap().only.as_deref(), Some("Adminer 6.1.2"));
+        inv.offers[0].skipped = true;
+        publish(&inv);
+        let s = snapshot().unwrap();
+        assert_eq!((s.count, s.only), (0, None), "a set-aside offer is not counted anywhere");
     }
 
     /// A minor this OS has no build of, or one not installed, offers nothing even if the
