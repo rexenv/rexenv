@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.1 — DRAFTED 23 Oct 2026 (run 40006338995) — §A0, §A, the deb and Defender green; the Windows install leg green, its launch leg waits for a console session
+## A) ✅ 0.9.1 — PUBLISHED 23 Oct 2026 — §A0, §A, the deb, the setup.exe (Win11 VM), Defender, the six descriptors, apt and §M on all three green (one Windows finding)
 
 **Run 40006338995, source `6c832240` (tag `v0.9.1`, pushed), every lane green, 16 assets, the body the
 tag's verbatim.** dmg `b61389c0…`, `.app.tar.gz` `431fce4a…`, arm64 deb `25f0ee09…`, aarch64 AppImage
@@ -136,7 +136,8 @@ offers nothing above these pins — the new pill cannot be seen on this release;
 first:** `apt-get install ./…arm64.deb` 4 s → `dpkg -s` 0.9.1; `rexenv-edge` and `rexenv-dns-route` active;
 `gtk-launch` → `rex 0.9.1 (6c83224) · app rexenv 0.9.1 (6c83224)`; **#898:** both fpm masters moved (7.4 2199 →
 16037 onto `php-fpm-7.4.33`'s new bytes, 8.3 2203 → 15890 onto `php-fpm-8.3.36`), nginx 2209, caddy 985 and
-Mailpit 2196 kept; 11 sites answered the codes their content gives (`conv71l`, `gitl`, `l16lx`, `wtl` … 200; the
+Mailpit 2196 kept; 11 sites answered the codes their content gives (`conv71l`, `gitl`, `l16lx` 200; `wtl` and its
+worktree 403 from nginx — a folder with no index since a 10 Oct `git worktree remove`; the
 pull fixtures 404 — **from PHP**: `X-Powered-By: PHP/8.3.36` / `PHP/7.4.33` on every 404), phpMyAdmin and Adminer
 200 on every probe (+6 s → +42 s). P1: a fresh `.rex` name → 127.0.0.1, `example.com` via `enp0s1`; `/var/crash`
 empty; the agent kickstarted the same way. The AppImage was hashed, not run (it would repoint the deb's units).
@@ -161,6 +162,48 @@ newer than 0.9.1's pins is published, so the PHP row, the count shape and Update
 after this release; macOS and Linux had nothing pending at all);
 §M (needs Publish — and the 0.9.0 → 0.9.1 in-app update IS the first released proof of the new pill, on the
 three VMs, which still carry the published 0.9.0 data).
+
+**PUBLISHED 23 Oct 2026, 21:02:14Z.** `release-published.yml` green → the tap's Update cask (`brew info` 0.9.0 → 0.9.1),
+Notify the website and Install scripts green; `brew audit --cask --online` again exits 1 on the dev Mac's outdated
+Command Line Tools (a host fact). The macOS descriptor's dry run, then the six publishes approved together
+(runtimes PR #12's rebase-and-retry held: six of six pushed) and `check-app-manifest.sh` ×6 all green (macOS and
+the four Linux documents serial 22, Windows 17; every digest re-hashed against the published asset);
+`rexenv/apt` published (KEEP=3) and `check-apt-repo.sh` green (InRelease signed, amd64 and arm64 at 0.9.1).
+**§M — the 0.9.0 → 0.9.1 in-app update, on all three, with the STACK RUNNING and this release's data** (schema
+v45 on both sides, so the published 0.9.0 was simply put back over the 0.9.1 install on each VM — the dmg's app,
+`apt-get install --allow-downgrades`, `setup.exe /S` — and launched; each 0.9.0 saw the new descriptor within
+~1–2 min: "0.9.1 can be installed (serial 22 / 8 / 17)". The downgrade itself re-pinned PHP backwards, so the
+update back exercised #898's swap a second time on every OS.)
+- **macOS 15.8 VM:** the 0.9.0 rail `● Update ready` → About "rexenv 0.9.1 · 30.8 MB has been published" →
+  Install → "Downloading… 24.7 MB / 30.8 MB" → `swapped to 0.9.1 (AtomicSwap)` ~60 s after the press → the
+  dialog "rexenv 0.9.1 is installed" → OK → **reopened as `rex 0.9.1 (6c83224)` in 5 s**; `relaunch.log` "parent
+  97518 exited after 0.1s … opened /Applications/rexenv.app (open exit 0)"; "rexenv is now 0.9.1 (updated from
+  0.9.0)", "adopted 8 running service(s)", 0 crash reports; `smoke1` answered nothing on the first probe after the
+  relaunch and 200 two seconds later, `php74`, `sm763`, `l14vm` 200; the agent re-kickstarted onto 0.9.1.
+- **Ubuntu 22.04 arm64 VM:** the 0.9.0 pill `↑ Update to 0.9.1` → About → Install → 15.9 MB → ONE polkit
+  ("rexenv needs administrator permission to install the update it downloaded — the new rexenv package") →
+  `swapped to 0.9.1 (RenamePair)`, `dpkg -s` 0.9.1 → the dialog → OK → **reopened as 0.9.1 in 2 s** ("parent 63130
+  exited after 0.1s → started /usr/bin/rexenv"); "updated from 0.9.0", "adopted 7", `/var/crash` empty;
+  `conv71l`, `gitl`, `l16lx`, phpMyAdmin, Adminer 200 (`wtl` 403 from nginx, as before the update). **Fixture trap,
+  not a product fault:** an app launched over
+  ssh with `DISPLAY`/`XAUTHORITY`/`DBUS_SESSION_BUS_ADDRESS` exported belongs to the ssh login session, not the
+  seat's, so `pkexec` found no polkit agent and the apply refused honestly — the toast "could not put rexenv 0.9.1
+  in place (… no authentication agent is running …). The rexenv you were running is still installed and
+  untouched." twice, the 0.9.0 intact each time; launched from GNOME's search (`app-gnome-rexenv-*.scope`) the
+  prompt appeared. The 0.9.0 §M note "started from GNOME" was that lesson unrecorded.
+- **Win11 ARM VM:** the 0.9.0 pill `↑ Update to 0.9.1` → About (14.7 MB) → Install → `swapped to 0.9.1
+  (RenamePair)` 9 s after the press, "Apps & Features now reads 0.9.1", the pill `↓ Restart to finish 0.9.1` and
+  the rail `● Restart to finish update` → the dialog → OK → **back as 0.9.1 in 1 s** ("parent 9556 exited after
+  0.2s → started …\rexenv.exe (pid 11628)"); EXE and Apps & Features 0.9.1, the agent on `udp 53`, "adopted 12",
+  the previous bundle swept. **FOUND (a TODO row):** the relaunched 0.9.1 moved the 8.2 and 8.3 php-cgi groups
+  back onto 8.2.35 / 8.3.36 (0.9.0 had re-pinned them to .32), and the churn breaker (`php_cgi::SPIN_CPU_SHARE`,
+  ledger #605) stopped BOTH groups mid-start — "health: [gave-up] PHP-FPM 8.2/8.3: stopped — its php-cgi parent
+  was using most of a CPU core in a loop" (the group's output log empty), then "php: 8.3's patch-updated pool did
+  not become ready: PHP-FPM 8.3 did not start within 10s" — every 8.3 site 502 (laravel, lm, lv, slow2, Adminer)
+  while 7.4/8.0/8.1/8.4/8.5 stayed up, until `rex start` brought both groups up in 4 s (8.3.36 serving, sites 200,
+  `lm.rex` 27 s cold). This VM runs x64 php-cgi under ARM emulation, where a parent spawning its workers can
+  plausibly hold > 25 % of a core for > 5 s; the 16 Oct Dell run of the same swap (#898 (a)) did not trip it, and
+  the VM's own cold start at sign-in (seven groups) did not either. The Dell is the tell.
 
 ## A) ✅ 0.9.0 — PUBLISHED 17 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 

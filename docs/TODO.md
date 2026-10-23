@@ -130,6 +130,17 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
 
+- [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
+  running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned
+  builds, `health: [gave-up] PHP-FPM 8.2/8.3: stopped — its php-cgi parent was using most of a CPU core in a
+  loop` fired for BOTH within ~25 s of the swap (`php_cgi::SPIN_CPU_SHARE` 0.25 over ≥ 5 s, ledger #605), the
+  group's output log empty, then "8.3's patch-updated pool did not become ready" — every 8.3 site 502 until
+  `rex start` (4 s, then fine). The VM emulates x64 php-cgi on ARM, so a parent spawning 11 workers may hold a
+  quarter of a core for 5 s legitimately; the Dell's 16 Oct run of the same swap did not trip it. **Open:**
+  reproduce on the Dell (native x64) — if it trips there too, the breaker needs to exempt a group's first N
+  seconds after a start the app itself ordered, or read the spin against the WORKER count rather than wall CPU.
+  `docs/PUBLISH-TESTING.md` §A 0.9.1 §M has the log.
+
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),
