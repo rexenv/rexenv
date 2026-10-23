@@ -849,36 +849,14 @@ pub fn run() {
                         //
                         // Best-effort and last: no key pinned, no network, or a bad
                         // signature all leave the app resolving exactly its pins.
-                        match core::updates::fetch().await {
-                            Ok((doc, sig)) => {
-                                let accepted = state.db.lock().ok().map(|conn| {
-                                    core::updates::accept(&conn, &doc, sig.trim())
-                                });
-                                match accepted {
-                                    Some(Ok(cat)) => {
-                                        log::info!(
-                                            "php: update manifest accepted ({} entries)",
-                                            cat.versions().len()
-                                        );
-                                        core::binaries::install_catalog(cat);
-                                    }
-                                    Some(Err(e)) => {
-                                        log::info!("php: update manifest not accepted: {e}")
-                                    }
-                                    None => log::warn!("php: update manifest not stored — db lock"),
-                                }
-                            }
-                            Err(e) => log::info!("php: update manifest check skipped: {e}"),
-                        }
-
-                        // The APP's own signed release descriptor, on the same
-                        // best-effort contract and for the same reason the PHP
-                        // manifest is fetched here: a check nobody calls is a
-                        // door with no handle, and `php_update_check` shipped
-                        // exactly that way once. `auto_check_enabled` is read
-                        // BEFORE any I/O, so the setting is a switch on the
-                        // request rather than on what is done with the answer.
-                        // `docs/archive/PLAN-self-update.md` T2.
+                        // ONE setting gates BOTH documents (`docs/PLAN-unified-updates.md`
+                        // T2): the PHP/console manifest used to be fetched regardless of
+                        // the toggle, so "Check for updates automatically: off" still sent
+                        // one request per launch. `auto_check_enabled` is read BEFORE any
+                        // I/O, so the setting is a switch on the request rather than on
+                        // what is done with the answer (`docs/archive/PLAN-self-update.md`
+                        // T2). Both checks are best-effort: no key pinned, no network, or a
+                        // bad signature all leave the app resolving exactly its pins.
                         let auto = state
                             .db
                             .lock()
@@ -886,9 +864,10 @@ pub fn run() {
                             .map(|c| core::app_update::auto_check_enabled(&c))
                             .unwrap_or(true);
                         if auto {
+                            check_for_runtime_updates(&bump, &state).await;
                             check_for_app_update(&bump, &state).await;
                         } else {
-                            log::info!("app update: automatic checking is off");
+                            log::info!("updates: automatic checking is off");
                         }
 
                         // Ask php.net what PHP has actually released, so the
@@ -1078,7 +1057,7 @@ pub fn run() {
             // for a week would otherwise only ever hear about a release at its
             // next launch, which for a menu-bar app that outlives its window can
             // be a long time. Reads the setting on every tick.
-            spawn_app_update_poller(app.handle().clone());
+            spawn_update_poller(app.handle().clone());
 
             // Health watchdog: every 10s probe every service the manager OWNS and
             // respawn dead ones (bounded attempts) — the UI used to show "running"
@@ -1420,6 +1399,7 @@ pub fn run() {
             commands::app_update::app_update_set_auto_check,
             commands::update_hub::updates_inventory,
             commands::update_hub::updates_skip,
+            commands::update_hub::updates_check_now,
             commands::php::php_update_apply,
             commands::database::adminer_status,
             commands::database::adminer_set_theme,
@@ -1982,8 +1962,63 @@ async fn check_for_app_update(app: &tauri::AppHandle, state: &state::app::AppSta
     if let Err(e) = app.emit(APP_UPDATE_EVENT, ()) {
         log::warn!("app update: could not tell the window: {e}");
     }
+    announce_updates_changed(app);
     refresh_tray(app);
 }
+
+/// The PHP / Adminer / phpMyAdmin manifest, on the same contract as
+/// [`check_for_app_update`]: fetch unlocked, verify + persist under one brief lock, and
+/// TELL the window when a document was accepted. Until `docs/PLAN-unified-updates.md` T2
+/// this fetch ran only at launch and when Settings → PHP or Databases mounted, and it told
+/// nobody — a PHP patch published while the app ran was learned about by opening the right
+/// screen. `true` when a document was accepted (newer or not — "checked" is about the
+/// request, and `update_hub::store_checked` records it so `checked N ago` stays honest).
+async fn check_for_runtime_updates(app: &tauri::AppHandle, state: &state::app::AppState) -> bool {
+    let (doc, sig) = match core::updates::fetch().await {
+        Ok(fetched) => fetched,
+        Err(e) => {
+            log::info!("runtime updates: check skipped: {e}");
+            return false;
+        }
+    };
+    let Ok(conn) = state.db.lock() else {
+        log::warn!("runtime updates: manifest not stored — db lock");
+        return false;
+    };
+    let accepted = match core::updates::accept(&conn, &doc, sig.trim()) {
+        Ok(cat) => {
+            log::info!("runtime updates: manifest accepted ({} entries)", cat.versions().len());
+            core::binaries::install_catalog(cat);
+            if let Err(e) = core::update_hub::store_checked(&conn) {
+                log::warn!("runtime updates: could not record the check: {e}");
+            }
+            true
+        }
+        Err(e) => {
+            log::info!("runtime updates: manifest not accepted: {e}");
+            false
+        }
+    };
+    drop(conn);
+    if accepted {
+        announce_updates_changed(app);
+    }
+    accepted
+}
+
+/// Tell every surface that reads the ONE inventory (`["updates"]`, `staleTime: Infinity`)
+/// to re-read it. Empty payload: the frontend re-reads `updates_inventory`, never a copy
+/// carried in an event. An emit to a closed window is harmless.
+fn announce_updates_changed(app: &tauri::AppHandle) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(UPDATES_EVENT, ()) {
+        log::warn!("updates: could not tell the window: {e}");
+    }
+}
+
+/// Emitted after EITHER signed document is accepted — the app's descriptor or the
+/// PHP/console manifest. The frontend's `onUpdatesChanged` listens for this name.
+pub const UPDATES_EVENT: &str = "updates-changed";
 
 /// Emitted after a background check ACCEPTS a descriptor, so every surface that
 /// reads the `["app-update"]` cache is told instead of polling (ledger #884).
@@ -1991,14 +2026,15 @@ async fn check_for_app_update(app: &tauri::AppHandle, state: &state::app::AppSta
 /// answer, rather than trusting a second copy carried in an event.
 pub const APP_UPDATE_EVENT: &str = "app-update";
 
-/// Re-check every 6 hours, so a machine left running for a week still hears
-/// about a release.
+/// Re-check every 6 hours — BOTH signed documents — so a machine left running for a
+/// week still hears about a release, a PHP patch or a console version.
 ///
 /// A `sleep` loop rather than an interval, matching every other periodic task in
 /// this file, and it re-reads the setting on every tick — turning automatic
 /// checking off must stop the NEXT request, not just hide the answer. The first
-/// tick sleeps first: the launch sweep has already checked by then.
-fn spawn_app_update_poller(app: tauri::AppHandle) {
+/// tick sleeps first: the launch sweep has already checked by then. One poller, not
+/// two: the PHP/console manifest had none at all until `docs/PLAN-unified-updates.md` T2.
+fn spawn_update_poller(app: tauri::AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
@@ -2010,6 +2046,7 @@ fn spawn_app_update_poller(app: tauri::AppHandle) {
                 .map(|c| core::app_update::auto_check_enabled(&c))
                 .unwrap_or(false);
             if auto {
+                check_for_runtime_updates(&app, &state).await;
                 check_for_app_update(&app, &state).await;
             }
         }
@@ -3313,31 +3350,33 @@ mod tests {
     #[test]
     fn auto_check_is_read_before_the_request_not_applied_to_the_answer() {
         let src = crate::core::copy_scan::production_source(include_str!("lib.rs"));
-        // Assemble the needle so this test cannot convict itself by matching the
+        // Assemble the needles so this test cannot convict itself by matching the
         // literal in its own body (the copy_scan rule).
-        let call = format!("check_for_app_{}", "update(&");
         let gate = format!("auto_check_{}", "enabled(");
-
-        let sites: Vec<usize> = src.match_indices(&call).map(|(i, _)| i).collect();
-        assert_eq!(
-            sites.len(),
-            2,
-            "expected exactly two call sites (the launch sweep and the poller); \
-             a third one needs its own gate and this test needs to know about it"
-        );
-        for at in sites {
-            // The gate must appear in the ~1500 characters before the call —
-            // the same function, not somewhere else in the file.
-            let window = &src[at.saturating_sub(1500)..at];
-            assert!(
-                window.contains(&gate),
-                "a check is fired without reading the auto-check setting first"
+        // BOTH documents, since PLAN-unified-updates T2: the PHP/console manifest used
+        // to be fetched outside the gate, one request per launch with the toggle off.
+        for call in [format!("check_for_app_{}", "update(&"), format!("check_for_runtime_{}", "updates(&")] {
+            let sites: Vec<usize> = src.match_indices(&call).map(|(i, _)| i).collect();
+            assert_eq!(
+                sites.len(),
+                2,
+                "{call}: expected exactly two call sites (the launch sweep and the poller); \
+                 a third one needs its own gate and this test needs to know about it"
             );
+            for at in sites {
+                // The gate must appear in the ~1500 characters before the call —
+                // the same function, not somewhere else in the file.
+                let window = &src[at.saturating_sub(1500)..at];
+                assert!(
+                    window.contains(&gate),
+                    "{call} is fired without reading the auto-check setting first"
+                );
+            }
         }
         // And the poller must re-read it every tick rather than capturing it
         // once: turning the setting off must stop the NEXT request.
         let poller = src
-            .find("fn spawn_app_update_poller")
+            .find("fn spawn_update_poller")
             .expect("the poller exists");
         let body = &src[poller..];
         assert!(body.contains("sleep"), "sliced the wrong function");

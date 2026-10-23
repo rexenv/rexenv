@@ -726,12 +726,23 @@ const MAX_DOC: usize = 256 * 1024;
 /// function is deliberately dumb about trust so there is exactly one place that
 /// decides it.
 pub async fn fetch() -> Result<(Vec<u8>, String)> {
+    fetch_with(BACKGROUND_DEADLINE).await
+}
+
+/// The same fetch on the INTERACTIVE deadline — a person pressed "Check now" and is
+/// watching (`docs/PLAN-unified-updates.md` T2; the app's check has had this split since
+/// PLAN-self-update).
+pub async fn fetch_interactive() -> Result<(Vec<u8>, String)> {
+    fetch_with(INTERACTIVE_DEADLINE).await
+}
+
+async fn fetch_with(deadline: std::time::Duration) -> Result<(Vec<u8>, String)> {
     if !enabled() {
         return Err(Error::Other(
             "this build has no PHP update key pinned, so it does not fetch a manifest".into(),
         ));
     }
-    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC, BACKGROUND_DEADLINE).await
+    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC, deadline).await
 }
 
 /// Fetch a signed document and its detached signature. **Takes no `Connection`**

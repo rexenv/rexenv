@@ -72,6 +72,7 @@ mod tests {
         //    the app's skip already is.
         ("updates_inventory", Gap("T6 of docs/PLAN-unified-updates.md — stack_status.updates + a read-only `updates` tool")),
         ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
+        ("updates_check_now", Never("an interactive check is the person pressing a button, as app_update_check is (UPDATE_FLOW)")),
         // ── valet_import: the banner's generation-keyed feed (#807); `valet_import` action
         //    `drift` reaches the same `drifted_takeover_records` (it reports the TLDs).
         ("resolver_drift_records", Tool("valet_import")),

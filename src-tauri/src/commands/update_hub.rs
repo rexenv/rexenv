@@ -60,6 +60,62 @@ pub fn updates_inventory(state: State<'_, AppState>) -> Result<core::update_hub:
     ))
 }
 
+/// "Check now": BOTH signed documents on the interactive deadline, then the inventory.
+///
+/// Fetched UNLOCKED, verified + persisted under one brief lock (the rule `php_update_check`
+/// and `app_update_check` each follow). A document that cannot be fetched or is refused does
+/// not fail the call — the inventory answers with `check_problem` saying which, because
+/// "couldn't reach" and "refused what it published" are different facts and the old About
+/// card folded them into one line for a week (ledger, `check_refusal`).
+#[tauri::command]
+pub async fn updates_check_now(state: State<'_, AppState>) -> Result<core::update_hub::UpdateInventory> {
+    let variant = crate::platform::current().app_bundle().descriptor_variant();
+    let mut problems: Vec<String> = Vec::new();
+    // 1. The PHP / Adminer / phpMyAdmin manifest.
+    match core::updates::fetch_interactive().await {
+        Ok((doc, sig)) => {
+            let conn = lock(&state)?;
+            match core::updates::accept(&conn, &doc, sig.trim()) {
+                Ok(cat) => {
+                    core::binaries::install_catalog(cat);
+                    core::update_hub::store_checked(&conn)?;
+                }
+                Err(e) => problems.push(core::update_hub::refusal_sentence("runtime manifest", &e.to_string())),
+            }
+        }
+        Err(e) => problems.push(core::update_hub::unreachable_sentence(&e.to_string())),
+    }
+    // 2. The app's own descriptor — unless this build reads none (no key; a dev build).
+    if let Some(why) = core::app_update::no_descriptor_reason(variant.as_deref()) {
+        problems.push(why);
+    } else {
+        match core::app_update::fetch(variant.as_deref(), core::updates::INTERACTIVE_DEADLINE).await {
+            Ok((doc, sig)) => {
+                let conn = lock(&state)?;
+                let document = document();
+                match core::app_update::accept(&conn, &document, &doc, &sig) {
+                    Ok(_) => {
+                        let st = core::app_update::state(&conn, &document);
+                        core::app_update::store_check(&conn, st.offered)?;
+                        core::update_hub::store_checked(&conn)?;
+                    }
+                    Err(e) => problems.push(core::app_update::refusal_sentence(&e.to_string())),
+                }
+            }
+            Err(e) => {
+                // One unreachable sentence is enough when neither answered.
+                let s = core::update_hub::unreachable_sentence(&e.to_string());
+                if !problems.iter().any(|p| p.starts_with("Couldn't reach")) {
+                    problems.push(s);
+                }
+            }
+        }
+    }
+    let mut inv = updates_inventory(state)?;
+    inv.check_problem = (!problems.is_empty()).then(|| problems.join(" "));
+    Ok(inv)
+}
+
 /// Set one kind's offered version aside (`version: Some`) or take the skip back (`None`),
 /// and answer with the inventory that follows.
 #[tauri::command]

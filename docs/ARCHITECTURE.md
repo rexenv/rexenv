@@ -1223,7 +1223,17 @@ Live-proven end to end by `site_stop_start_check`.
   host the sweep already talks to — and a 6 h `sleep` loop covers the machine left running,
   since a menu-bar app outlives its window by design. `app_update_auto_check` is read
   BEFORE any I/O, so turning it off is a switch on the REQUEST rather than on what is done
-  with the answer, and "Check now" always works. The switch is in the card and in
+  with the answer, and "Check now" always works. **Since `docs/PLAN-unified-updates.md` T2
+  the same gate, the same launch sweep and the same 6 h loop (`spawn_update_poller`) fetch
+  BOTH signed documents** — the PHP/Adminer/phpMyAdmin manifest (`check_for_runtime_updates`)
+  and the app's descriptor (`check_for_app_update`): the manifest used to be fetched outside
+  the toggle, once per launch and once per screen mount, with no poller and nothing told. Either
+  document accepted emits `updates-changed` (the app's `app-update` keeps firing for one release
+  so a frontend bundle swapped under a running app is not deaf) and records
+  `updates_checked_at`, the one "checked N ago" (`core::update_hub`, ledger #903). "Check now"
+  for everything at once is `updates_check_now`, both documents on the 6 s deadline, answering
+  the inventory with `check_problem` — "couldn't reach" and "refused what it published" stay
+  two sentences. The switch is in the card and in
   `rex config`; "on" is the ABSENT row a fresh install has, never the string `"true"`,
   so the key has one spelling of on rather than two for its reader to agree with by luck. The request carries `rexenv/<version>` and
   nothing else: no arch, no identifier. The fetch enforces its OWN total deadline over reqwest's, and the CALLER chooses it —

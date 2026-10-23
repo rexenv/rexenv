@@ -875,6 +875,16 @@ export async function onAppUpdate(cb: () => void): Promise<() => void> {
   return listen("app-update", () => cb());
 }
 
+/** Subscribe to `updates-changed`: EITHER signed document (the app's descriptor or the
+ *  PHP/console manifest) was accepted by a background check. Every surface that shows
+ *  an offer re-reads its cache — told, never polling. No payload. Returns an unlisten
+ *  function. No-op outside Tauri. */
+export async function onUpdatesChanged(cb: () => void): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen("updates-changed", () => cb());
+}
+
 /** Set aside exactly this version, or clear the skip by passing nothing.
  *
  *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean

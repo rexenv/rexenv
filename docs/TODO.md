@@ -120,8 +120,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the same way and installed from one page, with Update all** (owner, 23 Oct 2026). Today only the app's own
   release has a toast/pills/tray item; PHP and the consoles offer themselves only when their own screen is
   open, with no poller and no skip. Plan: `docs/PLAN-unified-updates.md` — T0–T7, §8 holds three owner
-  decisions — all three answered as recommended (plan §8). **T0, T1 built** 23 Oct 2026 (ledger #901: a startup
-  notice's door is the producer's; #902: `core/update_hub.rs`, the one live inventory, app last); T2–T7 next.
+  decisions — all three answered as recommended (plan §8). **T0–T2 built** 23 Oct 2026 (ledger #901: a startup
+  notice's door is the producer's; #902: `core/update_hub.rs`, the one live inventory, app last; #903: one gate,
+  one poller, both documents, `updates-changed`); T3–T7 next.
 
 - [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
   (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row

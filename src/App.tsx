@@ -22,6 +22,7 @@ import {
   onTrayRoute,
   appUpdateState,
   onAppUpdate,
+  onUpdatesChanged,
   onCheckUpdatesMenu,
 } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -220,6 +221,7 @@ function AppUpdateEventWatch() {
   const qc = useQueryClient();
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    let unlistenAll: (() => void) | undefined;
     let disposed = false;
     onAppUpdate(() => {
       void qc.invalidateQueries({ queryKey: ["app-update"] });
@@ -231,8 +233,22 @@ function AppUpdateEventWatch() {
       })
       // Outside the app shell the event API rejects (TrayRouteWatch's reason).
       .catch(() => {});
+    // EITHER document accepted (PLAN-unified-updates T2): every cache that renders an
+    // offer re-reads — the PHP rows, the console cards and the one inventory (T3/T4).
+    onUpdatesChanged(() => {
+      void qc.invalidateQueries({ queryKey: ["updates"] });
+      void qc.invalidateQueries({ queryKey: ["php-versions"] });
+      void qc.invalidateQueries({ queryKey: ["adminer-status"] });
+      void qc.invalidateQueries({ queryKey: ["db-console"] });
+    })
+      .then((f) => {
+        if (disposed) f();
+        else unlistenAll = f;
+      })
+      .catch(() => {});
     return () => {
       disposed = true;
+      unlistenAll?.();
       unlisten?.();
     };
   }, [qc]);

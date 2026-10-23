@@ -96,11 +96,16 @@ pub struct UpdateInventory {
     /// An app version already swapped onto disk that this process is not running — the
     /// pill's "Restart to finish" wins over every offer while this is set.
     pub restart_pending: Option<String>,
-    /// When the last successful app check ran (`db_now` format). T2 makes this the one
-    /// poller's timestamp for both documents.
+    /// When a signed document was last ACCEPTED — either one; the one poller fetches both
+    /// (`store_checked`). Falls back to the app's own record for installs that upgraded
+    /// before the hub existed. Never advanced by a failure.
     pub checked_at: Option<String>,
     /// The auto-check setting, as it is right now (one setting for every kind).
     pub auto_check: bool,
+    /// What went wrong with the LAST interactive check, when something did — "couldn't
+    /// reach" and "refused what it published" are different facts and the page says which.
+    /// `None` from [`inventory`]; only `updates_check_now` sets it, for that one answer.
+    pub check_problem: Option<String>,
 }
 
 impl UpdateInventory {
@@ -185,9 +190,38 @@ pub fn inventory(conn: &Connection, facts: &Facts<'_>) -> UpdateInventory {
     UpdateInventory {
         offers,
         restart_pending: facts.app.installed_pending.clone(),
-        checked_at: facts.app.checked_at.clone(),
+        checked_at: crate::state::store::get_setting(conn, CHECKED_KEY)
+            .ok()
+            .flatten()
+            .or_else(|| facts.app.checked_at.clone()),
         auto_check: facts.app.auto_check,
+        check_problem: None,
     }
+}
+
+/// When either signed document was last accepted (`db_now` format).
+const CHECKED_KEY: &str = "updates_checked_at";
+
+/// Record that a document was accepted just now. Written on the success path ONLY, so
+/// `checked N ago` can never age a failure into a success (the app's `store_check` rule).
+pub fn store_checked(conn: &Connection) -> Result<String> {
+    let now = crate::state::store::db_now(conn)?;
+    crate::state::store::set_setting(conn, CHECKED_KEY, &now)?;
+    Ok(now)
+}
+
+/// The sentence for an interactive check whose fetched document was REFUSED — a stale
+/// serial, a bad signature — as opposed to one that could not be fetched.
+pub fn refusal_sentence(what: &str, reason: &str) -> String {
+    format!(
+        "The update server answered, but rexenv refused the {what} it published: {reason}. \
+         Nothing here changes until a document this copy accepts is published."
+    )
+}
+
+/// The sentence for a check that could not reach the server at all.
+pub fn unreachable_sentence(reason: &str) -> String {
+    format!("Couldn't reach the update server just now ({reason}). The last answer stands.")
 }
 
 /// The version set aside for `kind`, if any — the app's through its own key.
@@ -346,6 +380,19 @@ mod tests {
         assert!(inv.offers[0].skipped);
         assert_eq!(inv.offers[0].offered, "0.9.1");
         assert!(inv.pending().is_empty(), "a set-aside app release is not counted on the pill");
+    }
+
+    /// `checked_at` is the hub's own record once either document has been accepted, and the
+    /// app's record before that — never a failure's timestamp, because only success writes it.
+    #[test]
+    fn checked_at_is_the_one_record_for_both_documents_and_falls_back_to_the_apps() {
+        let c = conn();
+        let a = app(None, None);
+        let facts = Facts { app: &a, homebrew: false, php: &[], adminer: ("6.1.1", None), phpmyadmin: ("5.2.3", None) };
+        assert_eq!(inventory(&c, &facts).checked_at.as_deref(), Some("2026-10-23 10:00:00"), "before the hub ever recorded a check, the app's record is the answer");
+        let now = store_checked(&c).unwrap();
+        assert_eq!(inventory(&c, &facts).checked_at, Some(now), "once recorded, the hub's own stamp wins");
+        assert!(inventory(&c, &facts).check_problem.is_none(), "a read never carries a problem; only an interactive check does");
     }
 
     /// A minor this OS has no build of, or one not installed, offers nothing even if the

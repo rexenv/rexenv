@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0, T1 built 23 Oct 2026 (ledger #901, #902); T2–T7 next.** Owner ask (23 Oct
+Status: **IN FLIGHT — T0–T2 built 23 Oct 2026 (ledger #901–#903); T3–T7 next.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -216,3 +216,13 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   caller (T3): `every_ipc_wrapper_is_actually_called` refused them uncalled, which is the guard
   doing its job. MCP parity: `updates_inventory` is a `Gap` until T6, `updates_skip` `Never`.
   Four L0 tests, two plants. Ledger #902. Nothing renders it yet (T3/T4).
+- **T2 — 23 Oct 2026.** `lib.rs`: the launch sweep reads `auto_check_enabled` ONCE and then fetches
+  both documents (`check_for_runtime_updates` is the PHP/console manifest on the app check's
+  contract: fetch unlocked, accept under one lock, `update_hub::store_checked`, tell the window);
+  `spawn_app_update_poller` → `spawn_update_poller`, both documents per tick; `UPDATES_EVENT =
+  "updates-changed"` emitted after either acceptance (`app-update` kept for one release). Command
+  `updates_check_now` (both on the 6 s deadline; `check_problem` on the inventory; `updates::
+  fetch_interactive`). Frontend: `onUpdatesChanged` → `AppUpdateEventWatch` invalidates
+  `["updates"]`, `["php-versions"]`, `["adminer-status"]`, `["db-console"]`. The three screens'
+  mount-time fetches stay until T4 replaces them (their wrappers would otherwise be uncalled).
+  Scan test widened to both checks, planted. Ledger #903.
