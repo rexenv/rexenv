@@ -332,6 +332,24 @@ pub fn standard_pins() -> PinSet {
     STANDARD_PINS
 }
 
+/// The Apache httpd version `os` resolves: Windows reads its own catalog key
+/// (`HTTPD_WINDOWS_VERSION`, Apache Lounge's build), every other OS the tier's
+/// bottle pin. The one place the two keys meet — the gate, the resolver, the
+/// download plan and the adoption all ask here, never `pins().httpd` directly
+/// (docs/PLAN-windows-servers.md T2).
+pub fn httpd_version_on(os: &str) -> &'static str {
+    if os == "windows" {
+        HTTPD_WINDOWS_VERSION
+    } else {
+        pins().httpd
+    }
+}
+
+/// [`httpd_version_on`] for THIS host.
+pub fn httpd_version() -> &'static str {
+    httpd_version_on(std::env::consts::OS)
+}
+
 // ── Tier refusals (`docs/PLAN-macos-13-floor.md` §6.3, ledger #710) ────────────
 //
 // A feature the host's tier cannot serve is refused with the macOS it NEEDS —
@@ -915,6 +933,29 @@ const FRANKENPHP_1_13_3_MAC_AMD64_SHA256: &str = "8d2a9d26541852c1056401d020dc4e
 const FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256: &str = "62cdbb9c03eb75c981372240815436161f12aab088b5d952697fd02800cb6d6b";
 /// The `rexenv/runtimes` release serving the Intel Mac FrankenPHP.
 pub(crate) const FRANKENPHP_MAC_X86_64_TAG: &str = "frankenphp-1.13.3-1";
+// Windows: upstream's own `frankenphp-windows-x86_64.zip` (24 Oct 2026, hashed from a full
+// download) — `frankenphp.exe` beside the official `php8ts.dll` and its `ext/*.dll`, a
+// tree, not the single static binary the other OSes get. Its embedded PHP is 8.5.12
+// (`snapshot.txt` in the zip), the same `FRANKENPHP_EMBEDDED_PHP` as everywhere
+// (docs/PLAN-windows-servers.md D3).
+const FRANKENPHP_1_13_3_WIN_AMD64_SHA256: &str = "c744d35cc35c313e2f126692dc8adb5856e2c96ed47c2fff6e39f97eb634a46a";
+
+// ── Apache httpd on Windows (docs/PLAN-windows-servers.md D1) ──────────────────
+// The ASF publishes no Windows build; Apache Lounge's VS18 build of 2.4.69
+// (unmodified ASF source, Apache-2.0) is MIRRORED on `rexenv/runtimes` because
+// Apache Lounge keeps only its current build — a pin at their URL rots on their
+// next release. The digest equals the one Apache Lounge publishes in the zip's
+// `.txt` (re-checked by the mirror workflow); the licences tarball (the ASF's
+// LICENSE + NOTICE from the sha512-verified source, Apache Lounge's ReadMe) rides
+// in the same release — rexenv is the distributor of these bytes.
+/// Apache httpd's version on Windows — its own, because the macOS pin is a Homebrew
+/// bottle version (2.4.68; Homebrew's 2.4.69 bottle exists for arm64 only) and the
+/// Windows artifact is Apache Lounge's 2.4.69. One `httpd` name, two catalog keys;
+/// `httpd_version_on` says which an OS reads.
+const HTTPD_WINDOWS_VERSION: &str = "2.4.69";
+pub(crate) const HTTPD_WINDOWS_TAG: &str = "httpd-windows-1";
+const HTTPD_2_4_69_WIN_AMD64_SHA256: &str = "9f1f93cab9a0c6dc5e628aa640784bb30347f93fcd01b46a4c0d6b5ba76bf4e2";
+const HTTPD_2_4_69_LICENSES_WINDOWS_SHA256: &str = "bc1aa0b15463dbbf0137467b4a7b3eca01b45d8915f8b2a9e597cbf8113d91e6";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
@@ -2337,6 +2378,13 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             };
             (arm, amd, format!("licenses-openlitespeed-{version}-{os}-{}.tar.gz", php_arch(arch)))
         }
+        // Apache Lounge's Windows httpd, mirrored: one artifact for every `Arch` (x64), so one
+        // licences tarball and one digest, whichever arch asks.
+        ("httpd", "2.4.69") => (
+            HTTPD_2_4_69_LICENSES_WINDOWS_SHA256,
+            HTTPD_2_4_69_LICENSES_WINDOWS_SHA256,
+            format!("licenses-httpd-{version}-windows.tar.gz"),
+        ),
         // Only the Intel Mac binary is ours (arm64 and Linux are upstream's, and owe nothing
         // here), so there is no arm64 licence digest to pin.
         ("frankenphp", "1.13.3") => (
@@ -2770,6 +2818,22 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             checksum: Checksum::Sha256(NGINX_1_30_4_WIN_AMD64_SHA256.to_string()),
             archive: Archive::ZipTree { strip: 1 },
             member: "nginx.exe",
+        }),
+        // Apache Lounge's build, mirrored on rexenv/runtimes (the constants say why). The
+        // zip's members sit under `Apache24/` (plus a root `ReadMe.txt`, which the strip
+        // drops) — a tree: `bin/httpd.exe` beside `modules/` and `conf/mime.types`.
+        ("httpd", "windows", "2.4.69") => Some(BinarySpec {
+            url: format!("{RUNTIMES_RELEASE_BASE}/{HTTPD_WINDOWS_TAG}/httpd-{version}-261002-Win64-VS18.zip"),
+            checksum: Checksum::Sha256(HTTPD_2_4_69_WIN_AMD64_SHA256.to_string()),
+            archive: Archive::ZipTree { strip: 1 },
+            member: "bin/httpd.exe",
+        }),
+        // Upstream's Windows FrankenPHP: a flat zip (`frankenphp.exe`, `php8ts.dll`, `ext/`).
+        ("frankenphp", "windows", "1.13.3") => Some(BinarySpec {
+            url: format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-windows-x86_64.zip"),
+            checksum: Checksum::Sha256(FRANKENPHP_1_13_3_WIN_AMD64_SHA256.to_string()),
+            archive: Archive::ZipTree { strip: 0 },
+            member: "frankenphp.exe",
         }),
         ("mysql", "windows", v) => mysql_windows_sha256(v).map(|hex| BinarySpec {
             url: format!(
@@ -3328,6 +3392,9 @@ pub fn shape_of_on(name: &str, os: &str) -> Shape {
     match name {
         "mysql" | "postgres" | "openlitespeed" | "phpmyadmin" | "phpmyadmin-theme" => Shape::Dir,
         "php" | "nginx" if os == "windows" => Shape::Dir,
+        // Apache Lounge's zip and upstream's FrankenPHP zip are trees on Windows; on
+        // macOS httpd is a merged bottle bundle and FrankenPHP one static binary.
+        "httpd" | "frankenphp" if os == "windows" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,
         "wp-cli" | "adminer" | "composer" => Shape::File,
@@ -7523,9 +7590,24 @@ mod tests {
             }
             assert!(manifest(name, version, "windows", Arch::X86_64).is_some(), "{name} {version}");
         }
+        // The per-site servers (docs/PLAN-windows-servers.md): FrankenPHP from upstream's
+        // Windows zip, Apache from the mirrored Apache Lounge build under ITS OWN key —
+        // `pins().httpd` (the bottle) still resolves to nothing on Windows, and the gate
+        // asks `httpd_version_on`, never the bottle pin.
+        let fp = manifest("frankenphp", FRANKENPHP_VERSION, "windows", Arch::X86_64).expect("FrankenPHP has a Windows arm");
+        assert!(fp.url.ends_with("frankenphp-windows-x86_64.zip") && fp.member == "frankenphp.exe", "{}", fp.url);
+        assert!(ships_on("frankenphp", FRANKENPHP_VERSION, "windows"));
+        assert_eq!(httpd_version_on("windows"), HTTPD_WINDOWS_VERSION);
+        assert_eq!(httpd_version_on("macos"), pins().httpd);
+        let ap = manifest("httpd", httpd_version_on("windows"), "windows", Arch::X86_64).expect("Apache has a Windows arm");
+        assert!(ap.url.starts_with(RUNTIMES_RELEASE_BASE) && ap.url.contains(HTTPD_WINDOWS_TAG) && ap.member == "bin/httpd.exe", "{}", ap.url);
+        assert!(ships_on("httpd", httpd_version_on("windows"), "windows"));
+        assert!(!ships_on("httpd", HTTPD_VERSION, "windows"), "the macOS bottle pin resolves to nothing on Windows");
+        let lic = licenses_spec(&ap.url, "httpd", httpd_version_on("windows"), Arch::X86_64).unwrap().expect("we distribute the mirror, so we owe its licences");
+        assert!(lic.url.ends_with(&format!("/{HTTPD_WINDOWS_TAG}/licenses-httpd-2.4.69-windows.tar.gz")), "{}", lic.url);
+        assert_eq!(checksum_hex(&lic.checksum).len(), 64, "a full digest");
         // Not in Windows v1 (plan D4): no macOS artifact may leak through.
-        assert!(manifest("frankenphp", FRANKENPHP_VERSION, "windows", Arch::X86_64).is_none());
-        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
+        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION)] {
             assert!(bundle_manifest(name, version, "windows", Arch::X86_64).is_none(), "{name}");
             // …and the feature gate reads that same absence rather than a list of its own.
             assert!(!ships_on(name, version, "windows"), "{name} must not ship on Windows (D4)");
@@ -7545,6 +7627,7 @@ mod tests {
                 ("redis", REDIS_VERSION),
                 ("mariadb", MARIADB_VERSION),
                 ("httpd", HTTPD_VERSION),
+                ("httpd", HTTPD_WINDOWS_VERSION),
                 ("frankenphp", FRANKENPHP_VERSION),
             ])
             .collect();
@@ -7564,13 +7647,17 @@ mod tests {
     fn windows_names_executables_with_their_extension_and_shapes_match_the_archives() {
         assert_eq!(exe_name("caddy", "windows"), "caddy.exe");
         assert_eq!(exe_name("caddy", "macos"), "caddy");
-        for n in ["php", "nginx"] {
+        for n in ["php", "nginx", "frankenphp"] {
             assert_eq!(shape_of_on(n, "windows"), Shape::Dir, "{n}");
             assert_eq!(shape_of_on(n, "macos"), Shape::Single, "{n}");
         }
+        assert_eq!(shape_of_on("httpd", "windows"), Shape::Dir);
+        assert_eq!(shape_of_on("httpd", "macos"), Shape::Bundle);
         for (name, version) in [
             ("php", PHP_VERSION),
             ("nginx", NGINX_VERSION),
+            ("httpd", HTTPD_WINDOWS_VERSION),
+            ("frankenphp", FRANKENPHP_VERSION),
             ("mysql", MYSQL_VERSION),
             ("postgres", POSTGRES_VERSION),
             ("caddy", CADDY_VERSION),

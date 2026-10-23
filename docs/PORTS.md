@@ -46,7 +46,7 @@ below, then the Windows and Linux artifact tables). Ports are common except wher
 | MySQL | 8.4.6 (default) / 8.0.44 | dir tree, Oracle-signed (no re-sign), CDN URL + browser UA. **Per-engine version switch**: each SERIES keeps its own datadir (default series on the legacy `mysql/data`; others under `mysql/<series>/data`) — never an in-place up/downgrade. 8.0.44 hashed from real downloads (both arches), arm64 run-verified |
 | WP-CLI | 2.12.0 | `.phar`, `resolve_file`, no chmod/codesign |
 | Composer | 2.10.2 | `.phar`, `resolve_file` — ALWAYS run via the SITE's bundled PHP (add-from-Git composer step; platform checks match the PHP the plugin runs on; a system composer is never executed — non-phar wrappers exist, e.g. Herd's). Sha verified against getcomposer.org's published `.sha256sum`, run-tested on static PHP 8.3.31 at pin time |
-| FrankenPHP | 1.13.3 | embeds its OWN PHP (8.5.12, not the pools); the Intel Mac binary is OURS (`frankenphp-1.13.3-1`) — upstream dropped that asset in 1.13 |
+| FrankenPHP | 1.13.3 | embeds its OWN PHP (8.5.12, not the pools); the Intel Mac binary is OURS (`frankenphp-1.13.3-1`) — upstream dropped that asset in 1.13. **Windows since 24 Oct 2026:** upstream's `frankenphp-windows-x86_64.zip`, a tree (`frankenphp.exe` + the official `php8ts.dll`, the same 8.5.12) |
 | PostgreSQL | 18.6.0 (default) / 17.11.0 / 16.15.0 | theseus-rs portable, TCP-only; project-published `.sha256` pins, each cross-checked against a fresh download. **Re-pinned 30 Aug 2026 for the FLOOR, not the patch level**: the June builds carried `minos 26.0` (macOS-26 runners), the 15 Aug ones carry `minos 15.0` — measured across every Mach-O in all six tarballs. PG major datadirs are mutually incompatible — the per-series datadir rule is load-bearing (`postgres/<major>/data`) |
 | Redis | 8.8.0 | **bottle BUNDLE** (`resolve_bundle`): Homebrew redis + openssl@3 3.6.3 bottles (arm64_sonoma / sonoma), merged + relinked to `@loader_path` + re-signed by `prepare_binary_tree`. ghcr blobs are content-addressed — the URL embeds the pinned digest, so pins can 404 (formula GC) but never drift |
 | MariaDB | 12.3.2 (default) / 11.4.12 LTS (`mariadb@11.4` bottle, identical layout+closure) | bottle BUNDLE: mariadb (server + client + dump + bootstrap SQL/errmsg/charsets ONLY — plugins/scripts excluded) + openssl@3 3.6.3 + pcre2 10.47. groonga/lz4/lzo/xz/zstd are plugin-only deps, not bundled. Init = `mariadbd --bootstrap` fed the bundled SQL over stdin (`core/mariadb.rs`) |
@@ -91,7 +91,12 @@ three PostgreSQL tarballs on 13 Sep (on the 12th they were pinned from the publi
 `.sha256` alone, and this sentence claimed otherwise); the "Digest" column says whether a
 publisher's own digest confirmed it. Not in Windows v1, and
 resolving to nothing there (plan D4): `php-fpm` (the pool is php-cgi, inside the PHP
-zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
+zip — D1), Redis, MariaDB, Xdebug. **Since 24 Oct 2026 Windows also has the two per-site
+servers** (`docs/PLAN-windows-servers.md`): FrankenPHP from upstream, and Apache httpd **2.4.69**
+— a different version from the macOS bottle pin (2.4.68), under its own catalog key
+(`binaries::httpd_version_on("windows")`), because Homebrew publishes no 2.4.69 Intel bottle
+and Apache Lounge publishes no 2.4.68 — mirrored on `rexenv/runtimes` since Apache Lounge keeps
+only its current build; rexenv is that mirror's distributor, so its licences ride beside it.
 
 | Binary | Source | Archive → published as | Digest |
 |---|---|---|---|
@@ -102,6 +107,8 @@ zip — D1), FrankenPHP, Redis, MariaDB, Apache httpd, Xdebug.
 | MySQL 8.4.6 · 8.0.44 | `cdn.mysql.com/archives/mysql-<series>/mysql-<v>-winx64.zip` (the `Downloads/` path 404s once a release is superseded) | `ZipTree { strip: 1 }` → `bin/mysqld.exe` | SHA-256 of our download — Oracle posts MD5 |
 | PostgreSQL 18.6.0 · 17.11.0 · 16.15.0 | theseus-rs `postgresql-<v>-x86_64-pc-windows-msvc.tar.gz` | `TarGzTree` → `bin/postgres.exe` | SHA-256, the project's published `.sha256`, **matched by our own full download on 13 Sep 2026** (the macOS rows' rule: a publisher digest is pinned only once our hash agrees) |
 | Mailpit 1.30.3 | GitHub release `mailpit-windows-amd64.zip` | `Zip` → `mailpit.exe` | SHA-256 of our download — no checksums file for this release |
+| FrankenPHP 1.13.3 | GitHub release `frankenphp-windows-x86_64.zip` (upstream's own; 83 files: `frankenphp.exe`, `php8ts.dll`, `ext/*.dll` ×36, OpenSSL 3, ICU 77) | `ZipTree { strip: 0 }` → `frankenphp.exe` | SHA-256 of our download (24 Oct 2026) |
+| Apache httpd 2.4.69 | `rexenv/runtimes` release `httpd-windows-1`: Apache Lounge's `httpd-2.4.69-261002-Win64-VS18.zip` (VS18, unmodified ASF source, Apache-2.0), mirrored | `ZipTree { strip: 1 }` (drops `Apache24/`) → `bin/httpd.exe`, `modules/`, `conf/mime.types`; licences `licenses-httpd-2.4.69-windows.tar.gz` (ASF LICENSE + NOTICE, Apache Lounge's ReadMe) | SHA-256 `9f1f93ca…`, **equal to Apache Lounge's published `.zip.txt`** and re-checked by the mirror workflow |
 | cloudflared 2026.6.1 | GitHub release `cloudflared-windows-amd64.exe` | `Raw` → `cloudflared.exe` | SHA-256 of our download |
 | WP-CLI · Composer · Adminer · phpMyAdmin · BooDark | as above — OS-agnostic | unchanged (phpMyAdmin and its theme: `ZipTree { strip: 1 }` → `index.php` / `theme.json`, prepared by `prepare_script_dir`: Mark-of-the-Web stripped, no PE required) | unchanged |
 

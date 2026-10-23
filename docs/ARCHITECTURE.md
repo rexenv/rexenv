@@ -274,9 +274,14 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
   routes an override site's Host to its backend; all other sites stay on the shared
   Nginx. `ServiceManager::reconcile_overrides` keeps backends in sync on start/reload
   (config-diff restart on docroot/rewrite/env/pool change; a KIND change stops the old
-  backend — different port + binary). A server with no pin on this OS (Apache and FrankenPHP
-  on Windows; OpenLiteSpeed on Windows, permanently) is refused in CORE at create AND switch
-  (`ensure_server_available_on`, through `binaries::ships_on`).
+  backend — different port + binary). A server with no pin on this OS (Apache on Linux;
+  OpenLiteSpeed on Windows, permanently) is refused in CORE at create AND switch
+  (`ensure_server_available_on`, through `binaries::ships_on`). Windows has Apache and
+  FrankenPHP since 24 Oct 2026 (`docs/PLAN-windows-servers.md`): Apache Lounge's httpd,
+  mirrored on `rexenv/runtimes`, keyed by its own version (`binaries::httpd_version_on`),
+  rendered from the same conf text with `apache::Layout`'s five per-OS holes, its `.php`
+  handed to the php-cgi group on the pool port exactly as the bottle hands to php-fpm; and
+  upstream's FrankenPHP zip, a tree whose `frankenphp.exe` the shape-aware resolver returns.
 - **Multisite** (`sites.multisite`: none/subdomain/subdirectory → `RewriteMode`): the
   config generator has three rewrite templates. Subdomain adds `mysite.rex, *.mysite.rex`
   to both the Nginx `server_name` and the Caddy host list over the wildcard-SAN cert;

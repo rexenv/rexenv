@@ -396,9 +396,10 @@ which told a user who had quit that the app was still open; the words now live i
 
 Refused in core with a message that says why, rather than offered and then failing (D4):
 
-- **Apache** — on Windows that means Apache Lounge, a third-party trust decision nobody
-  has made yet.
-- **FrankenPHP** — pending its own proof.
+- ~~Apache~~ and ~~FrankenPHP~~ — **in the build since 0.9.2** (24 Oct 2026): Apache is
+  Apache Lounge's httpd 2.4.69, mirrored by rexenv (`docs/PLAN-windows-servers.md` D1), and
+  FrankenPHP is upstream's own Windows build. Both need the Visual C++ Redistributable above,
+  like PHP.
 - **Xdebug** — its DLLs must match each PHP's NTS build and compiler exactly, so they are
   pinned per version, and none is pinned here yet.
 - **Redis** — no official Windows build exists.

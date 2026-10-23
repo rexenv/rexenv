@@ -89,7 +89,7 @@ detail and the reasoning live in the linked plan and the OS's code; this is the 
 | CA untrust (Remove system changes) | trust removed, then the item **deleted** from the login keychain (#813) | the certificate deleted from `CurrentUser\Root` | removed from the system store and every NSS db |
 | Autostart | macOS login item | HKCU `Run` + `StartupApproved` (#623) | XDG `~/.config/autostart` |
 | PHP pool (`pool_kind`) | php-fpm, one per version | php-cgi group | php-fpm, one per version |
-| Per-site override servers (`ensure_server_available_on` asks the pins) | FrankenPHP, Apache (bottle bundle), OpenLiteSpeed (OURS) | **none** — no pin for any; OpenLiteSpeed is refused PERMANENTLY (no Windows build exists; `PlatformWords::openlitespeed_unavailable`) | FrankenPHP, OpenLiteSpeed (OURS — same recipe as macOS); Apache not pinned |
+| Per-site override servers (`ensure_server_available_on` asks the pins) | FrankenPHP, Apache (bottle bundle), OpenLiteSpeed (OURS) | FrankenPHP (upstream's `frankenphp-windows-x86_64.zip`, a tree) and Apache (Apache Lounge's 2.4.69, MIRRORED on `rexenv/runtimes` `httpd-windows-1`, under its own version key `binaries::httpd_version_on`; mpm_winnt, `bin/httpd.exe`, `modules/`, `conf/mime.types` — `apache::Layout`) since 24 Oct 2026 (`docs/PLAN-windows-servers.md`); OpenLiteSpeed is refused PERMANENTLY (no Windows build exists; `PlatformWords::openlitespeed_unavailable`) | FrankenPHP, OpenLiteSpeed (OURS — same recipe as macOS); Apache not pinned |
 | An override server's `user` (`ProcessSupervisor::service_account`) | numeric uid (`getuid`) | `None` — never asked | numeric uid (`getuid`) |
 | App data | `~/Library/Application Support/dev.rexenv.rexenv` | `%LOCALAPPDATA%\rexenv\rexenv\data` | `$XDG_DATA_HOME/rexenv` (`~/.local/share/rexenv`) |
 | `rex` CLI + MCP transport | unix socket | named pipes (#620, #632); the edge dial is AF_UNIX | unix socket (#727) |
@@ -207,6 +207,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   uninstaller could not delete an exe the agent's task kept re-running. The installer hooks
   (`src-tauri/nsis/hooks.nsh`, #787) end the task, kill and wait before a silent swap, refuse
   to skip, and take the task on uninstall.
+- **httpd on Windows is a parent plus one child, both `httpd.exe`, and `httpd -k shutdown` from a
+  second process looks for the "Apache2.4" SERVICE** (measured on `windows-latest`, 24 Oct 2026,
+  the runtimes mirror gate). rexenv stops the console instance by setting the parent's named
+  event `ap<pid>_shutdown` (`stop_policy::httpd_shutdown_event`), which ends both; a `PidFile`
+  is what lets anyone find that pid. The MPM is `mpm_winnt`, compiled in — a conf that
+  `LoadModule`s `mod_mpm_event` or `mod_unixd` fails to start there (`apache::Layout`).
 - **A php-cgi group has no per-request ini.** `fastcgi_param PHP_VALUE` is php-fpm's; php-cgi
   ignores it (measured on the Dell). A per-vhost limit that must reach PHP goes in a `.user.ini`
   in the docroot — every CGI/FastCGI PHP reads it, so it is written on every OS (#788).

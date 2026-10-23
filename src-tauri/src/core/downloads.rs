@@ -328,7 +328,7 @@ pub fn plan_for_start_with(
         set.push(("frankenphp", binaries::pins().frankenphp));
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Apache)) {
-        set.push(("httpd", binaries::pins().httpd));
+        set.push(("httpd", binaries::httpd_version()));
     }
     if sites.iter().any(|s| matches!(s.web_server, WebServer::Openlitespeed)) {
         set.push(("openlitespeed", binaries::pins().openlitespeed));
@@ -485,7 +485,7 @@ pub fn plan_for_override(platform: &dyn Platform, server: WebServer) -> Vec<Plan
         WebServer::Frankenphp => {
             vec![PlannedBinary::new(platform, "frankenphp", binaries::pins().frankenphp)]
         }
-        WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::pins().httpd)],
+        WebServer::Apache => vec![PlannedBinary::new(platform, "httpd", binaries::httpd_version())],
         WebServer::Openlitespeed => {
             vec![PlannedBinary::new(platform, "openlitespeed", binaries::pins().openlitespeed)]
         }

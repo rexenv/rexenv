@@ -35,6 +35,17 @@ pub(crate) fn nginx_quit_event(pid: u32) -> String {
     format!("ngx_quit_{pid}")
 }
 
+/// Apache httpd's shutdown event for its PARENT `pid` — what `httpd -k shutdown` sets.
+///
+/// Measured on `windows-latest` (Apache Lounge 2.4.69, 24 Oct 2026, the runtimes mirror
+/// gate): the console instance is a parent plus one child, both `httpd.exe`; the parent
+/// publishes `ap<pid>_shutdown`, and setting it ended BOTH. A second `httpd.exe -k
+/// shutdown` looks for the "Apache2.4" SERVICE instead, so rexenv signals the event
+/// itself (docs/PLAN-windows-servers.md D5).
+pub(crate) fn httpd_shutdown_event(pid: u32) -> String {
+    format!("ap{pid}_shutdown")
+}
+
 /// nginx's reload event for its master `pid` — what `nginx -s reload` sets.
 pub(crate) fn nginx_reload_event(pid: u32) -> String {
     format!("ngx_reload_{pid}")
@@ -42,8 +53,8 @@ pub(crate) fn nginx_reload_event(pid: u32) -> String {
 
 /// Every clean-shutdown event a process might publish for `pid`, tried in order. A
 /// name belongs to exactly one program, so the one that opens is that program's own.
-pub(crate) fn clean_exit_events(pid: u32) -> [String; 2] {
-    [mysqld_shutdown_event(pid), nginx_quit_event(pid)]
+pub(crate) fn clean_exit_events(pid: u32) -> [String; 3] {
+    [mysqld_shutdown_event(pid), nginx_quit_event(pid), httpd_shutdown_event(pid)]
 }
 
 /// The arguments rexenv adds to `mysqld` on Windows (`ProcessSupervisor::mysqld_supervision_args`).
@@ -191,7 +202,7 @@ mod tests {
     fn nginx_is_asked_to_quit_and_reload_by_the_measured_event_names() {
         assert_eq!(nginx_quit_event(10208), "ngx_quit_10208");
         assert_eq!(nginx_reload_event(10208), "ngx_reload_10208");
-        assert_eq!(clean_exit_events(7), ["MYSQLShutdown7".to_string(), "ngx_quit_7".to_string()]);
+        assert_eq!(clean_exit_events(7), ["MYSQLShutdown7".to_string(), "ngx_quit_7".to_string(), "ap7_shutdown".to_string()]);
     }
 
     #[test]

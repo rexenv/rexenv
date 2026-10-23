@@ -16,8 +16,12 @@ Windows builds (`downloads.php.net/~windows`) — for PHP 8.4 and 8.5 also the P
 extension from the same site's official PECL builds (`~windows/pecl`, PHP License 3.01), because
 php.net's 8.4+ zips stopped carrying IMAP — nginx from nginx.org's Windows zip, MySQL
 from Oracle's `winx64` zips, PostgreSQL from theseus-rs's `x86_64-pc-windows-msvc`
-builds, and Caddy, Mailpit and cloudflared from their GitHub releases. So the three
-"rexenv's own build" sections below describe **macOS artifacts only** (OpenLiteSpeed's, macOS and Linux) — none of them is
+builds, and Caddy, Mailpit, FrankenPHP (since 24 Oct 2026, upstream's Windows zip) and
+cloudflared from their GitHub releases. **One exception since 24 Oct 2026: Apache httpd for
+Windows is MIRRORED by rexenv** (the section below) — Apache Lounge's build, re-hosted on
+`rexenv/runtimes` because Apache Lounge keeps only its current build; rexenv is that mirror's
+distributor and ships the ASF's LICENSE and NOTICE beside it. The other "rexenv's own build"
+sections below describe **macOS artifacts** (OpenLiteSpeed's, macOS and Linux) — none of them is
 downloaded on Windows. Versions, sources and digests: `docs/PORTS.md`, Windows table.
 The Windows app binary links a different Rust graph (the `windows-*` and `webview2-com*`
 families in place of `objc2`) and has its own table below, read by the SAME walk as the macOS
@@ -188,6 +192,28 @@ asserted in the build, not assumed.
 refuses to resolve an artifact served from rexenv's own infrastructure unless a
 licence archive is pinned beside it — build 1 of this release shipped without
 one and the app would not load it, which is how the rule proved itself.
+
+## Apache httpd 2.4.69 for Windows — Apache Lounge's build, MIRRORED (downloaded at runtime, distributed BY US)
+
+Not built by rexenv — mirrored. The Apache Software Foundation publishes no Windows binary
+of httpd; Apache Lounge builds one from the unmodified ASF source and keeps only its current
+build, so a rexenv pinning their URL would fail its download the day 2.4.70 appears. Since
+24 Oct 2026 rexenv re-hosts the exact zip (`docs/PLAN-windows-servers.md` D1).
+
+| | |
+|---|---|
+| Artifact | `httpd-2.4.69-261002-Win64-VS18.zip` (Apache Lounge, VS18, Win64) — bytes unchanged, sha256 `9f1f93ca…` equal to Apache Lounge's published `.zip.txt` |
+| Mirrored by | `rexenv/runtimes` (public), `.github/workflows/httpd-windows.yml`, GitHub Actions — gated on a Windows runner (`-v`, `-t` with rexenv's module set, serves, stops on `ap<pid>_shutdown`) |
+| Release | `httpd-windows-1` — immutable, never re-uploaded; a re-mirror is the next build number |
+| Pinned in | `core/binaries.rs` (`HTTPD_2_4_69_WIN_AMD64_SHA256`, `HTTPD_WINDOWS_VERSION`, `HTTPD_WINDOWS_TAG`) |
+| Licence | **Apache-2.0** — `licenses-httpd-2.4.69-windows.tar.gz` in the same release carries the ASF's `LICENSE` and `NOTICE` from the `httpd-2.4.69` source tarball (sha512-verified) and Apache Lounge's `ReadMe.txt`; "Apache HTTP Server", "Apache" and the feather logo are trademarks of The Apache Software Foundation |
+
+The zip bundles the libraries Apache Lounge links (APR, APR-util, OpenSSL 3, PCRE2, zlib,
+Brotli, nghttp2/nghttp3/ngtcp2, libxml2, Lua, libcurl, expat, jansson) as DLLs beside
+`httpd.exe`; rexenv loads only the modules its generated conf names (mod_proxy_fcgi and
+friends — never mod_ssl, mod_http2 or mod_lua). Their notices are in the ASF `NOTICE` and
+the libraries' own files inside the zip. The licence archive is load-bearing here as
+everywhere: `core::binaries` refuses to resolve a self-distributed artifact without one.
 
 ## OpenLiteSpeed 1.9.3 — rexenv's own build (downloaded at runtime, distributed BY US)
 

@@ -136,7 +136,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Plan: `docs/PLAN-windows-servers.md` — Apache Lounge 2.4.69 mirrored into `rexenv/runtimes` (D1), PHP through
   mod_proxy_fcgi to the php-cgi group (D2), FrankenPHP from upstream's own Windows zip (D3), a per-OS Apache
   layout in core (D4), the `ap<pid>_shutdown` stop event (D5); OpenLiteSpeed stays refused on Windows forever.
-  T1–T7; the Windows proof is a build run on the Win11 VM.
+  T1–T7; the Windows proof is a build run on the Win11 VM. **T1–T3 landed 24 Oct 2026** (ledger #909: the mirror
+  gated on `windows-latest`, the two catalog arms, `apache::Layout`, the stop event); open: T4 (FrankenPHP's mail
+  catch on Windows), T5 (the SiteDetail picker + words), T7 (the run).
 
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned

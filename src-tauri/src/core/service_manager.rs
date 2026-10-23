@@ -1139,7 +1139,9 @@ impl ServiceManager {
         if let Some(p) = &self.frankenphp_bin {
             return Ok(p.clone());
         }
-        let p = binaries::resolve(platform, "frankenphp", binaries::pins().frankenphp).await?;
+        // Shape-aware: one static binary on macOS/Linux, `frankenphp.exe` inside upstream's
+        // zip tree on Windows (docs/PLAN-windows-servers.md D3).
+        let p = binaries::resolve_program(platform, "frankenphp", binaries::pins().frankenphp).await?;
         self.frankenphp_bin = Some(p.clone());
         Ok(p)
     }
@@ -1484,7 +1486,7 @@ impl ServiceManager {
                     .paths()
                     .bin_dir()
                     .ok()?
-                    .join(format!("httpd-{}", binaries::pins().httpd));
+                    .join(format!("httpd-{}", binaries::httpd_version()));
                 apache::desired_config(
                     platform, &basedir, docroot, domain, port, fpm_port, rewrite, env,
                 )
@@ -1554,12 +1556,18 @@ impl ServiceManager {
         }
     }
 
-    /// Resolve the Apache bundle dir once (mirrors `ensure_frankenphp_bin`).
+    /// Resolve the Apache tree once (mirrors `ensure_frankenphp_bin`): the merged bottle
+    /// bundle on macOS, Apache Lounge's zip tree on Windows — the layout's shape decides
+    /// (`apache::Layout`, docs/PLAN-windows-servers.md D4).
     async fn ensure_httpd_dir(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
         if let Some(p) = &self.httpd_dir {
             return Ok(p.clone());
         }
-        let p = binaries::resolve_bundle(platform, "httpd", binaries::pins().httpd).await?;
+        let version = binaries::httpd_version();
+        let p = match binaries::shape_of("httpd") {
+            binaries::Shape::Bundle => binaries::resolve_bundle(platform, "httpd", version).await?,
+            _ => binaries::resolve_dir(platform, "httpd", version).await?,
+        };
         self.httpd_dir = Some(p.clone());
         Ok(p)
     }
@@ -2269,11 +2277,17 @@ impl ServiceManager {
             // of resolve*() can't apply here.
             if self.frankenphp_bin.is_none() {
                 self.frankenphp_bin =
-                    binaries::cached_bin(platform, "frankenphp", binaries::pins().frankenphp);
+                    binaries::cached_program(platform, "frankenphp", binaries::pins().frankenphp);
             }
             if self.httpd_dir.is_none() {
-                self.httpd_dir =
-                    binaries::cached_bundle_dir(platform, "httpd", binaries::pins().httpd, "bin/httpd");
+                // The same existence rule for either shape: the tree is valid iff its server
+                // binary is on disk (`bin/httpd` in the bundle, `bin/httpd.exe` in the zip tree).
+                self.httpd_dir = binaries::cached_bundle_dir(
+                    platform,
+                    "httpd",
+                    binaries::httpd_version(),
+                    apache::layout().bin,
+                );
             }
         }
         adopted

@@ -3783,6 +3783,28 @@ them is Windows' own dialog:
       beside it. (Run 2 on 19 Sep showed Tauri's stock "rexenv is running! Click OK to kill it" —
       the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
+### Apache and FrankenPHP overrides — on Windows since 24 Oct 2026 (`docs/PLAN-windows-servers.md`)
+The main body's Apache and FrankenPHP rows run here too; what differs on this OS:
+- [ ] **New Site offers Nginx, FrankenPHP and Apache** (not OpenLiteSpeed) and the note carries
+  only OpenLiteSpeed's sentence. Create a Blank PHP site on **Apache**: the first create downloads
+  `httpd-2.4.69…zip` from `rexenv/runtimes` (14.5 MB) — the Downloads panel names it; the site
+  answers 200 through Caddy with `Server: Apache/2.4.69 (Win64)` and `X-Powered-By: PHP/<the
+  site's minor>` from the php-cgi group; a `.htaccess` `RewriteRule` in the docroot is honoured.
+  `Get-Process httpd` shows TWO `httpd.exe` (parent + child), both under rexenv's job.
+- [ ] **Stop that site** → both `httpd.exe` gone within the stop grace (`ap<pid>_shutdown`, not
+  `TerminateProcess` — `rexenv.log` has no "terminating pid" for them), its 83xx port free.
+  **Tell:** one `httpd.exe` left listening.
+- [ ] **Switch** the site Nginx → Apache → FrankenPHP → Nginx from the Site Settings card; each
+  switch answers 200 after the reload; the Apache conf (`config\apache-<domain>.conf`) names
+  `modules\mod_proxy_fcgi.so` and `conf\mime.types` — no `lib/httpd` or `.bottle` path.
+- [ ] **FrankenPHP site**: `phpinfo()` says PHP 8.5.12 (its own, not the pool's); `mail()` lands
+  in Mailpit (the SMTP ini keys, as the php-cgi groups use — no sendmail shim on Windows).
+- [ ] **Quit and relaunch rexenv** with an Apache site running → "adopted N running service(s)"
+  includes it (the conf path on the parent's command line is the marker); no second httpd.
+- [ ] `rex site create <d> --server apache` / `--server frankenphp` succeed; `rex site list`
+  shows the server column.
+**Owed on every run until the Dell runs them:** a Win11 ARM VM run is x64 under emulation.
+
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
 Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.
 - [x] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it

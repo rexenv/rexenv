@@ -12,12 +12,16 @@
 //! `AllowOverride All`, so plugin/theme `.htaccess` rules behave like on
 //! classic WP hosting — the thing the shared nginx can't emulate.
 //!
-//! The conf is generated per site from the BUNDLE tree (`ServerRoot` = the
-//! resolved `httpd-<ver>` cache dir; `LoadModule` paths resolve against it —
-//! only the modules the conf loads are bundled, and mod_ssl/mod_http2 are
-//! deliberately not among them). Compiled-in default paths inside the bottle
-//! are `@@HOMEBREW_PREFIX@@` placeholders and must never be trusted — every
-//! path the server touches (pidfile, runtime dir, logs, mime map) is explicit.
+//! The conf is generated per site from the resolved `httpd-<ver>` cache dir
+//! (`ServerRoot`; `LoadModule` paths resolve against it). On macOS that dir is
+//! the merged Homebrew BUNDLE (only the modules the conf loads are bundled, and
+//! mod_ssl/mod_http2 are deliberately not among them; compiled-in default paths
+//! are `@@HOMEBREW_PREFIX@@` placeholders and must never be trusted); on
+//! Windows it is Apache Lounge's zip tree (`bin/httpd.exe`, `modules/`,
+//! `conf/mime.types`; the MPM is mpm_winnt, compiled in). The five places the
+//! two trees differ are [`Layout`]'s fields, keyed by OS the way `binaries.rs`
+//! keys its catalog — ONE conf text with those holes (docs/PLAN-windows-servers.md
+//! D4). Every path the server touches (pidfile, runtime dir, logs, mime map) is explicit.
 
 use crate::core::services::RewriteMode;
 use crate::error::Result;
@@ -42,17 +46,61 @@ pub fn site_port(domain: &str) -> u16 {
     APACHE_BASE_PORT + (h % 100) as u16
 }
 
-/// `httpd` inside the bundle tree.
-pub fn httpd_bin(basedir: &Path) -> PathBuf {
-    basedir.join("bin/httpd")
+/// Where the pieces of an httpd tree live on `os` — the per-OS VALUES the one conf text
+/// is rendered with (docs/PLAN-windows-servers.md D4). `core/` names no OS by `cfg`; it
+/// takes `os` as data, as `binaries::shape_of_on` does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Layout {
+    /// The server binary, relative to the tree (`bin/httpd` · `bin/httpd.exe`).
+    pub bin: &'static str,
+    /// Where `LoadModule` finds the `.so` files (the bottle's `lib/httpd/modules` · the
+    /// zip's `modules`).
+    pub modules_dir: &'static str,
+    /// The real mime map (the bottle stages `etc/` under `.bottle/`; the zip has `conf/`).
+    pub mime_types: &'static str,
+    /// Whether the MPM is a loadable module: mpm_event + unixd on POSIX hosts; on Windows
+    /// mpm_winnt is compiled into httpd.exe and `mod_unixd` does not exist.
+    pub loadable_mpm: bool,
 }
 
-/// The modules the generated conf loads, in load order. mpm_event + unixd
-/// first (the MPM must exist before anything else initializes), proxy before
-/// proxy_fcgi (module dependency).
-const MODULES: &[(&str, &str)] = &[
+impl Layout {
+    /// The layout `os` resolves.
+    pub const fn for_os(os: &str) -> Layout {
+        // `const fn` cannot compare &str with `==`; byte-compare the one OS that differs.
+        if matches!(os.as_bytes(), b"windows") {
+            Layout { bin: "bin/httpd.exe", modules_dir: "modules", mime_types: "conf/mime.types", loadable_mpm: false }
+        } else {
+            Layout {
+                bin: "bin/httpd",
+                modules_dir: "lib/httpd/modules",
+                mime_types: ".bottle/etc/httpd/mime.types",
+                loadable_mpm: true,
+            }
+        }
+    }
+}
+
+/// The layout for THIS host.
+pub fn layout() -> Layout {
+    Layout::for_os(std::env::consts::OS)
+}
+
+/// The server binary inside the resolved tree, for this host.
+pub fn httpd_bin(basedir: &Path) -> PathBuf {
+    basedir.join(layout().bin)
+}
+
+/// The MPM and its helper, loaded FIRST where they are modules (the MPM must exist before
+/// anything else initializes) — POSIX hosts only (`Layout::loadable_mpm`).
+const MPM_MODULES: &[(&str, &str)] = &[
     ("mpm_event_module", "mod_mpm_event.so"),
     ("unixd_module", "mod_unixd.so"),
+];
+
+/// The modules the generated conf loads on every OS, in load order: proxy before
+/// proxy_fcgi (module dependency). The Windows mirror gate asserts this exact set exists
+/// in Apache Lounge's zip (`rexenv/runtimes` `httpd-windows.yml`).
+const MODULES: &[(&str, &str)] = &[
     ("authz_core_module", "mod_authz_core.so"),
     ("dir_module", "mod_dir.so"),
     ("mime_module", "mod_mime.so"),
@@ -116,6 +164,7 @@ pub(crate) const SUBDIRECTORY_MULTISITE_RULES: &str = "RewriteRule ^/index\\.php
 /// generated conf never protected (no stock `<Files ".ht*">` block here).
 #[allow(clippy::too_many_arguments)] // flat mirror of the site's serving inputs
 pub fn generate_config(
+    os: &str,
     basedir: &Path,
     docroot: &Path,
     domain: &str,
@@ -126,9 +175,12 @@ pub fn generate_config(
     run_dir: &Path,
     log_dir: &Path,
 ) -> String {
-    let modules: String = MODULES
+    let layout = Layout::for_os(os);
+    let modules: String = MPM_MODULES
         .iter()
-        .map(|(name, file)| format!("LoadModule {name} \"lib/httpd/modules/{file}\"\n"))
+        .filter(|_| layout.loadable_mpm)
+        .chain(MODULES.iter())
+        .map(|(name, file)| format!("LoadModule {name} \"{}/{file}\"\n", layout.modules_dir))
         .collect();
     let set_env: String = env
         .iter()
@@ -145,7 +197,7 @@ pub fn generate_config(
          DefaultRuntimeDir \"{run}\"\n\
          ErrorLog \"{logs}/apache-{domain}-error.log\"\n\
          LogLevel warn\n\
-         TypesConfig \"{basedir}/.bottle/etc/httpd/mime.types\"\n\
+         TypesConfig \"{basedir}/{mime}\"\n\
          DocumentRoot \"{docroot}\"\n\
          DirectoryIndex index.php index.html\n\
          <Directory \"{docroot}\">\n\
@@ -163,6 +215,7 @@ pub fn generate_config(
          RewriteRule \"(^|/)\\.(?!well-known(/|$))\" - [R=404,L]\n\
          {routing}",
         basedir = basedir.display(),
+        mime = layout.mime_types,
         run = run_dir.display(),
         logs = log_dir.display(),
         docroot = docroot.display(),
@@ -217,6 +270,7 @@ pub fn desired_config(
     env: &[(String, String)],
 ) -> Result<String> {
     Ok(generate_config(
+        std::env::consts::OS,
         basedir,
         docroot,
         domain,
@@ -285,7 +339,12 @@ mod tests {
     use super::*;
 
     fn cfg(mode: RewriteMode, env: &[(String, String)]) -> String {
+        cfg_on("macos", mode, env)
+    }
+
+    fn cfg_on(os: &str, mode: RewriteMode, env: &[(String, String)]) -> String {
         generate_config(
+            os,
             Path::new("/cache/httpd-2.4.68"),
             Path::new("/Sites/ap site/public"),
             "ap.rex",
@@ -296,6 +355,38 @@ mod tests {
             Path::new("/data/run"),
             Path::new("/data/logs"),
         )
+    }
+
+    /// docs/PLAN-windows-servers.md D4 — **one conf text, five per-OS holes.** The macOS
+    /// render is the bottle's (loadable mpm_event + unixd, `lib/httpd/modules`, the
+    /// `.bottle/etc` mime map); the Windows render is Apache Lounge's tree (no MPM lines —
+    /// mpm_winnt is compiled in and `mod_unixd` does not exist there — `modules/`,
+    /// `conf/mime.types`), and everything else is byte-identical: the same listener, the
+    /// same fcgi hand-off to the pool port, the same `.htaccess` and HTTPS mapping.
+    #[test]
+    fn the_windows_render_differs_from_the_mac_one_only_in_the_layout_holes() {
+        let mac = cfg_on("macos", RewriteMode::Single, &[]);
+        let win = cfg_on("windows", RewriteMode::Single, &[]);
+        assert!(mac.contains("LoadModule mpm_event_module \"lib/httpd/modules/mod_mpm_event.so\""));
+        assert!(mac.contains("LoadModule unixd_module \"lib/httpd/modules/mod_unixd.so\""));
+        assert!(mac.contains("TypesConfig \"/cache/httpd-2.4.68/.bottle/etc/httpd/mime.types\""));
+        assert!(!win.contains("mpm_event") && !win.contains("unixd"), "mpm_winnt is compiled in:\n{win}");
+        assert!(win.contains("LoadModule proxy_fcgi_module \"modules/mod_proxy_fcgi.so\""));
+        assert!(win.contains("TypesConfig \"/cache/httpd-2.4.68/conf/mime.types\""));
+        assert!(!win.contains("lib/httpd") && !win.contains(".bottle"), "a bottle path leaked into the Windows conf");
+        // Everything that is not a layout hole is the same text.
+        let strip = |s: &str| -> Vec<String> {
+            s.lines()
+                .filter(|l| !l.starts_with("LoadModule") && !l.starts_with("TypesConfig"))
+                .map(str::to_string)
+                .collect()
+        };
+        assert_eq!(strip(&mac), strip(&win));
+        // The module SET Windows loads is exactly what the mirror gate asserts exists in the zip.
+        let win_modules: Vec<&str> = win.lines().filter(|l| l.starts_with("LoadModule")).collect();
+        assert_eq!(win_modules.len(), MODULES.len());
+        assert_eq!(Layout::for_os("windows").bin, "bin/httpd.exe");
+        assert_eq!(Layout::for_os("linux").bin, "bin/httpd", "every POSIX host reads the bottle layout");
     }
 
     #[test]
