@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compiled; OWED: the three SMOKE rows live on each OS (they need a published manifest naming a newer PHP patch than the pin, i.e. the first release after this), and D1 (the read-only WordPress lines) as a small follow-up.** Owner ask (23 Oct
+Status: **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compiled; OWED: the three SMOKE rows live on each OS (they need a published manifest naming a newer PHP patch than the pin, i.e. the first release after this), D1 built the same day (ledger #908).** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -274,3 +274,8 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   §M widened to every kind from 0.9.1. **Owed:** the three SMOKE rows live on macOS, Windows and
   Linux — they need a published manifest naming a PHP patch newer than the pin, which the first
   release after this is; and D1.
+- **D1 — 23 Oct 2026.** `WordPressUpdatesNote` on the Updates page: one read-only line per WordPress
+  site with plugin updates, from the site panel's `["wp-plugins", id, "updates"]` cache alone (every
+  query `enabled: false`), linking to `/sites/<id>/wordpress`; never a row, never counted. The
+  harness seeds the cache (`?wp=1`) and records `wp_plugins` calls so the probe can assert zero —
+  the first plant passed silently until it did. Ledger #908.

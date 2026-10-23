@@ -64,6 +64,7 @@
  *               would be visible (`appupdate.js`)
  */
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { mockIPC } from "@tauri-apps/api/mocks";
 import { mockAdminerStatus, mockDatabases, mockDbConsoleStatus, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
 import { UpdatesSection } from "@/components/settings/UpdatesSection";
@@ -1131,6 +1132,13 @@ export function DevUiReview() {
         // up exactly like one that polled the app state.
         // The page's "Check now" (T4): recorded like the card's check was, and in
         // `?state=checking` it never settles, so the pill's in-flight state can be seen.
+        // The Updates page may NEVER ask for a site's plugins (D1): recorded, so the probe
+        // can assert zero calls — an unmocked command would only reject the query quietly.
+        case "wp_plugins": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd, args });
+          return [];
+        }
         case "updates_check_now": {
           const w = window as unknown as { __rexUpdate?: unknown[] };
           (w.__rexUpdate ??= []).push({ cmd });
@@ -1550,6 +1558,14 @@ export function DevUiReview() {
               fixtureSite({ id: "s-api", name: "api", domain: "api.rex", type: "laravel" }),
             ];
           }
+          // The Updates page's WordPress note (D1): two WordPress sites, one Laravel.
+          if (params.get("view") === "appupdate") {
+            return [
+              fixtureSite({ id: "s-ea", name: "ea", domain: "myblog.test" }),
+              fixtureSite({ id: "s-shop", name: "shop", domain: "shop.rex" }),
+              fixtureSite({ id: "s-api", name: "api", domain: "api.rex", type: "laravel" }),
+            ];
+          }
           return [];
         // The two live tunnels behind that fixture. Real trycloudflare-shaped
         // URLs, because "paste the link you are holding" is one of the three
@@ -1733,6 +1749,8 @@ export function DevUiReview() {
   if (!ready) return null;
 
   const view = params.get("view") ?? "card";
+  if (view === "appupdate") return <AppUpdateHarness />;
+
   return (
     <div className="min-h-screen bg-rex-bg p-6">
       <div className="mx-auto max-w-[860px] space-y-3">
@@ -1743,38 +1761,6 @@ export function DevUiReview() {
         {view === "dbtab" && <DbTabView />}
         {view === "live" && <div className="w-[720px]"><LiveTab site={fixtureSite()} /></div>}
         {view === "newsite" && <NewSiteDialog onClose={() => {}} />}
-        {view === "appupdate" && (
-          // A landmark that renders regardless, so a "no button" leg can tell an
-          // empty state from a broken route.
-          <div data-probe="appupdate-view">
-            <UpdatesSection
-              downloads={
-                params.get("state") === "installing"
-                  ? {
-                      batch: null,
-                      items: [
-                        {
-                          id: "rexenv-0.6.0",
-                          name: "rexenv",
-                          version: "0.6.0",
-                          label: "rexenv 0.6.0",
-                          phase: "downloading",
-                          downloadedBytes: 12_400_000,
-                          totalBytes: 31_400_000,
-                          bytesPerSec: 2_100_000,
-                          error: null,
-                        },
-                      ],
-                      seq: 1,
-                    }
-                  : { batch: null, items: [], seq: 0 }
-              }
-            />
-            <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
-              updates harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark; &inv=php,adminer,phpmyadmin adds rows)
-            </div>
-          </div>
-        )}
         {view === "updatenotice" && (
           // The REAL chrome, so the rail pill is checked where it actually sits —
           // beside the Settings link, not inside it.
@@ -1890,6 +1876,63 @@ export function DevUiReview() {
             onCancel={() => {}}
           />
         )}
+      </div>
+    </div>
+  );
+}
+
+/** `view=appupdate`: the Updates page. `?wp=1` seeds the WordPress panel's update-pass cache
+ *  for ONE of the two WordPress sites (two plugins with updates) the way `useWpPlugins` would
+ *  — the page itself may never fetch it (D1), so the seed is the only way its line can appear. */
+function AppUpdateHarness() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (params.get("wp") === "1") {
+      qc.setQueryData(["wp-plugins", "s-ea", "updates"], [
+        { name: "akismet", status: "inactive", version: "5.3", update: "available", updateVersion: "5.3.7", title: "Akismet Anti-spam", file: "akismet/akismet.php" },
+        { name: "woocommerce", status: "active", version: "9.1.2", update: "available", updateVersion: "9.2.0", title: "WooCommerce", file: "woocommerce/woocommerce.php" },
+        { name: "hello-dolly", status: "active", version: "1.7.3", update: "none", updateVersion: "", title: "Hello Dolly", file: "hello.php" },
+      ]);
+    }
+  }, [qc]);
+  return (
+    <div className="min-h-screen bg-rex-bg p-6">
+      <div className="mx-auto max-w-[860px] space-y-3">
+        <h1 className="text-[0.8125rem] font-medium text-rex-text-muted">
+          DEV harness — UI review (appupdate, mocked IPC)
+        </h1>
+
+          {/* A landmark that renders regardless, so a "no button" leg can tell an
+              empty state from a broken route. */}
+          <div data-probe="appupdate-view">
+            <UpdatesSection
+              downloads={
+                params.get("state") === "installing"
+                  ? {
+                      batch: null,
+                      items: [
+                        {
+                          id: "rexenv-0.6.0",
+                          name: "rexenv",
+                          version: "0.6.0",
+                          label: "rexenv 0.6.0",
+                          phase: "downloading",
+                          downloadedBytes: 12_400_000,
+                          totalBytes: 31_400_000,
+                          bytesPerSec: 2_100_000,
+                          error: null,
+                        },
+                      ],
+                      seq: 1,
+                    }
+                  : { batch: null, items: [], seq: 0 }
+              }
+            />
+            <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
+              updates harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark; &inv=php,adminer,phpmyadmin adds rows)
+            </div>
+          </div>
+        
       </div>
     </div>
   );

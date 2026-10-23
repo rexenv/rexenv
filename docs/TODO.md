@@ -126,7 +126,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   #905: Settings → Updates, one page installs every kind, the About card retired; #906: Update all — sequential, app
   last, stops at the first failure; #907: `rex status` + MCP `stack_status.updates` read the same list). **Open:** the
   three SMOKE rows live per OS (need a published manifest naming a PHP patch newer than the pin — the first
-  release after this), and D1: a read-only line per site with WordPress plugin updates on the page.
+  release after this). D1 (the read-only WordPress line per site, #908) built 23 Oct 2026.
 
 - [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
   (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row

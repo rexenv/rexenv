@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useSearchParams } from "react-router-dom";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   adminerUpdateApply,
+  listSites,
+  wpPlugins,
   appUpdateApply,
   appUpdateReadiness,
   appUpdateRestart,
@@ -23,7 +25,7 @@ import { agoLabel } from "@/routes/Sites";
 import { APP_UPDATE_CHECK_MUTATION, CHECK_FLAG } from "@/lib/useCheckForUpdates";
 import { fmtBytes, pctOf, Track } from "@/components/shell/DownloadPanel";
 import { DB_CONSOLE_QUERY } from "@/lib/dbconsole";
-import type { DownloadsSnapshot, UpdateKind, UpdateOffer, UpdateRunRow } from "@/types";
+import type { DownloadsSnapshot, Site, UpdateKind, UpdateOffer, UpdateRunRow, WpPlugin } from "@/types";
 
 /**
  * Settings → Updates: every kind of thing newer than what runs here — rexenv itself, a
@@ -518,6 +520,8 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
         </div>
       )}
 
+      <WordPressUpdatesNote />
+
       {/* The switch that stops the REQUESTS — both signed documents — not just this page:
           the setting is read in Rust before any network call. It sits beside the footer
           that reports the last check, because "when did it last look" and "may it look"
@@ -537,6 +541,67 @@ export function UpdatesSection({ downloads: downloadsOverride }: { downloads?: D
       <div className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted">
         {footer}
       </div>
+    </div>
+  );
+}
+
+/**
+ * WordPress plugin updates, per site, READ-ONLY (`docs/PLAN-unified-updates.md` D1, owner
+ * ruling 23 Oct 2026): a different trust root (wordpress.org) and a different blast radius
+ * (one site, not the stack), so they are never rows, never counted on the pill and never in
+ * Update all — one line per site that has some, linking to that site's WordPress tab, where
+ * the real rows and their own Update buttons live.
+ *
+ * Read from the query CACHE alone: the site panel's two-pass check (`useWpPlugins`) is what
+ * fills `["wp-plugins", id, "updates"]`, and this page asks nothing of wordpress.org itself —
+ * `enabled: false` on every query here, so opening Updates costs no WP-CLI run and no network.
+ * A site whose panel has not checked yet simply has no line; the sentence below says so.
+ */
+function WordPressUpdatesNote() {
+  const { data: sites = [] } = useQuery({ queryKey: ["sites"], queryFn: listSites, staleTime: 60_000 });
+  const wp = sites.filter((s: Site) => s.type === "wordpress");
+  const checked = useQueries({
+    queries: wp.map((s) => ({
+      queryKey: ["wp-plugins", s.id, "updates"],
+      queryFn: () => wpPlugins(s.id, true),
+      // Never from here: the site's own panel runs the check (see the doc comment).
+      enabled: false,
+    })),
+  });
+  const lines = wp
+    .map((s, i) => {
+      const rows = (checked[i]?.data as WpPlugin[] | undefined) ?? [];
+      const n = rows.filter((p) => p.update === "available").length;
+      return n > 0 ? { site: s, n } : null;
+    })
+    .filter((x): x is { site: Site; n: number } => x !== null);
+  if (wp.length === 0) return null;
+  return (
+    <div
+      data-probe="wp-updates-note"
+      data-sites={lines.length}
+      className="border-t border-rex-border-subtle py-[13px] text-[0.75rem] leading-[1.5] text-rex-text-muted"
+    >
+      {lines.length === 0 ? (
+        <span>
+          WordPress plugin updates show here per site once a site's WordPress tab has checked — this
+          page asks nothing of wordpress.org on its own.
+        </span>
+      ) : (
+        <ul className="space-y-1">
+          {lines.map(({ site, n }) => (
+            <li key={site.id} className="flex flex-wrap items-center gap-x-2">
+              <span className="font-mono text-rex-text-bright">{site.domain}</span>
+              <span>
+                {n} plugin update{n === 1 ? "" : "s"} —
+              </span>
+              <Link to={`/sites/${site.id}/wordpress`} className="text-rex-text-bright underline-offset-2 hover:underline">
+                open the site
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

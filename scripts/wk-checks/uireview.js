@@ -174,6 +174,10 @@ const SCENARIOS = [
   ["appupdate-installed-undecided", "view=appupdate&state=installed-undecided", []],
   // #906 (PLAN-unified-updates T5): Update all over three rows, stopping at the second.
   ["updateall-stops", "view=appupdate&state=offered&inv=php,adminer&run=stop", []],
+  // D1: WordPress plugin updates are a read-only LINE per site (from the panel's cache), never
+  // a row, never counted — and this page fetches nothing for them.
+  ["updates-wp-note", "view=appupdate&state=offered&inv=php,adminer&wp=1", []],
+  ["updates-wp-unchecked", "view=appupdate&state=offered&inv=php,adminer", []],
   ["updateall-completes", "view=appupdate&state=offered&inv=php,adminer", []],
   // The themes grid labels each card with the theme's own name, the way
   // wp-admin does — and keeps the slug, because that is the folder name and
@@ -1062,6 +1066,32 @@ const PROBES = {
   // values of `dbServerRunning` (false / true / null) — one sentence, under the false
   // row only. The control: untick "also copy databases" and the sentence must go,
   // because a warning about a copy nobody asked for would be noise on every row.
+  // The WordPress note (D1). Two WordPress sites and one Laravel in the fixture; the cache is
+  // seeded for ONE of them. Exactly one line, naming that site with its count, linking to its
+  // WordPress tab; the Update-all count stays 3 (the note is not a row); nothing was fetched —
+  // an unmocked `wp_plugins` would have thrown in the harness and failed the scenario on its
+  // console.error, which is the control for "this page asks wordpress.org nothing".
+  wpNote: async (page, name) => {
+    const problems = [];
+    const note = page.locator('[data-probe="wp-updates-note"]');
+    if ((await note.count()) !== 1) return ["no WordPress note on the page (two WordPress sites exist)"];
+    const text = await note.innerText();
+    if (name === "updates-wp-note") {
+      if ((await note.getAttribute("data-sites")) !== "1") problems.push(`${await note.getAttribute("data-sites")} sites listed; the cache was seeded for one`);
+      if (!/myblog\.test/.test(text) || !/2 plugin updates/.test(text)) problems.push(`the line does not name the site and its count: "${text}"`);
+      if (/shop\.rex/.test(text)) problems.push("a site whose panel never checked got a line");
+      const href = await note.locator("a").first().getAttribute("href");
+      if (href !== "/sites/s-ea/wordpress") problems.push(`the line links to "${href}", not the site's WordPress tab`);
+    } else {
+      if (!/asks nothing of wordpress\.org/.test(text)) problems.push(`with nothing checked the note must say so: "${text}"`);
+    }
+    const all = page.locator('[data-probe="update-all"]');
+    if (!/Update all \(3\)/.test(await all.innerText().catch(() => ""))) problems.push("the WordPress line changed the Update-all count — it is not a row");
+    // The control: the page asked wordpress.org (through wp-cli) for NOTHING.
+    const fetched = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "wp_plugins").length);
+    if (fetched !== 0) problems.push(`the Updates page ran ${fetched} plugin check(s) of its own — it may only read the panel's cache`);
+    return problems;
+  },
   // Update all (#906). The whole claim is ORDER and STOPPING: rows settle one after another in
   // the inventory's order, the app last; the first failure leaves every later row "not
   // reached" and the run says where it stopped, in the family's own sentence; a run that
@@ -1358,6 +1388,7 @@ function probeFor(name) {
   if (name === "import-local-stopped") return PROBES.importLocalStopped;
   if (name === "notices") return PROBES.notices;
   if (name.startsWith("updateall-")) return PROBES.updateAll;
+  if (name.startsWith("updates-wp-")) return PROBES.wpNote;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached
   // to the first scenario only — attaching it to all six would run the same

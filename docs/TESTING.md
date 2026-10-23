@@ -684,6 +684,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (23 Oct 2026): `uireview.js` `updates-wp-note` / `updates-wp-unchecked` → `wpNote`** (#908,
+  PLAN-unified-updates D1) — the Updates page's read-only WordPress line, from a cache the harness
+  seeds for one of two WordPress sites (`?wp=1`): one line, that site, its count, the link to its
+  WordPress tab; the Update-all count unchanged; ZERO `wp_plugins` calls. **What it cost:** the first
+  plant (the queries enabled) passed — an unmocked command only rejects the query, silently — so the
+  harness records the calls and the probe counts them; the re-plant went red on "ran 2 plugin
+  check(s) of its own".
 - **Probes (23 Oct 2026): `uireview.js` `updateall-stops` / `updateall-completes` → `updateAll`**
   (#906, PLAN-unified-updates T5) — the Updates page's **Update all** over a scripted mock that
   advances ONE row per poll (`?run=stop` fails the second row): statuses settle `ok,failed,notReached`

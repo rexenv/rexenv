@@ -1289,7 +1289,11 @@ honest footer —
   **The read-only surfaces say the same list** (T6, ledger #907): `rex status` prints one line
   naming the pending offers (one by name, several as a count with the names) and `--json` carries
   `update: {pending, offers, restartPending}`; the MCP `stack_status` has the same `updates` field —
-  both from the hub's published snapshot, the tray's source, and neither can install. The
+  both from the hub's published snapshot, the tray's source, and neither can install.
+  **WordPress plugin updates** (D1, ledger #908) appear on the page as a read-only line per site —
+  "ab12.rex · 3 plugin updates — open the site" — from the site panel's own two-pass cache; the page
+  asks nothing of wordpress.org, counts nothing, and never puts them in Update all: a different trust
+  root and blast radius than the stack's updates. The
   three family screens no longer fetch the manifest on mount — the poller does, and
   `updates-changed` refreshes them. Both pills only navigate: the idle
   button calls `useCheckForUpdates` — the same door the menu event uses, About with `check=1`,

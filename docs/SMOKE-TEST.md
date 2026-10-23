@@ -2810,7 +2810,10 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   "updates: automatic checking is off", no "manifest accepted"). Settings → Services → PHP and the
   Databases cards no longer fetch on open (no "manifest accepted" line when they mount). **Tell:** a
   row that installs without its consent sentence; a footer saying "up to date"; an About card still
-  offering the app. Open: macOS · Windows · Linux.
+  offering the app. Then (D1, #908): open a WordPress site's WordPress tab so its update check runs,
+  come back to Settings → Updates → a line "<domain> · N plugin updates — open the site" under the
+  rows, NOT counted in the pill or Update all; a site whose tab was never opened has no line. Open:
+  macOS · Windows · Linux.
 - [ ] **Update all** (`docs/PLAN-unified-updates.md` T5, ledger #906). With a PHP patch, a console
   version and a rexenv release pending, press **Update all (3)**: the rows settle one after another,
   top to bottom — "PHP 8.3 is now on 8.3.28" (green), then the console, then the rexenv row — and only
