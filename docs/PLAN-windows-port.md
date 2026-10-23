@@ -867,7 +867,7 @@ looked at yet (W2 measures and hashes every row before it is pinned).
 | MySQL 8.4 / 8.0 | Oracle Windows `noinstall` zip | unchecked |
 | Xdebug | xdebug.org DLLs per PHP minor / NTS / compiler | unchecked |
 | Redis | no official build | D4 |
-| Apache httpd 2.4.69 | Apache Lounge `httpd-2.4.69-261002-Win64-VS18.zip`, MIRRORED on `rexenv/runtimes` `httpd-windows-1` (Apache Lounge keeps only its current build) | ✓ pinned 24 Oct 2026 (`docs/PLAN-windows-servers.md` D1); gate on `windows-latest`: `-v`, `-t` with rexenv's module set, serves, parent+child end on `ap<pid>_shutdown` |
+| Apache httpd 2.4.69 | Apache Lounge `httpd-2.4.69-261002-Win64-VS18.zip`, MIRRORED on `rexenv/runtimes` `httpd-windows-2` (Apache Lounge keeps only its current build) | ✓ pinned 24 Oct 2026 (`docs/PLAN-windows-servers.md` D1); gate on `windows-latest`: `-v`, `-t` with rexenv's module set, serves, parent+child end on `ap<pid>_shutdown` |
 | WP-CLI, Composer, Adminer | `.phar` / `.php`, OS-agnostic | — |
 
 ## 5. Tasks

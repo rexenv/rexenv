@@ -204,7 +204,7 @@ build, so a rexenv pinning their URL would fail its download the day 2.4.70 appe
 |---|---|
 | Artifact | `httpd-2.4.69-261002-Win64-VS18.zip` (Apache Lounge, VS18, Win64) — bytes unchanged, sha256 `9f1f93ca…` equal to Apache Lounge's published `.zip.txt` |
 | Mirrored by | `rexenv/runtimes` (public), `.github/workflows/httpd-windows.yml`, GitHub Actions — gated on a Windows runner (`-v`, `-t` with rexenv's module set, serves, stops on `ap<pid>_shutdown`) |
-| Release | `httpd-windows-1` — immutable, never re-uploaded; a re-mirror is the next build number |
+| Release | `httpd-windows-2` — immutable, never re-uploaded; a re-mirror is the next build number. Build 1 exists and is NOT pinned: its licences tarball put the files at the root instead of under `licenses/`, and the app refused the artifact on the Win11 VM ("its licence archive unpacked to nothing … refusing to publish it without the licences that must ship beside it") — the load-bearing archive, proving itself a third time |
 | Pinned in | `core/binaries.rs` (`HTTPD_2_4_69_WIN_AMD64_SHA256`, `HTTPD_WINDOWS_VERSION`, `HTTPD_WINDOWS_TAG`) |
 | Licence | **Apache-2.0** — `licenses-httpd-2.4.69-windows.tar.gz` in the same release carries the ASF's `LICENSE` and `NOTICE` from the `httpd-2.4.69` source tarball (sha512-verified) and Apache Lounge's `ReadMe.txt`; "Apache HTTP Server", "Apache" and the feather logo are trademarks of The Apache Software Foundation |
 

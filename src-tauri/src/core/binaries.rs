@@ -953,9 +953,9 @@ const FRANKENPHP_1_13_3_WIN_AMD64_SHA256: &str = "c744d35cc35c313e2f126692dc8adb
 /// Windows artifact is Apache Lounge's 2.4.69. One `httpd` name, two catalog keys;
 /// `httpd_version_on` says which an OS reads.
 const HTTPD_WINDOWS_VERSION: &str = "2.4.69";
-pub(crate) const HTTPD_WINDOWS_TAG: &str = "httpd-windows-1";
+pub(crate) const HTTPD_WINDOWS_TAG: &str = "httpd-windows-2";
 const HTTPD_2_4_69_WIN_AMD64_SHA256: &str = "9f1f93cab9a0c6dc5e628aa640784bb30347f93fcd01b46a4c0d6b5ba76bf4e2";
-const HTTPD_2_4_69_LICENSES_WINDOWS_SHA256: &str = "bc1aa0b15463dbbf0137467b4a7b3eca01b45d8915f8b2a9e597cbf8113d91e6";
+const HTTPD_2_4_69_LICENSES_WINDOWS_SHA256: &str = "5f3b6ced6911e7803efeaa4f72d207a46cfb4a1114043079278bf47dc5961a89";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
