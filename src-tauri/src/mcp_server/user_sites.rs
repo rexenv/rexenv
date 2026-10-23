@@ -741,14 +741,17 @@ static REGISTRY: &[UserTool] = &[
                       {site_id} (the running or last job, and what was imported) needs `read` on the \
                       site; `records` and `leftovers` (dumps kept after a failed import) need `read` \
                       on rexenv itself; `start` {site_id, confirm_overwrite?: the site's domain, \
-                      when a database already exists — it is DROPPED and rebuilt} needs `destroy` on \
+                      when a database already exists — it is DROPPED and rebuilt; accept_override?: \
+                      true runs an import the compatibility verdict refused but allows (a source \
+                      newer than rexenv's engine, MySQL into MariaDB) — the refusal's `overridable` \
+                      says when it applies} needs `destroy` on \
                       the site and blocks until it settles; `cancel` {site_id} needs `manage`; \
                       `delete_leftover` {file} needs `destroy` on rexenv itself.",
         input_schema: || json!({
             "type": "object",
             "properties": {
                 "action": { "type": "string", "enum": ["status", "records", "leftovers", "start", "cancel", "delete_leftover"] },
-                "site_id": { "type": "string" }, "confirm_overwrite": { "type": "string" }, "file": { "type": "string" }
+                "site_id": { "type": "string" }, "confirm_overwrite": { "type": "string" }, "accept_override": { "type": "boolean" }, "file": { "type": "string" }
             },
             "required": ["action"],
             "additionalProperties": false
@@ -1264,7 +1267,7 @@ pub trait ImportOps: Send + Sync {
     fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> OpFuture<'a, Result<crate::commands::rewrite::RevertOutcome>>;
     /// Start the import and block until it settles (the app's job is polled by
     /// `db_import_state`; the settled snapshot comes back).
-    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>>;
+    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>, accept_override: Option<bool>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>>;
     fn db_import_state<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Option<crate::commands::db_import::DbImportJobState>>>;
     fn db_import_cancel<'a>(&'a self, job_id: String) -> OpFuture<'a, Result<()>>;
     fn db_import_record<'a>(&'a self, site_id: String) -> OpFuture<'a, Result<Option<crate::state::store::DbImportRecord>>>;
@@ -3744,7 +3747,7 @@ fn db_import<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Acte
             "start" => {
                 let site = claim_scope(&ctx, site_id()?, Scope::Destroy, "import its database from Valet/Herd, DROPPING the one rexenv has")?;
                 acted.set(&site);
-                let st = im.db_import_start(site.id.clone(), args.get("confirm_overwrite").and_then(Value::as_str).map(String::from)).await?;
+                let st = im.db_import_start(site.id.clone(), args.get("confirm_overwrite").and_then(Value::as_str).map(String::from), args.get("accept_override").and_then(Value::as_bool)).await?;
                 json!({ "domain": site.domain, "job": db_import_job_view(&st, &scrub) })
             }
             "cancel" => {
@@ -4602,9 +4605,9 @@ pub(crate) mod tests {
             self.calls.lock().unwrap().push(format!("rewrite revert {site_id} {force}"));
             Box::pin(async { Ok(crate::commands::rewrite::RevertOutcome::NoRewrite { message: "nothing".into() }) })
         }
-        fn db_import_start<'a>(&'a self, site_id: String, confirm: Option<String>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>> {
+        fn db_import_start<'a>(&'a self, site_id: String, confirm: Option<String>, _accept: Option<bool>) -> OpFuture<'a, Result<crate::commands::db_import::DbImportJobState>> {
             self.calls.lock().unwrap().push(format!("dbimport start {site_id} {confirm:?}"));
-            Box::pin(async { Ok(crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 100, status: "ok".into(), error: None, log_key: "x".into(), kept_artifact: Some("/Users/somebody/Library/Application Support/rexenv/imports/mine.sql".into()), result: None, nothing_to_do: false }) })
+            Box::pin(async { Ok(crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 100, status: "ok".into(), error: None, log_key: "x".into(), kept_artifact: Some("/Users/somebody/Library/Application Support/rexenv/imports/mine.sql".into()), result: None, nothing_to_do: false, overridable: false }) })
         }
         fn db_import_state<'a>(&'a self, _s: String) -> OpFuture<'a, Result<Option<crate::commands::db_import::DbImportJobState>>> { Box::pin(async { Ok(None) }) }
         fn db_import_cancel<'a>(&'a self, _j: String) -> OpFuture<'a, Result<()>> { Box::pin(async { Ok(()) }) }

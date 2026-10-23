@@ -192,6 +192,23 @@ pub fn set_site_db_name(conn: &Connection, id: &str, db_name: &str) -> Result<bo
     Ok(affected > 0)
 }
 
+/// The engine a site's database lives on. Written by the database import alone, for a
+/// site that has NO database on rexenv's engines yet, so the copy is like-for-like with
+/// its source: an imported site was created on MySQL unconditionally, and a MariaDB source
+/// (a Local site on MariaDB 10.x, a DBngin MariaDB behind a Valet site) was refused with
+/// "set this site's database engine to MariaDB" — an instruction no screen offered, so the
+/// user exported by hand and fed the file to rexenv's engine themselves (users' reports,
+/// 23 Oct 2026).
+pub fn set_site_db_engine(
+    conn: &Connection,
+    id: &str,
+    engine: crate::state::models::SiteDbEngine,
+) -> Result<bool> {
+    let affected =
+        conn.execute("UPDATE sites SET db_engine = ?1 WHERE id = ?2", params![engine.as_db(), id])?;
+    Ok(affected > 0)
+}
+
 /// Serve this site, or stop serving it (v44) — see
 /// [`crate::state::models::Site::enabled`].
 ///

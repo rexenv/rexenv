@@ -146,6 +146,7 @@ function dbJob(status: "running" | "failed") {
     keptArtifact: null,
     result: null,
     nothingToDo: false,
+    overridable: false,
   };
 }
 

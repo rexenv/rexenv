@@ -209,7 +209,7 @@ pub fn scan_registry(
         }
     };
 
-    let rows: Vec<DiscoveredSite> = sites.iter().map(|s| row(s, default_tld)).collect();
+    let rows: Vec<DiscoveredSite> = sites.iter().map(|s| row(s, default_tld, dir)).collect();
     let renamed = rows.iter().filter(|r| r.renamed_from.is_some()).count();
     if renamed > 0 {
         notes.push(format!(
@@ -232,8 +232,11 @@ pub fn scan_registry(
     (source, rows)
 }
 
-/// One migration row for a registered site. Existence probes only.
-fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
+/// One migration row for a registered site. Existence probes only — including of the
+/// site's mysqld socket (`local_dir/run/<id>/mysql/mysqld.sock`), which exists only
+/// while that site is started in Local: the row can then say "start it in Local" before
+/// a database copy is attempted, which is where users met it as a failed row after.
+fn row(s: &LocalSite, default_tld: &str, local_dir: &Path) -> DiscoveredSite {
     let rehomed = rehome_domain(&s.domain, default_tld);
     let (domain, renamed_from) = match &rehomed {
         Ok((d, from)) => (d.clone(), from.clone()),
@@ -293,7 +296,19 @@ fn row(s: &LocalSite, default_tld: &str) -> DiscoveredSite {
         renamed_from,
         subsites: if matches!(mode, MultisiteMode::Subdomain) { subsite_labels(s) } else { Vec::new() },
         multisite: mode,
+        db_server_running: plain_id(&s.id).then(|| socket_path(local_dir, &s.id).exists()),
     }
+}
+
+/// A registry id safe to join onto a path: `sites.json` is someone else's file.
+fn plain_id(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// The socket a started Local site's mysqld listens on. Observed live 11 Sep 2026 (Local
+/// 10.1.2, a started site): it exists only while that site runs.
+fn socket_path(local_dir: &Path, id: &str) -> PathBuf {
+    local_dir.join("run").join(id).join("mysql").join("mysqld.sock")
 }
 
 /// Local's `multiSite` value as rexenv's mode; anything else (including a
@@ -399,16 +414,12 @@ pub fn db_source_for(home: &Path, docroot: &Path) -> Option<LocalDb> {
     let site = parse_registry(&text, home)?
         .into_iter()
         .find(|s| s.docroot().is_some_and(|d| canon(&d) == want))?;
-    if site.id.is_empty()
-        || !site.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    {
+    if !plain_id(&site.id) {
         return None;
     }
     Some(LocalDb {
         port: site.mysql_port?,
-        // Observed live 11 Sep 2026 (Local 10.1.2, a started site): the socket
-        // is here, and exists only while that site runs.
-        socket: dir.join("run").join(&site.id).join("mysql").join("mysqld.sock"),
+        socket: socket_path(&dir, &site.id),
         site_name: site.name,
         domain: site.domain,
         version: site.mysql_version,
@@ -597,6 +608,10 @@ mod tests {
             site_json("ddd", "empty", "empty.test", "8.2.1", 10017, ""),
         );
         let home = Home::new("scan").registry(&registry).wordpress("ea").wordpress("multi").bare_folder("empty");
+        // `multi` is STARTED in Local (its socket exists); `ea` is not.
+        let sock = local_home(&home.0).join("run").join("bbb").join("mysql");
+        std::fs::create_dir_all(&sock).unwrap();
+        std::fs::write(sock.join("mysqld.sock"), "").unwrap();
         let before = fingerprint(&home.0);
         let (source, rows) = discover(&home.0, "rex").expect("a registry is a source");
         assert_eq!(before, fingerprint(&home.0), "the scan WROTE something (ledger #570)");
@@ -623,6 +638,11 @@ mod tests {
         );
         assert_eq!(ea.php_minor.as_deref(), Some("8.1"));
         assert_eq!(ea.origin, Origin::Local { id: "aaa".into() });
+        // The row says whether that site's database server is up BEFORE a copy is tried:
+        // Local runs it only while the site is started, and users met the stopped case as a
+        // failed row after the run (23 Oct 2026).
+        assert_eq!(ea.db_server_running, Some(false), "ea is stopped in Local");
+        assert_eq!(by("multi").db_server_running, Some(true), "multi is started in Local");
 
         let reason = |n: &str| match &by(n).status {
             SiteStatus::Unsupported(r) => r.clone(),

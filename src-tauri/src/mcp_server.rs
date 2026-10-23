@@ -1785,11 +1785,11 @@ impl<Rt: tauri::Runtime> user_sites::ImportOps for AppSiteCreator<Rt> {
     fn rewrite_revert<'a>(&'a self, site_id: String, force: bool) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::rewrite::RevertOutcome>> {
         Box::pin(async move { crate::commands::rewrite::rewrite_revert(self.state()?, self.jobs()?, self.tunnels()?, self.db_jobs()?, site_id, force).await })
     }
-    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::db_import::DbImportJobState>> {
+    fn db_import_start<'a>(&'a self, site_id: String, confirm_overwrite: Option<String>, accept_override: Option<bool>) -> user_sites::OpFuture<'a, crate::error::Result<crate::commands::db_import::DbImportJobState>> {
         Box::pin(async move {
             use tauri::Manager;
             let db_jobs = self.app.try_state::<crate::commands::db_import::DbImportJobs>().ok_or_else(|| crate::error::Error::Other("rexenv's import jobs are not ready".into()))?;
-            let mut st = crate::commands::db_import::db_import_start(self.app.clone(), self.state()?, db_jobs, self.jobs()?, self.tunnels()?, site_id.clone(), confirm_overwrite).await?;
+            let mut st = crate::commands::db_import::db_import_start(self.app.clone(), self.state()?, db_jobs, self.jobs()?, self.tunnels()?, site_id.clone(), confirm_overwrite, accept_override).await?;
             // Block until it settles — a tool reply is one message.
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30 * 60);
             let mut last = (usize::MAX, u8::MAX);

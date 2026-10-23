@@ -220,6 +220,11 @@ export interface ImportCandidate {
   multisite: MultisiteMode;
   /** A subdomain network's subsite labels (`ea1`), shown under the imported name. */
   subsites: string[];
+  /** Local rows only: whether that site's own database server is up right now (its
+   *  socket exists). Local runs a site's database only while the site is started, so a
+   *  `false` row's database copy WILL fail — the screen says so before the run. Null for
+   *  Valet/Herd, whose shared server the import probes itself. */
+  dbServerRunning: boolean | null;
   hasCustomValetDriver: boolean;
   status: ImportStatus;
 }
@@ -503,6 +508,10 @@ export interface DbImportJobState {
   /** Ended because the site already reads this very database on rexenv's engine — a correct
    *  answer, rendered without the error styling or Retry (#812). */
   nothingToDo: boolean;
+  /** Refused by a compatibility verdict the user may knowingly accept (a source newer than
+   *  rexenv's engine, MySQL into MariaDB): `error` is the verdict's explanation, and the card
+   *  offers "import anyway", which retries with `acceptOverride`. */
+  overridable: boolean;
 }
 
 /** A leftover dump kept by a failed import — their data, so it is visible and

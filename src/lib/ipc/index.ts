@@ -300,12 +300,19 @@ export async function scanValetImport(): Promise<ImportScan> {
 
 /** Start importing a site's database (one at a time; refuses while a provision
  *  job runs for the same site). `confirmOverwrite` is the typed database name,
- *  required only when an unclaimed database of that name already exists. */
+ *  required only when an unclaimed database of that name already exists;
+ *  `acceptOverride` runs an import the compatibility verdict refused but allows
+ *  (the previous job's `overridable`). */
 export async function dbImportStart(
   siteId: string,
   confirmOverwrite?: string,
+  acceptOverride?: boolean,
 ): Promise<DbImportJobState> {
-  return invoke<DbImportJobState>("db_import_start", { siteId, confirmOverwrite: confirmOverwrite ?? null });
+  return invoke<DbImportJobState>("db_import_start", {
+    siteId,
+    confirmOverwrite: confirmOverwrite ?? null,
+    acceptOverride: acceptOverride ?? null,
+  });
 }
 
 /** Latest database-import job state for a site (re-attach on mount). */

@@ -567,6 +567,19 @@ export function Import() {
                         {c.servePath ?? c.path ?? "—"}
                         {c.docrootRel ? ` (serving ${c.docrootRel}/)` : ""}
                       </div>
+                      {/* Said BEFORE the run: Local runs a site's database only while that site is
+                          started, so a stopped site's copy fails on exactly this — users met it as a
+                          red row and a failed Database tab, then exported by hand (23 Oct 2026). */}
+                      {withDatabases && c.dbServerRunning === false && !outcomes[c.domain] && (
+                        <div
+                          data-probe="import-local-db-stopped"
+                          className="text-[0.6875rem] text-status-warning-bright"
+                          title="rexenv copies a Local site's database from Local's own server for that site, which runs only while the site is started in Local. rexenv never starts it. The site's files still import; its database can be copied later from the site's Database tab, once it is started in Local."
+                        >
+                          its database server isn't running — start this site in Local first, or its
+                          database won't be copied
+                        </div>
+                      )}
                       {c.domainChoice && c.servePath && !outcomes[c.domain] && (
                         <NameChoice
                           row={c}

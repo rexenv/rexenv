@@ -1830,7 +1830,13 @@ honest footer —
   `root@localhost` only) — the first real Local import died unidentified on exactly
   that, 11 Sep 2026; the port is used only when no socket file exists. An explicit host or port always wins. A stopped
   Local site fails with "start it in Local" — Local runs a site's database only while
-  that site is started, and rexenv never starts it. `app/sql/local.sql` is never used
+  that site is started, and rexenv never starts it — and since 23 Oct 2026 the SCAN
+  already says so: each Local row carries `db_server_running` (that site's
+  `run/<id>/mysql/mysqld.sock` exists — a stat, nothing of theirs is opened), and with
+  "also copy databases" ticked a stopped site's row reads "its database server isn't
+  running — start this site in Local first, or its database won't be copied" BEFORE the
+  run. Users who quit Local before migrating met the stopped case only as a failed row,
+  then as the same failure from the Database tab, and gave up on the copy. `app/sql/local.sql` is never used
   (a stale snapshot). A Local copy then gets a sixth job phase, `urls` (`skipped` for
   every other import, and a success never repaints it `ok`): `http(s)://old` →
   `https://new`, the JSON-escaped spelling, then the bare name, through wp-cli's
@@ -1911,6 +1917,23 @@ honest footer —
   and its `state` closed set has a `connected` value ONLY the rewrite's verification
   can write. Secrets: in memory for the job only, never argv (0600 defaults file,
   Drop-deleted), never logged, never persisted.
+  **The target engine follows the SOURCE's vendor while the site has no database on
+  rexenv's engines yet** (no `db_created`, no settled `db_imports` row; ledger #900). An
+  imported site is created on MySQL unconditionally — the engine was never the user's
+  choice — so a MariaDB source (a Local site on MariaDB 10.x, a DBngin MariaDB behind a
+  Valet site) met `dbcompat`'s cross-vendor refusal "set this site's database engine to
+  MariaDB", an instruction no screen offers: users exported by hand and fed the file to
+  rexenv's engine themselves (their reports, 23 Oct 2026). The job now writes
+  `sites.db_engine` (`store::set_site_db_engine`, the column's one writer) before the
+  verdict reads it, logs the switch, and the later connect therefore targets that engine's
+  port. An engine this build lacks is never written (`ensure_available`), and once a
+  database exists here the engine is a fact other things depend on — the verdict speaks as
+  before. **An overridable verdict is no longer a dead end**: `Verdict::NeedsOverride` (a
+  source newer than the engine here; MySQL into MariaDB) still refuses by default, but the
+  settled job carries `overridable` and the card offers **Import anyway**, which retries
+  with `accept_override` — the flag the gate was built to take and nothing ever passed
+  (the comment said the UI "arrives with the batch screen wiring"; it never did, and Retry
+  re-ran the same refusal). The MCP `db_import` `start` takes `accept_override` too.
 - **The connection rewrite writes ONE user file, provably** (Stage 3:
   `core/{confedit,confverify,confrewrite}`, `commands/rewrite.rs`, v21/v22).
   `RewriteKey` is a closed enum (Host/Port/User/Name — Name, the database NAME, added

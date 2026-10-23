@@ -94,6 +94,12 @@ pub struct DbImportJobState {
     /// database on rexenv's engine (`SelfImport::ThisSite`). A correct answer, not a failure: the
     /// card says it without the error styling and without Retry (#812).
     pub nothing_to_do: bool,
+    /// The job was refused by a compatibility verdict the user MAY knowingly accept
+    /// (`Verdict::NeedsOverride` — a source newer than the engine here, or MySQL into
+    /// MariaDB): `error` carries the verdict's own explanation, and a retry with
+    /// `accept_override` runs the import anyway. Until 23 Oct 2026 the verdict was a dead
+    /// end — the card's Retry re-ran the same refusal, and users exported by hand.
+    pub overridable: bool,
 }
 
 const PHASES: [(&str, &str, u8); 6] = [
@@ -184,6 +190,10 @@ fn settle(entry: &Entry, status: &str, error: Option<String>, kept: Option<Strin
 
 /// Start importing `site_id`'s database. One at a time; refuses while a
 /// provision job runs for the same domain.
+// Eight arguments: four are Tauri states the job must hold, two are the user's two
+// explicit acceptances (overwrite, override) — kept separate so neither can be passed
+// for the other.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn db_import_start<R: tauri::Runtime>(
     app: AppHandle<R>,
@@ -193,6 +203,7 @@ pub async fn db_import_start<R: tauri::Runtime>(
     tunnels: State<'_, crate::commands::tunnels::Tunnels>,
     site_id: String,
     confirm_overwrite: Option<String>,
+    accept_override: Option<bool>,
 ) -> Result<DbImportJobState> {
     let site = {
         let conn = lock(&state)?;
@@ -274,6 +285,7 @@ pub async fn db_import_start<R: tauri::Runtime>(
             kept_artifact: None,
             result: None,
             nothing_to_do: false,
+            overridable: false,
         }),
     });
     {
@@ -295,7 +307,15 @@ pub async fn db_import_start<R: tauri::Runtime>(
     let app_handle = app.app_handle().clone();
     tauri::async_runtime::spawn(async move {
         let state: State<'_, AppState> = app_handle.state();
-        let outcome = run(&worker_app, &state, &worker_entry, site, confirm_overwrite).await;
+        let outcome = run(
+            &worker_app,
+            &state,
+            &worker_entry,
+            site,
+            confirm_overwrite,
+            accept_override.unwrap_or(false),
+        )
+        .await;
         match outcome {
             Ok(()) => {}
             Err(e) => {
@@ -323,6 +343,7 @@ async fn run<R: tauri::Runtime>(
     entry: &Entry,
     site: crate::state::models::Site,
     confirm_overwrite: Option<String>,
+    accept_override: bool,
 ) -> Result<()> {
     let platform = state.platform.as_ref();
     let dest_dir = platform.paths().app_data_dir()?.join("db-imports");
@@ -423,12 +444,53 @@ async fn run<R: tauri::Runtime>(
         None
     };
 
-    let target_engine = DbEngine::from_site(site.db_engine);
-    let target_version = super::database::effective_db_version(state, target_engine)?;
     let (src_vendor, src_version) = match &identity {
         Identity::Handshake { vendor, version } => (Some(*vendor), Some(version.clone())),
         _ => (None, None),
     };
+    // The target engine FOLLOWS the source's vendor while this site has no database on
+    // rexenv's engines yet. An imported site is created on MySQL unconditionally (the
+    // engine was never the user's choice), so a MariaDB source met the cross-vendor
+    // refusal "set this site's database engine to MariaDB" — which no screen offers.
+    // Once a database exists here (`db_created`, or a settled import record) the engine
+    // is a fact other things depend on, and the verdict below speaks as before.
+    let site = {
+        let wanted = match src_vendor {
+            Some(Vendor::Mariadb) => Some(crate::state::models::SiteDbEngine::Mariadb),
+            Some(Vendor::Mysql) => Some(crate::state::models::SiteDbEngine::Mysql),
+            None => None,
+        };
+        match wanted {
+            Some(w) if w != site.db_engine && site.db_created.is_none() => {
+                let conn = lock(state)?;
+                let has_record = crate::state::store::get_db_import(&conn, &site.id)?.is_some();
+                match (has_record, DbEngine::from_site(w).ensure_available()) {
+                    (false, Ok(())) => {
+                        crate::state::store::set_site_db_engine(&conn, &site.id, w)?;
+                        log_line(
+                            app,
+                            entry,
+                            &format!(
+                                "the source is {}, so this site's database engine is now {} — a \
+                                 like-for-like copy (it had no database on rexenv's engines yet)",
+                                src_vendor.map(|v| v.label()).unwrap_or_default(),
+                                DbEngine::from_site(w).label()
+                            ),
+                        );
+                        crate::state::models::Site { db_engine: w, ..site }
+                    }
+                    (false, Err(e)) => {
+                        log_line(app, entry, &format!("the source's engine isn't available here: {e}"));
+                        site
+                    }
+                    (true, _) => site,
+                }
+            }
+            _ => site,
+        }
+    };
+    let target_engine = DbEngine::from_site(site.db_engine);
+    let target_version = super::database::effective_db_version(state, target_engine)?;
     let verdict = dbcompat::compat(
         &dbcompat::Source {
             vendor: src_vendor,
@@ -444,11 +506,16 @@ async fn run<R: tauri::Runtime>(
         },
     );
     if let v @ Verdict::NeedsOverride { .. } = &verdict {
-        // The per-site override UI arrives with the batch screen wiring; the
-        // honest default is the verdict's own explanation.
-        return Err(Error::Other(v.explain()));
+        if accept_override {
+            log_line(app, entry, &format!("imported on the user's say-so despite: {}", v.explain()));
+        } else {
+            // Refused by default; the card offers "import anyway" on this flag and the
+            // retry carries `accept_override`. The MCP `start` takes the same flag.
+            entry.state.lock().expect("db import state lock").overridable = true;
+            return Err(Error::Other(v.explain()));
+        }
     }
-    let cleared = dbdump::gate(self_import, &verdict, false).map_err(|r| {
+    let cleared = dbdump::gate(self_import, &verdict, accept_override).map_err(|r| {
         if matches!(r, dbdump::GateRefusal::SelfImport { kind: dbdump::SelfImport::ThisSite, .. }) {
             entry.state.lock().expect("db import state lock").nothing_to_do = true;
         }
@@ -957,6 +1024,28 @@ mod local_source_wiring {
         assert!(seg.matches("map_err(fail_after_restore)").count() >= 5, "the guarded steps vanished: {seg}");
     }
 
+    /// The target engine follows the SOURCE's vendor only while the site has no database
+    /// on rexenv's engines (no `db_created`, no settled import record), and the decision
+    /// is made BEFORE the verdict reads `site.db_engine` — so a MariaDB source lands on
+    /// MariaDB instead of meeting "set this site's engine to MariaDB", an instruction no
+    /// screen offers (users' reports, 23 Oct 2026). An overridable verdict is refused by
+    /// default and marks the job `overridable`; `accept_override` reaches the gate.
+    #[test]
+    fn the_engine_follows_the_source_while_no_database_exists_here_and_overrides_reach_the_gate() {
+        let src = crate::core::copy_scan::production_source(include_str!("db_import.rs"));
+        let follow = src.find("set_site_db_engine(").expect("the engine switch is gone");
+        let target = src.find("let target_engine = DbEngine::from_site(site.db_engine)").expect("target");
+        assert!(follow < target, "the engine must be decided before the verdict reads it");
+        let block = &src[src.find("let wanted = match src_vendor").expect("the switch block")..follow];
+        assert!(block.contains("site.db_created.is_none()"), "a site with a database here must keep its engine");
+        assert!(block.contains("get_db_import("), "a site with a settled import must keep its engine");
+        assert!(block.contains(".ensure_available()"), "an engine this build lacks is never written");
+        assert_eq!(src.matches("set_site_db_engine(").count(), 1, "one writer of the engine, in `run`");
+        assert!(src.contains("dbdump::gate(self_import, &verdict, accept_override)"), "the user's acceptance no longer reaches the gate");
+        assert!(src.contains(".overridable = true;"), "a refused-but-overridable verdict no longer marks the job");
+        assert!(!src.contains("arrives with the batch screen wiring"), "the stale 'override UI later' note is back");
+    }
+
     /// Every phase weight still sums to the whole bar, and a skipped phase is
     /// never repainted `ok` by a success.
     #[test]
@@ -993,6 +1082,7 @@ mod target_name_tests {
                 kept_artifact: None,
                 result: None,
                 nothing_to_do: false,
+                overridable: false,
             }),
         })
     }

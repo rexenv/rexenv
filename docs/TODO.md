@@ -116,6 +116,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
+  (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row
+  says "start this site in Local first" BEFORE the run (`db_server_running`, a stat of the site's socket);
+  the import's target engine follows the source's vendor while the site has no database here yet
+  (`store::set_site_db_engine` — a MariaDB Local or DBngin source no longer meets "set this site's
+  engine to MariaDB", which no screen offered); an overridable verdict marks the job `overridable` and
+  the card's **Import anyway** retries with `accept_override` (the gate took the flag since Stage 2;
+  nothing ever passed it). Live on the dev Mac against Local 10.1.2 (stopped → the sentence; started →
+  12 tables, connect verified, 200; a renamed second site in one batch). **Open:** PUBLISH-TESTING N16
+  (a MariaDB Local source) and N17 (a newer source → Import anyway) — no such source at hand; Windows
+  and Linux offer no Local scan (#641), the engine/override legs compiled only there.
+
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
   refused "the file contains a virus or potentially unwanted software", the detection SeverityID 5 (severe),

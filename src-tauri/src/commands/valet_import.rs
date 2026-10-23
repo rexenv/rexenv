@@ -75,6 +75,14 @@ pub struct ImportCandidate {
     /// A subdomain network's subsite labels, for the row to show under the
     /// name the network imports as.
     pub subsites: Vec<String>,
+    /// Whether the source's database server for this site is up right now — Local rows
+    /// only (`Some`), from the presence of that site's socket; Valet/Herd rows carry
+    /// `None` (their server is shared and probed only by the import itself). Local runs
+    /// a site's database only while that site is started, and the batch's database copy
+    /// for a stopped site fails on exactly that — so the screen says it BEFORE the run,
+    /// where it can still be fixed, instead of a red row after.
+    #[serde(default)]
+    pub db_server_running: Option<bool>,
     pub status: SiteStatus,
 }
 
@@ -392,6 +400,7 @@ fn enrich(
         extra_domains: Vec::new(),
         multisite: s.multisite,
         subsites: s.subsites,
+        db_server_running: s.db_server_running,
     };
 
     // A filesystem-level refusal (missing folder, proxy) already decided this.
@@ -1281,6 +1290,7 @@ async fn import_db_for<R: tauri::Runtime>(
         tunnels,
         site_id.to_string(),
         None,
+        None,
     )
     .await;
     let snap = match start {
@@ -1751,6 +1761,7 @@ mod folding_a_link_farm {
             extra_domains: Vec::new(),
             multisite: crate::state::models::MultisiteMode::None,
             subsites: Vec::new(),
+            db_server_running: None,
             status,
         }
     }

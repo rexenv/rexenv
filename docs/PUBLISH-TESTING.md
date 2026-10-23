@@ -2060,6 +2060,24 @@ Use a Local network you'd shrug at losing (the owner's `multi.local`: subdomains
   again; open the network in Local — it loads. Delete the rexenv site (revert-then-delete);
   `~/Local Sites/multi` is untouched.
 
+The users' round (23 Oct 2026 — "database import failed after migrating from Local, then
+again from the Database tab, then exported by hand"; ledger #900):
+- **N15** — `/import` with the site STOPPED in Local and "also copy databases" ticked.
+  **Expect** the row itself reads *"its database server isn't running — start this site in
+  Local first, or its database won't be copied"* BEFORE Import is pressed; start the site
+  in Local → Rescan → the line is gone. ✅ the dev Mac, 23 Oct 2026 (tsc + the unit test;
+  the sentence's placement on the row is owed a GUI look).
+- **N16** — a Local site on **MariaDB** (Local → site → Database → MariaDB 10.x when
+  creating it), started, imported with "also copy databases". **Expect** the DB copies —
+  the job log says *"the source is MariaDB, so this site's database engine is now MariaDB"*,
+  the site's Database tab names port 13307, connect verifies — instead of the old refusal
+  *"set this site's database engine to MariaDB"*. **Open:** no MariaDB Local site at hand on
+  23 Oct 2026 (Local's MariaDB services were never fully downloaded on the dev Mac).
+- **N17** — a source NEWER than rexenv's engine (DBngin MySQL 9.x behind a Valet/Herd site,
+  or Local once it ships one). **Expect** the Database tab's import fails with the verdict's
+  own sentence ("… newer than the MySQL 8.4.x rexenv runs …") and an **Import anyway**
+  button; press it → the copy runs. **Open:** no newer source at hand, 23 Oct 2026.
+
 ## Publish-blocking summary
 
 > **This table is the thing a release-day reader clears, so it has to be the WHOLE set.**

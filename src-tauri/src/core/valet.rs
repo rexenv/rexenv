@@ -121,6 +121,9 @@ pub struct DiscoveredSite {
     /// A subdomain network's subsite LABELS (`ea1` for `ea1.multi.local`), so
     /// the screen can show them under whatever name the network imports as.
     pub subsites: Vec<String>,
+    /// Local rows only: whether that site's own database server is up (its socket
+    /// exists). `None` for Valet/Herd, whose shared server the import probes itself.
+    pub db_server_running: Option<bool>,
 }
 
 /// The whole read-only picture.
@@ -377,6 +380,7 @@ pub fn scan_source(kind: SourceKind, dir: &Path) -> (Source, Vec<DiscoveredSite>
                 renamed_from: None,
                 multisite: MultisiteMode::None,
                 subsites: Vec::new(),
+                db_server_running: None,
             };
             r.status = SiteStatus::Unsupported(match &r.proxy_to {
                 Some(to) => format!("a {} proxy to {to}, not a site", kind.label()),
@@ -440,6 +444,7 @@ fn row(
         renamed_from: None,
         multisite: MultisiteMode::None,
         subsites: Vec::new(),
+        db_server_running: None,
     }
 }
 

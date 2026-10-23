@@ -186,8 +186,11 @@ export function DbImportCard({ site }: { site: Site }) {
   }, [site.id, qc]);
 
   const start = useMutation({
-    mutationFn: async (confirmOverwrite?: string) => {
-      const snap = await dbImportStart(site.id, confirmOverwrite);
+    mutationFn: async ({
+      confirmOverwrite,
+      acceptOverride,
+    }: { confirmOverwrite?: string; acceptOverride?: boolean } = {}) => {
+      const snap = await dbImportStart(site.id, confirmOverwrite, acceptOverride);
       setJob(snap);
       const settle = (next: DbImportJobState) => {
         setJob(next);
@@ -218,6 +221,9 @@ export function DbImportCard({ site }: { site: Site }) {
   const nothingToDo = job?.status === "failed" && job.nothingToDo;
   const failed = job?.status === "failed" && !job.nothingToDo;
   const needsTypedConfirm = failed && (job?.error ?? "").includes("type the database name");
+  // A compatibility refusal the user may accept: the verdict's own words are the error, and
+  // the retry carries the acceptance. Until 23 Oct 2026 Retry re-ran the same refusal.
+  const overridable = failed && !!job?.overridable;
 
   return (
     <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
@@ -227,7 +233,7 @@ export function DbImportCard({ site }: { site: Site }) {
           <span className="text-sm font-medium">Database import</span>
         </div>
         {!running && (
-          <Button size="sm" variant="secondary" onClick={() => start.mutate(undefined)}>
+          <Button size="sm" variant="secondary" onClick={() => start.mutate({})}>
             {record ? "Import again" : "Import database"}
           </Button>
         )}
@@ -288,13 +294,27 @@ export function DbImportCard({ site }: { site: Site }) {
                 size="sm"
                 variant="secondary"
                 disabled={!confirmName.trim()}
-                onClick={() => start.mutate(confirmName.trim())}
+                onClick={() => start.mutate({ confirmOverwrite: confirmName.trim() })}
               >
                 Overwrite and import
               </Button>
             </div>
+          ) : overridable ? (
+            <div className="flex flex-wrap items-center gap-2" data-probe="db-import-override">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => start.mutate({ acceptOverride: true })}
+              >
+                Import anyway
+              </Button>
+              <span className="text-xs text-rex-text-muted">
+                Runs the copy despite the warning above — it may stop part-way or differ
+                afterwards; the site's Database tab can import again at any time.
+              </span>
+            </div>
           ) : (
-            <Button size="sm" variant="secondary" onClick={() => start.mutate(undefined)}>
+            <Button size="sm" variant="secondary" onClick={() => start.mutate({})}>
               Retry
             </Button>
           )}
