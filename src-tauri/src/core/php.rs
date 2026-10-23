@@ -1532,35 +1532,35 @@ mod tests {
 
     #[test]
     fn an_update_that_removes_postgresql_says_so_and_names_the_sites() {
-        // The case: a minor rexenv builds (8.3.32, driver) with upstream's next
-        // patch on offer (8.3.33, no driver). That is the ONLY direction that
+        // The case: a minor rexenv builds (8.3.36, driver) with upstream's next
+        // patch on offer (8.3.37, no driver). That is the ONLY direction that
         // costs anything.
         let none: [String; 0] = [];
-        let cost = update_cost("8.3.32", Some("8.3.33"), &none).expect("a cost");
-        assert!(cost.contains("8.3.33") && cost.contains("PostgreSQL"), "{cost}");
+        let cost = update_cost("8.3.36", Some("8.3.37"), &none).expect("a cost");
+        assert!(cost.contains("8.3.37") && cost.contains("PostgreSQL"), "{cost}");
         assert!(cost.contains("no site here uses it"), "with no sites, say so: {cost}");
 
         // With sites, it names them — a warning a user cannot check is a warning
         // they will click past.
-        let one = update_cost("8.3.32", Some("8.3.33"), &["shop.rex".to_string()]).unwrap();
+        let one = update_cost("8.3.36", Some("8.3.37"), &["shop.rex".to_string()]).unwrap();
         assert!(one.contains("shop.rex"), "{one}");
         let two = update_cost(
-            "8.3.32",
-            Some("8.3.33"),
+            "8.3.36",
+            Some("8.3.37"),
             &["shop.rex".to_string(), "api.rex".to_string()],
         )
         .unwrap();
         assert!(two.contains("2 sites") && two.contains("shop.rex") && two.contains("api.rex"));
 
         // Nothing to say in every other direction:
-        assert_eq!(update_cost("8.3.32", None, &none), None, "no offer, no cost");
+        assert_eq!(update_cost("8.3.36", None, &none), None, "no offer, no cost");
         assert_eq!(
             update_cost("8.0.30", Some("8.0.31"), &none),
             None,
             "neither build has the driver — the update takes nothing away"
         );
         assert_eq!(
-            update_cost("8.3.33", Some("8.3.34"), &none),
+            update_cost("8.3.37", Some("8.3.34"), &none),
             None,
             "already on a build without it"
         );
@@ -1573,7 +1573,7 @@ mod tests {
     #[test]
     fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {
         // The versions rexenv builds itself (release php-8x-1) have the driver.
-        for yes in ["8.1.34", "8.2.32", "8.3.32", "8.4.23", "8.5.8"] {
+        for yes in ["8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"] {
             assert!(pdo_pgsql_supported(yes), "{yes} is one of ours");
         }
         // Upstream's do not — including patches NEWER than our pins, which is
@@ -1582,7 +1582,7 @@ mod tests {
         // (#550). 8.3.32 WAS that version and is now ours, which is the fix; a
         // future 8.3.33 puts the machine right back there, so the shape is
         // asserted with the versions upstream will publish next.
-        for no in ["7.4.33", "8.0.30", "8.3.33", "8.2.33", "8.4.24", "8.5.9"] {
+        for no in ["7.4.33", "8.0.30", "8.3.37", "8.2.36", "8.4.28", "8.5.13"] {
             assert!(!pdo_pgsql_supported(no), "{no} is not a build rexenv made");
         }
         // 7.4 is OURS and still has no driver: the answer must come from the

@@ -221,11 +221,11 @@ connects to nothing and stalls until the server times it out.
 
 | | |
 |---|---|
-| Artifacts | `php-{8.1.34,8.2.32,8.3.32,8.4.23,8.5.8}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
+| Artifacts | `php-{8.1.34,8.2.35,8.3.36,8.4.27,8.5.12}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz`; since 23 Oct 2026 also `php-{…}-{cli,fpm}-linux-{aarch64,x86_64}.tar.gz` (fully static musl ELFs, same script and gates on Ubuntu runners — static-php.dev's Linux builds have the same `pdo_pgsql` hole and had no build of the CVE-2026-109618/109619 patches) |
 | Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
 | Source | php.net release tarballs, fetched and pinned by static-php-cli; 8.1.34 since `php-8x-10`: `shivammathur/php-src-backports` @ `ae65ef4b9ede` (8.1 is EOL and php.net shipped no patch for CVE-2026-109618/109619), mirrored as an asset in the same release |
-| Release | 8.1.34: `php-8x-10` (23 Oct 2026, the CVE-2026-109618/109619 backport — same version, new bytes). 8.2–8.5: `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
-| Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`) |
+| Release | macOS 8.2–8.5: `php-8x-9` (23 Oct 2026, php.net's CVE-2026-109618/109619 patches 8.2.35/8.3.36/8.4.27/8.5.12). macOS 8.1.34: `php-8x-10` (23 Oct 2026, the backport — same version, new bytes). Linux 8.1–8.5: `php-8x-linux-1` (23 Oct 2026, its own tag series). Before them, `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
+| Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`; Linux: `php_linux_sha256`, `php_linux_licenses_sha256`, `PHP_8X_LINUX_TAG`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
 Four build gates decide whether these ship, and each exists because the one
@@ -260,6 +260,26 @@ x86_64 inside static-php-cli's own sanity check, reproducibly and unexplained;
 it has been end-of-life since Nov 2023. Statically linked dependencies' licences
 travel the same way as for 7.4 below, as `licenses-php-<version>-<arch>.tar.gz`
 in the same release.
+
+## FrankenPHP 1.13.3 for Intel Macs — rexenv's own build (downloaded at runtime, distributed BY US)
+
+FrankenPHP 1.13.2 (PHP 8.5.12, the CVE-2026-109618/109619 fix) dropped its Intel Mac asset
+when it moved to static-php-cli v3, and 1.13.3 (same PHP) did not bring it back. The Apple Silicon and Linux binaries are still upstream's
+and are not ours to redistribute; the Intel Mac one is built by rexenv from upstream's own
+`build-static.sh` and so is distributed by us.
+
+| | |
+|---|---|
+| Artifact | `frankenphp-mac-x86_64` |
+| Built by | `rexenv/runtimes` (public), `scripts/build-frankenphp.sh`, GitHub Actions |
+| Source | `php/frankenphp` @ `ae3d5b94` (tag v1.13.3), built with a pinned static-php-cli v3 nightly mirrored in the same release |
+| Release | `frankenphp-1.13.3-1` (23 Oct 2026) — immutable, never re-uploaded |
+| Pinned in | `core/binaries.rs` (`FRANKENPHP_1_13_3_*_SHA256`, `FRANKENPHP_MAC_X86_64_TAG`) |
+| Licence | FrankenPHP **MIT**; Caddy **Apache-2.0**; the embedded PHP **PHP License 3.01** |
+
+Every statically linked C library and Go module travels with it as
+`licenses-frankenphp-1.13.3-mac-x86_64.tar.gz` in the same release, collected from the
+sources the build used and the module versions the binary's own `build-info` names.
 
 ## PHP 7.4.33 — rexenv's own build (downloaded at runtime, distributed BY US)
 
