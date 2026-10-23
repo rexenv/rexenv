@@ -1285,7 +1285,11 @@ honest footer —
   consoles first, the app LAST; the first failure stops the chain, every later row reads "not
   reached", a sentence above the rows says where it stopped in the family's own words, and the
   swapped app is acknowledged once (the page's dialog; only OK restarts) — the run restarts
-  nothing itself. `core::update_hub::RunState` holds the order and the bookkeeping, so both are L0. The
+  nothing itself. `core::update_hub::RunState` holds the order and the bookkeeping, so both are L0.
+  **The read-only surfaces say the same list** (T6, ledger #907): `rex status` prints one line
+  naming the pending offers (one by name, several as a count with the names) and `--json` carries
+  `update: {pending, offers, restartPending}`; the MCP `stack_status` has the same `updates` field —
+  both from the hub's published snapshot, the tray's source, and neither can install. The
   three family screens no longer fetch the manifest on mount — the poller does, and
   `updates-changed` refreshes them. Both pills only navigate: the idle
   button calls `useCheckForUpdates` — the same door the menu event uses, About with `check=1`,

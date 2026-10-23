@@ -7,53 +7,53 @@ App version **0.9.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 ### Now — actionable code/test work — 15
 
 - `TODO.md:119` One update channel — every "something newer exists" (rexenv, PHP patch, Adminer, phpMyAdmin) noticed the sa…
-- `TODO.md:142` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
-- `TODO.md:159` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:209` PostgreSQL self-build for macOS 13/14
-- `TODO.md:215` Windows: two per-OS answers still read off macOS builds
-- `TODO.md:220` Windows: PHP's own curl has no CA bundle
-- `TODO.md:223` winget: PR 437674 waits for a moderator
-- `TODO.md:226` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
-- `TODO.md:229` Linux: the tunnel guard's normal-stop leg
-- `TODO.md:232` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:259` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:270` Radicle-hosted repos are unverified
-- `TODO.md:272` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:275` Windows `setup.exe /S` over a running app + agent sometimes exits 2
-- `TODO.md:285` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
+- `TODO.md:144` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
+- `TODO.md:161` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:211` PostgreSQL self-build for macOS 13/14
+- `TODO.md:217` Windows: two per-OS answers still read off macOS builds
+- `TODO.md:222` Windows: PHP's own curl has no CA bundle
+- `TODO.md:225` winget: PR 437674 waits for a moderator
+- `TODO.md:228` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
+- `TODO.md:231` Linux: the tunnel guard's normal-stop leg
+- `TODO.md:234` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:261` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:272` Radicle-hosted repos are unverified
+- `TODO.md:274` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:277` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:287` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:305` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:307` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:369` The in-app update's remaining human rows (macOS)
-- `TODO.md:379` Release 5.4 — clean-Mac smoke test
-- `TODO.md:385` Tunnel probe session
-- `TODO.md:389` Intel spot-run
-- `TODO.md:394` In-app verifies owed
-- `TODO.md:410` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:422` The live pool swap is still L3
-- `TODO.md:426` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:434` Install WordPress into an empty LINKED folder
-- `TODO.md:441` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:371` The in-app update's remaining human rows (macOS)
+- `TODO.md:381` Release 5.4 — clean-Mac smoke test
+- `TODO.md:387` Tunnel probe session
+- `TODO.md:391` Intel spot-run
+- `TODO.md:396` In-app verifies owed
+- `TODO.md:412` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:424` The live pool swap is still L3
+- `TODO.md:428` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:436` Install WordPress into an empty LINKED folder
+- `TODO.md:443` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:448` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:487` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:498` Xdebug on PHP 8.0
-- `TODO.md:503` SMAppService privileged helper
-- `TODO.md:505` Developer ID signing + notarization
+- `TODO.md:450` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:489` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:500` Xdebug on PHP 8.0
+- `TODO.md:505` SMAppService privileged helper
+- `TODO.md:507` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:510` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:512` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 754 · ◐ 130 · 🔨 5 · 🚫 17** of 906 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 754 · ◐ 131 · 🔨 5 · 🚫 17** of 907 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -61,7 +61,7 @@ App version **0.9.0** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 |---|---|
 | `docs/PLAN-linux-port.md` | SHIPPED — Linux builds and ships with every release since the Linux leg landed (`docs/RELEASING.md`); the one open ro… |
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
-| `docs/PLAN-unified-updates.md` | **IN FLIGHT — T0–T5 built 23 Oct 2026 (ledger #901–#906); T6–T7 + D1 next.** Owner ask (23 Oct |
+| `docs/PLAN-unified-updates.md` | **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compil… |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 

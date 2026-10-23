@@ -4091,7 +4091,7 @@ fn cmd_db_console(words: &[String], json_output: bool) {
     // A verified manifest's offer, read off the same row — the apply is the Databases
     // page's button (no verb, as Adminer's update has none).
     if let Some(offer) = data["phpmyadminUpdatable"].as_str() {
-        outln!("update offered: {offer} — press Update on the Databases page");
+        outln!("update offered: {offer} — install from Settings → Updates (or the Databases page)");
     }
 }
 
@@ -4628,13 +4628,24 @@ fn cmd_status(json_output: bool) {
             outln!("         {notice} → rex tld --repair rex");
         }
     }
-    // One line, and only when there IS one — an update line on every status
+    // One line, and only when there IS something — an update line on every status
     // call would be noise on the 99 runs where nothing is offered. It names
     // where to go rather than what to type: `rex` deliberately has no way to
-    // install one (ledger #530).
+    // install one (ledger #530). Every kind, one line (PLAN-unified-updates T6):
+    // one offer by name, several as a count with the names.
     if let Some(u) = data["update"].as_object() {
-        if let Some(v) = u["version"].as_str() {
-            outln!("update   rexenv {v} can be installed from Settings → About");
+        let offers: Vec<&str> = u["offers"].as_array().map(|a| a.iter().filter_map(|v| v.as_str()).collect()).unwrap_or_default();
+        if let Some(v) = u["restartPending"].as_str() {
+            outln!("update   rexenv {v} is installed — quit and reopen rexenv to finish");
+        }
+        match offers.as_slice() {
+            [] => {}
+            [one] => outln!("update   {one} can be installed from Settings → Updates"),
+            many => outln!(
+                "updates  {} pending — {} — install from Settings → Updates",
+                many.len(),
+                many.join(", ")
+            ),
         }
     }
     let Some(services) = data["services"].as_array() else {

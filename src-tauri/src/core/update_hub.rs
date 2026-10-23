@@ -270,7 +270,22 @@ pub struct PendingSummary {
     pub count: usize,
     /// The one pending offer's `display` ("PHP 8.3.28"), when `count == 1`.
     pub only: Option<String>,
+    /// Every pending offer's `display`, in Update-all order — for `rex status` and the MCP
+    /// `stack_status`, which may list them but never install them (T6).
+    pub displays: Vec<String>,
     pub restart_pending: Option<String>,
+}
+
+impl PendingSummary {
+    /// The read-only surfaces' JSON (`rex status --json` `update`, `stack_status.updates`):
+    /// `pending`, `offers` (the displays) and `restartPending`. One shape for both, built here.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "pending": self.count,
+            "offers": self.displays,
+            "restartPending": self.restart_pending,
+        })
+    }
 }
 
 static SNAPSHOT: RwLock<Option<PendingSummary>> = RwLock::new(None);
@@ -281,6 +296,7 @@ pub fn publish(inv: &UpdateInventory) {
     let summary = PendingSummary {
         count: pending.len(),
         only: (pending.len() == 1).then(|| pending[0].display.clone()),
+        displays: pending.iter().map(|o| o.display.clone()).collect(),
         restart_pending: inv.restart_pending.clone(),
     };
     if let Ok(mut s) = SNAPSHOT.write() {
@@ -477,6 +493,9 @@ mod tests {
         publish(&inv);
         let s = snapshot().unwrap();
         assert_eq!((s.count, s.only.clone()), (3, None));
+        assert_eq!(s.displays, ["PHP 8.3.28", "Adminer 6.1.2", "rexenv 0.9.1"], "the read-only surfaces list every pending offer, in Update-all order");
+        assert_eq!(s.to_json()["pending"], 3);
+        assert_eq!(s.to_json()["offers"][2], "rexenv 0.9.1");
         inv.offers.retain(|o| o.kind == UpdateKind::Adminer);
         publish(&inv);
         assert_eq!(snapshot().unwrap().only.as_deref(), Some("Adminer 6.1.2"));

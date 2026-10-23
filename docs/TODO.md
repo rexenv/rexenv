@@ -124,7 +124,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   notice's door is the producer's; #902: `core/update_hub.rs`, the one live inventory, app last; #903: one gate,
   one poller, both documents, `updates-changed`; #904: pills, toast, tray over the inventory in one vocabulary;
   #905: Settings → Updates, one page installs every kind, the About card retired; #906: Update all — sequential, app
-  last, stops at the first failure); T6–T7 + D1 next.
+  last, stops at the first failure; #907: `rex status` + MCP `stack_status.updates` read the same list). **Open:** the
+  three SMOKE rows live per OS (need a published manifest naming a PHP patch newer than the pin — the first
+  release after this), and D1: a read-only line per site with WordPress plugin updates on the page.
 
 - [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
   (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row

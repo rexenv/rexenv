@@ -638,6 +638,15 @@ only briefly true.
 
 ### §M — the update itself, MEASURED (the T11 gate)
 
+> **From 0.9.1 the gate widens to every kind** (`docs/PLAN-unified-updates.md`): the release
+> that carries the unified channel is tested from **Settings → Updates**, not About — the rexenv
+> row installs as below, and when the same publish also moves a PHP patch or a console version
+> (a `manifest.json` bump beside the app descriptor), the §M run presses **Update all** once and
+> records every row's measured effect in order (PHP → consoles → rexenv → the restart dialog),
+> plus `rex status`'s one line before and its silence after. SMOKE-TEST carries the three rows
+> ("Every kind of update is noticed the same way", "Settings → Updates installs every kind from
+> one page", "Update all") per OS.
+
 The installed copy was 0.6.0; the owner opened Settings → About and pressed Install.
 Before and after, on the same Mac:
 

@@ -553,15 +553,14 @@ where
             let dns = app
                 .try_state::<crate::state::app::DnsState>()
                 .map(|dns| commands::system::dns_status(state.clone(), dns));
-            // The app-update offer, as a READ. No new dispatch arm and no `rex
-            // update` verb: install stays a GUI click, because a self-update
-            // replaces the process that enforces the agent dial and
-            // `settings_access`, and the relaunch kills this very socket
-            // mid-call — the caller could never observe the result of what it
-            // asked for. Read from the in-process snapshot, like the tray.
-            let update = crate::core::app_update::current_offer().map(|o| {
-                json!({ "version": o.version, "sizeBytes": o.size_bytes })
-            });
+            // The update inventory, as a READ (every kind since PLAN-unified-updates
+            // T6: `pending`, `offers`, `restartPending`). No `rex update` verb: install
+            // stays a GUI click — a self-update replaces the enforcer of the agent dial
+            // and the relaunch kills this socket mid-call (#530). The in-process
+            // snapshot, like the tray; kept SHORT so the scan below still sees the keys.
+            let update = crate::core::update_hub::snapshot()
+                .filter(|s| s.count > 0 || s.restart_pending.is_some())
+                .map(|s| s.to_json());
             Ok(json!({
                 "services": to_value(&services)?,
                 "dns": to_value(&dns)?,

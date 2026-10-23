@@ -80,6 +80,11 @@ pub struct StackSnapshot {
     /// it that a newer version exists costs nothing and saves it reporting a
     /// bug that is already fixed (ledger #530).
     pub app_update: Option<String>,
+    /// Every kind's pending updates, as the hub's published snapshot says — `pending`,
+    /// `offers` (short names, Update-all order), `restartPending` (PLAN-unified-updates
+    /// T6). `None` when nothing is pending. A READ: the installs an agent may run are the
+    /// `php` / stack tools' apply actions; the app's never (ledger #530).
+    pub updates: Option<serde_json::Value>,
     /// The build that is answering — version, commit, build time, platform. The
     /// question "is the app I'm talking to the code that was just fixed?" once
     /// cost a whole misdiagnosis; an agent can ask it now.
@@ -247,6 +252,9 @@ impl<'a> ReadCtx<'a> {
             // The published snapshot, like the tray reads: no verify, no
             // network, and no database read on a status call.
             app_update: crate::core::app_update::current_offer().map(|o| o.version),
+            updates: crate::core::update_hub::snapshot()
+                .filter(|s| s.count > 0 || s.restart_pending.is_some())
+                .map(|s| s.to_json()),
             app: core::app_info::current(),
             autostart: platform.autostart().is_enabled().ok(),
             unresolvable_tlds,

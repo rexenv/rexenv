@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0–T5 built 23 Oct 2026 (ledger #901–#906); T6–T7 + D1 next.** Owner ask (23 Oct
+Status: **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compiled; OWED: the three SMOKE rows live on each OS (they need a published manifest naming a newer PHP patch than the pin, i.e. the first release after this), and D1 (the read-only WordPress lines) as a small follow-up.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -262,3 +262,15 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   a stop sentence above the rows, the restart dialog once when the app swapped. Two bugs found by the
   L2: the in-flight poll overwriting the seed (now cancelled first) and verdicts hidden on `ok`. MCP
   parity: both commands `Never`. Ledger #906.
+- **T6 — 23 Oct 2026.** `PendingSummary` carries every pending `display` and `to_json()` (one
+  shape: `pending`, `offers`, `restartPending`). `rex status` prints one line for one offer, a count
+  with the names for several, the reopen sentence for a swapped build; `--json` `update` is that
+  shape; `rex db console`'s offer line points at Settings → Updates. MCP `stack_status.updates` is
+  the same JSON (`app_update` kept one release); parity `updates_inventory → Tool("stack_status")`.
+  No `rex updates` verb and no CLI apply: the read rides `status`, installs stay the GUI's and the
+  MCP `php`/stack apply actions (ledger #530's stance). Ledger #907.
+- **T7 — 23 Oct 2026.** Docs landed with each task (ARCHITECTURE, DESIGN, MAP, TESTING, INSTALL,
+  README, SMOKE rows ×3 per OS, CLI-ROADMAP, PLATFORMS §3 rows, ledger #901–#907); PUBLISH-TESTING
+  §M widened to every kind from 0.9.1. **Owed:** the three SMOKE rows live on macOS, Windows and
+  Linux — they need a published manifest naming a PHP patch newer than the pin, which the first
+  release after this is; and D1.

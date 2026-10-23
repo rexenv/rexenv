@@ -70,7 +70,7 @@ mod tests {
         //    agent — T6 gives `stack_status` the list and adds an `updates` tool; until then
         //    the TODO row "One update channel" carries it. Skipping is the person's dial, as
         //    the app's skip already is.
-        ("updates_inventory", Gap("T6 of docs/PLAN-unified-updates.md — stack_status.updates + a read-only `updates` tool")),
+        ("updates_inventory", Tool("stack_status")),
         ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
         ("updates_check_now", Never("an interactive check is the person pressing a button, as app_update_check is (UPDATE_FLOW)")),
         ("updates_apply_all", Never("Update all ends in the app's own install (UPDATE_FLOW); the per-kind installs an agent may run are the php / stack tools' apply actions")),
