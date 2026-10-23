@@ -976,6 +976,12 @@ pub fn allowed_hosts() -> &'static [&'static str] {
 /// Build a catalog directly, for tests in OTHER modules that need to exercise the
 /// resolve path's precedence rather than the verification.
 ///
+/// Every row is marked for THIS host (`os: Some(std::env::consts::OS)`), the way a per-OS
+/// document carries its PHP rows (docs/PLAN-windows-port.md §3b): an unmarked `php` /
+/// `php-fpm` row is a Mac's ([`Artifact::for_os`]), so an unmarked fixture passed on macOS
+/// and failed on the Windows CI runner — six tests, 23 Oct 2026 (run 39991419424). File
+/// rows (licences, Adminer, phpMyAdmin) are admitted either way.
+///
 /// `#[cfg(test)]`-gated on purpose: in a shipping build the only way to obtain a
 /// [`VersionCatalog`] is through [`verify`], and that is the property the private
 /// field exists to enforce. A production constructor here would delete it.
@@ -991,7 +997,7 @@ pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCata
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
                 min_macos: None,
-                os: None,
+                os: Some(std::env::consts::OS.to_string()),
             })
             .collect(),
     }
@@ -1014,7 +1020,7 @@ pub fn catalog_for_tests_with_floors(rows: &[FlooredRow<'_>]) -> VersionCatalog 
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
                 min_macos: floor.map(str::to_string),
-                os: None,
+                os: Some(std::env::consts::OS.to_string()),
             })
             .collect(),
     }
@@ -1494,7 +1500,8 @@ mod tests {
                             url: "https://dl.static-php.dev/x".into(),
                             sha256: "a".repeat(64),
                             min_macos: None,
-                            os: None,
+                            // This host's document: an unmarked PHP row is a Mac's.
+                            os: Some(std::env::consts::OS.to_string()),
                         })
                     })
                 })
@@ -1788,7 +1795,8 @@ mod tests {
                     url: "https://dl.static-php.dev/x.tar.gz".into(),
                     sha256: "a".repeat(64),
                     min_macos: None,
-                    os: None,
+                    // This host's document: an unmarked PHP row is a Mac's.
+                    os: Some(std::env::consts::OS.to_string()),
                 })
             })
             .collect();
