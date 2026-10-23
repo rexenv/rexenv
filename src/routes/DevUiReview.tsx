@@ -15,6 +15,12 @@
  *    delete   — DeleteSiteDialog. `kind=connected|preexisting|wp|imported|linked`
  *    badges   — a column of SiteRow variants (badge crowding at narrow widths)
  *    resolver — the borrowed-resolver hand-back row (Settings card context)
+ *    import   — the REAL Import screen over a mocked scan: one Local row whose
+ *               database server is STOPPED (its socket missing), one Local row
+ *               started, one Valet row (shared server, `null`). Exactly one row may
+ *               carry the stopped-database sentence (PUBLISH-TESTING N15), and it
+ *               goes away with "also copy databases" unticked — the control that
+ *               makes the sentence a rule and not a decoration (#900)
  *    toast    — the long revert-then-delete refusal toast + friends
  *    agents   — the AI-agents (MCP) card. `astate=off|idle|working|erroring`
  *               drives the status line, `feed=empty` empties the activity list,
@@ -70,7 +76,7 @@ import { LiveTab } from "@/components/sites/LiveTab";
 import { DbImportCard } from "@/components/sites/DbImportCard";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
 import { KeepSiteDialog, ResolverDriftBanner, ScratchGroupHeading, SiteRow } from "@/routes/Sites";
-import { ResolverHandBackRow } from "@/routes/Import";
+import { Import as ImportScreen, ResolverHandBackRow } from "@/routes/Import";
 import { PhpVersionsSetting } from "@/routes/Settings";
 import { AdminerVersionCard, DbConsoleCard } from "@/routes/Databases";
 import { WpCliPackagesCard } from "@/routes/Settings";
@@ -1526,6 +1532,56 @@ export function DevUiReview() {
           // `?drift=test,dev` is the fixture; absent → [] (the ordinary state,
           // which the probe requires to render NOTHING).
           return (params.get("drift") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
+        // The Import screen's one read (`view=import`). Shaped like the real scan of the
+        // dev Mac's Local (23 Oct 2026): the sentence under test is driven by
+        // `dbServerRunning`, so the three values it can take are all here, and only
+        // ONE of them may produce the sentence.
+        case "scan_valet_import": {
+          const row = (over: Record<string, unknown>) => ({
+            source: "local",
+            name: "ab12",
+            domain: "ab12.rex",
+            path: "/Users/dev/Local Sites/ab12/app/public",
+            servePath: "/Users/dev/Local Sites/ab12/app/public",
+            docrootRel: null,
+            siteType: "wordpress",
+            label: "WordPress",
+            phpMinor: "8.3",
+            phpTarget: "8.3",
+            phpChoice: false,
+            domainChoice: false,
+            secured: true,
+            extraDomains: [],
+            proxyTo: null,
+            alsoIn: null,
+            renamedFrom: "ab12.local",
+            multisite: "none",
+            subsites: [],
+            dbServerRunning: false,
+            hasCustomValetDriver: false,
+            status: { status: "importable" },
+            ...over,
+          });
+          return {
+            sources: [
+              { kind: "local", home: "/Users/dev/Library/Application Support/Local", tld: "local", loopback: "127.0.0.1", parked: [], notes: [] },
+              { kind: "valet", home: "/Users/dev/.config/valet", tld: "test", loopback: "127.0.0.1", parked: ["/Users/dev/Sites"], notes: [] },
+            ],
+            candidates: [
+              row({}),
+              row({ name: "tr", domain: "tr.rex", path: "/Users/dev/Local Sites/tr/app/public", servePath: "/Users/dev/Local Sites/tr/app/public", renamedFrom: "tr.local", dbServerRunning: true }),
+              row({ source: "valet", name: "oc", domain: "oc.test", path: "/Users/dev/Sites/oc", servePath: "/Users/dev/Sites/oc", renamedFrom: null, dbServerRunning: null, secured: false }),
+            ],
+            tlds: [],
+            availablePhp: ["8.3", "8.4"],
+            takenDomains: [],
+            unsupported: null,
+          };
+        }
+        case "db_import_leftovers":
+          return [];
+        case "unresolvable_tlds":
+          return [];
         case "resolver_drift_records":
           // The banner's feed: the same fixture, each TLD with `?driftAt=` as its
           // takeover generation — changing it is a re-take the banner never saw (#807).
@@ -1686,6 +1742,7 @@ export function DevUiReview() {
           </div>
         )}
         {view === "provision" && <ProvisionCardView />}
+        {view === "import" && <ImportScreen />}
         {view === "resolver" && (
           <div className="rounded-xl border border-rex-border bg-rex-surface-1 p-4">
             <div className="text-[0.8125rem] font-medium text-rex-text">Valet / Herd</div>

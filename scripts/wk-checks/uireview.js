@@ -85,6 +85,10 @@ const SCENARIOS = [
   ["resolver-handback", "view=resolver", []],
   // #808: a DRIFTED borrow (Valet took the file back) must not read "rexenv answers this".
   ["resolver-handback-drifted", "view=resolver&owner=drifted", []],
+  // #900 / PUBLISH-TESTING N15: the Import screen's stopped-Local-database sentence,
+  // on exactly the row whose `dbServerRunning` is false, and gone once databases are
+  // not being copied.
+  ["import-local-stopped", "view=import", []],
   ["toasts", "view=toast", []],
   // Every StatusPill state + every StartStopToggle state — the states the
   // other fixtures never render (they hardcode `running`).
@@ -1044,6 +1048,42 @@ const PROBES = {
   },
   // #808: the hand-back row's sentence follows WHO answers the TLD. Both legs
   // (borrowed control + drifted) are scenarios, so neither passes vacuously.
+  // The stopped-database sentence (#900). Users met the failure AFTER the run as a red
+  // row plus a failed Database tab; the fix is a sentence BEFORE it. Three rows, three
+  // values of `dbServerRunning` (false / true / null) — one sentence, under the false
+  // row only. The control: untick "also copy databases" and the sentence must go,
+  // because a warning about a copy nobody asked for would be noise on every row.
+  importLocalStopped: async (page) => {
+    const problems = [];
+    const SEL = '[data-probe="import-local-db-stopped"]';
+    const read = () =>
+      page.evaluate((sel) => {
+        const els = [...document.querySelectorAll(sel)];
+        return {
+          n: els.length,
+          texts: els.map((e) => e.textContent.replace(/\s+/g, " ").trim()),
+          // The row this sentence sits in — the first ancestor carrying the site name.
+          rows: els.map((e) => (e.closest("li, tr, [data-row]") ?? e.parentElement).textContent),
+        };
+      }, SEL);
+    const first = await read();
+    if (first.n !== 1) problems.push(`expected exactly one stopped-database sentence, found ${first.n}`);
+    const want = "its database server isn't running — start this site in Local first, or its database won't be copied";
+    if (first.n && first.texts[0] !== want) problems.push(`sentence reads "${first.texts[0]}"`);
+    if (first.n && !first.rows[0].includes("ab12")) problems.push("the sentence is not under the stopped row (ab12)");
+    if (first.n && first.rows[0].includes("tr.rex")) problems.push("the sentence leaked onto the started row");
+    // CONTROL: untick the copy, the sentence goes; tick again, it returns.
+    const box = page.getByLabel("also copy databases");
+    await box.uncheck();
+    await page.waitForTimeout(100);
+    const off = await read();
+    if (off.n !== 0) problems.push(`sentence still shown with databases unticked (${off.n})`);
+    await box.check();
+    await page.waitForTimeout(100);
+    const back = await read();
+    if (back.n !== 1) problems.push(`sentence did not return once databases were ticked again (${back.n})`);
+    return problems;
+  },
   handbackCopy: async (page) => {
     const drifted = new URL(page.url()).searchParams.get("owner") === "drifted";
     const t = await page.evaluate(
@@ -1212,6 +1252,7 @@ function probeFor(name) {
   if (name === "card-instantfail") return PROBES.instantFail;
   if (name === "card-thissite") return PROBES.thisSite;
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
+  if (name === "import-local-stopped") return PROBES.importLocalStopped;
   if (name === "php-versions") return PROBES["php-versions"];
   // ONE probe drives every app-update state by re-navigating, so it is attached
   // to the first scenario only — attaching it to all six would run the same

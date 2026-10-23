@@ -2066,7 +2066,10 @@ again from the Database tab, then exported by hand"; ledger #900):
   **Expect** the row itself reads *"its database server isn't running — start this site in
   Local first, or its database won't be copied"* BEFORE Import is pressed; start the site
   in Local → Rescan → the line is gone. ✅ the dev Mac, 23 Oct 2026 (tsc + the unit test;
-  the sentence's placement on the row is owed a GUI look).
+  the row itself in WebKit: `uireview.js` `import-local-stopped` renders the REAL Import
+  screen over a mocked scan — the sentence under the stopped row only, gone with "also copy
+  databases" unticked; the packaged app's Import screen needs a click to reach, so the
+  packaged look is this harness, the same engine as WKWebView).
 - **N16** — a Local site on **MariaDB** (Local → site → Database → MariaDB 10.x when
   creating it), started, imported with "also copy databases". **Expect** the DB copies —
   the job log says *"the source is MariaDB, so this site's database engine is now MariaDB"*,

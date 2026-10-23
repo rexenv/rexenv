@@ -684,6 +684,15 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (23 Oct 2026): `uireview.js` `import-local-stopped` → `importLocalStopped`** (#900,
+  PUBLISH-TESTING N15) — the REAL `Import` screen (`view=import`) over a mocked scan carrying
+  all three values of `dbServerRunning`: the stopped-database sentence renders under the
+  `false` row only, and goes with "also copy databases" unticked. **What it cost:** users met
+  the stopped-site failure AFTER the run as a red row and a failed Database tab, then exported
+  by hand; the sentence is the fix, and the packaged app's Import screen cannot be reached
+  without a click (no route param, no tray entry), so this harness IS the GUI look. The
+  control is the toggle: a sentence that stays when no copy is asked for is noise on every row.
+  Planted (the toggle and `=== false` dropped) → two sentences, both widths red.
 - **Probes (30 Sep 2026): `uireview.js` `badges` → `provisionBadges`** (#763) — a site row
   whose provision job is RUNNING renders `Setting up` and neither the `setup incomplete` badge
   nor Retry; the dead-job row beside it must still carry both, which is the control — a page

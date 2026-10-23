@@ -124,7 +124,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   engine to MariaDB", which no screen offered); an overridable verdict marks the job `overridable` and
   the card's **Import anyway** retries with `accept_override` (the gate took the flag since Stage 2;
   nothing ever passed it). Live on the dev Mac against Local 10.1.2 (stopped → the sentence; started →
-  12 tables, connect verified, 200; a renamed second site in one batch). **Open:** PUBLISH-TESTING N16
+  12 tables, connect verified, 200; a renamed second site in one batch; the row sentence in WebKit, `uireview.js` `import-local-stopped`). **Open:** PUBLISH-TESTING N16
   (a MariaDB Local source) and N17 (a newer source → Import anyway) — no such source at hand; Windows
   and Linux offer no Local scan (#641), the engine/override legs compiled only there.
 
