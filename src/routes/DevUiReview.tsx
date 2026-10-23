@@ -1145,17 +1145,15 @@ export function DevUiReview() {
           if (params.get("state") === "checking") return new Promise(() => {});
           return { offers: [], restartPending: null, checkedAt: "2026-09-06 09:00:00", autoCheck: true, checkProblem: null };
         }
-        case "updates_skip":
-        case "php_update_apply":
-        case "adminer_update_apply":
-        case "phpmyadmin_update_apply": {
+        case "updates_skip": {
           const w = window as unknown as { __rexUpdate?: unknown[] };
           (w.__rexUpdate ??= []).push({ cmd, args });
-          if (cmd === "php_update_apply") return { patch: "8.3.28", restarted: true };
-          if (cmd === "adminer_update_apply") return { staged: "6.1.2", effective: "6.1.2", updatable: null, pinned: "6.1.1" };
-          if (cmd === "phpmyadmin_update_apply") return { ...mockDbConsoleStatus, phpmyadminStaged: "5.2.4", phpmyadminEffective: "5.2.4", phpmyadminUpdatable: null };
           return { offers: [], restartPending: null, checkedAt: "2026-09-06 09:00:00", autoCheck: true, checkProblem: null };
         }
+        // The three family applies answer from their own arms below (`view=appupdate`
+        // recorded + settled there): a second `case` label for them HERE shadowed those
+        // arms' never-settling `updating` legs, so `adminer-updating` / `dbconsole-updating`
+        // settled at once and the running control was never on screen (24 Oct 2026).
         // Update all (T5), scripted: `?run=stop` fails the SECOND row (Adminer) so the third
         // (the app) is never reached; otherwise every row settles ok. One row advances per
         // poll, so the probe sees the run move and then freeze where it stopped.
@@ -1288,6 +1286,11 @@ export function DevUiReview() {
           }
         }
         case "phpmyadmin_update_apply": {
+          if (params.get("view") === "appupdate") {
+            const w = window as unknown as { __rexUpdate?: unknown[] };
+            (w.__rexUpdate ??= []).push({ cmd, args });
+            return { ...mockDbConsoleStatus, phpmyadminStaged: "5.2.4", phpmyadminEffective: "5.2.4", phpmyadminUpdatable: null };
+          }
           if (params.get("console") === "updating") return new Promise<never>(() => {});
           const v = String((args as Record<string, unknown> | undefined)?.version ?? "");
           return { console: "phpmyadmin", phpmyadminStaged: v, phpmyadminPinned: "5.2.3", phpmyadminEffective: v, phpmyadminUpdatable: null };
@@ -1316,6 +1319,11 @@ export function DevUiReview() {
               return mockAdminerStatus;
           }
         case "adminer_update_apply":
+          if (params.get("view") === "appupdate") {
+            const w = window as unknown as { __rexUpdate?: unknown[] };
+            (w.__rexUpdate ??= []).push({ cmd, args });
+            return { staged: "6.1.2", effective: "6.1.2", updatable: null, pinned: "6.1.1" };
+          }
           // Never settles, so the running state stays on screen to be read. A
           // fixture that resolves immediately cannot show an in-flight control.
           if (params.get("adminer") === "updating") return new Promise<never>(() => {});
@@ -1325,6 +1333,11 @@ export function DevUiReview() {
             updatable: null,
           };
         case "php_update_apply":
+          if (params.get("view") === "appupdate") {
+            const w = window as unknown as { __rexUpdate?: unknown[] };
+            (w.__rexUpdate ??= []).push({ cmd, args });
+            return { patch: "8.3.28", restarted: true };
+          }
           return {
             patch: String((args as Record<string, unknown> | undefined)?.patch ?? ""),
             restarted: true,
@@ -1701,6 +1714,10 @@ export function DevUiReview() {
         // its door, a warn WITHOUT one (the self-update's shape before its producer
         // attached About), and a plain info. Exactly one toast may carry a button.
         case "startup_notices":
+          // Only the notices view: served to every view, the three toasts put four
+          // "Dismiss" buttons on the drift view and broke `resolver-drift` (verify-full,
+          // 0.9.1 cut, 24 Oct 2026).
+          if (params.get("view") !== "notices") return [];
           return [
             { level: "warn", message: "Stopped 1 public share(s) left running by a crashed session — their links are dead now.", action: { label: "Open Tunnels", route: "/tunnels" } },
             { level: "warn", message: "The update to rexenv 0.9.1 did not take — rexenv 0.9.0 is still running.", action: null },
