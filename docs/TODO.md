@@ -116,6 +116,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **One update channel — every "something newer exists" (rexenv, PHP patch, Adminer, phpMyAdmin) noticed
+  the same way and installed from one page, with Update all** (owner, 23 Oct 2026). Today only the app's own
+  release has a toast/pills/tray item; PHP and the consoles offer themselves only when their own screen is
+  open, with no poller and no skip. Plan: `docs/PLAN-unified-updates.md` — T0–T7, §8 holds three owner
+  decisions (WordPress rows read-only? Update all includes the app? Settings → Updates vs About). Nothing built.
+
 - [x] **Local → rexenv: "database import failed", again from the Database tab, then exported by hand**
   (users' reports, 23 Oct 2026) ✓ 23 Oct 2026 — three causes, three fixes (ledger #900): the scan's Local row
   says "start this site in Local first" BEFORE the run (`db_server_running`, a stat of the site's socket);
