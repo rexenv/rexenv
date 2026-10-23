@@ -86,9 +86,10 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
         // on the dev Mac: published 8.3.32 (-5) "Could not resolve host: amin.rex",
         // the same call on the rebuilt curl HTTP 200 from 127.0.0.1.
         "8.1" | "8.2" | "8.3" | "8.4" | "8.5" => Some(CurlResolver::Threaded),
-        // static-php.dev's bulk build, `--enable-cares` (c-ares 1.34.2) — the one
-        // pinned PHP rexenv does not build (`binaries::php_self_hosted_tag` says why).
-        "8.0" => Some(CurlResolver::Ares),
+        // OURS since `php-8x-11` (24 Oct 2026), same pre-built libcurl and gate 9:
+        // `curl_version()["ares"]` is empty (the `c-ares 1.34.6` in `php -i` is
+        // swoole's own). static-php.dev's 8.0.30 before it was `--enable-cares`.
+        "8.0" => Some(CurlResolver::Threaded),
         _ => None,
     }
 }
@@ -349,18 +350,17 @@ mod tests {
             s
         };
         assert_eq!(ares_minors_in_use(&[site("7.4")]), Vec::<String>::new());
-        // 8.1–8.5 are threaded since php-8x-8; 8.0 (static-php.dev's) is the exposure.
+        // 8.1–8.5 are threaded since php-8x-8, 8.0 since php-8x-11 (its static-php.dev
+        // build was the last exposure).
         assert_eq!(ares_minors_in_use(&[site("8.3")]), Vec::<String>::new());
-        assert_eq!(ares_minors_in_use(&[site("8.0")]), vec!["8.0".to_string()]);
-        // Deduped and sorted, so the doctor line reads as a set of builds
-        // rather than a list of sites.
+        assert_eq!(ares_minors_in_use(&[site("8.0")]), Vec::<String>::new());
         assert_eq!(
             ares_minors_in_use(&[site("8.0"), site("8.3"), site("8.0"), site("7.4")]),
-            vec!["8.0".to_string()]
+            Vec::<String>::new()
         );
         // A patch-level version still answers, because a site records a minor
         // but nothing stops a fuller string reaching here.
-        assert_eq!(ares_minors_in_use(&[site("8.0.30")]), vec!["8.0".to_string()]);
+        assert_eq!(ares_minors_in_use(&[site("8.0.30")]), Vec::<String>::new());
         // An unpinned minor is NOT exposure: `resolver_for` returns None, which
         // means "not measured", and inventing a verdict for it is how a table
         // starts lying about builds it has never seen.
@@ -397,21 +397,20 @@ mod tests {
                 ),
             }
         }
-        // **Both kinds must be present.** A table that answered `Ares` for
-        // everything is exactly the state this test was written to disprove, and
-        // it would pass every assertion above.
-        assert!(ares > 0, "no c-ares build left — if that is real, this whole module can go");
+        // **No c-ares build is pinned any more** (24 Oct 2026): 8.0.30, the last one,
+        // became ours (`php-8x-11`). The doctor line and the mu-plugin stay for a
+        // manifest patch from static-php.dev, which `resolver_for` does not vouch for.
+        assert_eq!(ares, 0, "a pinned build links c-ares again — runtimes' gate 9 should have failed it");
         assert!(
             threaded > 0,
             "no threaded build recorded, but 7.4 was measured as one on 23 Aug 2026"
         );
         // The ones rexenv builds itself are the ones without the bug — 7.4 always,
-        // 8.1–8.5 since php-8x-8. 8.0, static-php.dev's, is the remaining c-ares build.
+        // 8.1–8.5 since php-8x-8, 8.0 since php-8x-11.
         assert_eq!(resolver_for("7.4"), Some(CurlResolver::Threaded));
-        for minor in ["8.1", "8.2", "8.3", "8.4", "8.5"] {
+        for minor in ["8.0", "8.1", "8.2", "8.3", "8.4", "8.5"] {
             assert_eq!(resolver_for(minor), Some(CurlResolver::Threaded), "{minor}");
         }
-        assert_eq!(resolver_for("8.0"), Some(CurlResolver::Ares));
 
         // A minor rexenv does not pin has no recorded answer, rather than a
         // default that would read as a measurement.
