@@ -24,6 +24,9 @@ const SCENARIOS = [
   ["card-consent-root", "view=card&rec=imported&preview=ready&root=1", []],
   // #810: a job that settles before the card subscribes must still show its end.
   ["card-instantfail", "view=card&dbjob=instantfail", []],
+  // #900 / PUBLISH-TESTING N17: a refused-but-overridable job offers Import anyway, and the
+  // press retries WITH `acceptOverride: true` — the mock settles `ok` only for that.
+  ["card-overridable", "view=card&dbjob=overridable", []],
   // #812: "nothing to import" is an answer — neutral, no Retry.
   ["card-thissite", "view=card&rec=connected&preview=noop&dbjob=thissite", []],
   [
@@ -1111,6 +1114,30 @@ const PROBES = {
     });
     return p;
   },
+  // Import anyway (#900). Before the fix, `Verdict::NeedsOverride` was a dead end: the card
+  // said the sentence and Retry re-ran the same refusal. The probe is the whole exchange —
+  // the sentence AND the button, then the press, then a job that settled `ok` — and the
+  // mock's control is that only a start carrying `acceptOverride: true` settles: a button
+  // wired to a plain retry leaves the refusal on screen and fails here.
+  overridable: async (page) => {
+    const problems = [];
+    const text = () => page.evaluate(() => document.body.innerText);
+    if (!/newer than the MySQL 8\.4\.6 rexenv runs/.test(await text())) problems.push("the refusal's own sentence is not on the card");
+    const host = page.locator('[data-probe="db-import-override"]');
+    if ((await host.count()) !== 1) return [...problems, "no Import anyway block for a refused-but-overridable job"];
+    const button = host.getByRole("button", { name: "Import anyway" });
+    if (!(await button.count())) return [...problems, "the override block has no Import anyway button"];
+    await button.click();
+    try {
+      await page.waitForFunction(() => !document.querySelector('[data-probe="db-import-override"]'), null, { timeout: 5000 });
+    } catch {
+      return [...problems, "Import anyway did not settle the job — the retry did not carry acceptOverride: true (the mock settles only for that)"];
+    }
+    const accepted = await page.evaluate(() => window.__rexAccept === true);
+    if (!accepted) problems.push("the start that settled the job did not carry acceptOverride: true");
+    if (/newer than the MySQL 8\.4\.6 rexenv runs/.test(await text())) problems.push("the refusal sentence is still on the card after the copy settled");
+    return problems;
+  },
   instantFail: async (page) => {
     const start = page.getByRole("button", { name: "Import database" });
     if (!(await start.count())) return ["CONTROL BROKEN: no Import database button"];
@@ -1250,6 +1277,7 @@ function probeFor(name) {
   if (name.startsWith("delete")) return PROBES.deleteGate;
   if (name === "resolver-drift") return PROBES.resolverDrift;
   if (name === "card-instantfail") return PROBES.instantFail;
+  if (name === "card-overridable") return PROBES.overridable;
   if (name === "card-thissite") return PROBES.thisSite;
   if (name.startsWith("resolver-handback")) return PROBES.handbackCopy;
   if (name === "import-local-stopped") return PROBES.importLocalStopped;

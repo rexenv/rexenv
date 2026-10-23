@@ -3705,6 +3705,11 @@ fn db_import_job_view(st: &crate::commands::db_import::DbImportJobState, scrub: 
         "status": st.status, "pct": st.pct,
         "phases": st.phases.iter().map(|p| json!({ "key": p.key, "label": p.label, "status": p.status })).collect::<Vec<_>>(),
         "error": st.error.as_deref().map(scrub),
+        // The tool's own description promises this flag ("the refusal's `overridable` says
+        // when it applies"); the first live N17 run (23 Oct 2026) found the view had never
+        // carried it, so an agent could read the refusal but not learn that `accept_override`
+        // was the answer.
+        "overridable": st.overridable,
         "keptArtifact": st.kept_artifact.as_deref().map(basename),
         "result": st.result.as_ref().map(|r| json!({ "state": r.state, "dbName": r.db_name, "tables": r.table_count, "sizeBytes": r.size_bytes, "source": r.source_label, "skippedTables": r.skipped_tables, "importedAt": r.imported_at })),
     })
@@ -5895,6 +5900,10 @@ pub(crate) mod tests {
         let v = db_import(ctx, &json!({ "action": "start", "site_id": site.id, "confirm_overwrite": "mine.rex" }), &acted).await.unwrap();
         assert_eq!(v["result"]["job"]["status"], "ok");
         assert_eq!(v["result"]["job"]["keptArtifact"], "mine.sql", "named, never located");
+        // The overridable flag reaches the agent (an absent field reads as Null, never `false`).
+        assert_eq!(v["result"]["job"]["overridable"], false);
+        let refused = crate::commands::db_import::DbImportJobState { id: "j".into(), site_id: "s".into(), domain: "mine.rex".into(), phases: vec![], phase_cursor: 0, pct: 0, status: "failed".into(), error: Some("newer".into()), log_key: "x".into(), kept_artifact: None, result: None, nothing_to_do: false, overridable: true };
+        assert_eq!(db_import_job_view(&refused, &|s: &str| s.to_string())["overridable"], true, "a refused-but-overridable job must say so over MCP, or `accept_override` is undiscoverable");
         let calls = ops.calls.lock().unwrap().clone();
         assert!(calls.iter().any(|c| c == "valet run shop.test db=true"), "{calls:?}");
         assert!(calls.iter().any(|c| c == &format!("dbimport start {} Some(\"mine.rex\")", site.id)), "{calls:?}");

@@ -684,6 +684,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Probes (23 Oct 2026): `uireview.js` `card-overridable` → `overridable`** (#900, PUBLISH-TESTING
+  N17) — the Database tab's card over a refused-but-overridable job (`dbjob=overridable`, the
+  live run's MySQL 26.7 sentence verbatim): the sentence AND an **Import anyway** button, then the
+  press, then a job that settled `ok`. The mock's control is that ONLY a `db_import_start`
+  carrying `acceptOverride: true` settles — a button wired to a plain retry leaves the refusal
+  on screen. **What it cost:** `Verdict::NeedsOverride` was a dead end for a year behind a
+  comment saying the override UI "arrives with the batch screen wiring"; Retry re-ran the
+  refusal. Planted (the button's `acceptOverride: true` dropped) → both widths red.
 - **Probes (23 Oct 2026): `uireview.js` `import-local-stopped` → `importLocalStopped`** (#900,
   PUBLISH-TESTING N15) — the REAL `Import` screen (`view=import`) over a mocked scan carrying
   all three values of `dbServerRunning`: the stopped-database sentence renders under the

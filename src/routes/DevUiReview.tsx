@@ -8,6 +8,7 @@
  *
  *  Views (`?view=…`):
  *    card     — DbImportCard.   `rec=imported|connected|connectedHttp`,
+ *               `dbjob=overridable` (the NeedsOverride refusal + Import anyway, #900),
  *               `preview=ready|refused|noop`, `root=1`, `cache=1`,
  *               `backup=1`, `engine=mariadb`,
  *               `apply=fileChanged|engineStopped|verifyFailed|applied`,
@@ -136,8 +137,12 @@ const RECORD_BASE = {
 const THIS_SITE =
   "This site already reads and writes `kprimary_db` on rexenv's own database engine — that IS the rexenv copy. There's nothing to import.";
 
-/** A database-import job, for `dbjob=instantfail` (#810). */
-function dbJob(status: "running" | "failed") {
+/** The N17 refusal, verbatim from the live run (23 Oct 2026, a MySQL 26.7 source). */
+const NEWER_SOURCE =
+  "This is MySQL 26.7.0, which is newer than the MySQL 8.4.6 rexenv runs for this site. Restoring a newer server's dump into an older one is the one direction that isn't supported by the databases themselves — it may fail part-way through, leaving a half-restored copy. You can import it anyway if you want to.";
+
+/** A database-import job, for `dbjob=instantfail` (#810) and `dbjob=overridable` (#900). */
+function dbJob(status: "running" | "failed" | "ok") {
   (window as unknown as { __rexStarted?: boolean }).__rexStarted = true;
   return {
     id: "job-810",
@@ -145,7 +150,7 @@ function dbJob(status: "running" | "failed") {
     domain: "larafix.test",
     phases: [{ key: "check", label: "checking the source database", status }],
     phaseCursor: 0,
-    pct: 0,
+    pct: status === "ok" ? 100 : 0,
     status,
     error: status === "failed" ? "rexenv couldn't find a wp-config.php or .env to read the database settings from." : null,
     logKey: "db-import-larafix.test-810",
@@ -1354,10 +1359,25 @@ export function DevUiReview() {
         // reads `failed`, and no event ever arrives. Only a card that re-reads after
         // subscribing shows the refusal.
         case "db_import_start":
+          // `dbjob=overridable` (#900): the start is recorded with its `acceptOverride`, and
+          // ONLY a start that carried `true` settles `ok` below — a card whose Import anyway
+          // retried without the flag keeps meeting the same refusal, which is the bug the
+          // button exists to end (Retry re-ran the refusal for a year).
+          if (params.get("dbjob") === "overridable") {
+            (window as unknown as { __rexAccept?: boolean }).__rexAccept =
+              (args as { acceptOverride?: boolean } | undefined)?.acceptOverride === true;
+          }
           return dbJob("running");
         case "db_import_state":
           // `dbjob=thissite` (#812): the site's latest job is the "nothing to import" answer.
           if (params.get("dbjob") === "thissite") return { ...dbJob("failed"), nothingToDo: true, error: THIS_SITE };
+          // `dbjob=overridable` (#900): the site's latest job is the NeedsOverride refusal,
+          // marked overridable, until a start with `acceptOverride: true` has run.
+          if (params.get("dbjob") === "overridable") {
+            return (window as unknown as { __rexAccept?: boolean }).__rexAccept
+              ? dbJob("ok")
+              : { ...dbJob("failed"), error: NEWER_SOURCE, overridable: true };
+          }
           return params.get("dbjob") === "instantfail" && (window as unknown as { __rexStarted?: boolean }).__rexStarted
             ? dbJob("failed")
             : null;

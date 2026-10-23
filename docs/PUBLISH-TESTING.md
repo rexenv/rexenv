@@ -2074,12 +2074,24 @@ again from the Database tab, then exported by hand"; ledger #900):
   creating it), started, imported with "also copy databases". **Expect** the DB copies —
   the job log says *"the source is MariaDB, so this site's database engine is now MariaDB"*,
   the site's Database tab names port 13307, connect verifies — instead of the old refusal
-  *"set this site's database engine to MariaDB"*. **Open:** no MariaDB Local site at hand on
-  23 Oct 2026 (Local's MariaDB services were never fully downloaded on the dev Mac).
+  *"set this site's database engine to MariaDB"*. ✅ the dev Mac, 23 Oct 2026, against the
+  built tree (88b3b32a) with a MariaDB 12.3.2 (rexenv's own binary) serving Local's `ab12`
+  socket and port — Local's MariaDB services are incomplete downloads here, so the server was
+  the fixture, the site registry was Local's: the batch's DB copy `imported`, the job log says
+  the engine sentence, `site_info` reads `dbEngine: mariadb`, 12 tables in `local_ab12_rex` on
+  13307 with `siteurl` rehomed to `https://ab12.rex`. The same site against the published 0.9.0
+  first, as the control: the old refusal, verbatim. Connect not pressed (the N15 run covers it).
 - **N17** — a source NEWER than rexenv's engine (DBngin MySQL 9.x behind a Valet/Herd site,
   or Local once it ships one). **Expect** the Database tab's import fails with the verdict's
   own sentence ("… newer than the MySQL 8.4.x rexenv runs …") and an **Import anyway**
-  button; press it → the copy runs. **Open:** no newer source at hand, 23 Oct 2026.
+  button; press it → the copy runs. ✅ the dev Mac, 23 Oct 2026, built tree (88b3b32a):
+  Homebrew's MySQL 26.7.0 serving Local's `ab12` socket — the batch's DB fails with *"This is
+  MySQL 26.7.0, which is newer than the MySQL 8.4.6 rexenv runs for this site … You can import
+  it anyway if you want to."*, then `db_import start accept_override=true` (the MCP spelling of
+  the button) copies 12 tables into 13306, the log reading *"imported on the user's say-so
+  despite: …"*. Found and fixed on the way: the MCP `status` view never carried `overridable`
+  (the GUI card reads the Tauri state directly, so the button was unaffected). The button
+  itself in WebKit: `uireview.js` `card-overridable`.
 
 ## Publish-blocking summary
 

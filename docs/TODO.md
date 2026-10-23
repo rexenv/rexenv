@@ -124,9 +124,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   engine to MariaDB", which no screen offered); an overridable verdict marks the job `overridable` and
   the card's **Import anyway** retries with `accept_override` (the gate took the flag since Stage 2;
   nothing ever passed it). Live on the dev Mac against Local 10.1.2 (stopped → the sentence; started →
-  12 tables, connect verified, 200; a renamed second site in one batch; the row sentence in WebKit, `uireview.js` `import-local-stopped`). **Open:** PUBLISH-TESTING N16
-  (a MariaDB Local source) and N17 (a newer source → Import anyway) — no such source at hand; Windows
-  and Linux offer no Local scan (#641), the engine/override legs compiled only there.
+  12 tables, connect verified, 200; a renamed second site in one batch; the row sentence in WebKit, `uireview.js` `import-local-stopped`; N16 and N17 run the same day with a MariaDB 12.3.2 and a
+  MySQL 26.7 serving Local's `ab12` socket — engine followed, Import anyway copied; the MCP `status`
+  view gained the `overridable` flag it had promised). Windows and Linux offer no Local scan (#641),
+  the engine/override legs compiled only there.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

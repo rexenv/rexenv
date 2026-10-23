@@ -1933,7 +1933,10 @@ honest footer —
   settled job carries `overridable` and the card offers **Import anyway**, which retries
   with `accept_override` — the flag the gate was built to take and nothing ever passed
   (the comment said the UI "arrives with the batch screen wiring"; it never did, and Retry
-  re-ran the same refusal). The MCP `db_import` `start` takes `accept_override` too.
+  re-ran the same refusal). The MCP `db_import` `start` takes `accept_override` too, and
+  its `status` view carries `overridable` — the first live run found the description
+  promising the flag while the view omitted it, so an agent could read the refusal but
+  never learn the answer.
 - **The connection rewrite writes ONE user file, provably** (Stage 3:
   `core/{confedit,confverify,confrewrite}`, `commands/rewrite.rs`, v21/v22).
   `RewriteKey` is a closed enum (Host/Port/User/Name — Name, the database NAME, added
