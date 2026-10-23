@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0–T3 built 23 Oct 2026 (ledger #901–#904); T4–T7 next.** Owner ask (23 Oct
+Status: **IN FLIGHT — T0–T4 built 23 Oct 2026 (ledger #901–#905); T5–T7 next. D1 (the read-only WordPress lines) is its own small task after T5.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -238,3 +238,17 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   the TopBar search floor 100 → 80 px, with a fit leg in `appupdate.js`. IPC `updatesInventory`
   lands with its first callers. The tray item and the pills still open About (`UPDATES_ROUTE`, one
   constant) until T4. Ledger #904.
+- **T4 — 23 Oct 2026.** `src/components/settings/UpdatesSection.tsx` replaces `AppUpdateCard`:
+  Settings gains an **Updates** section (About keeps version + licences); one row per offer in one
+  shape (label · `installed → offered · size` · Rust consent · **Install <display>** titled with the
+  effect · **Skip this version**; skipped → "was set aside … Undo"), the app row keeping its refusal,
+  download progress and restart states under the same `data-probe="app-update"`/`data-phase`; one
+  auto-check switch; one footer (`check_problem` / `check_refusal` / "checked N ago" / "Not checked
+  yet"); "Check now" = `updates_check_now` under the pill's mutation key; `check=1` handled here.
+  Every door points at `/settings?section=updates` (`ABOUT_PATH`'s value, `UPDATES_ROUTE`,
+  `NoticeAction::UPDATES`). The three family screens stop fetching the manifest on mount; their
+  check wrappers and the card-only `appUpdateCheck`/`appUpdateSkip` wrappers are deleted
+  (`every_ipc_wrapper_is_actually_called`). The copy scans follow the file. Found: the About card's
+  passive `["downloads"]` read logged a "no queryFn" error on every render. D1 (read-only WordPress
+  lines) deferred to after T5 — it needs a per-site update count the two-pass check only produces
+  when a site's panel is open. Ledger #905.

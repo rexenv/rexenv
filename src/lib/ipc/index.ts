@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { UpdateInventory, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
+import type { UpdateInventory, UpdateKind, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
@@ -788,13 +788,6 @@ export async function listPhpVersions(): Promise<PhpVersion[]> {
   return invoke<PhpVersion[]>("list_php_versions");
 }
 
-/** Refresh the signed update manifest and return the rows it produced.
- *  Best-effort: the caller renders a failure as "couldn't check", never a block. */
-export async function phpUpdateCheck(): Promise<PhpVersion[]> {
-  if (!isTauri()) return mockPhpVersions;
-  return invoke<PhpVersion[]>("php_update_check");
-}
-
 /** Move a minor onto a patch, or fail leaving it exactly where it was — the
  *  backend reverts the selection and restarts the pool if it does not come back.
  *
@@ -819,14 +812,6 @@ export async function phpUpdateApply(
 export async function appUpdateState(): Promise<AppUpdateState> {
   if (!isTauri()) return mockAppUpdateState;
   return invoke<AppUpdateState>("app_update_state");
-}
-
-/** Check now: fetch the signed release descriptor and answer with the state
- *  that follows. Best-effort — the caller renders a failure as "couldn't
- *  check", never as a block, and never as "up to date". */
-export async function appUpdateCheck(): Promise<AppUpdateState> {
-  if (!isTauri()) return mockAppUpdateState;
-  return invoke<AppUpdateState>("app_update_check");
 }
 
 /** Whether this installation can take the offered update, and the consent
@@ -884,6 +869,20 @@ export async function updatesInventory(): Promise<UpdateInventory> {
   return invoke<UpdateInventory>("updates_inventory");
 }
 
+/** Set one kind's offered version aside (`version`) or take the skip back (`null`).
+ *  A VERSION, never a flag: skipping 8.3.28 must not hide 8.3.29. */
+export async function updatesSkip(kind: UpdateKind, version: string | null): Promise<UpdateInventory> {
+  if (!isTauri()) return mockUpdateInventory;
+  return invoke<UpdateInventory>("updates_skip", { kind, version });
+}
+
+/** "Check now" for every kind: BOTH signed documents on the interactive deadline, then
+ *  the inventory — whose `checkProblem` says what could not be done, if anything. */
+export async function updatesCheckNow(): Promise<UpdateInventory> {
+  if (!isTauri()) return mockUpdateInventory;
+  return invoke<UpdateInventory>("updates_check_now");
+}
+
 /** Subscribe to `updates-changed`: EITHER signed document (the app's descriptor or the
  *  PHP/console manifest) was accepted by a background check. Every surface that shows
  *  an offer re-reads its cache — told, never polling. No payload. Returns an unlisten
@@ -892,15 +891,6 @@ export async function onUpdatesChanged(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
   const { listen } = await import("@tauri-apps/api/event");
   return listen("updates-changed", () => cb());
-}
-
-/** Set aside exactly this version, or clear the skip by passing nothing.
- *
- *  A VERSION, never a flag: skipping 0.6.0 must not hide 0.6.1, and a boolean
- *  answers that question once and forever. */
-export async function appUpdateSkip(version?: string): Promise<AppUpdateState> {
-  if (!isTauri()) return { ...mockAppUpdateState, skipped: version ?? null };
-  return invoke<AppUpdateState>("app_update_skip", { version: version ?? null });
 }
 
 /** Automatic checking on/off. Off stops the REQUESTS, not just the card — the
@@ -914,13 +904,6 @@ export async function appUpdateSetAutoCheck(enabled: boolean): Promise<AppUpdate
 export async function adminerStatus(): Promise<AdminerStatus> {
   if (!isTauri()) return mockAdminerStatus;
   return invoke<AdminerStatus>("adminer_status");
-}
-
-/** Refresh the signed manifest and return the fresh Adminer row.
- *  Best-effort: the caller renders a failure as "couldn't check", never a block. */
-export async function adminerUpdateCheck(): Promise<AdminerStatus> {
-  if (!isTauri()) return mockAdminerStatus;
-  return invoke<AdminerStatus>("adminer_update_check");
 }
 
 /** Move Adminer onto `version`, or fail leaving it exactly where it was.
@@ -939,13 +922,6 @@ export async function dbConsoleStatus(): Promise<DbConsoleStatus> {
 export async function dbConsoleSet(console: DbConsole): Promise<DbConsoleStatus> {
   if (!isTauri()) return { ...mockDbConsoleStatus, console, phpmyadminStaged: console === "phpmyadmin" ? mockDbConsoleStatus.phpmyadminPinned : mockDbConsoleStatus.phpmyadminStaged };
   return invoke<DbConsoleStatus>("db_console_set", { console });
-}
-
-/** Refresh the signed manifest and return the fresh console row (phpMyAdmin's offer is
- *  read off the same document Adminer's is). Best-effort, as `adminerUpdateCheck`. */
-export async function phpmyadminUpdateCheck(): Promise<DbConsoleStatus> {
-  if (!isTauri()) return mockDbConsoleStatus;
-  return invoke<DbConsoleStatus>("phpmyadmin_update_check");
 }
 
 /** Move phpMyAdmin onto `version` (a manifest offer, or the pin for "Back to"): download →

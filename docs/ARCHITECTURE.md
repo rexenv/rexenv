@@ -1267,9 +1267,20 @@ honest footer —
   as `↑ 3 updates`; the toast says "PHP 8.3.28 can be installed" or "3 updates can be installed"
   once per SET of offers per run; a set-aside offer is counted nowhere (ledger #904). The rail pill exists only with a
   notice, says `Update ready` / `Updates ready` / `Restart to finish update` with NO version, and links to
-  `/settings?section=about` as a SIBLING of the Settings link (a link inside a link is dead in
+  `/settings?section=updates` as a SIBLING of the Settings link (a link inside a link is dead in
   WKWebView); Settings itself keeps going to General. **It replaced a bare mono `0.6.0` badge
-  on Settings**, which users read as the running version. Both pills only navigate: the idle
+  on Settings**, which users read as the running version. **Settings → Updates** (`UpdatesSection.tsx`,
+  `docs/PLAN-unified-updates.md` T4, ledger #905) is where every door lands and the ONE place that
+  installs: one row per offer in one shape — label, `installed → offered · size`, the consent
+  sentence from Rust where there is one, **Install <display>** with the effect sentence as its title,
+  **Skip this version** — in Update-all order, the app last; a set-aside row stays with Undo; the app
+  row carries its refusal (as a command), its download progress and its restart states exactly as
+  the About card did (`data-probe="app-update"`, `data-phase`); one auto-check switch for every kind;
+  one footer that keeps "couldn't reach", "refused what it published" and "checked N ago" three
+  sentences (`check_problem` + `check_refusal`). The About section keeps the version and the
+  licences. Each row installs through its family's own command and says the MEASURED effect. The
+  three family screens no longer fetch the manifest on mount — the poller does, and
+  `updates-changed` refreshes them. Both pills only navigate: the idle
   button calls `useCheckForUpdates` — the same door the menu event uses, About with `check=1`,
   where the CARD runs its check (#886) — and the card stays the one place that checks and the
   one place that installs. The
@@ -2205,8 +2216,8 @@ words (the browser shell's mock and two dev review pages excepted).
   ASKING, so landing them on yesterday's answer would be a menu item that technically worked —
   and until 15 Oct 2026 that is exactly what it did: the door invalidated `["app-update"]`,
   whose query is `app_update_state`, a pure read, so nothing was fetched. Now every door (this
-  item, the tray's, the TopBar's idle button) navigates to `/settings?section=about&check=1`
-  and the CARD runs its own "Check now" mutation once and drops the flag — the card stays the
+  item, the tray's, the TopBar's idle button) navigates to `/settings?section=updates&check=1`
+  and the PAGE runs its own "Check now" mutation once and drops the flag — the page stays the
   only caller of the check, with its own failure copy and 6 s deadline (owner ruling, 15 Oct
   2026).
 - **The tray's "Check for Updates…"** (`TrayAction::CheckUpdates`, `tray:check-updates`, 15 Oct

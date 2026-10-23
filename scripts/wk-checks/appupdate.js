@@ -96,8 +96,8 @@ const STATES = [
       if (railWanted !== (railCount > 0)) fails.push(`${tag}: rail pill present=${railCount > 0}, expected ${railWanted}`);
       if (railCount > 0) {
         const href = await rail().first().getAttribute("href");
-        if (!href || !href.endsWith("/settings?section=about"))
-          fails.push(`${tag}: the rail pill goes to "${href}", not About`);
+        if (!href || !href.endsWith("/settings?section=updates"))
+          fails.push(`${tag}: the rail pill goes to "${href}", not Settings → Updates`);
       }
       // The Settings nav itself keeps going to General.
       const settingsHref = await page.locator('aside a[href="/settings"]').count();
@@ -159,7 +159,7 @@ const STATES = [
     if (during !== "checking") fails.push(`${width}/checking: pill data-phase=${during} while the card checks`);
     if (!(await bar().first().isDisabled().catch(() => false)))
       fails.push(`${width}/checking: the pill is clickable while a check runs`);
-    const checks = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "app_update_check").length);
+    const checks = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "updates_check_now").length);
     if (checks !== 1) fails.push(`${width}/checking: ${checks} checks ran, expected exactly the card's one`);
 
     // 5. S4 — the backend's push. Start with nothing offered, let the "poller"
@@ -201,7 +201,7 @@ const STATES = [
       await page.goto(`${BASE}/dev/ui-review?view=appupdate&state=none${q}`, { waitUntil: "networkidle" });
       await page.waitForSelector('[data-probe="appupdate-view"]', { timeout: 5000 });
       await page.waitForTimeout(600);
-      const n = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "app_update_check").length);
+      const n = await page.evaluate(() => (window.__rexUpdate ?? []).filter((c) => c.cmd === "updates_check_now").length);
       if (n !== want) fails.push(`${width}/arrival${q || " (no flag)"}: ${n} checks ran, expected ${want}`);
       if (new URL(page.url()).searchParams.has("check")) fails.push(`${width}/arrival${q}: the check flag stayed in the URL`);
     }

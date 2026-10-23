@@ -249,8 +249,9 @@ pub struct NoticeAction {
 impl NoticeAction {
     /// The tunnel sweeps: a stopped share is explained on the Tunnels page.
     pub const TUNNELS: NoticeAction = NoticeAction { label: "Open Tunnels", route: "/tunnels" };
-    /// The self-update's launch verdict: the update card is under Settings → About.
-    pub const ABOUT: NoticeAction = NoticeAction { label: "Open About", route: "/settings?section=about" };
+    /// The self-update's launch verdict: every update lives on Settings → Updates
+    /// (`core::tray::UPDATES_ROUTE`, PLAN-unified-updates T4).
+    pub const UPDATES: NoticeAction = NoticeAction { label: "Open Updates", route: crate::core::tray::UPDATES_ROUTE };
 }
 
 impl StartupNotices {

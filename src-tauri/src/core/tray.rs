@@ -60,9 +60,10 @@ impl TrayUpdate {
     }
 }
 
-/// Where the tray's update item and the pills open: Settings → About until
-/// PLAN-unified-updates T4 moves the rows to Settings → Updates (one constant to change).
-pub const UPDATES_ROUTE: &str = "/settings?section=about";
+/// Where the tray's update item opens: Settings → Updates, the one page every kind of
+/// update is installed from (PLAN-unified-updates D3/T4). The frontend's `ABOUT_PATH`
+/// (`useCheckForUpdates.ts`) is the same route; the About panel itself is `menu://about`.
+pub const UPDATES_ROUTE: &str = "/settings?section=updates";
 
 /// Everything the menu is allowed to know. Assembled by the caller from the
 /// SAME sources the UI reads; nothing in here is measured by this module.

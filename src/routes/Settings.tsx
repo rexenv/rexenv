@@ -16,7 +16,7 @@ import { ArrowUpCircle, ArrowUpRight, Bot, CheckCircle2, ChevronRight, Code, Dow
 import { CHECK_INPUT, cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolWhen } from "@/lib/php";
 import { TopBar } from "@/components/shell/TopBar";
-import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
+import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -59,9 +59,9 @@ import {
   trustLocalCa,
   wpCliPackages,
   scanValetImport,
-  uninstallSystem, phpUpdateApply, phpUpdateCheck } from "@/lib/ipc";
+  uninstallSystem, phpUpdateApply } from "@/lib/ipc";
 import { getStoredTheme, setTheme, subscribeTheme, type Theme } from "@/lib/theme";
-import type { AppInfo, Blueprint, EditorApp, MultisiteMode, PhpSetting, PhpVersion, DownloadsSnapshot } from "@/types";
+import type { AppInfo, Blueprint, EditorApp, MultisiteMode, PhpSetting, PhpVersion } from "@/types";
 
 const SITES_DIR_KEY = "sites_dir";
 
@@ -717,25 +717,11 @@ export function PhpVersionsSetting() {
     queryKey: ["php-versions"],
     queryFn: listPhpVersions,
   });
-  // Refresh the SIGNED manifest when this section opens, so a manifest published
-  // since launch is offered without a restart. The launch path does this too; this
-  // is the "I just published one" case.
-  //
-  // Its own query rather than a call inside the one above: a failure here must not
-  // fail the LIST. `retry: false` because a poll nobody asked for should not
-  // hammer, and a stale window so re-opening Settings does not re-fetch.
-  useQuery({
-    queryKey: ["php-update-check"],
-    queryFn: async () => {
-      const rows = await phpUpdateCheck();
-      // The check returns the fresh rows; publish them to the list's cache rather
-      // than invalidating, which would re-run the list query for data we hold.
-      qc.setQueryData(["php-versions"], rows);
-      return rows;
-    },
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  });
+  // The signed manifest is no longer fetched when this section opens: the one update
+  // poller fetches it with the app's descriptor (every 6 h and at launch, gated by the
+  // same setting) and `updates-changed` invalidates these rows; "Check now" lives on
+  // Settings → Updates (`docs/PLAN-unified-updates.md` T2/T4). A fetch per screen mount
+  // ran outside the toggle and told nothing beyond this screen.
   // Install/remove and make-default are read back per minor from the mutation
   // cache (`usePendingVariables`), not off `toggle.variables`: pressing Install
   // on 8.0 then 8.1 put 8.0's button back to "Install" mid-download.
@@ -1862,14 +1848,6 @@ const CHANGELOG_URL = "https://rexenv.rex.bd/docs/changelog/";
 
 function AboutSetting() {
   const words = usePlatformWords();
-  // Read the download hub's snapshot PASSIVELY from the cache StatusFooter's
-  // single `useDownloads()` mount keeps fresh — mounting a second one is what
-  // that hook's own doc forbids. An empty snapshot before the footer has seeded
-  // it renders the card without a bar, which is correct: nothing is downloading.
-  const downloads = useQuery<DownloadsSnapshot>({
-    queryKey: ["downloads"],
-    enabled: false,
-  }).data ?? { batch: null, items: [], seq: 0 };
   const { data: info } = useQuery({ queryKey: ["app-info"], queryFn: getAppInfo });
   const [showLicenses, setShowLicenses] = useState(false);
   // A string opens externally (arrow-out icon, URL shown); a function runs
@@ -1920,11 +1898,6 @@ function AboutSetting() {
         </div>
       </div>
 
-      {/* Updates first, because it is the only card here that can be ACTED on;
-          the build facts below it answer "which build is this?" once you know
-          there is a question. */}
-      <AppUpdateCard downloads={downloads} />
-
       {/* The build, spelled out and COPYABLE. The header line is for a glance;
           this is for a bug report, where "v0.3.0" alone is not enough to tell
           two builds apart and retyping a commit from a screenshot is how the
@@ -1969,13 +1942,17 @@ function AboutSetting() {
   );
 }
 
-type Section = "general" | "dns" | "services" | "agents" | "about";
+type Section = "general" | "dns" | "services" | "agents" | "updates" | "about";
 
 const SECTIONS: { key: Section; label: string; icon: LucideIcon }[] = [
   { key: "general", label: "General", icon: SettingsIcon },
   { key: "dns", label: "DNS & SSL", icon: Shield },
   { key: "services", label: "Services", icon: Server },
   { key: "agents", label: "AI agents", icon: Bot },
+  // Every kind of update in one place (docs/PLAN-unified-updates.md D3): the pills, the
+  // toast, the tray item and "Check for Updates…" all land here. About keeps the version
+  // and the licences.
+  { key: "updates", label: "Updates", icon: ArrowUpCircle },
   { key: "about", label: "About", icon: Info },
 ];
 
@@ -2048,6 +2025,7 @@ export function Settings() {
               </>
             )}
             {section === "agents" && <AgentsMcpCard />}
+            {section === "updates" && <UpdatesSection />}
             {section === "about" && <AboutSetting />}
           </div>
         </div>

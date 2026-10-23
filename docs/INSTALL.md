@@ -33,7 +33,7 @@ release's `.sha256` before installing anything:
   the AppImage in `~/Applications` (untested outside Ubuntu).
 
 **An installed rexenv is left alone** — the script says where it is and stops, because
-rexenv updates itself (Settings → About → Check now) and a reinstall could put an older
+rexenv updates itself (Settings → Updates → Check now) and a reinstall could put an older
 build over a newer one. `REXENV_NO_LAUNCH=1` installs without starting it.
 
 **The command path meets no Gatekeeper and no SmartScreen dialog, by the operating system's
@@ -99,9 +99,9 @@ launch** — see below. The one-command install above and Homebrew need none.
   - two files on `raw.githubusercontent.com/rexenv/runtimes`, the signed list of PHP and
     Adminer versions rexenv can install;
   - two more from the same place: the signed record of rexenv's own latest release, so
-    Settings → About can tell you a new version was published.
+    Settings → Updates can tell you a new version was published.
 
-  You can turn the last one off — **Settings → About**, and "Check now" still works when
+  You can turn the last one off — **Settings → Updates**, and "Check now" still works when
   you ask for it. Everything already cached keeps working with no network at all.
 
 #### "8.4.24 exists" but rexenv is still on 8.4.23 — why that is normal
@@ -225,7 +225,9 @@ real HTTPS dev stack.)
 
 ### Updating
 
-**rexenv updates itself.** When a new version is published, Settings → About offers it:
+**rexenv updates itself.** When a new version is published, Settings → Updates offers it —
+beside any PHP patch, Adminer or phpMyAdmin version published since, one row each, so every
+kind of update is noticed and installed the same way:
 it downloads the new build, checks its signature and checksum, replaces `rexenv.app` in
 one step, then quits and reopens on the new version. Your sites, databases and DNS keep
 running throughout — services outlive the app — while open terminals and running jobs
@@ -238,7 +240,7 @@ Two things worth knowing:
   developer signature yet, so every build is a new identity to the system.
 - **The version that introduced this cannot update itself to it.** The first in-app
   update is from the release AFTER it; before that, use the manual path below.
-- **You can turn the checking off.** Settings → About → Updates → untick *“Check for new
+- **You can turn the checking off.** Settings → Updates → untick *“Check for new
   releases automatically”*. rexenv then contacts nothing on its own; *Check now* still
   works, and nothing ever installs without your click either way.
 
@@ -388,7 +390,7 @@ which told a user who had quit that the app was still open; the words now live i
   "VCRUNTIME140.dll was not found" box held the start until someone closed it.
 - The same small read-only requests at launch as on macOS (php.net, and the signed
   version lists on `raw.githubusercontent.com/rexenv/runtimes`). You can turn the release
-  check off in **Settings → About**.
+  check off in **Settings → Updates**.
 
 #### What is not in the Windows build
 
@@ -471,7 +473,7 @@ there is no certificate for it, so the edge ends the handshake — macOS's curl 
 ### Updating
 
 **rexenv updates itself on Windows** (since 0.8.0 — ledger #690; this section said the
-opposite until 5 Oct 2026, a build behind). Settings → About offers a newer release once its
+opposite until 5 Oct 2026, a build behind). Settings → Updates offers a newer release once its
 signed Windows descriptor (`app-manifest-windows.json`) is published; Install downloads
 `rexenv_<version>_x64.zip`, verifies it against the signed digest, swaps the install folder's
 files while the app runs (a running `.exe` cannot be overwritten but can be renamed, so the
@@ -573,7 +575,7 @@ arm64. `docs/archive/PLAN-apt-repo.md` is the design.
 
 ### Updating
 
-Settings → About → Check now, as on macOS. From the `.deb`, Update downloads the new package,
+Settings → Updates → Check now, as on macOS. From the `.deb`, Install downloads the new package,
 checks it (`dpkg-deb`: it must be `rexenv`, the version the signed release names, and your
 architecture, carrying `rexenv` and `rex`), and installs it with ONE polkit prompt worded for
 the update ("rexenv needs administrator permission to install the update it downloaded"; from a

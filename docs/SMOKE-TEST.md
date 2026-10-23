@@ -2737,7 +2737,7 @@ probe measured the swap once on this Mac (`docs/archive/PLAN-self-update.md` §T
 question asked of a real rexenv, on a real release, with a real user's approval state.*
 
 Only runs once a release NEWER than the installed build has been published with its signed
-descriptor. Before that Settings → About shows the version and no Install button, which is
+descriptor. Before that Settings → Updates shows the version and no Install button, which is
 itself the first check.
 
 **Where these rows have run:** the dev Mac (macOS 26.6.2), 7 Sep 2026 — the published 0.6.0 →
@@ -2759,7 +2759,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
 
 - [x] **The menu bar offers it, and only opens it.** With a newer release published, the
   tray menu's FIRST item reads `Update to <version>…`; clicking it shows the window on
-  Settings → About and installs NOTHING. The app menu's "Check for Updates…" (under About)
+  Settings → Updates and installs NOTHING. The app menu's "Check for Updates…" (under About)
   lands on the same card with a fresh check. **Tell:** an item that installs, an item naming
   no version, or a menu that hangs while it opens — it must read a snapshot, never fetch.
   ✓ 7 Sep 2026 (dev Mac, 0.6.0 → 0.6.1): the tray's `Update to …` item opened About and
@@ -2797,15 +2797,29 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   (3)…`. Skip the PHP patch (T4's row) → the count drops to 2 everywhere at once. **Tell:** a pill that
   names only rexenv while a PHP patch is pending; three toasts; a tray item that disagrees with the
   pill. Open (needs a published manifest naming a newer PHP patch than the pin): macOS · Windows · Linux.
+- [ ] **Settings → Updates installs every kind from one page** (`docs/PLAN-unified-updates.md` T4,
+  ledger #905). Click any pill, toast or the tray item → Settings → **Updates** (a new section; About
+  keeps version + licences). One row per offer, one shape: `PHP 8.3  8.3.27 → 8.3.28`, `Adminer
+  6.1.1 → 6.1.2`, `rexenv 0.9.0 → 0.9.1 · 29.9 MB` with Rust's consent sentence above its button;
+  each row **Install <name>** + **Skip this version**; the app last. Press Install on the PHP row →
+  toast "PHP 8.3 is now on 8.3.28" (or "… will use 8.3.28 — nothing was running to restart") and the
+  row is gone, the pill's count drops; Skip on Adminer → "Adminer 6.1.2 was set aside … Undo", the
+  count drops, Undo brings it back; **Check now** re-fetches BOTH documents and the footer says
+  "checked just now" — or, offline, "Couldn't reach the update server just now"; untick the one
+  switch → "contacts nothing on its own", and no request leaves at the next launch (rexenv.log:
+  "updates: automatic checking is off", no "manifest accepted"). Settings → Services → PHP and the
+  Databases cards no longer fetch on open (no "manifest accepted" line when they mount). **Tell:** a
+  row that installs without its consent sentence; a footer saying "up to date"; an About card still
+  offering the app. Open: macOS · Windows · Linux.
   each OS's section.
 - [x] **The tray's "Check for Updates…"** (S3, ledger #535). Close the window; from the menu-bar
   item choose **Check for Updates…** (right under `Update to …` when there is an offer, otherwise
-  the first item): the window comes forward on Settings → About. The app menu's own "Check for
+  the first item): the window comes forward on Settings → Updates. The app menu's own "Check for
   Updates…" still does the same — each runs a check on arrival (the footer timestamp moves).
   **Tell:** a menu that hangs while opening, an item that installs, a landing with an
   unchanged timestamp. ✓ **16 Oct 2026, macOS 15.8 UTM VM** (0.8.12-pinned build): ⌘W, the menu-bar
   item's menu listed `Update to 0.8.13…` then `Check for Updates…`; chosen → the window came
-  forward on Settings → About; ⌘W again, the app menu's own `Check for Updates…` → the same, the
+  forward on Settings → Updates; ⌘W again, the app menu's own `Check for Updates…` → the same, the
   card's footer "Release list from rexenv, checked just now" (read through accessibility).
 - [x] **The push** (S4, ledger #884). Leave the window OPEN on Sites across a background check
   that finds a release (a test-pinned manifest published while the app runs, then wait for the
@@ -2817,7 +2831,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   were on Sites at first paint with the toast "rexenv 0.8.13 can be installed · Show update" —
   About never opened. The same on the Dell (serial 15) and the Ubuntu VM. The poller form (a manifest
   published while the window sits open) is L2 only — `appupdate.js` leg 5 drives the event.
-- [ ] **Dark when current.** On the newest build, Settings → About offers nothing and shows
+- [ ] **Dark when current.** On the newest build, Settings → Updates offers nothing and shows
   no error; the footer says when it last checked. **Tell:** a button that appears and fails,
   or a footer claiming a check that never ran. **Open: "dark when current" as the CARD renders
   it — owed since §M on 7 Sep 2026; no run recorded.**
@@ -3514,7 +3528,7 @@ source, no income, no spend, the same answer macOS got). Built by CI from the re
       with no icon group — the honest case). Re-detect present.
 - [x] **The tray is the ONLY menu path to "Check for Updates…" here** (Windows draws no app menu;
       `docs/archive/PLAN-update-notice.md` S3, ledger #535). Right-click the notification-area icon →
-      **Check for Updates…** → the window comes forward on Settings → About. Then the main body's
+      **Check for Updates…** → the window comes forward on Settings → Updates. Then the main body's
       notice rows: the TopBar pill on Sites (`↑ Update to <version>`), the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar — and with
       Windows' title bar ABOVE the page, the pill stays visible and clickable at the narrowest
@@ -3540,7 +3554,7 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       `rexenv.exe` runs the relauncher here, so the first update TO a build carrying #768 writes
       it. If the app did not come back, read this file first.
 - [x] With an older build installed and a newer release published (its `rexenv_<X.Y.Z>_x64.zip`
-      attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → About
+      attached and `app-manifest-windows.json` signed on `rexenv/runtimes`), Settings → Updates
       offers the update; the consent sentence is the Windows one ("replaces rexenv's program
       files (your data folder is not touched)" — no "rexenv.app", no Applications folder, no
       Apple re-prompt line). ✓ 19 Sep 2026, runs 3–4 (VM, 0.7.9 → 0.8.0, then → the published
@@ -4127,7 +4141,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       present ("No code editor detected" — the VM has none).
 - [x] **The tray is the ONLY menu path to "Check for Updates…" here** (GTK has no app menu;
       `docs/archive/PLAN-update-notice.md` S3, ledger #535). From the appindicator menu choose **Check for
-      Updates…** — a plain item, no icon expected — → the window comes forward on Settings → About.
+      Updates…** — a plain item, no icon expected — → the window comes forward on Settings → Updates.
       Then the main body's notice rows: the TopBar pill on Sites, the sidebar `● Update ready`
       linking to About while Settings opens General, no bare version in the sidebar, and the push
       row (window open across a background check); the main body's "Every kind of update is
@@ -4159,7 +4173,7 @@ rexenv0 <name>` and read `Current Scopes:`.
       — installed + the notice, the app on Sites, Settings' Re-apply → ONE polkit → notice gone and
       the unit current; `rex tld --repair rex` the same; a second repair → "nothing to repair", no
       prompt.
-- [x] `.deb` install, an older version: Settings → About → Check now finds the release named in
+- [x] `.deb` install, an older version: Settings → Updates → Check now finds the release named in
       `app-manifest-linux-deb-<arch>.json`; Update → ONE polkit dialog, rexenv's own sentence
       (not "run /bin/sh as the super user") — from 0.8.11 on, the UPDATE's sentence, "rexenv
       needs administrator permission to install the update it downloaded — the new rexenv

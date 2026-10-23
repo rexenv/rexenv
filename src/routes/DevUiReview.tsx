@@ -65,8 +65,8 @@
  */
 import { useEffect, useState } from "react";
 import { mockIPC } from "@tauri-apps/api/mocks";
-import { mockAdminerStatus, mockDatabases, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
-import { AppUpdateCard } from "@/components/settings/AppUpdateCard";
+import { mockAdminerStatus, mockDatabases, mockDbConsoleStatus, mockPhpVersions, mockPlatformWords, mockServicesView } from "@/lib/mock";
+import { UpdatesSection } from "@/components/settings/UpdatesSection";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { StartupNoticeHost } from "@/components/shell/StartupNoticeHost";
 import { TopBar } from "@/components/shell/TopBar";
@@ -1129,6 +1129,25 @@ export function DevUiReview() {
         // cannot disagree, plus `?inv=php,adminer,phpmyadmin` for the other kinds. Reads
         // count toward `__rexStateReads` too: a pill that polled the inventory would show
         // up exactly like one that polled the app state.
+        // The page's "Check now" (T4): recorded like the card's check was, and in
+        // `?state=checking` it never settles, so the pill's in-flight state can be seen.
+        case "updates_check_now": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd });
+          if (params.get("state") === "checking") return new Promise(() => {});
+          return { offers: [], restartPending: null, checkedAt: "2026-09-06 09:00:00", autoCheck: true, checkProblem: null };
+        }
+        case "updates_skip":
+        case "php_update_apply":
+        case "adminer_update_apply":
+        case "phpmyadmin_update_apply": {
+          const w = window as unknown as { __rexUpdate?: unknown[] };
+          (w.__rexUpdate ??= []).push({ cmd, args });
+          if (cmd === "php_update_apply") return { patch: "8.3.28", restarted: true };
+          if (cmd === "adminer_update_apply") return { staged: "6.1.2", effective: "6.1.2", updatable: null, pinned: "6.1.1" };
+          if (cmd === "phpmyadmin_update_apply") return { ...mockDbConsoleStatus, phpmyadminStaged: "5.2.4", phpmyadminEffective: "5.2.4", phpmyadminUpdatable: null };
+          return { offers: [], restartPending: null, checkedAt: "2026-09-06 09:00:00", autoCheck: true, checkProblem: null };
+        }
         case "updates_inventory": {
           const w = window as unknown as { __rexStateReads?: number; __rexOfferNow?: boolean };
           w.__rexStateReads = (w.__rexStateReads ?? 0) + 1;
@@ -1143,7 +1162,7 @@ export function DevUiReview() {
           if (appOffered) offers.push({ kind: { kind: "app" }, label: "rexenv", display: "rexenv 0.6.0", installed: "0.5.0", offered: "0.6.0", sizeBytes: 31_400_000, consent: "FIXTURE CONSENT", effect: "Downloads rexenv 0.6.0, verifies it, replaces the running copy, then asks before restarting.", skipped: false });
           if (st === "skipped") offers.push({ kind: { kind: "app" }, label: "rexenv", display: "rexenv 0.6.0", installed: "0.5.0", offered: "0.6.0", sizeBytes: null, consent: null, effect: "", skipped: true });
           const restartPending = st === "installed-pending" || st === "installed-undecided" ? "0.6.0" : null;
-          return { offers, restartPending, checkedAt: "2026-09-06 09:00:00", autoCheck: st !== "auto-off", checkProblem: null };
+          return { offers, restartPending, checkedAt: st === "never-checked" ? null : "2026-09-06 09:00:00", autoCheck: st !== "auto-off", checkProblem: null };
         }
         case "app_update_readiness":
           switch (params.get("state")) {
@@ -1689,7 +1708,7 @@ export function DevUiReview() {
           // A landmark that renders regardless, so a "no button" leg can tell an
           // empty state from a broken route.
           <div data-probe="appupdate-view">
-            <AppUpdateCard
+            <UpdatesSection
               downloads={
                 params.get("state") === "installing"
                   ? {
@@ -1713,7 +1732,7 @@ export function DevUiReview() {
               }
             />
             <div className="mt-2 text-[0.71875rem] text-rex-text-muted">
-              app-update harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark)
+              updates harness mounted (?state=never-checked|none|offered|skipped|refused|installing|dark; &inv=php,adminer,phpmyadmin adds rows)
             </div>
           </div>
         )}
@@ -1752,7 +1771,7 @@ export function DevUiReview() {
               />
               {params.get("state") === "checking" && (
                 <div className="p-4">
-                  <AppUpdateCard downloads={{ batch: null, items: [], seq: 0 }} />
+                  <UpdatesSection downloads={{ batch: null, items: [], seq: 0 }} />
                 </div>
               )}
             </div>

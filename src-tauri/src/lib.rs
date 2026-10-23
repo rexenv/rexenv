@@ -451,7 +451,7 @@ pub fn run() {
                         log::info!("app update: {message}");
                         // Only the WARN ("did not take") needs a door; the info is a
                         // plain "you are now on X".
-                        let action = (level == "warn").then_some(commands::system::NoticeAction::ABOUT);
+                        let action = (level == "warn").then_some(commands::system::NoticeAction::UPDATES);
                         notices.push_with(level, message, action);
                     }
                     // B20 §4 Phase B: record each existing override site's port

@@ -748,25 +748,28 @@ const LINK = "https://example.test/a//b";
     fn the_app_update_card_never_promises_what_it_cannot_measure() {
         const BANNED: &[&str] =
             &["update available", "updates available", "up to date", "up-to-date"];
+        // Settings → Updates since PLAN-unified-updates T4 — the card became the page, and
+        // the page is about EVERY kind's update, so the ban holds for the whole file still.
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../src/components/settings/AppUpdateCard.tsx");
-        let raw = std::fs::read_to_string(&path).expect("the update card exists");
+            .join("../src/components/settings/UpdatesSection.tsx");
+        let raw = std::fs::read_to_string(&path).expect("the updates page exists");
         let text = strip_ts_comments(&raw).to_ascii_lowercase();
-        assert!(text.len() > 500, "the card was emptied or moved — this guard now proves nothing");
+        assert!(text.len() > 500, "the page was emptied or moved — this guard now proves nothing");
         for b in BANNED {
             assert!(
                 !text.contains(b),
-                "AppUpdateCard.tsx says {b:?} — it cannot know that, and the footer's \
+                "UpdatesSection.tsx says {b:?} — it cannot know that, and the footer's \
                  'checked N ago' is the honest form"
             );
         }
         // `checkrefusal`: a refused descriptor renders Rust's own sentence (28 Sep 2026),
-        // not the unreachable one — the card must keep reading that field.
-        for must in ["checked ", "install rexenv", "couldn't reach", "checkrefusal"] {
+        // not the unreachable one — the page must keep reading that field. `checkproblem`
+        // is the hub's equivalent for the interactive check of both documents (T2).
+        for must in ["checked ", "install ", "couldn't reach", "checkrefusal", "checkproblem", "skip this version"] {
             assert!(
                 text.contains(must),
-                "AppUpdateCard.tsx no longer says {must:?} — the ban must not be satisfied \
-                 by a card that says nothing"
+                "UpdatesSection.tsx no longer says {must:?} — the ban must not be satisfied \
+                 by a page that says nothing"
             );
         }
     }

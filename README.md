@@ -32,7 +32,7 @@ per-user installer run silently on Windows (no administrator prompt), the `rexen
 from rexenv's signed apt repository on Ubuntu (`sudo` asks once; later updates also arrive with
 `sudo apt upgrade`; without apt, the AppImage into `~/Applications`). Every
 download is checked against the release's own `.sha256` first, and an installed rexenv is left
-alone — it updates itself (Settings → About → Check now). The command path meets no Gatekeeper
+alone — it updates itself (Settings → Updates → Check now). The command path meets no Gatekeeper
 or SmartScreen dialog: both check a mark the *downloading* program writes, and `curl` and
 PowerShell's `Invoke-WebRequest` write none. The scripts are short and public —
 [`install.sh`](https://github.com/rexenv/homebrew-tap/blob/main/install.sh),

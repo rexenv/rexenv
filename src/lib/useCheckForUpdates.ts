@@ -1,11 +1,13 @@
 import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
-/** Settings → About: where the update card lives, and the one place that installs. */
-export const ABOUT_PATH = "/settings?section=about";
+/** Settings → Updates: where every kind of update lives, and the one place that installs
+ *  (`docs/PLAN-unified-updates.md` D3). Still exported under its old name so the three doors
+ *  that import it did not all change in the same commit as the page; the value is the page. */
+export const ABOUT_PATH = "/settings?section=updates";
 
-/** About, ASKED to check: the card sees `check=1`, runs its own "Check now" once,
- *  and strips the flag (`AppUpdateCard`). */
+/** Updates, ASKED to check: the page sees `check=1`, runs its own "Check now" once,
+ *  and strips the flag (`UpdatesSection`). */
 export const CHECK_FLAG = "check";
 export const ABOUT_CHECK_PATH = `${ABOUT_PATH}&${CHECK_FLAG}=1`;
 

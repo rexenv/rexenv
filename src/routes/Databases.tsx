@@ -13,7 +13,6 @@ import { toast, toastBackendError } from "@/lib/toast";
 import {
   adminerStatus,
   adminerUpdateApply,
-  adminerUpdateCheck,
   databasesStatus,
   dbEngineRefusals,
   dbEngineVersions,
@@ -22,7 +21,7 @@ import {
 import { CONSOLE_LABEL, DB_CONSOLE_QUERY, consoleFor, consoleFrameSrc, consoleUrl, useDbConsole } from "@/lib/dbconsole";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { DbConsole, DbStatus } from "@/types";
-import { dbConsoleSet, phpmyadminUpdateApply, phpmyadminUpdateCheck } from "@/lib/ipc";
+import { dbConsoleSet, phpmyadminUpdateApply } from "@/lib/ipc";
 
 function Meter({ label, value, pct }: { label: string; value: string; pct: number }) {
   return (
@@ -194,15 +193,13 @@ export function DbConsoleCard() {
     },
     onError: (e) => toastBackendError(e),
   });
-  // The manifest refresh, its own query and `retry: false`, as the Adminer card: a
-  // fetch that fails must not fail the row, and a poll nobody asked for must not hammer.
+  // No manifest fetch on mount any more: the one update poller fetches it and
+  // `updates-changed` refreshes this row; "Check now" is on Settings → Updates
+  // (docs/PLAN-unified-updates.md T2/T4).
   useQuery({
     queryKey: ["phpmyadmin-update-check"],
-    queryFn: async () => {
-      const fresh = await phpmyadminUpdateCheck();
-      qc.setQueryData(DB_CONSOLE_QUERY, fresh);
-      return fresh;
-    },
+    queryFn: async () => status,
+    enabled: false,
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -333,18 +330,9 @@ export function DbConsoleCard() {
 export function AdminerVersionCard() {
   const qc = useQueryClient();
   const { data: st } = useQuery({ queryKey: ["adminer-status"], queryFn: adminerStatus });
-  // Its own query, and `retry: false`: a manifest fetch that fails must not fail
-  // the row, and a poll nobody asked for should not hammer.
-  useQuery({
-    queryKey: ["adminer-update-check"],
-    queryFn: async () => {
-      const fresh = await adminerUpdateCheck();
-      qc.setQueryData(["adminer-status"], fresh);
-      return fresh;
-    },
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-  });
+  // No manifest fetch on mount any more: the one update poller fetches it and
+  // `updates-changed` refreshes this row; "Check now" is on Settings → Updates
+  // (docs/PLAN-unified-updates.md T2/T4).
   const update = useMutation({
     mutationFn: (version: string) => adminerUpdateApply(version),
     onSuccess: (fresh) => {

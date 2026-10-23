@@ -1182,7 +1182,7 @@ builds are for EXAMPLES; the app itself comes from the Dell.
   state at 980 and 1440: the pill inside the bar with its version whole, the
   TopBar pill's `data-phase`, a verb plus the version where there is an offer and the version
   never clipped, no pill with no key pinned; the sidebar pill only with a notice, linking to
-  `?section=about`, while Settings stays plain `/settings`; no bare version anywhere in the
+  `?section=updates`, while Settings stays plain `/settings`; no bare version anywhere in the
   sidebar; no `<a>` inside an `<a>`; the pill showing the CARD's check in flight with exactly
   one check run; and S4 — no state re-reads without an event, then an `app-update` event
   flips both pills; and (#886) About opened with `check=1` runs exactly one check from the card
