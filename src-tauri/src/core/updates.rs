@@ -335,8 +335,9 @@ pub struct Artifact {
     pub min_macos: Option<String>,
     /// The OS the artifact is built for (`macos`, `windows`, `linux`), as the per-OS
     /// documents carry it (docs/PLAN-windows-port.md §3b). Absent on every document
-    /// published before the field existed — those are macOS documents, and an absent
-    /// value admits the row on any host. A PRESENT value admits the row only on that OS
+    /// published before the field existed — those are macOS documents, so an absent
+    /// value admits a FILE row (Adminer, phpMyAdmin, licences) on any host and a Mach-O
+    /// row (`php`, `php-fpm`) on macOS only. A PRESENT value admits the row only on that OS
     /// ([`Artifact::for_os`]): measured against every release 0.3.0–0.7.0, an `x86_64`
     /// row that merely ADDS `os` is kept by every Intel Mac (the plan's table A), so
     /// the publisher must never put one in the macOS document, and a reader that drops
@@ -346,11 +347,19 @@ pub struct Artifact {
 }
 
 impl Artifact {
-    /// Whether the row is for `os` (this host's `std::env::consts::OS`): an unmarked
-    /// row is (every document before the field), a marked row only when it names it.
+    /// Whether the row is for `os` (this host's `std::env::consts::OS`): a marked row
+    /// only when it names it; an unmarked row — every document before the field, all of
+    /// them macOS documents — when it is a file every OS reads, or a Mach-O and the host
+    /// is a Mac.
+    ///
+    /// The Mach-O half is not hypothetical. Linux and Windows builds fetch the same
+    /// `manifest.json`, and with every unmarked row admitted, its macOS `php`/`php-fpm`
+    /// rows offered an Update on Settings that `php_update_apply` then refused ("not in
+    /// this build's pins or in a verified update manifest" — the Linux/Windows resolvers
+    /// read pins only). So a per-OS document must MARK its PHP rows.
     pub fn for_os(&self, os: &str) -> bool {
         match self.os.as_deref() {
-            None => true,
+            None => !needs_floor(&self.name) || os == "macos",
             Some(marked) => marked == os,
         }
     }
@@ -1023,7 +1032,7 @@ mod tests {
     /// entry with no floor is a build nobody measured; a standard host takes it
     /// as before (the Standard tier is every pin). Licences carry no floor.
     /// **A row marked for another OS is never offered or resolved here; an unmarked
-    /// row is** (every document before the field, and the per-OS documents' own rows).
+    /// file row is** (every document before the field — the Mach-O half is the next test).
     /// The publisher's guard is the other lock (`rexenv/runtimes`); this is the reader's,
     /// so a mis-published file cannot cross OSes (docs/PLAN-windows-port.md §3b).
     #[test]
@@ -1049,6 +1058,30 @@ mod tests {
         assert!(!row("1", Some(elsewhere)).for_os(here) && row("1", None).for_os(here) && row("1", Some(here)).for_os(here));
         let parsed: Artifact = serde_json::from_str(r#"{"name":"adminer","version":"6.0.2","arch":"any","url":"https://x/y","sha256":"ab"}"#).unwrap();
         assert_eq!(parsed.os, None, "an older document parses with no mark");
+    }
+
+    /// The macOS document's PHP rows are Mach-O: an unmarked one is a Mac's, never a
+    /// Linux or Windows host's — those hosts were offered an Update their resolver then
+    /// refused. A marked row still goes where it says, and file rows stay everywhere.
+    #[test]
+    fn an_unmarked_php_row_is_for_macos_only() {
+        let row = |name: &str, os: Option<&str>| Artifact {
+            name: name.into(),
+            version: "8.4.27".into(),
+            arch: "x86_64".into(),
+            url: "https://github.com/rexenv/runtimes/releases/download/php-8x-9/x.tar.gz".into(),
+            sha256: "a".repeat(64),
+            min_macos: None,
+            os: os.map(str::to_string),
+        };
+        for name in ["php", "php-fpm"] {
+            assert!(row(name, None).for_os("macos"), "{name}: the macOS document's own row");
+            assert!(!row(name, None).for_os("linux") && !row(name, None).for_os("windows"), "{name}: a Mach-O on Linux/Windows");
+            assert!(row(name, Some("linux")).for_os("linux") && !row(name, Some("linux")).for_os("macos"), "{name}: marked goes where it says");
+        }
+        for name in ["php-licenses", "adminer", "phpmyadmin"] {
+            assert!(["macos", "linux", "windows"].iter().all(|os| row(name, None).for_os(os)), "{name}: a file, every OS");
+        }
     }
 
     #[test]

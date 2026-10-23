@@ -838,6 +838,15 @@ builds we can still change; (2) in `rexenv/runtimes`' publisher, a refusal of an
 `arm64` / `x86_64` / `any`, and of any per-OS document row whose `os` is not the file's — one
 publisher run writes one document.
 
+**The other direction, found 23 Oct 2026:** Linux and Windows builds fetch `manifest.json`
+too, and the reader admitted every unmarked row on every OS — so the macOS `php`/`php-fpm`
+rows were offered on Linux/Windows Settings as an Update that `php_update_apply` then
+refused (their resolvers read pins only). Since then an unmarked Mach-O row (`php`,
+`php-fpm`) is admitted on macOS only; unmarked file rows (licences, Adminer, phpMyAdmin)
+still everywhere (`Artifact::for_os`). **So a per-OS document must mark its PHP rows with
+`os`**; an unmarked one would be dropped by the very hosts it is for. Builds released
+before the change keep showing that dead button until they update.
+
 ## 4. Upstream availability (measured 12 Sep 2026)
 
 ✓ = the asset was listed at the pinned tag or version; *unchecked* = believed to exist, not
