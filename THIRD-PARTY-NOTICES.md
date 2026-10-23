@@ -223,8 +223,8 @@ connects to nothing and stalls until the server times it out.
 |---|---|
 | Artifacts | `php-{8.1.34,8.2.32,8.3.32,8.4.23,8.5.8}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz` |
 | Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
-| Source | php.net release tarballs, fetched and pinned by static-php-cli |
-| Release | `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
+| Source | php.net release tarballs, fetched and pinned by static-php-cli; 8.1.34 since `php-8x-10`: `shivammathur/php-src-backports` @ `ae65ef4b9ede` (8.1 is EOL and php.net shipped no patch for CVE-2026-109618/109619), mirrored as an asset in the same release |
+| Release | 8.1.34: `php-8x-10` (23 Oct 2026, the CVE-2026-109618/109619 backport — same version, new bytes). 8.2–8.5: `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
 | Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
@@ -271,8 +271,8 @@ true of any other row in `docs/PORTS.md`.
 |---|---|
 | Artifacts | `php-7.4.33-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz`; since 25 Sep 2026 also `php-7.4.33-{cli,fpm}-linux-{aarch64,x86_64}.tar.gz` (fully static musl ELFs, same script on Ubuntu runners) |
 | Built by | `rexenv/runtimes` (public), static-php-cli, GitHub Actions |
-| Source | `shivammathur/php-src-backports` @ `5a576d8eb53e` — mirrored as an asset in the same release, so the build is reproducible from URLs alone rather than from a branch that is rebased, not appended |
-| Release | macOS: `php-7.4.33-6`; Linux: `php-7.4.33-7` (the first release with Linux lanes — its macOS artifacts are a rebuild, so the macOS pin stays on the release that proved it). Both immutable, never re-uploaded; a rebuild is the next build number |
+| Source | `shivammathur/php-src-backports` @ `9f3f6763497a` (the CVE-2026-109618/109619 fix; was `5a576d8eb53e` through `-7`) — mirrored as an asset in the same release, so the build is reproducible from URLs alone rather than from a branch that is rebased, not appended |
+| Release | `php-7.4.33-8` (23 Oct 2026), macOS and Linux — rebuilt from the fixed backports source, so both OSes are on one release again. Before it, macOS was on `php-7.4.33-6` and Linux on `php-7.4.33-7`; all of them stay published. Immutable, never re-uploaded; a rebuild is the next build number |
 | Pinned in | `core/binaries.rs` (`PHP_7_4_33_*_SHA256`, `php_self_hosted_tag`; Linux: `PHP_7_4_33_*_LINUX_*_SHA256`, `PHP_7_4_33_LINUX_TAG`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 

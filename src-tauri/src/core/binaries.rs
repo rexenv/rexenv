@@ -707,7 +707,9 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 //   8.0.30 was pinned 2026-07-11, downloaded, hashed, extracted and RUN.
 //
 // One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned
-// together. The 8.1-8.5 rows below are `php-8x-8`'s (7 Oct 2026), taken from the
+// together. The 8.2-8.5 rows below are `php-8x-8`'s (7 Oct 2026) and 8.1's are
+// `php-8x-10`'s (23 Oct 2026, hashed from full downloads, equal to its SHA256SUMS),
+// taken from the
 // release's own `.sha256` files by script — one re-hashed from the downloaded bytes
 // — whose artifacts CI had already run: parity against the bulk module list for that
 // minor, a live PostgreSQL connection through PDO, and a libcurl with no c-ares.
@@ -715,10 +717,10 @@ const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "13c77c837cd50c027e1c614c192b25205
 const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "b025f2c343916dd97d4cad543f0cc4c07ac882af10bc72773ad27ab8f6c9f59a";
 const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "e91bc2624c4469ceb0d7f7d93d643e1aebadd451556b0b1cc8d5142531b14138";
 const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "ec02cd54162c190c0029ddccbc382e21442b4941aedef9455b8d6fd32bc472d5";
-const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "7fb3b29242adbf6c74392290622a66f884112b91409f1a0522ffc7b01a82d929";
-const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "d5a92fb33a117340bf7d6e97b04930e7dbb56cf9f6d880938e45393005fff607";
-const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "2c08383dfb1c251cd9c71c4ffadae8de5ad5d88f309b65de9ca4c82c618275d0";
-const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "5d0dffe53a5e4016d2a133bc332a1d15a1dc9c50e536adb50f79f6d258df78bf";
+const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "bb44afd78d7dcc7087adaa6808069c3b9f4afcc0e8cf0ea56c0ece505c83eb16";
+const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "b267d8cf7076dc40b9cb0dffeac04f13e35623c6dd184fe69c5e7462bebd1cce";
+const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "8532d8d041e448499c0604f67cc3153731db19e51fcd27bc6ce11c4aa5834d64";
+const PHP_8_1_34_FPM_MAC_AMD64_SHA256: &str = "3c407d3a83e22ab319161448149e4b85b8723d77c591b1b4f2ebf426a43ea7c9";
 const PHP_8_2_32_CLI_MAC_ARM64_SHA256: &str = "02ea49ab2c9c84c3737f56b9e42db8ec0b47270d63403dd119acc95de3b91d79";
 const PHP_8_2_32_CLI_MAC_AMD64_SHA256: &str = "9efa75a5026d56f3a1ee9c6f92bf3cfd800c82de86d293783c74ad70b467b023";
 const PHP_8_2_32_FPM_MAC_ARM64_SHA256: &str = "ea1bf86bc68c158a4ae9c3a0d30e9d948286685fd961e8449192913d3cfc7756";
@@ -1631,7 +1633,13 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // Composer ARE phars, so no WordPress action could run), -2 had a PCRE
         // JIT that cannot allocate on Apple Silicon, and -4 was short 5 of the
         // extensions the 8.x rows carry.
-        "7.4.33" => Some("php-7.4.33-6"),
+        //
+        // -8 (23 Oct 2026) is the source moving, not the build: the backports branch
+        // took the fix for CVE-2026-109618/109619 ("PHP2Shell", unauthenticated RCE
+        // through FPM/CGI, CVSS 9.2) at 9f3f6763497a, still calling itself 7.4.33. Same
+        // version string, new bytes — which `cache_matches_pin` refetches on its own.
+        // macOS and Linux both come from -8 now; -6 and -7 predate the fix.
+        "7.4.33" => Some("php-7.4.33-8"),
 
         // 8.1-8.5 are ALSO ours now, and for a reason that has nothing to do
         // with availability: static-php.dev's bulk builds ship `pgsql` and NO
@@ -1668,7 +1676,15 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // resolve host" (`core::wp_dns::resolver_for`). -8's libcurl takes the
         // threaded resolver (the system's getaddrinfo), and runtimes' gate 9 fails
         // any build whose curl links c-ares again. -3…-7 stay published and immutable.
-        "8.1.34" => Some("php-8x-8"),
+        //
+        // -10 (23 Oct 2026) is 8.1.34 alone, rebuilt from shivammathur's
+        // `PHP-8.1-security-backports` @ ae65ef4b9ede for CVE-2026-109618/109619: 8.1 is
+        // EOL and php.net shipped no patch, so the version string does not move and only
+        // the bytes do. Diffed against -8's 8.1.34 on both arches — internal functions,
+        // classes, constants, `php -m`, PDO drivers, configure flags and `php-fpm -m`
+        // identical. 8.2-8.5's fixed patches (php-8x-9) reach installs via the signed
+        // manifest: pinning them here would move Linux too, where no build exists yet.
+        "8.1.34" => Some("php-8x-10"),
         "8.2.32" => Some("php-8x-8"),
         "8.3.32" => Some("php-8x-8"),
         "8.4.23" => Some("php-8x-8"),
@@ -2003,12 +2019,12 @@ fn php_url(kind: &str, version: &str, arch: Arch) -> String {
 /// Short hash as published in the release. The mirrored source tarball is an
 /// asset of the SAME immutable release as the binaries, so the build is
 /// reproducible from URLs rather than from a branch that may have moved.
-pub const PHP_7_4_33_SOURCE_COMMIT: &str = "5a576d8eb53e";
+pub const PHP_7_4_33_SOURCE_COMMIT: &str = "9f3f6763497a";
 
-const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "7fac111fda4e549b136da008fb8f7568c9ea32b96e67cc5fb18e1e431569ed22";
-const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "f6878248da0b9e119d29ec21fbe73e8c6c1bfdc34b2d23250a3783b9c04b5598";
-const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "3f32e75738c66642c64b8d817680a872519007cf3903ad5824fa01c04be3fec9";
-const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f70719fda6262d6a2e798af8d4b86b2bfc4";
+const PHP_7_4_33_CLI_MAC_ARM64_SHA256: &str = "8898b8618f43042f513ca840074edf1147825216029b2c28a7ac47a18d03ddf9";
+const PHP_7_4_33_CLI_MAC_AMD64_SHA256: &str = "948006857a28bba8786e1fb2986331cc519c4ce710cecf60367dcae9dbd347ec";
+const PHP_7_4_33_FPM_MAC_ARM64_SHA256: &str = "15655dfefd8050651631117c9973c057b3fac7e13094745be117e2eb0bf5d358";
+const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "6ee117d41a150adb1709b6e9b78a95dc808f9428e8b5b7827a989cbaae1e6fb0";
 
 /// The Linux 7.4 — the SAME script, on `ubuntu-24.04` / `ubuntu-24.04-arm` runners, as fully
 /// static musl ELFs (docs/PLAN-linux-port.md L8, owner ruling 24 Sep 2026; rexenv/runtimes
@@ -2016,17 +2032,20 @@ const PHP_7_4_33_FPM_MAC_AMD64_SHA256: &str = "fc75852c08304d5c92ccb5c6f0e13f707
 /// lanes, and its macOS artifacts are a REBUILD of what `-6` proved — the macOS pins stay on
 /// `-6`, so one version can sit on two immutable releases, one per OS. Hashed from full
 /// downloads over the real `releases/download` URL, 25 Sep 2026, and equal to the release's
-/// own `SHA256SUMS`. No Xdebug on this build either: a static ELF exports no Zend symbols
+/// own `SHA256SUMS`. **Since `-8` (23 Oct 2026) both OSes are on ONE release again**: the
+/// backports source moved for CVE-2026-109618/109619, so neither `-6` nor `-7` was fit to
+/// keep, and `-8` built every lane from the fixed commit. Hashed from full downloads, equal
+/// to `-8`'s `SHA256SUMS`. No Xdebug on this build either: a static ELF exports no Zend symbols
 /// (`nm -D` answers one), the same wall the macOS 7.4 and 8.0 hit.
-pub(crate) const PHP_7_4_33_LINUX_TAG: &str = "php-7.4.33-7";
-const PHP_7_4_33_CLI_LINUX_AARCH64_SHA256: &str = "16d03e18495ee8aa966be12f2b49588dbd1dbce206efd5111f78e42921f5ad1b";
-const PHP_7_4_33_CLI_LINUX_X86_64_SHA256: &str = "8db044a8cf96b046deb547f41bf30e9fab0fa05ee38cc10434f00e702ffb923f";
-const PHP_7_4_33_FPM_LINUX_AARCH64_SHA256: &str = "cbc5bba274068b05b259da07ff6dac800a431de7937619af39606fd8a0afbc75";
-const PHP_7_4_33_FPM_LINUX_X86_64_SHA256: &str = "35f576bc523237d479ed75b6303dcc8be5b49139bf87b3eb6c43b6d20bf3b015";
+pub(crate) const PHP_7_4_33_LINUX_TAG: &str = "php-7.4.33-8";
+const PHP_7_4_33_CLI_LINUX_AARCH64_SHA256: &str = "0294ef57f22c93496f61b98cea9fbd18746992df53e08c96a6d4dd967acc3693";
+const PHP_7_4_33_CLI_LINUX_X86_64_SHA256: &str = "9ef3462e2298708dfa5c90d70f541013deceeb8732593a04f5df7565a9294459";
+const PHP_7_4_33_FPM_LINUX_AARCH64_SHA256: &str = "d539a5a3c5d286b710d8a520b09f19a53abacad110b4c5e85d3222f0e595a1c5";
+const PHP_7_4_33_FPM_LINUX_X86_64_SHA256: &str = "57d13af8842659526e28de657c625fb22cb208f75b281be5a2cd8525e23a916f";
 /// `licenses-linux-<arch>.tar.gz` of the same release — a different closure from the macOS
 /// tarball (musl, and the Linux pre-built deps), so its own two pins.
-const PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256: &str = "6e053c1aa88e0a8621af87e20c8062a98a448a8f2c7db982a2f5db53cb57b62e";
-const PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256: &str = "7993c247b239c3e29ede5be8cfc3a67b994ed62cb4743db822b87d462d5119dc";
+const PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256: &str = "3ae6cef515773ada807557a332fc3294abc85e12199cd9cae2337458015ebb96";
+const PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256: &str = "d1922baab9eda3bf1a9c5ec0a8cfe2de5d37d8284e2a29908b57873afe33d045";
 
 // ── The licence texts that travel with a PHP we BUILT ────────────────────────
 //
@@ -2040,10 +2059,10 @@ const PHP_7_4_33_LICENSES_LINUX_X86_64_SHA256: &str = "7993c247b239c3e29ede5be8c
 // travel with a redistribution, and we are the redistributor.
 const NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256: &str = "517f6656ae4bae3f1aa29e64ce379abbcd4f27166284fd1b984920a89300ffd2";
 const NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256: &str = "cbf546b81a7b02bd9e71e50f0ef1a1da549e527c7e528e346514b511bc1f9d2b";
-const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "d8fd80a258f1d8e6609d3e0e95a3b62e5c30820a3dba8e0390c78e4494491478";
-const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "fa1ae808cb2febdb01e2df2975b0618dba4c0caff39f51161328ee97c2b60ba2";
-const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "c15f33bbed2665be0932c18f18bc1d8d471ccfe802faac3ae9b8c9826089f9e4";
-const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "c562c500e81e24426479b05cf9c6e575ad39b065888e2db1e34bc47c4b2302a4";
+const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "31db20400311c77222a866d71ba6bff721be84ad6a1359bb48f923f734416964";
+const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "b8b88400ba21c9e4cbccb4cace1fee203caf7288ee1fb4e87121e51bbd11c4cc";
+const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "ef509e12088d178a987f33a0f33a1d6d72c4cefa927978e0bc90d511fc4d9a8a";
+const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "2adfda52949a8cdb084b5426c71019756d662c7283295dc3857c35768f1d0abf";
 const PHP_8_2_32_LICENSES_MAC_ARM64_SHA256: &str = "dc40b9b54ca3d28577a6f32072726fbbc3f5b30c7cf4da34c4812b142ef5b19b";
 const PHP_8_2_32_LICENSES_MAC_AMD64_SHA256: &str = "c114168d75d882b3ace7f4eca6c5d73d785cef1c9907d8002ea618e3f7c49ae2";
 const PHP_8_3_32_LICENSES_MAC_ARM64_SHA256: &str = "aaf6b1ca771ff0628695ac7a4473372e1f4576f646664d38c4e5c3f246257cdf";
@@ -7477,8 +7496,8 @@ mod tests {
             assert!(manifest("php", v, "linux", Arch::X86_64).is_some(), "php {v}");
             assert!(manifest("php-fpm", v, "linux", Arch::X86_64).is_some(), "php-fpm {v}");
         }
-        // The Linux 7.4 is OURS, on its own release, with its own licence tarball — and the
-        // macOS 7.4 stays on the release that proved it (`php_self_hosted_tag`).
+        // The Linux 7.4 is OURS, with its own licence tarball, on the release
+        // `PHP_7_4_33_LINUX_TAG` names.
         for (name, kind) in [("php", "cli"), ("php-fpm", "fpm")] {
             for arch in [Arch::Arm64, Arch::X86_64] {
                 let spec = manifest(name, "7.4.33", "linux", arch).unwrap();
@@ -7492,7 +7511,9 @@ mod tests {
                 assert_ne!(format!("{:?}", mac.checksum), format!("{:?}", spec.checksum), "two OSes, two builds, two digests");
             }
         }
-        assert_ne!(PHP_7_4_33_LINUX_TAG, php_self_hosted_tag("7.4.33").unwrap(), "the macOS pin stays on the release that proved it");
+        // -6 (macOS) and -7 (Linux) both predate the CVE-2026-109618/109619 source; -8
+        // rebuilt both from it, so the two OSes MUST name the same release again.
+        assert_eq!(PHP_7_4_33_LINUX_TAG, php_self_hosted_tag("7.4.33").unwrap(), "both OSes on the release with the fixed source");
         for v in MYSQL_VERSIONS {
             assert!(manifest("mysql", v, "linux", Arch::X86_64).is_some(), "mysql {v}");
         }
