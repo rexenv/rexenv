@@ -103,6 +103,56 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.9.1 — DRAFTED 23 Oct 2026 (run 40006338995) — §A0, §A, the deb and Defender green; the Windows install leg green, its launch leg waits for a console session
+
+**Run 40006338995, source `6c832240` (tag `v0.9.1`, pushed), every lane green, 16 assets, the body the
+tag's verbatim.** dmg `b61389c0…`, `.app.tar.gz` `431fce4a…`, arm64 deb `25f0ee09…`, aarch64 AppImage
+`ef2359ed…`, setup.exe `695e4f46…`, zip `d6353663…`; `shasum -c` against the attached `.sha256`: all OK, and
+re-checked on each VM after the copy. **The cut itself:** `verify-full` was red the first time — three WebKit
+scenarios the plan session had never run together (`resolver-drift`, `adminer-updating`, `dbconsole-updating`),
+all harness fixtures (`6c832240`), green on the second run; the Windows `verify` had gone red on `master` after
+PR #5 (six catalog-fixture tests, fixed in `76521238`).
+**This is the first release that MOVES PHP pins** (7.4.33 → `php-7.4.33-8`, 8.1.34 → `php-8x-10`, 8.3.36 the new
+`PHP_VERSION`, Linux 8.1–8.5 → `php-8x-linux-1`), so every run below exercised #898's re-pinned-binary swap for
+real, not the adopt path 0.9.0 took.
+**Defender (RELEASING step 3) ✅ on the Win11 ARM VM, signatures updated `1.461.74.0` → `1.461.167.0` first:**
+`MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update
+key ×2 in each slice; `minos 13.0` on both slices; codesign valid + satisfies its Designated Requirement; Info.plist
+`0.9.1`. **§A0-b** on the archive: one top-level `rexenv.app/`, zero `._` members, codesign valid, `0.9.1`, universal.
+**§A ✅ on the 15.8 VM (`192.168.64.6`), from the PUBLISHED 0.9.0, stack started first (6 sites 200):** app quit
+(sites still 200 — services outlive the app); the dmg's app over `/Applications`, synthetic quarantine → the
+Gatekeeper sheet (buttons "Done" / "Move to Bin") → Done → no app process; `xattr -rd` → `rex 0.9.1 (6c83224) · app
+rexenv 0.9.1 (6c83224)`, crash reports 0 → 0. **#898, the moved pins:** "adopted 8 running service(s)", then `php:
+fetching 7.4's missing or incomplete binaries` (21 s) → `7.4's pool restarted onto the repaired cache`; 8.3 and 8.4
+moved onto the 8.3.36 / 8.4.27 already cached (`removed outdated binary cache php-8.3.32`, `php-8.4.23`); every fpm
+master's pid changed (7048/7053/7060 → 8694/7969/8363), nginx 7076, Mailpit 7037 and caddy 321 kept. Sites:
+`smoke1`, `sm763`, `l14vm` 200 on every probe (+5 s → +83 s); **`php74.rex` answered nothing at +5 s and 200 from
++20 s** — the 7.4 pool was down for the fetch, ≤ 15 s. `X-Powered-By: PHP/8.3.36` and `PHP/7.4.33` on the sites
+after; phpMyAdmin and Adminer 200; the login keychain still ONE rexenv CA. The resolver agent: "running 0.9.0 … but
+this build is 0.9.1 — kickstarting it", then serving. `rex status --json` `update` = null (the manifest, 20 entries,
+offers nothing above these pins — the new pill cannot be seen on this release; see below).
+**Linux ✅ on the 22.04 arm64 VM (`192.168.65.2`), from the PUBLISHED 0.9.0 deb, stack running, GUI app quit
+first:** `apt-get install ./…arm64.deb` 4 s → `dpkg -s` 0.9.1; `rexenv-edge` and `rexenv-dns-route` active;
+`gtk-launch` → `rex 0.9.1 (6c83224) · app rexenv 0.9.1 (6c83224)`; **#898:** both fpm masters moved (7.4 2199 →
+16037 onto `php-fpm-7.4.33`'s new bytes, 8.3 2203 → 15890 onto `php-fpm-8.3.36`), nginx 2209, caddy 985 and
+Mailpit 2196 kept; 11 sites answered the codes their content gives (`conv71l`, `gitl`, `l16lx`, `wtl` … 200; the
+pull fixtures 404 — **from PHP**: `X-Powered-By: PHP/8.3.36` / `PHP/7.4.33` on every 404), phpMyAdmin and Adminer
+200 on every probe (+6 s → +42 s). P1: a fresh `.rex` name → 127.0.0.1, `example.com` via `enp0s1`; `/var/crash`
+empty; the agent kickstarted the same way. The AppImage was hashed, not run (it would repoint the deb's units).
+**Windows ◐ on the Win11 ARM VM (`192.168.65.4`), from the PUBLISHED 0.9.0 — NO console session (the VM had
+rebooted; `query user` empty), so the app, the stack and the agent were down:** `setup.exe /S` → exit 0 in 6 s;
+`rexenv.exe` and Apps & Features 0.9.1, the Run key's `--hidden` kept, the `\rexenv\dns-agent` task Ready,
+`uninstall.exe` present, `rex 0.9.1 (6c83224)`, NotSigned (as ruled). The install folder's owner read
+`BUILTIN\Administrators` through the elevated SSH token (0.9.0's Dell run read user-owned from its own token —
+re-read from the console). **Owed on Windows, needs a signed-in desktop:** the launch (`rex … · app rexenv 0.9.1`),
+the agent back on `udp 53`, #898's php-cgi group moving onto php.net's 8.3.36, sites 200.
+**Not run:** the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the three
+unified-updates SMOKE rows (`docs/PLAN-unified-updates.md` — nothing in the published manifest is newer than
+0.9.1's pins, so no pill/row/Update all can appear until the first manifest published after this release);
+§M (needs Publish — and the 0.9.0 → 0.9.1 in-app update IS the first released proof of the new pill, on the
+three VMs, which still carry the published 0.9.0 data).
+
 ## A) ✅ 0.9.0 — PUBLISHED 17 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell + Win11 VM), Defender, the six descriptors, apt and §M on all three green
 
 **Run 39004017989, source `571525be` (tag `v0.9.0`, pushed), every lane green, 16 assets, the body the
