@@ -1711,8 +1711,31 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
 /// So the question is asked of the artifact, here, beside the pins that decide
 /// which artifact that is — `php_self_hosted_tag` says whose build a version is,
 /// and only the 8.x releases we build carry the driver (our 7.4 does not).
+///
+/// **A patch the signed manifest ADDS is asked of the catalog, by its URL.** Since
+/// rexenv/runtimes started publishing the manifest from its own releases, a newer patch
+/// arriving that way is OUR build too — and judging it by the pin table alone called it
+/// "upstream's build and cannot reach PostgreSQL" (23 Oct 2026, 8.2.35/8.3.36/8.4.27/8.5.12
+/// from `php-8x-9`): Settings priced the security update as losing PostgreSQL, and taking
+/// it would have stopped PostgreSQL being offered for new sites on a build that has the
+/// driver. The URL is the same evidence `is_self_distributed` uses for the licences, and
+/// the catalog only holds entries whose signature verified.
 pub fn php_has_pdo_pgsql(version: &str) -> bool {
-    php_self_hosted_tag(version).is_some_and(|_| !version.starts_with("7."))
+    if version.starts_with("7.") {
+        return false;
+    }
+    php_self_hosted_tag(version).is_some() || catalog_php_is_ours(version)
+}
+
+/// Whether the verified catalog carries `version`'s php-fpm from a host rexenv distributes
+/// from. Either arch answers: one manifest entry per arch, both from the same release.
+fn catalog_php_is_ours(version: &str) -> bool {
+    let Ok(guard) = CATALOG.read() else { return false };
+    let Some(cat) = guard.as_ref() else { return false };
+    [Arch::Arm64, Arch::X86_64].into_iter().any(|arch| {
+        cat.artifact("php-fpm", version, crate::core::updates::catalog_arch(arch))
+            .is_some_and(|a| is_self_distributed(&a.url))
+    })
 }
 
 /// Test helper: whether a version is one rexenv builds. Exists so a test can
@@ -6452,6 +6475,30 @@ mod tests {
     /// them. Both halves are asserted, because each without the other is a
     /// different bug: the fallback alone would let a silent omission through,
     /// and the refusal alone would make every manifest-supplied update fail.
+    /// A patch the manifest adds from OUR releases has the driver; the same version from
+    /// anyone else's host does not — and no catalog at all leaves it unknown, so false.
+    #[test]
+    fn a_manifest_patch_of_ours_has_pdo_pgsql_and_upstreams_does_not() {
+        let _catalog = catalog_test_lock();
+        let v = "8.3.98";
+        install_catalog(crate::core::updates::VersionCatalog::default());
+        assert!(!php_has_pdo_pgsql(v), "not pinned, not in a catalog");
+
+        let ours = format!("{RUNTIMES_RELEASE_BASE}/php-8x-9/php-{v}-fpm-macos-aarch64.tar.gz");
+        install_catalog(crate::core::updates::catalog_for_tests(&[("php-fpm", v, "arm64", &ours, &"a".repeat(64))]));
+        assert!(php_has_pdo_pgsql(v), "our build, offered by the manifest");
+
+        let theirs = format!("https://dl.static-php.dev/static-php-cli/bulk/php-{v}-fpm-macos-aarch64.tar.gz");
+        install_catalog(crate::core::updates::catalog_for_tests(&[("php-fpm", v, "arm64", &theirs, &"a".repeat(64))]));
+        assert!(!php_has_pdo_pgsql(v), "upstream's bulk build has no working pdo_pgsql");
+
+        // 7.4 stays false even when it is ours.
+        let ours74 = format!("{RUNTIMES_RELEASE_BASE}/php-7.4.33-8/php-7.4.98-fpm-macos-aarch64.tar.gz");
+        install_catalog(crate::core::updates::catalog_for_tests(&[("php-fpm", "7.4.98", "arm64", &ours74, &"a".repeat(64))]));
+        assert!(!php_has_pdo_pgsql("7.4.98"));
+        install_catalog(crate::core::updates::VersionCatalog::default());
+    }
+
     #[test]
     fn a_manifest_version_of_ours_brings_its_licences_or_does_not_resolve() {
         // The catalog is process-global: without the lock this test's fixtures raced the other
