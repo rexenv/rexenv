@@ -2,6 +2,7 @@
 //! `core/` call and returns serializable data. No business logic here.
 
 pub mod app_update;
+pub mod update_hub;
 pub mod blueprints;
 pub mod database;
 pub mod db_import;

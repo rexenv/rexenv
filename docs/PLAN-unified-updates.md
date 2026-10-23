@@ -1,6 +1,6 @@
 # PLAN — One update channel: every "something newer exists" is noticed the same way and installed from one place
 
-Status: **IN FLIGHT — T0 built 23 Oct 2026 (ledger #901); T1–T7 next.** Owner ask (23 Oct
+Status: **IN FLIGHT — T0, T1 built 23 Oct 2026 (ledger #901, #902); T2–T7 next.** Owner ask (23 Oct
 2026): "I want every kind of update to notify the same way — Adminer, PHP, the app itself — so
 the user notices them all alike and updates quickly." §8's three questions were answered by the
 owner the same day, all three as recommended.
@@ -207,3 +207,12 @@ Windows (Win11 VM) and Linux (Ubuntu VM), with screenshots in SMOKE-TEST. `rex s
   `NoticeAction::ABOUT`, the info none. `StartupNoticeHost` moved to its own file and renders the
   door it is sent. L0 planted; L2 `uireview.js` `notices` planted (the probe finds the three
   toasts by text — the shell toasts other things in the harness, and a count read 5). Ledger #901.
+- **T1 — 23 Oct 2026.** `core/update_hub.rs`: `UpdateKind` (app · php{minor} · adminer · phpMyAdmin),
+  `UpdateOffer` (installed → offered, size, Rust consent + effect sentences, `skipped`),
+  `UpdateInventory` (offers in Update-all order, `restart_pending`, `checked_at`, `auto_check`,
+  `pending()` for the pill count), `inventory(conn, &Facts)` pure over the four families' own facts,
+  per-kind skip keys `update_skipped:<kind>` with the app's read through `core::app_update`'s key.
+  Commands `updates_inventory` / `updates_skip` + TS types. The IPC wrappers wait for their first
+  caller (T3): `every_ipc_wrapper_is_actually_called` refused them uncalled, which is the guard
+  doing its job. MCP parity: `updates_inventory` is a `Gap` until T6, `updates_skip` `Never`.
+  Four L0 tests, two plants. Ledger #902. Nothing renders it yet (T3/T4).

@@ -66,6 +66,12 @@ mod tests {
         ("app_update_skip", Never(UPDATE_FLOW)),
         ("app_update_apply", Never(UPDATE_FLOW)),
         ("app_update_restart", Never(UPDATE_FLOW)),
+        // ── update_hub (docs/PLAN-unified-updates.md): the ONE inventory. Read-only for an
+        //    agent — T6 gives `stack_status` the list and adds an `updates` tool; until then
+        //    the TODO row "One update channel" carries it. Skipping is the person's dial, as
+        //    the app's skip already is.
+        ("updates_inventory", Gap("T6 of docs/PLAN-unified-updates.md — stack_status.updates + a read-only `updates` tool")),
+        ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
         // ── valet_import: the banner's generation-keyed feed (#807); `valet_import` action
         //    `drift` reaches the same `drifted_takeover_records` (it reports the TLDs).
         ("resolver_drift_records", Tool("valet_import")),

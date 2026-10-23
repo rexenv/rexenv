@@ -9,6 +9,7 @@ pub mod dbconsole_proxy;
 pub mod phpmyadmin;
 pub mod app_info;
 pub mod app_update;
+pub mod update_hub;
 pub mod apache;
 pub mod openlitespeed;
 pub mod binaries;

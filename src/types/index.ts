@@ -837,6 +837,39 @@ export interface AppUpdateOutcome {
  *
  *  Both come from Rust: a consent sentence copied into the TSX is a copy that
  *  drifts from the rule it describes. */
+/** One kind of thing that can be newer than what runs here (mirrors the Rust
+ *  `UpdateKind`, internally tagged). */
+export type UpdateKind =
+  | { kind: "app" }
+  | { kind: "php"; minor: string }
+  | { kind: "adminer" }
+  | { kind: "phpMyAdmin" };
+
+/** One live offer in the ONE inventory (`core::update_hub`, PLAN-unified-updates). */
+export interface UpdateOffer {
+  kind: UpdateKind;
+  /** "PHP 8.3", "Adminer", "phpMyAdmin", "rexenv". */
+  label: string;
+  installed: string;
+  offered: string;
+  sizeBytes: number | null;
+  /** What the user must know before Install, from Rust; null when nothing. */
+  consent: string | null;
+  /** What pressing Install does, from Rust. */
+  effect: string;
+  /** This exact version was set aside — listed for Undo, not counted. */
+  skipped: boolean;
+}
+
+/** Everything the pills, the toast and Settings → Updates render. Offers are in
+ *  Update-all order: PHP minors, Adminer, phpMyAdmin, the app LAST. */
+export interface UpdateInventory {
+  offers: UpdateOffer[];
+  restartPending: string | null;
+  checkedAt: string | null;
+  autoCheck: boolean;
+}
+
 export interface AppUpdateReadiness {
   /** `null` when the update can be installed; otherwise why it cannot, with a
    *  copy-paste fix on the last line where one exists. */
