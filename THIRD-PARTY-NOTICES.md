@@ -218,6 +218,22 @@ friends — never mod_ssl, mod_http2 or mod_lua). Their notices are in the ASF `
 the libraries' own files inside the zip. The licence archive is load-bearing here as
 everywhere: `core::binaries` refuses to resolve a self-distributed artifact without one.
 
+## FrankenPHP 1.13.3 for Windows — upstream's build, MIRRORED (downloaded at runtime, distributed BY US)
+
+Not built by rexenv — mirrored. php/frankenphp publishes `frankenphp-windows-x86_64.zip` on its
+release (frankenphp.exe plus the official PHP 8.5.12 thread-safe DLLs), and REPLACED that asset
+in place on 24 Oct 2026, hours after rexenv had pinned its digest; a user's first FrankenPHP
+site then refused with "checksum mismatch". Since that day rexenv re-hosts the exact zip
+(`docs/PLAN-windows-servers.md` D3).
+
+| | |
+|---|---|
+| Artifact | `frankenphp-windows-x86_64.zip` (php/frankenphp v1.13.3) — bytes unchanged, sha256 `eb6cbfc5…` equal to GitHub's digest for the asset at mirror time |
+| Mirrored by | `rexenv/runtimes` (public), `.github/workflows/frankenphp-windows.yml`, GitHub Actions — gated on a Windows runner (`frankenphp version`, embedded PHP 8.5.12, the SMTP ini keys honoured) |
+| Release | `frankenphp-windows-1` — immutable, never re-uploaded; a re-mirror is the next build number |
+| Pinned in | `core/binaries.rs` (`FRANKENPHP_1_13_3_WIN_AMD64_SHA256`, `FRANKENPHP_WINDOWS_TAG`) |
+| Licence | FrankenPHP **MIT**; Caddy v2.11.7 **Apache-2.0**; the embedded PHP **PHP License 3.01**; the bundled DLLs (OpenSSL 3, ICU 77, libpq, libsodium, SQLite, libssh2, nghttp2, brotli, enchant, glib) as upstream's `readme-redist-bins.txt` lists them — all in `licenses-frankenphp-1.13.3-windows.tar.gz` in the same release |
+
 ## OpenLiteSpeed 1.9.3 — rexenv's own build (downloaded at runtime, distributed BY US)
 
 Built and hosted since 4 Oct 2026 for macOS AND Linux: upstream publishes Linux tarballs

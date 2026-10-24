@@ -65,7 +65,7 @@ App version **0.9.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
 | `docs/PLAN-unified-updates.md` | **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compil… |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
-| `docs/PLAN-windows-servers.md` | **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909: the mirror `httpd-windows-2`, the catalog arms, `apache::Layout`… |
+| `docs/PLAN-windows-servers.md` | **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apach… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)

@@ -1,9 +1,6 @@
 # PLAN — per-site web servers on Windows: Apache and FrankenPHP (OpenLiteSpeed stays refused)
 
-Status: **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909: the mirror `httpd-windows-2`, the catalog arms, `apache::Layout`, the stop event; T4 `frankenphp::MailCatchIni` — SMTP ini keys on Windows, forward-slash conf paths; T5 `apache_unavailable` per OS, the SiteDetail switch filtered by the offered set); next T7 the run on the Win11 VM, then T6's remaining doc sweep. Written 24 Oct 2026 (owner ask: "Windows has only nginx; add the other
-servers, plan first, then one task at a time"). T1–T7 below; each lands as its own commit with
-its docs, the Windows proof comes from a build run on the Win11 VM (W4's debt, PLAN-windows-port
-§4).**
+Status: **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apache create 200, `.htaccess` live, stop/start, switch, adopt ✓ — three fixes found on the way (the mirror's licences layout, mod_proxy_fcgi's drive-letter trap, the `<Directory "/">` stanza); FrankenPHP's row waits on the mirror (`frankenphp-windows-1`, upstream replaced its zip in place). Owed: the FrankenPHP row, the GUI presses/screenshots, T6's remaining sweep.**
 
 ## 1. What is true today (measured 24 Oct 2026)
 
@@ -53,7 +50,10 @@ its docs, the Windows proof comes from a build run on the Win11 VM (W4's debt, P
 - **D2 PHP through mod_proxy_fcgi to the shared php-cgi group** — the macOS config unchanged
   (one pool per minor on every OS; NTS vs TS stays moot; `mod_fcgid`, which would spawn a
   second pool model, and `mod_php`, which needs TS PHP, are out).
-- **D3 FrankenPHP = upstream's Windows zip**, `Dir` shape, member `frankenphp.exe`. Its
+- **D3 FrankenPHP = upstream's Windows zip, MIRRORED** (amended 24 Oct 2026: upstream replaced
+  the asset in place the same morning and the Dell's first FrankenPHP site refused on the digest —
+  `rexenv/runtimes` `frankenphp-windows-1`, gated on GitHub's own asset digest), `Dir` shape,
+  member `frankenphp.exe`. Its
   embedded PHP must equal `frankenphp_embedded_php` (8.5.12) — asserted by running
   `frankenphp.exe php-cli -r 'echo PHP_VERSION;'` in T7; a mismatch makes the pin per-OS.
   Mail catch: FrankenPHP's Caddyfile `php_ini` block sets `sendmail_path` to the shim on

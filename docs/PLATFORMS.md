@@ -208,6 +208,20 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   uninstaller could not delete an exe the agent's task kept re-running. The installer hooks
   (`src-tauri/nsis/hooks.nsh`, #787) end the task, kill and wait before a silent swap, refuse
   to skip, and take the task on uninstall.
+- **mod_proxy_fcgi appends the script's filesystem path to the backend URL, and a Windows path
+  starts with a drive letter**: `proxy:fcgi://127.0.0.1:9783` + `C:/Users/…/index.php` parsed as
+  host `127.0.0.1:9783c` ("DNS lookup failure for: 127.0.0.1:9783c", every request 500 — the
+  Win11 VM, 24 Oct 2026). A trailing slash keeps the port whole, and then PHP is handed
+  `/C:/Users/…` ("No input file specified"), so `SCRIPT_FILENAME` is rebuilt from
+  `%{DOCUMENT_ROOT}%{reqenv:SCRIPT_NAME}` (`apache::Layout::fcgi_url_suffix` / `fcgi_fixup`;
+  `SCRIPT_NAME` is not an ap_expr variable, `reqenv:` is how it is read). Measured 200 with
+  `HTTPS=on` and pretty URLs through php-cgi.
+- **A GitHub release asset can be replaced in place** — upstream re-uploaded
+  `frankenphp-windows-x86_64.zip` on v1.13.3 hours after it was hashed (24 Oct 2026), and the
+  first FrankenPHP site on the Dell met "checksum mismatch … the upstream file changed". Windows
+  artifacts rexenv cannot get from an immutable publisher are MIRRORED on `rexenv/runtimes`
+  (`php-windows.yml`, `httpd-windows.yml`, `frankenphp-windows.yml`), each gate re-reading the
+  publisher's own digest at mirror time.
 - **httpd on Windows is a parent plus one child, both `httpd.exe`, and `httpd -k shutdown` from a
   second process looks for the "Apache2.4" SERVICE** (measured on `windows-latest`, 24 Oct 2026,
   the runtimes mirror gate). rexenv stops the console instance by setting the parent's named

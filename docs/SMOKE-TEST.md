@@ -3785,25 +3785,43 @@ them is Windows' own dialog:
 
 ### Apache and FrankenPHP overrides — on Windows since 24 Oct 2026 (`docs/PLAN-windows-servers.md`)
 The main body's Apache and FrankenPHP rows run here too; what differs on this OS:
-- [ ] **New Site offers Nginx, FrankenPHP and Apache** (not OpenLiteSpeed) and the note carries
-  only OpenLiteSpeed's sentence. Create a Blank PHP site on **Apache**: the first create downloads
-  `httpd-2.4.69…zip` from `rexenv/runtimes` (14.5 MB) — the Downloads panel names it; the site
-  answers 200 through Caddy with `Server: Apache/2.4.69 (Win64)` and `X-Powered-By: PHP/<the
-  site's minor>` from the php-cgi group; a `.htaccess` `RewriteRule` in the docroot is honoured.
-  `Get-Process httpd` shows TWO `httpd.exe` (parent + child), both under rexenv's job.
-- [ ] **Stop that site** → both `httpd.exe` gone within the stop grace (`ap<pid>_shutdown`, not
-  `TerminateProcess` — `rexenv.log` has no "terminating pid" for them), its 83xx port free.
-  **Tell:** one `httpd.exe` left listening.
-- [ ] **Switch** the site Nginx → Apache → FrankenPHP → Nginx from the Site Settings card; each
-  switch answers 200 after the reload; the Apache conf (`config\apache-<domain>.conf`) names
-  `modules\mod_proxy_fcgi.so` and `conf\mime.types` — no `lib/httpd` or `.bottle` path.
+- [◐] **Create a Blank PHP site on Apache** → 200 through Caddy with `Server: Apache/2.4.69 (Win64)`
+  and `X-Powered-By: PHP/<the site's minor>` from the php-cgi group; the first create downloads
+  `httpd-2.4.69…zip` from `rexenv/runtimes` (14.5 MB, with its `licenses/`); `Get-Process httpd`
+  shows TWO `httpd.exe` (parent + child). ✓ **24 Oct 2026, the Dell (Win10 22H2) AND the Win11 ARM
+  VM**, the dev build `2c250562`+: `rex site create apw.rex --type php --php 8.3 --server apache`
+  → `serving`, 200, `Server: Apache/2.4.69 (Win64)`, `X-Powered-By: PHP/8.3.36`; the conf names
+  `modules/mod_proxy_fcgi.so`, `conf/mime.types`, `bin/httpd.exe`, forward-slash paths; two
+  `httpd.exe` (parent + child). **Found and fixed on the way:** (1) the mirror's build-1 licences
+  tarball unpacked to nothing and the app REFUSED the artifact (build 2); (2) mod_proxy_fcgi +
+  a drive-letter path → "DNS lookup failure for: 127.0.0.1:9783c" (500) → the trailing slash +
+  `ProxyFCGISetEnvIf SCRIPT_FILENAME` (`apache::Layout`); (3) a stray `C:\.htaccess` (the
+  probe's own, written by a script bug) made httpd 500 on every request — the stock `<Directory
+  "/">` stanza now keeps `.htaccess` reading inside the docroot (every OS). Still ◐: the New Site
+  picker's look (GUI) was not screenshotted on either machine.
+- [x] **`.htaccess` is honoured, live.** ✓ Dell: `RewriteRule ^hello$ index.php` → `/hello` 200
+  with the index's `X-Rex-Test` header; the rule changed to `[F]` → 403 on the next request; the
+  file removed → 200. No restart between edits.
+- [x] **Stop that site** → both `httpd.exe` gone, 503 stop page, no "terminating pid" for them
+  (the `ap<pid>_shutdown` event). ✓ Dell: pids 2448+6104 gone 3 s after `rex site stop`, 503;
+  `rex site start` → new pair, 200. Also on delete: both gone (VM and Dell).
+- [x] **Switch** Apache → Nginx → Apache from the CLI: ✓ Dell `rex site server apw.rex nginx` →
+  httpd gone, 200 `Server: nginx/1.30.4`; back to `apache` → 200 `Server: Apache/2.4.69 (Win64)`,
+  `X-Powered-By: PHP/8.3.36` both ways. The Site Settings card press itself (GUI): not run.
+- [x] **Quit and relaunch rexenv with an Apache site running** → adopted, not restarted. ✓ Dell:
+  the app killed, `apw.rex` kept answering 200 (services outlive the app), relaunch 3 s →
+  "adopted 8 running service(s)", `rex status` `Apache apw.rex running`, the same httpd pids.
 - [ ] **FrankenPHP site**: `phpinfo()` says PHP 8.5.12 (its own, not the pool's); `mail()` lands
-  in Mailpit (the SMTP ini keys, as the php-cgi groups use — no sendmail shim on Windows).
-- [ ] **Quit and relaunch rexenv** with an Apache site running → "adopted N running service(s)"
-  includes it (the conf path on the parent's command line is the marker); no second httpd.
-- [ ] `rex site create <d> --server apache` / `--server frankenphp` succeed; `rex site list`
-  shows the server column.
-**Owed on every run until the Dell runs them:** a Win11 ARM VM run is x64 under emulation.
+  in Mailpit (the SMTP ini keys, as the php-cgi groups use — no sendmail shim on Windows). **Run
+  24 Oct 2026 on the Dell and FOUND the pin broken before the site existed:** upstream replaced
+  `frankenphp-windows-x86_64.zip` in place that morning, so the create refused with "checksum
+  mismatch … the upstream file changed" (the guard working as ruled) — the zip is now MIRRORED on
+  `rexenv/runtimes` (`frankenphp-windows-1`); the row runs again on the next build.
+- [x] `rex site create <d> --server apache` succeeds; `rex site list` shows the server column
+  (`apache`, `frankenphp`). ✓ Dell + VM. (`--server frankenphp` creates the site and then waits on
+  the download — the row above.)
+**The Win11 ARM VM (x64 under emulation) stalled the app's main thread 5–15 s per tick with seven
+php-cgi groups up, and `rex site stop` wedged for 40 min there; the Dell is the host for these.**
 
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
 Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.

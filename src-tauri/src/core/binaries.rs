@@ -936,12 +936,19 @@ const FRANKENPHP_1_13_3_MAC_AMD64_SHA256: &str = "8d2a9d26541852c1056401d020dc4e
 const FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256: &str = "62cdbb9c03eb75c981372240815436161f12aab088b5d952697fd02800cb6d6b";
 /// The `rexenv/runtimes` release serving the Intel Mac FrankenPHP.
 pub(crate) const FRANKENPHP_MAC_X86_64_TAG: &str = "frankenphp-1.13.3-1";
-// Windows: upstream's own `frankenphp-windows-x86_64.zip` (24 Oct 2026, hashed from a full
-// download) — `frankenphp.exe` beside the official `php8ts.dll` and its `ext/*.dll`, a
-// tree, not the single static binary the other OSes get. Its embedded PHP is 8.5.12
-// (`snapshot.txt` in the zip), the same `FRANKENPHP_EMBEDDED_PHP` as everywhere
-// (docs/PLAN-windows-servers.md D3).
-const FRANKENPHP_1_13_3_WIN_AMD64_SHA256: &str = "c744d35cc35c313e2f126692dc8adb5856e2c96ed47c2fff6e39f97eb634a46a";
+// Windows: upstream's own `frankenphp-windows-x86_64.zip` — `frankenphp.exe` beside the
+// official `php8ts.dll` and its `ext/*.dll`, a tree, not the single static binary the other
+// OSes get; its embedded PHP is 8.5.12 (`snapshot.txt`), the same `FRANKENPHP_EMBEDDED_PHP`
+// as everywhere (docs/PLAN-windows-servers.md D3). **MIRRORED on `rexenv/runtimes`
+// (`frankenphp-windows-1`), not pinned at upstream's URL:** upstream REPLACED the asset in
+// place on 24 Oct 2026 (sha256 c744d35c… at 12:44 the day before, eb6cbfc5… at 08:16Z — a
+// rebuilt frankenphp.exe under the same name), and the first FrankenPHP site on the Dell
+// met "checksum mismatch … the upstream file changed" from a pin taken hours earlier. The
+// mirror's gate re-reads GitHub's own digest for the asset, so the pin below is the bytes
+// upstream serves at mirror time, frozen; its licences ride beside it.
+const FRANKENPHP_1_13_3_WIN_AMD64_SHA256: &str = "eb6cbfc5a86b04d294d84f39d55fb6ac32826cacf3e6ce55412ed95cce50d9fb";
+pub(crate) const FRANKENPHP_WINDOWS_TAG: &str = "frankenphp-windows-1";
+const FRANKENPHP_1_13_3_LICENSES_WINDOWS_SHA256: &str = "c28e00600afe222125b94fb394a1763136ef29f31e3021bda41efd7ea021625c";
 
 // ── Apache httpd on Windows (docs/PLAN-windows-servers.md D1) ──────────────────
 // The ASF publishes no Windows build; Apache Lounge's VS18 build of 2.4.69
@@ -2461,6 +2468,13 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             HTTPD_2_4_69_LICENSES_WINDOWS_SHA256,
             format!("licenses-httpd-{version}-windows.tar.gz"),
         ),
+        // The Windows zip is mirrored (one artifact for every `Arch`): one tarball, told from
+        // the Intel Mac one by its URL, never by the host.
+        ("frankenphp", "1.13.3") if url.contains("frankenphp-windows") => (
+            FRANKENPHP_1_13_3_LICENSES_WINDOWS_SHA256,
+            FRANKENPHP_1_13_3_LICENSES_WINDOWS_SHA256,
+            format!("licenses-frankenphp-{version}-windows.tar.gz"),
+        ),
         // Only the Intel Mac binary is ours (arm64 and Linux are upstream's, and owe nothing
         // here), so there is no arm64 licence digest to pin.
         ("frankenphp", "1.13.3") => (
@@ -2901,9 +2915,10 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             archive: Archive::ZipTree { strip: 1 },
             member: "bin/httpd.exe",
         }),
-        // Upstream's Windows FrankenPHP: a flat zip (`frankenphp.exe`, `php8ts.dll`, `ext/`).
+        // Upstream's Windows FrankenPHP, mirrored (the constants say why): a flat zip
+        // (`frankenphp.exe`, `php8ts.dll`, `ext/`).
         ("frankenphp", "windows", "1.13.3") => Some(BinarySpec {
-            url: format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-windows-x86_64.zip"),
+            url: format!("{RUNTIMES_RELEASE_BASE}/{FRANKENPHP_WINDOWS_TAG}/frankenphp-windows-x86_64.zip"),
             checksum: Checksum::Sha256(FRANKENPHP_1_13_3_WIN_AMD64_SHA256.to_string()),
             archive: Archive::ZipTree { strip: 0 },
             member: "frankenphp.exe",
@@ -7693,6 +7708,13 @@ mod tests {
         // asks `httpd_version_on`, never the bottle pin.
         let fp = manifest("frankenphp", FRANKENPHP_VERSION, "windows", Arch::X86_64).expect("FrankenPHP has a Windows arm");
         assert!(fp.url.ends_with("frankenphp-windows-x86_64.zip") && fp.member == "frankenphp.exe", "{}", fp.url);
+        assert!(fp.url.starts_with(RUNTIMES_RELEASE_BASE) && fp.url.contains(FRANKENPHP_WINDOWS_TAG), "mirrored, never upstream's replaceable URL: {}", fp.url);
+        let fp_lic = licenses_spec(&fp.url, "frankenphp", FRANKENPHP_VERSION, Arch::X86_64).unwrap().expect("the mirror owes its licences");
+        assert!(fp_lic.url.ends_with(&format!("/{FRANKENPHP_WINDOWS_TAG}/licenses-frankenphp-1.13.3-windows.tar.gz")), "{}", fp_lic.url);
+        assert_eq!(checksum_hex(&fp_lic.checksum).len(), 64);
+        let mac_x86 = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::X86_64).unwrap();
+        let mac_lic = licenses_spec(&mac_x86.url, "frankenphp", FRANKENPHP_VERSION, Arch::X86_64).unwrap().unwrap();
+        assert!(mac_lic.url.ends_with("-mac-x86_64.tar.gz"), "the Intel Mac tarball is untouched: {}", mac_lic.url);
         assert!(ships_on("frankenphp", FRANKENPHP_VERSION, "windows"));
         assert_eq!(httpd_version_on("windows"), HTTPD_WINDOWS_VERSION);
         assert_eq!(httpd_version_on("macos"), pins().httpd);

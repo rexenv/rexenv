@@ -61,6 +61,17 @@ pub struct Layout {
     /// Whether the MPM is a loadable module: mpm_event + unixd on POSIX hosts; on Windows
     /// mpm_winnt is compiled into httpd.exe and `mod_unixd` does not exist.
     pub loadable_mpm: bool,
+    /// What follows `proxy:fcgi://127.0.0.1:<port>` in the handler, and the directive that
+    /// fixes `SCRIPT_FILENAME` after it. mod_proxy_fcgi appends the script's filesystem path
+    /// to that URL; on Windows the path starts with a drive letter, so `…:9783C:/Users/…`
+    /// parses as host `127.0.0.1:9783c` ("DNS lookup failure for: 127.0.0.1:9783c", measured
+    /// on the Win11 VM, 24 Oct 2026). A trailing slash keeps the port whole, and then the
+    /// FPM-style fixup hands PHP `/C:/Users/…` — "No input file specified" — so
+    /// `SCRIPT_FILENAME` is rebuilt from `DOCUMENT_ROOT` + the request's `SCRIPT_NAME`
+    /// (`FallbackResource` has already made that `/index.php` for a pretty URL). Both
+    /// measured 200 with `HTTPS=on` through php-cgi 8.3.36; empty on POSIX hosts.
+    pub fcgi_url_suffix: &'static str,
+    pub fcgi_fixup: &'static str,
 }
 
 impl Layout {
@@ -68,13 +79,22 @@ impl Layout {
     pub const fn for_os(os: &str) -> Layout {
         // `const fn` cannot compare &str with `==`; byte-compare the one OS that differs.
         if matches!(os.as_bytes(), b"windows") {
-            Layout { bin: "bin/httpd.exe", modules_dir: "modules", mime_types: "conf/mime.types", loadable_mpm: false }
+            Layout {
+                bin: "bin/httpd.exe",
+                modules_dir: "modules",
+                mime_types: "conf/mime.types",
+                loadable_mpm: false,
+                fcgi_url_suffix: "/",
+                fcgi_fixup: "ProxyFCGISetEnvIf \"true\" SCRIPT_FILENAME \"%{DOCUMENT_ROOT}%{reqenv:SCRIPT_NAME}\"\n",
+            }
         } else {
             Layout {
                 bin: "bin/httpd",
                 modules_dir: "lib/httpd/modules",
                 mime_types: ".bottle/etc/httpd/mime.types",
                 loadable_mpm: true,
+                fcgi_url_suffix: "",
+                fcgi_fixup: "",
             }
         }
     }
@@ -168,6 +188,13 @@ pub(crate) const SUBDIRECTORY_MULTISITE_RULES: &str = "RewriteRule ^/index\\.php
 /// (the same per-REQUEST delivery as nginx's `fastcgi_param` lines; the shared
 /// pool is untouched). All paths quoted (app-data paths contain spaces).
 ///
+/// The stock `<Directory "/">` stanza (AllowOverride None, Require all denied) comes
+/// BEFORE the docroot's: without it httpd walks every `.htaccess` from the filesystem root
+/// down to the docroot, and a stray one above the site — measured on the Dell (24 Oct 2026),
+/// a `C:\.htaccess` with `RewriteEngine On` — answered every request with 500 ("RewriteEngine
+/// not allowed here"). A `.htaccess` in the user's home or Sites folder would do the same on
+/// any OS; only the docroot's tree may override.
+///
 /// Dot-segment guard: mod_alias isn't bundled (no `RedirectMatch`), so the
 /// deny is a mod_rewrite `[R=404]` placed BEFORE the WP routing — subdirectory
 /// multisite's `-f/-d` passthrough (`RewriteRule ^ - [L]`) would otherwise
@@ -212,14 +239,19 @@ pub fn generate_config(
          TypesConfig \"{basedir}/{mime}\"\n\
          DocumentRoot \"{docroot}\"\n\
          DirectoryIndex index.php index.html\n\
+         <Directory \"/\">\n\
+         \tAllowOverride None\n\
+         \tRequire all denied\n\
+         </Directory>\n\
          <Directory \"{docroot}\">\n\
          \tOptions FollowSymLinks\n\
          \tAllowOverride All\n\
          \tRequire all granted\n\
          </Directory>\n\
          <FilesMatch \"\\.php$\">\n\
-         \tSetHandler \"proxy:fcgi://127.0.0.1:{fpm_port}\"\n\
+         \tSetHandler \"proxy:fcgi://127.0.0.1:{fpm_port}{fcgi_suffix}\"\n\
          </FilesMatch>\n\
+         {fcgi_fixup}\
          {set_env}\
          RewriteEngine On\n\
          RewriteCond %{{HTTP:X-Forwarded-Proto}} =https\n\
@@ -228,6 +260,8 @@ pub fn generate_config(
          {routing}",
         basedir = path_for_conf(os, basedir),
         mime = layout.mime_types,
+        fcgi_suffix = layout.fcgi_url_suffix,
+        fcgi_fixup = layout.fcgi_fixup,
         run = path_for_conf(os, run_dir),
         logs = path_for_conf(os, log_dir),
         docroot = path_for_conf(os, docroot),
@@ -386,10 +420,15 @@ mod tests {
         assert!(win.contains("LoadModule proxy_fcgi_module \"modules/mod_proxy_fcgi.so\""));
         assert!(win.contains("TypesConfig \"/cache/httpd-2.4.68/conf/mime.types\""));
         assert!(!win.contains("lib/httpd") && !win.contains(".bottle"), "a bottle path leaked into the Windows conf");
+        // The fcgi hand-off: the bare URL on macOS; the trailing slash and the SCRIPT_FILENAME
+        // rebuild on Windows (the drive-letter trap in `Layout`'s doc).
+        assert!(mac.contains("SetHandler \"proxy:fcgi://127.0.0.1:9783\"\n") && !mac.contains("ProxyFCGISetEnvIf"));
+        assert!(win.contains("SetHandler \"proxy:fcgi://127.0.0.1:9783/\"\n"), "{win}");
+        assert!(win.contains("ProxyFCGISetEnvIf \"true\" SCRIPT_FILENAME \"%{DOCUMENT_ROOT}%{reqenv:SCRIPT_NAME}\"\n"), "{win}");
         // Everything that is not a layout hole is the same text.
         let strip = |s: &str| -> Vec<String> {
             s.lines()
-                .filter(|l| !l.starts_with("LoadModule") && !l.starts_with("TypesConfig"))
+                .filter(|l| !l.starts_with("LoadModule") && !l.starts_with("TypesConfig") && !l.contains("SetHandler") && !l.starts_with("ProxyFCGISetEnvIf"))
                 .map(str::to_string)
                 .collect()
         };
@@ -441,8 +480,12 @@ mod tests {
         // Edge-terminated TLS reaches PHP as HTTPS=on (WordPress is_ssl()).
         assert!(c.contains("RewriteCond %{HTTP:X-Forwarded-Proto} =https"));
         assert!(c.contains("RewriteRule .* - [E=HTTPS:on]"));
-        // The point of Apache: .htaccess honored.
+        // The point of Apache: .htaccess honored — in the DOCROOT's tree only; above it
+        // nothing is read (the Dell's `C:\.htaccess`, 24 Oct 2026).
         assert!(c.contains("AllowOverride All"));
+        let root = c.find("<Directory \"/\">\n\tAllowOverride None\n\tRequire all denied\n</Directory>").expect("the root stanza");
+        let doc = c.find("<Directory \"/Sites/ap site/public\">").expect("the docroot stanza");
+        assert!(root < doc, "the root stanza must come first so the docroot's overrides it");
         // Placeholder-free explicit paths, quoted (spaces in app-data paths).
         assert!(c.contains("DocumentRoot \"/Sites/ap site/public\""));
         assert!(c.contains("PidFile \"/data/run/apache-ap.rex.pid\""));
