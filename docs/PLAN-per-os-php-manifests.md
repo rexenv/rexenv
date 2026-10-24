@@ -1,8 +1,6 @@
 # PLAN — PHP update documents per OS (the signed manifest Windows and Linux read)
 
-Status: **IN FLIGHT — written 24 Oct 2026 (owner: "we build every PHP ourselves now; is the
-in-app PHP update check wired to OUR manifest, and does it reach every OS?"). Answer: the app
-reads only our signed manifest; macOS is complete; Windows and Linux had NO PHP rows to read.**
+Status: **BUILT — T1 (rexenv `9695b502`), T2 (runtimes PR #49–#51), T3 published 24 Oct 2026 (`manifest-linux.json` / `manifest-windows.json`, serial 12 after the serial-1 replay finding, D5), read live on the Dell ("manifest accepted (6 entries)", `Adminer 6.2.0` offered). Owed: the Linux reader read live on the Ubuntu VM, and the first PHP offer the day php.net ships a patch above the pins (SMOKE).**
 
 ## 1. What is true today (24 Oct 2026)
 
@@ -41,6 +39,12 @@ reads only our signed manifest; macOS is complete; Windows and Linux had NO PHP 
   Not self-distributed → no licences row. The reader's `ALLOWED_HOSTS` gains that one path
   prefix; the resolver derives `ZipTree { strip: 0 }` / `php.exe` for a Windows catalog row.
   The 7.4/8.0/8.1 backport builds move by PIN (same version, new bytes), never by manifest.
+- **D5 A per-OS document's serial is lifted above the macOS document's** (found live, 24 Oct
+  2026): a rexenv keeps ONE highest-accepted serial, and every Windows/Linux install before
+  this read `manifest.json` (serial 11), so `manifest-windows.json` at serial 1 was refused as
+  a replay on the Dell. The publisher lifts on every publish; the first real documents are
+  serial 12. A per-document serial memory in the app would be the cleaner reader, but it cannot
+  help the installs already out there — the lift is what reaches them.
 - **D4 The publisher is one script with `--document macos|linux|windows`**, each document its own
   serial, carry-forward and guard; the workflow gains a `document` dropdown and a per-document
   concurrency group. Discovery stays OS-neutral (php.net's newest patch per minor); the daily
