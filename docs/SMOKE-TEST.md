@@ -3797,8 +3797,11 @@ The main body's Apache and FrankenPHP rows run here too; what differs on this OS
   a drive-letter path → "DNS lookup failure for: 127.0.0.1:9783c" (500) → the trailing slash +
   `ProxyFCGISetEnvIf SCRIPT_FILENAME` (`apache::Layout`); (3) a stray `C:\.htaccess` (the
   probe's own, written by a script bug) made httpd 500 on every request — the stock `<Directory
-  "/">` stanza now keeps `.htaccess` reading inside the docroot (every OS). Still ◐: the New Site
-  picker's look (GUI) was not screenshotted on either machine.
+  "/">` stanza now keeps `.htaccess` reading inside the docroot (every OS). **GUI ✓ Dell, 15:05:**
+  New site → Configure: the Web server dropdown lists Nginx / FrankenPHP / Apache (.htaccess) — no
+  OpenLiteSpeed — and the note under it reads *"OpenLiteSpeed has no Windows build — it exists for
+  macOS and Linux only. Choose Nginx, Apache or FrankenPHP for this site."* (the only server
+  sentence; the old "Apache and FrankenPHP aren't part of rexenv on Windows yet" is gone).
 - [x] **`.htaccess` is honoured, live.** ✓ Dell: `RewriteRule ^hello$ index.php` → `/hello` 200
   with the index's `X-Rex-Test` header; the rule changed to `[F]` → 403 on the next request; the
   file removed → 200. No restart between edits.
@@ -3807,7 +3810,13 @@ The main body's Apache and FrankenPHP rows run here too; what differs on this OS
   `rex site start` → new pair, 200. Also on delete: both gone (VM and Dell).
 - [x] **Switch** Apache → Nginx → Apache from the CLI: ✓ Dell `rex site server apw.rex nginx` →
   httpd gone, 200 `Server: nginx/1.30.4`; back to `apache` → 200 `Server: Apache/2.4.69 (Win64)`,
-  `X-Powered-By: PHP/8.3.36` both ways. The Site Settings card press itself (GUI): not run.
+  `X-Powered-By: PHP/8.3.36` both ways. **The Site page's Web server select (GUI) ✓ Dell, 15:08:**
+  the select lists Nginx / FrankenPHP / Apache (.htaccess) (no OpenLiteSpeed — `offeredWebServers`,
+  #643); Apache → FrankenPHP raised *"Switch apw.rex from Apache (.htaccess) to FrankenPHP? The site
+  restarts briefly while it moves to the other server."* → Switch → the card reads FrankenPHP, the
+  PHP card "8.5 — FrankenPHP's embedded PHP … Fixed by FrankenPHP", `rex site list` `frankenphp`,
+  both `httpd.exe` gone, a second `frankenphp.exe` up, 200 `Server: FrankenPHP Caddy`,
+  `X-Powered-By: PHP/8.5.12`.
 - [x] **Quit and relaunch rexenv with an Apache site running** → adopted, not restarted. ✓ Dell:
   the app killed, `apw.rex` kept answering 200 (services outlive the app), relaunch 3 s →
   "adopted 8 running service(s)", `rex status` `Apache apw.rex running`, the same httpd pids.
@@ -3827,7 +3836,9 @@ The main body's Apache and FrankenPHP rows run here too; what differs on this OS
   (`apache`, `frankenphp`). ✓ Dell + VM. (`--server frankenphp` creates the site and then waits on
   the download — the row above.)
 **The Win11 ARM VM (x64 under emulation) stalled the app's main thread 5–15 s per tick with seven
-php-cgi groups up, and `rex site stop` wedged for 40 min there; the Dell is the host for these.**
+php-cgi groups up, and `rex site stop` wedged for 40 min there; the Dell (native x64, no stall in
+the same hour) is the host for these. Windows-on-ARM has no rexenv build and no user yet; the
+stall is recorded here, not as a defect.**
 
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
 Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.

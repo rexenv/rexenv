@@ -130,20 +130,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
 
-- [ ] **Windows: per-site servers — Apache and FrankenPHP** (owner, 24 Oct 2026: "Windows has only nginx; add
-  the other servers, plan first, then one task at a time"). Today the pins are the gate (#642) and Windows has
-  none for `httpd` or `frankenphp`, so the New Site picker offers Nginx alone and a switch is refused in core.
-  Plan: `docs/PLAN-windows-servers.md` — Apache Lounge 2.4.69 mirrored into `rexenv/runtimes` (D1), PHP through
-  mod_proxy_fcgi to the php-cgi group (D2), FrankenPHP from upstream's own Windows zip (D3), a per-OS Apache
-  layout in core (D4), the `ap<pid>_shutdown` stop event (D5); OpenLiteSpeed stays refused on Windows forever.
-  T1–T7; the Windows proof is a build run on the Win11 VM. **T1–T3 landed 24 Oct 2026** (ledger #909: the mirror
-  gated on `windows-latest`, the two catalog arms, `apache::Layout`, the stop event); **T4+T5 the same day**
-  (`frankenphp::MailCatchIni`: SMTP ini keys on Windows, the Caddyfile and httpd.conf paths with forward
-  slashes; `apache_unavailable` per OS, the SiteDetail switch filtered by `offeredWebServers`). **T7 RUN on the
-  Dell 24 Oct 2026** (SMOKE § Windows "Apache and FrankenPHP overrides": create, `.htaccess`, stop/start, switch,
-  adopt, FrankenPHP + `mail()` ✓; three fixes on the way — `753c5beb`). **Open:** the GUI presses on a release
-  build (New Site picker, Site Settings switch — screenshots), and whether the Win11 ARM VM's 5–15 s main-thread
-  stalls with seven php-cgi groups up are emulation alone (the Dell never stalled).
+- [x] **Windows: per-site servers — Apache and FrankenPHP** (owner, 24 Oct 2026: "Windows has only nginx; add
+  the other servers, plan first, then one task at a time") ✓ 24 Oct 2026 — `docs/PLAN-windows-servers.md` T1–T7,
+  ledger #909 ✅: Apache Lounge's httpd 2.4.69 and upstream's FrankenPHP zip, both MIRRORED on `rexenv/runtimes`
+  (`httpd-windows-2`, `frankenphp-windows-1` — each publisher replaces or drops its asset), `apache::Layout` (one
+  conf, the per-OS holes incl. mod_proxy_fcgi's drive-letter fix), the `ap<pid>_shutdown` stop event, the
+  per-OS mail catch for FrankenPHP; run on the Dell (Win10 22H2): create, `.htaccess`, stop/start, CLI and GUI
+  switch, adopt on relaunch, FrankenPHP with `mail()` into Mailpit, the New Site picker. OpenLiteSpeed stays
+  refused on Windows (no build exists). Three fixes found by the run: the mirror's `licenses/` layout, the
+  `<Directory "/">` stanza, the FrankenPHP mirror itself.
 
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned
