@@ -1,6 +1,6 @@
 # PLAN — PHP update documents per OS (the signed manifest Windows and Linux read)
 
-Status: **BUILT — T1 (rexenv `9695b502`), T2 (runtimes PR #49–#51), T3 published 24 Oct 2026 (`manifest-linux.json` / `manifest-windows.json`, serial 12 after the serial-1 replay finding, D5), read live on the Dell ("manifest accepted (6 entries)", `Adminer 6.2.0` offered). Owed: the Linux reader read live on the Ubuntu VM, and the first PHP offer the day php.net ships a patch above the pins (SMOKE).**
+Status: **BUILT — rexenv `9695b502`, runtimes PR #49–#51, the three documents published 24 Oct 2026 (macOS serial 12 with Adminer 6.2.0; Linux and Windows serial 12 after the serial-1 replay finding, D5), read live on the Dell AND the Ubuntu VM ("manifest accepted (6 entries)", `Adminer 6.2.0` offered on both). One leg owed and recorded in SMOKE: a PHP row from a per-OS document actually INSTALLED — the day php.net ships a patch above the pins.**
 
 ## 1. What is true today (24 Oct 2026)
 

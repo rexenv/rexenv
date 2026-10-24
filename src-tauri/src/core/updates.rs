@@ -71,7 +71,7 @@ const ALLOWED_HOSTS: &[&str] = &[
     "https://github.com/rexenv/",
     // php.net's own Windows builds, the ARCHIVE path (it keeps every release; the current
     // directory drops a patch once superseded). The Windows document's PHP rows name these
-    // (docs/PLAN-per-os-php-manifests.md D3) — the same publisher the Windows pins trust.
+    // (docs/archive/PLAN-per-os-php-manifests.md D3) — the same publisher the Windows pins trust.
     "https://downloads.php.net/~windows/releases/archives/",
     // Adminer's own releases. A PATH prefix, not a host: `github.com/` alone
     // would let any GitHub account serve any artifact this app will execute, and
@@ -473,7 +473,7 @@ impl VersionCatalog {
 
     /// [`artifact`](Self::artifact) for a NAMED os — what `os`'s own document would answer,
     /// so a resolver arm for another OS can be exercised from any host
-    /// (docs/PLAN-per-os-php-manifests.md). Production readers always pass the host's OS.
+    /// (docs/archive/PLAN-per-os-php-manifests.md). Production readers always pass the host's OS.
     pub fn artifact_on(&self, name: &str, version: &str, arch: &str, os: &str) -> Option<&Artifact> {
         let tier = crate::core::binaries::tier();
         self.entries.iter().find(|a| {
@@ -733,7 +733,7 @@ const MANIFEST_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json";
 const MANIFEST_SIG_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json.sig";
-/// The Linux and Windows documents (docs/PLAN-per-os-php-manifests.md D1): the same schema
+/// The Linux and Windows documents (docs/archive/PLAN-per-os-php-manifests.md D1): the same schema
 /// and key, a document per OS because the unsuffixed one is macOS's and FROZEN — shipped
 /// Macs keep every row they do not understand, so a Linux tarball row in it would be
 /// resolved by Macs that cannot run it (PLAN-windows-port §3b). Each OS reads one document
@@ -1026,7 +1026,7 @@ pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCata
 }
 
 /// [`catalog_for_tests`] for a NAMED os — the document that OS would read, so a test can
-/// exercise another OS's resolver arm from any host (docs/PLAN-per-os-php-manifests.md).
+/// exercise another OS's resolver arm from any host (docs/archive/PLAN-per-os-php-manifests.md).
 #[cfg(test)]
 pub fn catalog_for_tests_on(os: &str, rows: &[(&str, &str, &str, &str, &str)]) -> VersionCatalog {
     VersionCatalog {
@@ -1498,7 +1498,7 @@ mod tests {
         }
     }
 
-    /// docs/PLAN-per-os-php-manifests.md D1/D3 — **each OS reads its own document, and php.net's
+    /// docs/archive/PLAN-per-os-php-manifests.md D1/D3 — **each OS reads its own document, and php.net's
     /// Windows archive is an admitted publisher.** The unsuffixed document stays macOS's (frozen),
     /// Linux and Windows read `manifest-<os>.json` beside it — the same repo, the same key.
     #[test]

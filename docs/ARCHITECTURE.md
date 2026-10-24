@@ -1185,7 +1185,7 @@ Live-proven end to end by `site_stop_start_check`.
 - **A user can also move a minor forward BETWEEN app releases, from a signed manifest.**
   `core::updates` fetches the OS's document + `.sig` — `manifest.json` on macOS (frozen),
   `manifest-linux.json` / `manifest-windows.json` elsewhere (`manifest_urls_on`,
-  `docs/PLAN-per-os-php-manifests.md`; a catalog row's archive shape is derived from the OS and
+  `docs/archive/PLAN-per-os-php-manifests.md`; a catalog row's archive shape is derived from the OS and
   the name, never read from the document) — **two files on `rexenv/runtimes`'
   default branch**, written by a commit rather than a release (a moved tag broke in
   production: GitHub burns a tag name once an immutable release on it is deleted, and

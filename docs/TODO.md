@@ -6,6 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 24 Oct 2026 (evening), after the per-OS PHP manifests** (HEAD `646d03db`): 1 ticked block moved (Now —
+PHP update documents per OS, #910); `PLAN-per-os-php-manifests.md` archived, its citations repointed. Shapes 1–4: 0.
+Open after the pass: 33 rows.
+
 **Reconciled 24 Oct 2026, after the Windows servers plan** (HEAD `72c73799`, v0.9.1 + 12 commits): 1 ticked block
 moved by the script (Now — Apache and FrankenPHP on Windows, #909); `PLAN-windows-servers.md` archived with 17
 citations repointed. Shapes 1–4: 0. Open after the pass: 33 rows (the churn-breaker row from 0.9.1's §M is the new one).
@@ -133,15 +137,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the dev Mac, Windows and Linux compiled): one poller behind one setting, one inventory (`core/update_hub.rs`, app
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
-
-- [ ] **PHP update documents per OS** (owner, 24 Oct 2026: "we build every PHP ourselves — does the in-app check
-  reach every OS?"). Built: `updates::manifest_urls_on` + `catalog_php_spec` (ledger #910), runtimes
-  `publish-manifest.sh --document linux|windows` + guard (PR #49). **Open:** publish `manifest-linux.json` and
-  `manifest-windows.json` — DONE 24 Oct 2026 at serial 12 (serial 1 was refused as a replay of the macOS document's
-  11, which every older install remembers; the publisher now lifts per-OS serials above it, PR #50/#51); the Dell
-  read it live ("manifest accepted (6 entries)", `Adminer 6.2.0` offered). **Open:** the Linux reader read live on
-  the Ubuntu VM; the first PHP offer the day php.net ships a patch above the pins (SMOKE row). Plan:
-  `docs/PLAN-per-os-php-manifests.md`.
 
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned

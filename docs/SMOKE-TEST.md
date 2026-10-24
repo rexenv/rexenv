@@ -3840,6 +3840,15 @@ php-cgi groups up, and `rex site stop` wedged for 40 min there; the Dell (native
 the same hour) is the host for these. Windows-on-ARM has no rexenv build and no user yet; the
 stall is recorded here, not as a defect.**
 
+### PHP patches from the Windows update document (`manifest-windows.json`, 24 Oct 2026)
+- [ ] **The day php.net ships a patch above this build's pins** and the Windows document carries it
+  (`rexenv/runtimes` Publish PHP update manifest → Windows): Settings → Updates shows `PHP 8.x  <pin> →
+  <patch>`, `rex status` says so, Install downloads php.net's zip from the ARCHIVE directory, the php-cgi
+  group restarts onto it (`X-Powered-By` moves), the row is gone. **Tell:** the macOS document's 20-odd
+  entries in the log instead of the Windows one's (`manifest accepted (N entries)` with N ≈ 6–10).
+  The READ half ran 24 Oct 2026 on the Dell: serial 12 accepted, `Adminer 6.2.0` offered through it
+  (serial 1 had been refused as a replay of the macOS document's 11 — ledger #910).
+
 ### OpenLiteSpeed — refused, permanently (4 Oct 2026)
 Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.
 - [x] **New Site** offers Nginx only; its note says *"OpenLiteSpeed has no Windows build — it
@@ -4206,6 +4215,12 @@ rexenv0 <name>` and read `Current Scopes:`.
       Files at `Home/rexenv/Sites/lm.rex` (wp-admin, wp-content, wp-config.php…). No editor is
       installed ("No code editor detected"), so that entry does not exist to launch; the private
       window and the terminal legs are not on this VM's menu.
+
+### PHP patches from the Linux update document (`manifest-linux.json`, 24 Oct 2026)
+- [ ] **The day php.net ships a patch above this build's pins** and `php-8x-linux-N` carries it: Settings →
+  Updates shows the PHP row, Install downloads our tarballs (cli + fpm + licences) from the release, the
+  pool restarts onto it. The READ half ran 24 Oct 2026 on the Ubuntu 22.04 arm64 VM: serial 12 accepted
+  ("manifest accepted (6 entries)"), `Adminer 6.2.0` offered through it.
 
 ### In-app update on Linux (L7, ledger #729/#730)
 - [x] **An update that re-pins a running binary moves the stack onto it, and the first login after it

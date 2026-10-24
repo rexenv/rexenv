@@ -731,7 +731,7 @@ tables in `verify.sh` (ledger #592).
 
 ## 3b. Update catalogs across OSes — measured against every shipped release (13 Sep 2026)
 
-> **Closed 24 Oct 2026** (`docs/PLAN-per-os-php-manifests.md`, ledger #910): the per-OS documents
+> **Closed 24 Oct 2026** (`docs/archive/PLAN-per-os-php-manifests.md`, ledger #910): the per-OS documents
 > `manifest-linux.json` / `manifest-windows.json` are published from `rexenv/runtimes` and each OS
 > reads its own; the macOS `manifest.json` stays frozen. The analysis below is the record of why.
 

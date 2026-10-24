@@ -2443,3 +2443,15 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   refused on Windows (no build exists). Three fixes found by the run: the mirror's `licenses/` layout, the
   `<Directory "/">` stanza, the FrankenPHP mirror itself.
 
+
+## Reconcile of 24 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **PHP update documents per OS** (owner, 24 Oct 2026) ✓ 24 Oct 2026 — `docs/archive/PLAN-per-os-php-manifests.md`,
+  ledger #910: each OS reads its own signed document (`manifest-linux.json`, `manifest-windows.json`; macOS frozen),
+  a catalog row resolves with the OS's shape; publisher `--document` + guard (runtimes PR #49–#51); all three
+  published at serial 12 (serial 1 was refused as a replay of the macOS 11 every older install remembers) and read
+  live on the Dell and the Ubuntu VM — `Adminer 6.2.0` offered on both. Owed in SMOKE § Windows / § Linux: the first
+  PHP row INSTALLED through a per-OS document, the day php.net ships a patch above the pins.
+

@@ -1977,7 +1977,7 @@ fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
 /// `php.exe` at its root (the pool is php-cgi inside the same zip, so a `php-fpm` row has
 /// no meaning there and is never asked for). `None` when the catalog has no such row —
 /// each OS reads its own document (`updates::manifest_urls_on`), so a Windows row is only
-/// ever in the Windows catalog (docs/PLAN-per-os-php-manifests.md D1–D3).
+/// ever in the Windows catalog (docs/archive/PLAN-per-os-php-manifests.md D1–D3).
 fn catalog_php_spec(name: &str, version: &str, arch: Arch, os: &str) -> Option<BinarySpec> {
     if !crate::core::updates::nameable(name) {
         return None;
@@ -2918,7 +2918,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // A TREE on Windows: `php.exe` and `php-cgi.exe` beside `ext/*.dll`. There is
         // no `php-fpm` on Windows at all — the pool is php-cgi (plan D1).
-        // The pin first, then the verified Windows catalog (docs/PLAN-per-os-php-manifests.md):
+        // The pin first, then the verified Windows catalog (docs/archive/PLAN-per-os-php-manifests.md):
         // a signed document may ADD a php.net patch the build was pinned before, never move a pin.
         ("php", "windows", v) => php_windows_sha256(v)
             .map(|hex| BinarySpec {
@@ -3013,7 +3013,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         // static-php.dev's Linux builds — the same publisher and the same tarball shape as
         // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
         // 8.0-8.5: ours (`php_linux_tag`).
-        // The pin first, then the verified Linux catalog (docs/PLAN-per-os-php-manifests.md).
+        // The pin first, then the verified Linux catalog (docs/archive/PLAN-per-os-php-manifests.md).
         ("php", "linux", v) => php_linux_sha256("cli", v, arch)
             .map(|hex| BinarySpec {
                 url: php_linux_url("cli", v, arch),
@@ -6840,7 +6840,7 @@ mod tests {
         assert!(checked >= 5, "found {checked} installs — the scan stopped working");
     }
 
-    /// docs/PLAN-per-os-php-manifests.md T1 — **a Windows or Linux catalog row resolves on
+    /// docs/archive/PLAN-per-os-php-manifests.md T1 — **a Windows or Linux catalog row resolves on
     /// that OS, pins first, with the OS's own archive shape derived here, never read from the
     /// document.** Windows: ONE `php` row per arch (php.net's zip; the pool is php-cgi inside
     /// it) → `ZipTree { strip: 0 }` / `php.exe`, and a `php-fpm` row is meaningless there.
