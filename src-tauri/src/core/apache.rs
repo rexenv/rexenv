@@ -20,7 +20,7 @@
 //! Windows it is Apache Lounge's zip tree (`bin/httpd.exe`, `modules/`,
 //! `conf/mime.types`; the MPM is mpm_winnt, compiled in). The five places the
 //! two trees differ are [`Layout`]'s fields, keyed by OS the way `binaries.rs`
-//! keys its catalog — ONE conf text with those holes (docs/PLAN-windows-servers.md
+//! keys its catalog — ONE conf text with those holes (docs/archive/PLAN-windows-servers.md
 //! D4). Every path the server touches (pidfile, runtime dir, logs, mime map) is explicit.
 
 use crate::core::services::RewriteMode;
@@ -47,7 +47,7 @@ pub fn site_port(domain: &str) -> u16 {
 }
 
 /// Where the pieces of an httpd tree live on `os` — the per-OS VALUES the one conf text
-/// is rendered with (docs/PLAN-windows-servers.md D4). `core/` names no OS by `cfg`; it
+/// is rendered with (docs/archive/PLAN-windows-servers.md D4). `core/` names no OS by `cfg`; it
 /// takes `os` as data, as `binaries::shape_of_on` does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Layout {
@@ -403,7 +403,7 @@ mod tests {
         )
     }
 
-    /// docs/PLAN-windows-servers.md D4 — **one conf text, five per-OS holes.** The macOS
+    /// docs/archive/PLAN-windows-servers.md D4 — **one conf text, five per-OS holes.** The macOS
     /// render is the bottle's (loadable mpm_event + unixd, `lib/httpd/modules`, the
     /// `.bottle/etc` mime map); the Windows render is Apache Lounge's tree (no MPM lines —
     /// mpm_winnt is compiled in and `mod_unixd` does not exist there — `modules/`,

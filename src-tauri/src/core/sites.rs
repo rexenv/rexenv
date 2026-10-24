@@ -99,7 +99,7 @@ pub fn offered_web_servers_on(os: &str) -> Vec<WebServer> {
 fn ensure_server_available_on(server: WebServer, os: &str) -> Result<()> {
     // Nginx is the one server that ships everywhere. The others are asked of the pins
     // rather than listed here, per OS: FrankenPHP has an artifact on all three since 24 Oct
-    // 2026 (upstream's Windows zip, docs/PLAN-windows-servers.md D3); Apache has the macOS
+    // 2026 (upstream's Windows zip, docs/archive/PLAN-windows-servers.md D3); Apache has the macOS
     // bottle and the mirrored Apache Lounge build on Windows (D1) — under its own version
     // key, which is why the question goes through `httpd_version_on(os)` — and no Linux
     // build yet. A server appears the day its pin lands, without this function being edited.
@@ -3272,7 +3272,7 @@ mod tests {
             }
             assert!(offered_web_servers_on(os).contains(&WebServer::Nginx), "nginx ships on {os}");
         }
-        // Per OS, what the pins say (docs/PLAN-windows-servers.md): Windows offers Apache and
+        // Per OS, what the pins say (docs/archive/PLAN-windows-servers.md): Windows offers Apache and
         // FrankenPHP since their pins landed (24 Oct 2026) and never OpenLiteSpeed; Linux has
         // no Apache pin yet. Offered-then-refused is what this guards against.
         let windows = offered_web_servers_on("windows");
@@ -3300,7 +3300,7 @@ mod tests {
 
     /// Ledger #642 — **the web-server gate reads the pins, per OS.** Nginx ships everywhere;
     /// FrankenPHP on all three; Apache on macOS (the bottle) and Windows (Apache Lounge's
-    /// build, mirrored — docs/PLAN-windows-servers.md D1, under its own version key) and not
+    /// build, mirrored — docs/archive/PLAN-windows-servers.md D1, under its own version key) and not
     /// yet on Linux.
     ///
     /// Asked for BOTH os values from either host. The bar only `cargo check`s for Windows, so

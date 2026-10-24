@@ -41,7 +41,7 @@ pub(crate) fn nginx_quit_event(pid: u32) -> String {
 /// gate): the console instance is a parent plus one child, both `httpd.exe`; the parent
 /// publishes `ap<pid>_shutdown`, and setting it ended BOTH. A second `httpd.exe -k
 /// shutdown` looks for the "Apache2.4" SERVICE instead, so rexenv signals the event
-/// itself (docs/PLAN-windows-servers.md D5).
+/// itself (docs/archive/PLAN-windows-servers.md D5).
 pub(crate) fn httpd_shutdown_event(pid: u32) -> String {
     format!("ap{pid}_shutdown")
 }

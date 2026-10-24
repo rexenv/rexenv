@@ -336,7 +336,7 @@ pub fn standard_pins() -> PinSet {
 /// (`HTTPD_WINDOWS_VERSION`, Apache Lounge's build), every other OS the tier's
 /// bottle pin. The one place the two keys meet — the gate, the resolver, the
 /// download plan and the adoption all ask here, never `pins().httpd` directly
-/// (docs/PLAN-windows-servers.md T2).
+/// (docs/archive/PLAN-windows-servers.md T2).
 pub fn httpd_version_on(os: &str) -> &'static str {
     if os == "windows" {
         HTTPD_WINDOWS_VERSION
@@ -939,7 +939,7 @@ pub(crate) const FRANKENPHP_MAC_X86_64_TAG: &str = "frankenphp-1.13.3-1";
 // Windows: upstream's own `frankenphp-windows-x86_64.zip` — `frankenphp.exe` beside the
 // official `php8ts.dll` and its `ext/*.dll`, a tree, not the single static binary the other
 // OSes get; its embedded PHP is 8.5.12 (`snapshot.txt`), the same `FRANKENPHP_EMBEDDED_PHP`
-// as everywhere (docs/PLAN-windows-servers.md D3). **MIRRORED on `rexenv/runtimes`
+// as everywhere (docs/archive/PLAN-windows-servers.md D3). **MIRRORED on `rexenv/runtimes`
 // (`frankenphp-windows-1`), not pinned at upstream's URL:** upstream REPLACED the asset in
 // place on 24 Oct 2026 (sha256 c744d35c… at 12:44 the day before, eb6cbfc5… at 08:16Z — a
 // rebuilt frankenphp.exe under the same name), and the first FrankenPHP site on the Dell
@@ -950,7 +950,7 @@ const FRANKENPHP_1_13_3_WIN_AMD64_SHA256: &str = "eb6cbfc5a86b04d294d84f39d55fb6
 pub(crate) const FRANKENPHP_WINDOWS_TAG: &str = "frankenphp-windows-1";
 const FRANKENPHP_1_13_3_LICENSES_WINDOWS_SHA256: &str = "c28e00600afe222125b94fb394a1763136ef29f31e3021bda41efd7ea021625c";
 
-// ── Apache httpd on Windows (docs/PLAN-windows-servers.md D1) ──────────────────
+// ── Apache httpd on Windows (docs/archive/PLAN-windows-servers.md D1) ──────────────────
 // The ASF publishes no Windows build; Apache Lounge's VS18 build of 2.4.69
 // (unmodified ASF source, Apache-2.0) is MIRRORED on `rexenv/runtimes` because
 // Apache Lounge keeps only its current build — a pin at their URL rots on their
@@ -7702,7 +7702,7 @@ mod tests {
             }
             assert!(manifest(name, version, "windows", Arch::X86_64).is_some(), "{name} {version}");
         }
-        // The per-site servers (docs/PLAN-windows-servers.md): FrankenPHP from upstream's
+        // The per-site servers (docs/archive/PLAN-windows-servers.md): FrankenPHP from upstream's
         // Windows zip, Apache from the mirrored Apache Lounge build under ITS OWN key —
         // `pins().httpd` (the bottle) still resolves to nothing on Windows, and the gate
         // asks `httpd_version_on`, never the bottle pin.

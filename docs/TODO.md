@@ -6,6 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 24 Oct 2026, after the Windows servers plan** (HEAD `72c73799`, v0.9.1 + 12 commits): 1 ticked block
+moved by the script (Now — Apache and FrankenPHP on Windows, #909); `PLAN-windows-servers.md` archived with 17
+citations repointed. Shapes 1–4: 0. Open after the pass: 33 rows (the churn-breaker row from 0.9.1's §M is the new one).
+
 **Reconciled 23 Oct 2026, before the 0.9.1 cut** (HEAD `76521238`, v0.9.0 + 20 commits): 1 ticked block moved by
 the script (Now — the Local → rexenv database-import fix, #900). Shape 3 (narrative in an open row): 1 rewritten — the
 unified-updates row now opens with its one open reason (the three SMOKE rows, which need the first manifest published
@@ -129,16 +133,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the dev Mac, Windows and Linux compiled): one poller behind one setting, one inventory (`core/update_hub.rs`, app
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
-
-- [x] **Windows: per-site servers — Apache and FrankenPHP** (owner, 24 Oct 2026: "Windows has only nginx; add
-  the other servers, plan first, then one task at a time") ✓ 24 Oct 2026 — `docs/PLAN-windows-servers.md` T1–T7,
-  ledger #909 ✅: Apache Lounge's httpd 2.4.69 and upstream's FrankenPHP zip, both MIRRORED on `rexenv/runtimes`
-  (`httpd-windows-2`, `frankenphp-windows-1` — each publisher replaces or drops its asset), `apache::Layout` (one
-  conf, the per-OS holes incl. mod_proxy_fcgi's drive-letter fix), the `ap<pid>_shutdown` stop event, the
-  per-OS mail catch for FrankenPHP; run on the Dell (Win10 22H2): create, `.htaccess`, stop/start, CLI and GUI
-  switch, adopt on relaunch, FrankenPHP with `mail()` into Mailpit, the New Site picker. OpenLiteSpeed stays
-  refused on Windows (no build exists). Three fixes found by the run: the mirror's `licenses/` layout, the
-  `<Directory "/">` stanza, the FrankenPHP mirror itself.
 
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned

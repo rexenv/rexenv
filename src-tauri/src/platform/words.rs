@@ -126,7 +126,7 @@ pub struct PlatformWords {
     /// OpenLiteSpeed build exists for Windows at all, so "not available yet" would be a promise.
     pub openlitespeed_unavailable: &'static str,
     /// Why Apache cannot be chosen on this OS. macOS (the Homebrew bottle bundle) and Windows
-    /// (Apache Lounge's build, mirrored — docs/PLAN-windows-servers.md) ship it and never show
+    /// (Apache Lounge's build, mirrored — docs/archive/PLAN-windows-servers.md) ship it and never show
     /// the sentence; Linux has no pin yet (Homebrew's httpd bottles are x86_64-only and
     /// unrelinked, PORTS D-L8), so there it is "yet" — a build is possible, nobody has made one.
     pub apache_unavailable: &'static str,

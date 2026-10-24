@@ -2428,3 +2428,18 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   view gained the `overridable` flag it had promised). Windows and Linux offer no Local scan (#641),
   the engine/override legs compiled only there.
 
+
+## Reconcile of 24 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Windows: per-site servers — Apache and FrankenPHP** (owner, 24 Oct 2026: "Windows has only nginx; add
+  the other servers, plan first, then one task at a time") ✓ 24 Oct 2026 — `docs/archive/PLAN-windows-servers.md` T1–T7,
+  ledger #909 ✅: Apache Lounge's httpd 2.4.69 and upstream's FrankenPHP zip, both MIRRORED on `rexenv/runtimes`
+  (`httpd-windows-2`, `frankenphp-windows-1` — each publisher replaces or drops its asset), `apache::Layout` (one
+  conf, the per-OS holes incl. mod_proxy_fcgi's drive-letter fix), the `ap<pid>_shutdown` stop event, the
+  per-OS mail catch for FrankenPHP; run on the Dell (Win10 22H2): create, `.htaccess`, stop/start, CLI and GUI
+  switch, adopt on relaunch, FrankenPHP with `mail()` into Mailpit, the New Site picker. OpenLiteSpeed stays
+  refused on Windows (no build exists). Three fixes found by the run: the mirror's `licenses/` layout, the
+  `<Directory "/">` stanza, the FrankenPHP mirror itself.
+

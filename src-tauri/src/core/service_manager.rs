@@ -1140,7 +1140,7 @@ impl ServiceManager {
             return Ok(p.clone());
         }
         // Shape-aware: one static binary on macOS/Linux, `frankenphp.exe` inside upstream's
-        // zip tree on Windows (docs/PLAN-windows-servers.md D3).
+        // zip tree on Windows (docs/archive/PLAN-windows-servers.md D3).
         let p = binaries::resolve_program(platform, "frankenphp", binaries::pins().frankenphp).await?;
         self.frankenphp_bin = Some(p.clone());
         Ok(p)
@@ -1558,7 +1558,7 @@ impl ServiceManager {
 
     /// Resolve the Apache tree once (mirrors `ensure_frankenphp_bin`): the merged bottle
     /// bundle on macOS, Apache Lounge's zip tree on Windows — the layout's shape decides
-    /// (`apache::Layout`, docs/PLAN-windows-servers.md D4).
+    /// (`apache::Layout`, docs/archive/PLAN-windows-servers.md D4).
     async fn ensure_httpd_dir(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
         if let Some(p) = &self.httpd_dir {
             return Ok(p.clone());

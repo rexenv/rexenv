@@ -201,7 +201,7 @@ one and the app would not load it, which is how the rule proved itself.
 Not built by rexenv — mirrored. The Apache Software Foundation publishes no Windows binary
 of httpd; Apache Lounge builds one from the unmodified ASF source and keeps only its current
 build, so a rexenv pinning their URL would fail its download the day 2.4.70 appears. Since
-24 Oct 2026 rexenv re-hosts the exact zip (`docs/PLAN-windows-servers.md` D1).
+24 Oct 2026 rexenv re-hosts the exact zip (`docs/archive/PLAN-windows-servers.md` D1).
 
 | | |
 |---|---|
@@ -224,7 +224,7 @@ Not built by rexenv — mirrored. php/frankenphp publishes `frankenphp-windows-x
 release (frankenphp.exe plus the official PHP 8.5.12 thread-safe DLLs), and REPLACED that asset
 in place on 24 Oct 2026, hours after rexenv had pinned its digest; a user's first FrankenPHP
 site then refused with "checksum mismatch". Since that day rexenv re-hosts the exact zip
-(`docs/PLAN-windows-servers.md` D3).
+(`docs/archive/PLAN-windows-servers.md` D3).
 
 | | |
 |---|---|

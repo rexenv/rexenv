@@ -92,7 +92,7 @@ three PostgreSQL tarballs on 13 Sep (on the 12th they were pinned from the publi
 publisher's own digest confirmed it. Not in Windows v1, and
 resolving to nothing there (plan D4): `php-fpm` (the pool is php-cgi, inside the PHP
 zip — D1), Redis, MariaDB, Xdebug. **Since 24 Oct 2026 Windows also has the two per-site
-servers** (`docs/PLAN-windows-servers.md`): FrankenPHP from upstream, and Apache httpd **2.4.69**
+servers** (`docs/archive/PLAN-windows-servers.md`): FrankenPHP from upstream, and Apache httpd **2.4.69**
 — a different version from the macOS bottle pin (2.4.68), under its own catalog key
 (`binaries::httpd_version_on("windows")`), because Homebrew publishes no 2.4.69 Intel bottle
 and Apache Lounge publishes no 2.4.68 — mirrored on `rexenv/runtimes` since Apache Lounge keeps

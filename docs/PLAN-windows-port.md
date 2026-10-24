@@ -540,7 +540,7 @@ counted was the first case's, still open). **Ruled (owner, 14 Sep 2026): on Wind
 tunnels unaffected (cloudflared dials localhost); macOS keeps binding all interfaces.
 
 **D4 — What ships in Windows v1.** **RULED 13 Sep 2026: accepted as written.** *Amended 24 Oct
-2026 (`docs/PLAN-windows-servers.md`): Apache (Apache Lounge, mirrored — the trust decision taken
+2026 (`docs/archive/PLAN-windows-servers.md`): Apache (Apache Lounge, mirrored — the trust decision taken
 there, reversible by un-pinning) and FrankenPHP (upstream's zip) now ship on Windows; Redis,
 MariaDB and Xdebug stay refused.*
 Official, checksum-lockable artifacts exist for most
@@ -860,14 +860,14 @@ looked at yet (W2 measures and hashes every row before it is pinned).
 | Caddy 2.11.4 | `caddy_2.11.4_windows_amd64.zip` (+ `.sig`) | ✓ |
 | Mailpit 1.30.3 | `mailpit-windows-amd64.zip`, `-arm64.zip` | ✓ |
 | cloudflared 2026.6.1 | `cloudflared-windows-amd64.exe` / `.msi` | ✓ |
-| FrankenPHP 1.13.3 | `frankenphp-windows-x86_64.zip` (upstream's; `frankenphp.exe` + the official `php8ts.dll`, PHP 8.5.12) | ✓ pinned 24 Oct 2026 (`docs/PLAN-windows-servers.md` D3; its run on Windows is that plan's T7) |
+| FrankenPHP 1.13.3 | `frankenphp-windows-x86_64.zip` (upstream's; `frankenphp.exe` + the official `php8ts.dll`, PHP 8.5.12) | ✓ pinned 24 Oct 2026 (`docs/archive/PLAN-windows-servers.md` D3; its run on Windows is that plan's T7) |
 | PostgreSQL 18.6.0 | theseus-rs `x86_64-pc-windows-msvc` `.zip`/`.tar.gz` + `.sha256` | ✓ (all three pinned, and hashed by us — §5 W2) |
 | PHP | php.net `php-X.Y.Z-nts-Win32-vs16/vs17-x64.zip` + `sha256sum.txt`; current dir lists 7.4.33, 8.0.30, 8.1.34, 8.2.33, 8.3.33, 8.4.25, 8.5.10; **no arm64** | ✓ — note 8.2/8.3/8.4/8.5 patches differ from the macOS pins, so `php::pdo_pgsql_supported`'s per-PATCH answer must be per-OS too (W2 then pinned the Windows zips at the macOS patches from `archives/`; the per-OS sweep is §3a Q3) |
 | nginx | nginx.org Windows zip (upstream calls it beta: `select()`, limited connections — fine for local dev) | unchecked |
 | MySQL 8.4 / 8.0 | Oracle Windows `noinstall` zip | unchecked |
 | Xdebug | xdebug.org DLLs per PHP minor / NTS / compiler | unchecked |
 | Redis | no official build | D4 |
-| Apache httpd 2.4.69 | Apache Lounge `httpd-2.4.69-261002-Win64-VS18.zip`, MIRRORED on `rexenv/runtimes` `httpd-windows-2` (Apache Lounge keeps only its current build) | ✓ pinned 24 Oct 2026 (`docs/PLAN-windows-servers.md` D1); gate on `windows-latest`: `-v`, `-t` with rexenv's module set, serves, parent+child end on `ap<pid>_shutdown` |
+| Apache httpd 2.4.69 | Apache Lounge `httpd-2.4.69-261002-Win64-VS18.zip`, MIRRORED on `rexenv/runtimes` `httpd-windows-2` (Apache Lounge keeps only its current build) | ✓ pinned 24 Oct 2026 (`docs/archive/PLAN-windows-servers.md` D1); gate on `windows-latest`: `-v`, `-t` with rexenv's module set, serves, parent+child end on `ap<pid>_shutdown` |
 | WP-CLI, Composer, Adminer | `.phar` / `.php`, OS-agnostic | — |
 
 ## 5. Tasks

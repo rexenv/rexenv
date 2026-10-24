@@ -148,7 +148,7 @@ pub fn generate_config(
 }
 
 /// How a FrankenPHP site's `mail()` reaches the catch-all — the per-OS half of #514
-/// (docs/PLAN-windows-servers.md D3). PHP on macOS/Linux has no mail sender of its own:
+/// (docs/archive/PLAN-windows-servers.md D3). PHP on macOS/Linux has no mail sender of its own:
 /// `sendmail_path` names the Mailpit shim. PHP on Windows has a built-in SMTP sender and
 /// no `sh` to run a shim with, so the ini keys are `SMTP` + `smtp_port` — exactly what the
 /// php-cgi groups set (`php_cgi::render_ini`). One rule, keyed by `os` as data.
@@ -360,7 +360,7 @@ mod tests {
         assert_ne!(cfg, off);
     }
 
-    /// docs/PLAN-windows-servers.md D3 — **on Windows the catch is the SMTP ini keys, never a
+    /// docs/archive/PLAN-windows-servers.md D3 — **on Windows the catch is the SMTP ini keys, never a
     /// sendmail shim** (PHP there has a built-in SMTP sender and no `sh`), the same keys the
     /// php-cgi groups set; and the Caddyfile's paths are written with forward slashes, since
     /// the lexer reads a backslash inside quotes as an escape.

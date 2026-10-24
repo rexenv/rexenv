@@ -3783,7 +3783,7 @@ them is Windows' own dialog:
       beside it. (Run 2 on 19 Sep showed Tauri's stock "rexenv is running! Click OK to kill it" —
       the agent IS `rexenv.exe` — which is why the sentence was replaced.)
 
-### Apache and FrankenPHP overrides — on Windows since 24 Oct 2026 (`docs/PLAN-windows-servers.md`)
+### Apache and FrankenPHP overrides — on Windows since 24 Oct 2026 (`docs/archive/PLAN-windows-servers.md`)
 The main body's Apache and FrankenPHP rows run here too; what differs on this OS:
 - [◐] **Create a Blank PHP site on Apache** → 200 through Caddy with `Server: Apache/2.4.69 (Win64)`
   and `X-Powered-By: PHP/<the site's minor>` from the php-cgi group; the first create downloads
