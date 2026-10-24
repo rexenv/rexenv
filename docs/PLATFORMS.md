@@ -204,6 +204,15 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   cross builds are for examples.
 - **The resolver answers on :53** (NRPT has no port). A UI line saying 15353 on Windows is
   macOS's number leaking.
+- **`windows-check` compiles the tests; only the release lane RUNS them, natively.** A test
+  that asks the HOST (`shape_of`, `cfg!`, `std::env::consts::OS`, a catalog's `artifact()`)
+  and asserts macOS's answer is green on every Mac and red on `windows-latest` — 0.9.2's first
+  tag died there on three (24 Oct 2026): `httpd` is a `Bundle` on macOS and a `Dir` tree on
+  Windows; FrankenPHP's mail catch is `php_ini sendmail_path` on macOS and `php_ini SMTP` on
+  Windows; and the macOS php arm of `manifest` read the HOST's update catalog, so on a
+  Windows host it resolved a php.net zip as a `TarGz`. Name the OS in the call
+  (`shape_of_on(n, "macos")`, `artifact_on(…, "macos")`) or branch on the platform — and run
+  `cargo test --lib` on the Dell before re-tagging (`docs/TESTING.md` §"Proving a Windows claim").
 - **The DNS agent IS `rexenv.exe`, and NSIS skips a locked file in silent mode by default**
   (`AllowSkipFiles on`): `setup.exe /S` returned 0 with the old binary in place, and the
   uninstaller could not delete an exe the agent's task kept re-running. The installer hooks

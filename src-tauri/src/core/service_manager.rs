@@ -4245,7 +4245,10 @@ mod tests {
         // which is what makes a flip of the switch a respawn on reconcile.
         let platform = override_test_platform("override-catch", None);
         let on = mgr.desired_override_config(&platform, "fp.test", OverrideKind::Frankenphp, std::path::Path::new("/d"), 8200, 9783, services::RewriteMode::Single, &env).unwrap();
-        assert!(on.contains("php_ini sendmail_path"), "{on}");
+        // The platform's ini key, not macOS's: Windows PHP has no `sh` for the shim and
+        // catches through `SMTP`/`smtp_port` (`frankenphp::MailCatchIni::for_os`).
+        let catch_key = if cfg!(target_os = "windows") { "php_ini SMTP 127.0.0.1" } else { "php_ini sendmail_path" };
+        assert!(on.contains(catch_key), "{on}");
         mgr.pools.set_mail_catch(None);
         let off = mgr.desired_override_config(&platform, "fp.test", OverrideKind::Frankenphp, std::path::Path::new("/d"), 8200, 9783, services::RewriteMode::Single, &mgr.override_env("site-1")).unwrap();
         assert!(!off.contains("php_ini") && !off.contains("MAIL_URL"), "{off}");

@@ -523,6 +523,14 @@ Changelog link points at the website and never moved.
   source differed by a comment; the binaries had been gated). A tag-push run never had the
   problem: `github.ref` is the tag.
 
+- **A lane that fails BEFORE the draft is the one recoverable failure, and the tag name
+  survives it.** No release object was created, so the name is not burned (#368 burns a name
+  only once an immutable release on it is deleted). Fix on master, run `verify.sh`, then run
+  `cargo test --lib` NATIVELY on the failing OS's machine (the Dell for Windows — `windows-check`
+  only compiles the tests), then move the tag onto the fix commit with the same notes:
+  `git tag -fa vX.Y.Z <fix> -F notes && git push -f origin vX.Y.Z`. The push re-runs the whole
+  workflow. First used for 0.9.2 (24 Oct 2026): three Windows-native test failures after a
+  green macOS `verify-full`.
 - **The release is born a draft.** §A is publish-blocking and human-only; publishing
   IS the sign-off. Never flip the workflow to publish directly.
 - **The draft's body is only ever the tag's body.** It turns public the moment the draft

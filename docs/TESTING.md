@@ -1034,7 +1034,15 @@ a filter. The worktree tests ran that way. The first run caught two tests that h
 Mac's shape: a `/repo/…` path that is not absolute without a drive, and a `contains` on a path
 whose separators differ. A tauri **mock-app example** needs the same manifest, or it dies at load
 with `0xC0000139` — `scripts/probes/windows-example.sh` embeds it by default since 10 Oct 2026
-(`live_sync_pull_into_check` was the one that died first).
+(`live_sync_pull_into_check` was the one that died first). **A test exe BUILT on the Dell has the
+same hole** (24 Oct 2026, 0.9.2's re-tag): `cargo test --lib` there dies `0xC0000139` before a
+single test — `rfd`, `muda`, `tray-icon` and `tauri-runtime-wry` import `TaskDialogIndirect`,
+which only comctl32 v6 exports, and rustc embeds no manifest in a test binary. An EXTERNAL
+`<exe>.manifest` beside it works — but Windows caches "this exe has no manifest" by path on the
+first failed load, so write the manifest and run a COPY under a new name (`rexenv_lib-run.exe`),
+never the original; a comctl32.dll copied beside the exe is ignored (KnownDLL). And a tree synced
+from a Mac may carry AppleDouble `._*.rs` files: ten source-scanning TEXT tests panic on them
+(`read_to_string` of a binary file) — `Get-ChildItem -Force -Filter "._*" | Remove-Item` first.
 
 **The live-sync REAL-HOST run** (`live_sync_real_host_check`, system tier, L14 — 10 Oct 2026).
 Against `https://live-sync.rex.bd`, the project's own live WordPress, over real HTTPS. The key

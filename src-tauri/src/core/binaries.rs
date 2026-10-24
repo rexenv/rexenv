@@ -1961,7 +1961,11 @@ fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
     }
     let arch_s = crate::core::updates::catalog_arch(arch);
     let guard = CATALOG.read().ok()?;
-    let a = guard.as_ref()?.artifact(name, version, arch_s)?;
+    // The macOS DOCUMENT, by name — not the host's. `artifact()` answers for the OS the
+    // process runs on, and this is the macOS arm of `manifest`: on a Windows host it read
+    // the Windows catalog and handed a php.net zip to a `TarGz`/`php` spec (the 0.9.2
+    // Windows lane, 24 Oct 2026 — `a_windows_or_linux_catalog_row_resolves_…` caught it).
+    let a = guard.as_ref()?.artifact_on(name, version, arch_s, "macos")?;
     Some(BinarySpec {
         url: a.url.clone(),
         checksum: Checksum::Sha256(a.sha256.clone()),
@@ -5485,9 +5489,14 @@ mod tests {
                 Archive::TarGzTree
             );
         }
+        // Named per OS, like the loop below: `httpd` is a bottle bundle on macOS and a
+        // zip tree on Windows, and the host's answer is not the claim (0.9.2's Windows lane).
         for n in ["redis", "mariadb", "httpd", "xdebug-8.4"] {
-            assert_eq!(shape_of(n), Shape::Bundle);
+            assert_eq!(shape_of_on(n, "macos"), Shape::Bundle);
             assert!(manifest(n, "1", "macos", Arch::Arm64).is_none(), "{n} is not a plain spec");
+        }
+        for n in ["httpd", "frankenphp", "php", "nginx"] {
+            assert_eq!(shape_of_on(n, "windows"), Shape::Dir, "{n} ships as a tree on Windows");
         }
         // Everything else is a single executable published at `dir/<name>` — on macOS,
         // which is the os every `manifest` call here names. `shape_of` read the HOST, so
@@ -6895,7 +6904,9 @@ mod tests {
         let added = format!("{}.9999", crate::core::php::minor_of(pinned));
 
         let _catalog = catalog_test_lock();
-        install_catalog(crate::core::updates::catalog_for_tests(&[
+        // The macOS DOCUMENT, named: this test asks the macOS arm, and a host-marked fixture is
+        // the Windows document on the Dell (where this went red once the arm read its own OS).
+        install_catalog(crate::core::updates::catalog_for_tests_on("macos", &[
             ("php", pinned, "arm64", "https://dl.static-php.dev/evil", &"b".repeat(64)),
             ("php", &added, "arm64", "https://dl.static-php.dev/new", &"c".repeat(64)),
         ]));
