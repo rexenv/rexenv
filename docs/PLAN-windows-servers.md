@@ -1,6 +1,6 @@
 # PLAN — per-site web servers on Windows: Apache and FrankenPHP (OpenLiteSpeed stays refused)
 
-Status: **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apache create 200, `.htaccess` live, stop/start, switch, adopt ✓ — three fixes found on the way (the mirror's licences layout, mod_proxy_fcgi's drive-letter trap, the `<Directory "/">` stanza); FrankenPHP's row waits on the mirror (`frankenphp-windows-1`, upstream replaced its zip in place). Owed: the FrankenPHP row, the GUI presses/screenshots, T6's remaining sweep.**
+Status: **BUILT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apache create 200, `.htaccess` live, stop/start, switch nginx↔apache, adopt on relaunch, FrankenPHP site 200 with PHP 8.5.12 and `mail()` in Mailpit ✓. Three fixes the run forced: the mirror's licences layout, mod_proxy_fcgi's drive-letter trap (`Layout::fcgi_url_suffix`/`fcgi_fixup`), the `<Directory "/">` stanza; FrankenPHP's zip mirrored after upstream replaced it in place. OWED: the GUI presses/screenshots (New Site picker, Site Settings switch) on a release build, and the Win11 ARM VM run beyond create (the app's main thread stalls 5–15 s there under x64 emulation).**
 
 ## 1. What is true today (measured 24 Oct 2026)
 

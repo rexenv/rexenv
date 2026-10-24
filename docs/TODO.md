@@ -139,8 +139,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   T1–T7; the Windows proof is a build run on the Win11 VM. **T1–T3 landed 24 Oct 2026** (ledger #909: the mirror
   gated on `windows-latest`, the two catalog arms, `apache::Layout`, the stop event); **T4+T5 the same day**
   (`frankenphp::MailCatchIni`: SMTP ini keys on Windows, the Caddyfile and httpd.conf paths with forward
-  slashes; `apache_unavailable` per OS, the SiteDetail switch filtered by `offeredWebServers`). **Open: T7** — the
-  run on the Win11 VM (SMOKE § Windows "Apache and FrankenPHP overrides").
+  slashes; `apache_unavailable` per OS, the SiteDetail switch filtered by `offeredWebServers`). **T7 RUN on the
+  Dell 24 Oct 2026** (SMOKE § Windows "Apache and FrankenPHP overrides": create, `.htaccess`, stop/start, switch,
+  adopt, FrankenPHP + `mail()` ✓; three fixes on the way — `753c5beb`). **Open:** the GUI presses on a release
+  build (New Site picker, Site Settings switch — screenshots), and whether the Win11 ARM VM's 5–15 s main-thread
+  stalls with seven php-cgi groups up are emulation alone (the Dell never stalled).
 
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned

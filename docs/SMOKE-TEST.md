@@ -3811,12 +3811,18 @@ The main body's Apache and FrankenPHP rows run here too; what differs on this OS
 - [x] **Quit and relaunch rexenv with an Apache site running** → adopted, not restarted. ✓ Dell:
   the app killed, `apw.rex` kept answering 200 (services outlive the app), relaunch 3 s →
   "adopted 8 running service(s)", `rex status` `Apache apw.rex running`, the same httpd pids.
-- [ ] **FrankenPHP site**: `phpinfo()` says PHP 8.5.12 (its own, not the pool's); `mail()` lands
-  in Mailpit (the SMTP ini keys, as the php-cgi groups use — no sendmail shim on Windows). **Run
-  24 Oct 2026 on the Dell and FOUND the pin broken before the site existed:** upstream replaced
-  `frankenphp-windows-x86_64.zip` in place that morning, so the create refused with "checksum
-  mismatch … the upstream file changed" (the guard working as ruled) — the zip is now MIRRORED on
-  `rexenv/runtimes` (`frankenphp-windows-1`); the row runs again on the next build.
+- [x] **FrankenPHP site**: PHP 8.5.12 (its own, not the pool's); `mail()` lands in Mailpit (the
+  SMTP ini keys, as the php-cgi groups use — no sendmail shim on Windows). ✓ **24 Oct 2026, the
+  Dell**, build `753c5beb`: `rex site create fpw.rex --type php --server frankenphp` → 87 s (the
+  60 MB zip from the mirror, with its `licenses/`) → 200, `Server: FrankenPHP Caddy`,
+  `X-Powered-By: PHP/8.5.12`, `ini_get('SMTP')` = `127.0.0.1`, `smtp_port` 11025, `sendmail_path`
+  empty; `mail(…, 'From: smoke@fpw.rex')` → Mailpit 19 → 20 messages, the subject found. **Note
+  for every Windows pool and FrankenPHP alike:** PHP's Windows SMTP sender needs a `From:` (or
+  `sendmail_from`) — a bare `mail()` with neither returns false there, on php-cgi too (measured on
+  `apw.rex` the same minute); WordPress and Laravel always send one. **First run FOUND the pin
+  broken before the site existed:** upstream had replaced `frankenphp-windows-x86_64.zip` in place
+  that morning and the create refused with "checksum mismatch … the upstream file changed" (the
+  guard working as ruled) — the zip is MIRRORED on `rexenv/runtimes` (`frankenphp-windows-1`) since.
 - [x] `rex site create <d> --server apache` succeeds; `rex site list` shows the server column
   (`apache`, `frankenphp`). ✓ Dell + VM. (`--server frankenphp` creates the site and then waits on
   the download — the row above.)

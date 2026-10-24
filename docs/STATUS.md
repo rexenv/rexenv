@@ -8,54 +8,54 @@ App version **0.9.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 - `TODO.md:124` One update channel — open for the three SMOKE rows live per OS
 - `TODO.md:133` Windows: per-site servers — Apache and FrankenPHP
-- `TODO.md:145` Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM
-- `TODO.md:156` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
-- `TODO.md:173` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:223` PostgreSQL self-build for macOS 13/14
-- `TODO.md:229` Windows: two per-OS answers still read off macOS builds
-- `TODO.md:234` Windows: PHP's own curl has no CA bundle
-- `TODO.md:237` winget: PR 437674 waits for a moderator
-- `TODO.md:240` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
-- `TODO.md:243` Linux: the tunnel guard's normal-stop leg
-- `TODO.md:246` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:273` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:284` Radicle-hosted repos are unverified
-- `TODO.md:286` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:289` Windows `setup.exe /S` over a running app + agent sometimes exits 2
-- `TODO.md:299` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
+- `TODO.md:148` Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM
+- `TODO.md:159` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
+- `TODO.md:176` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:226` PostgreSQL self-build for macOS 13/14
+- `TODO.md:232` Windows: two per-OS answers still read off macOS builds
+- `TODO.md:237` Windows: PHP's own curl has no CA bundle
+- `TODO.md:240` winget: PR 437674 waits for a moderator
+- `TODO.md:243` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
+- `TODO.md:246` Linux: the tunnel guard's normal-stop leg
+- `TODO.md:249` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:276` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:287` Radicle-hosted repos are unverified
+- `TODO.md:289` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:292` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:302` macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:319` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:322` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:383` The in-app update's remaining human rows (macOS)
-- `TODO.md:393` Release 5.4 — clean-Mac smoke test
-- `TODO.md:399` Tunnel probe session
-- `TODO.md:403` Intel spot-run
-- `TODO.md:408` In-app verifies owed
-- `TODO.md:424` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:436` The live pool swap is still L3
-- `TODO.md:440` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:448` Install WordPress into an empty LINKED folder
-- `TODO.md:455` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:386` The in-app update's remaining human rows (macOS)
+- `TODO.md:396` Release 5.4 — clean-Mac smoke test
+- `TODO.md:402` Tunnel probe session
+- `TODO.md:406` Intel spot-run
+- `TODO.md:411` In-app verifies owed
+- `TODO.md:427` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:439` The live pool swap is still L3
+- `TODO.md:443` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:451` Install WordPress into an empty LINKED folder
+- `TODO.md:458` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:462` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:501` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:512` Xdebug on PHP 8.0
-- `TODO.md:517` SMAppService privileged helper
-- `TODO.md:519` Developer ID signing + notarization
+- `TODO.md:465` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:504` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:515` Xdebug on PHP 8.0
+- `TODO.md:520` SMAppService privileged helper
+- `TODO.md:522` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 1
 
-- `TODO.md:524` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:527` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 754 · ◐ 133 · 🔨 5 · 🚫 17** of 909 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 755 · ◐ 132 · 🔨 5 · 🚫 17** of 909 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -65,7 +65,7 @@ App version **0.9.1** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 | `docs/PLAN-macos-13-floor.md` | IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade; the open tail is the row in `docs/TO… |
 | `docs/PLAN-unified-updates.md` | **BUILT — T0–T7 landed 23 Oct 2026 (ledger #901–#907), every leg L0 + WebKit on the dev Mac, Windows and Linux compil… |
 | `docs/PLAN-windows-port.md` | SHIPPED — Windows builds and ships with every release since 0.8.8 (CI, `docs/RELEASING.md`); the per-OS rows still op… |
-| `docs/PLAN-windows-servers.md` | **IN FLIGHT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apach… |
+| `docs/PLAN-windows-servers.md` | **BUILT — T1–T5 landed 24 Oct 2026 (ledger #909); T7 RUN on the Dell (Win10 22H2, native x64) the same day: Apache cr… |
 | `docs/PLAN-wp-live-sync.md` | BUILT 10 Oct 2026, owner's last rows open — pull, push, rollback, New site → From a |
 
 ## Counts the docs must agree with (`scripts/doc-counts.sh`)
