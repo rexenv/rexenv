@@ -103,6 +103,63 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.9.2 — DRAFTED 24 Oct 2026 (the re-tag) — §A0, §A, the deb, the setup.exe (Dell), Defender, all green; Publish + descriptors + apt are the owner's
+
+**Run 40095045003, source `cab45c65` (tag `v0.9.2`, moved once), every lane green, 16 assets, the body the
+tag's verbatim.** dmg `a43a1863…`, `.app.tar.gz` `765aee1b…`, arm64 deb `dcdbddee…`, amd64 deb `3543e60c…`,
+aarch64 AppImage `2d24c894…`, amd64 AppImage `3a23bddb…`, setup.exe `1c929dd9…`, zip `c5c78808…`; every asset
+re-downloaded until `shasum -c` against its attached `.sha256` passed (the first `gh release download` left all
+eight TRUNCATED by connection resets — 5–9 MB of 11–93 MB — and the `.sha256` check is what caught it; never trust
+a download that did not hash), and re-checked on each machine after the copy.
+**The cut itself:** `verify-full` green first time; the FIRST tag (`e40ec9ca`) died on `windows-latest` with three
+NATIVE test failures no Mac gate sees (`windows-check` compiles the tests, the release lane runs them): `httpd`'s
+shape asserted as macOS's `Bundle`, FrankenPHP's mail catch asserted as `php_ini sendmail_path`, and the macOS php
+arm of `manifest` reading the HOST's update catalog — a real leak, not a test (`cab45c65`; `docs/PLATFORMS.md` §7).
+Reproduced and fixed on the Dell FIRST (1612 passed natively, after `0xC0000139` from the missing comctl32 v6
+manifest and ten `._*.rs` AppleDouble panics — `docs/TESTING.md` §"Proving a Windows claim"), then the tag moved
+onto the fix with the same notes (`docs/RELEASING.md`, "A lane that fails BEFORE the draft").
+**Defender (RELEASING step 3) ✅ on the Dell (Win10 22H2), signatures `1.461.118.0` → `1.461.183.0` first:**
+`MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update
+key ×2 in EACH slice; `minos 13.0` both; codesign valid + satisfies its Designated Requirement; Info.plist `0.9.2`.
+**§A0-b** on the archive: one top-level `rexenv.app/`, zero `._` members, codesign valid, `0.9.2`, universal.
+**§A ✅ on the 15.8 VM (`192.168.64.6`), from the PUBLISHED 0.9.1, stack started first (7 sites, `smoke1`,
+`php74`, `sm763`, `l14vm` 200 with `PHP/8.3.36` / `PHP/7.4.33`):** app quit (sites still 200); the dmg's app over
+`/Applications`, synthetic quarantine → the Gatekeeper sheet ("Done" / "Move to Bin") → Done → no app process;
+`xattr -rd` → `rex 0.9.2 (cab45c6) · app rexenv 0.9.2 (cab45c6)`, "adopted 8 running service(s)", every fpm master,
+nginx, caddy 330 and Mailpit KEPT (no pin moved this release — the adopt path, like 0.9.0), `smoke1`/`php74`/`sm763`
+200 on every probe +5 s → +79 s, crash reports 0 → 0, the manifest 21 entries (`Adminer 6.2.0` offered). **One
+observation:** `rex start` on the idle stack first printed "no reply yet after 10s" and then "another local proxy
+answers port 443 in front of rexenv" while `lsof` showed ONLY rexenv's own root caddy (pid 330) on `*:443`; the
+health log's "edge is answering on its admin socket again — re-adopted (sites were being served the whole time)"
+landed a minute later and every site was 200. A cold-start false reading of the edge probe, 0.9.1 code (the stack
+was started BEFORE the swap) — worth a look, not a 0.9.2 blocker.
+**Linux ✅ on the 22.04 arm64 VM (`192.168.65.2`), from the PUBLISHED 0.9.1 deb (its `/usr/bin/rexenv` carried
+the `646d03db` dev swap from the per-OS-manifest proof), stack running, GUI quit first:** `apt-get install
+./…arm64.deb` 4 s → `dpkg -s` 0.9.2; `rexenv-edge` and `rexenv-dns-route` active; `gtk-launch` → `rex 0.9.2
+(cab45c6) · app rexenv 0.9.2 (cab45c6)`; "the resolver agent is running 0.9.1 646d03db but this build is 0.9.2 —
+kickstarting it"; "adopted 7"; both fpm masters (2122/2128), nginx 2137, caddy 966 and Mailpit 2119 KEPT; 11 sites
+answered the codes their content gives (`conv71l`, `l16lx`, `try.gitl`, `gitl` 200 on `PHP/8.3.36`; `wtl` and its
+worktree 403 from nginx as before; the pull fixtures 404 FROM PHP, `lm.rex` on `PHP/7.4.33`), phpMyAdmin and
+Adminer 200; P1 a fresh `.rex` name → 127.0.0.1; `/var/crash` empty; `manifest-linux.json` accepted (6 entries),
+`Adminer 6.2.0` offered.
+**Windows ✅ on the Dell (Win10 22H2, native x64 — the tell for 0.9.1's churn-breaker finding), from the
+`9695b502` dev build, stack running:** `setup.exe /S` → exit 0 in 6 s (the hooks ended the agent task first — the
+dev build WAS the agent); `rexenv.exe` and Apps & Features 0.9.2, the `\rexenv\dns-agent` task Running,
+`uninstall.exe` present, `rex 0.9.2 (cab45c6)`; relaunched → "adopted 9", `manifest-windows.json` accepted (6
+entries), `Adminer 6.2.0` offered, the agent on `udp 53`; **11/11 sites 200 on the first probe** — the three
+php-cgi groups kept their pids (no pin moved, so #605's breaker had nothing to trip on), `PHP/8.3.36` and
+`PHP/8.2.35` on the nginx sites, and **this release's headline on a release build:** `fpw.rex` and `apw.rex` 200 on
+`Server: FrankenPHP Caddy` / `PHP/8.5.12`; `rex site server apw.rex apache` → "✓ apw.rex — PHP 8.3 on apache" →
+`Apache apw.rex running :8300` → 200 `Server: Apache/2.4.69 (Win64)` + `X-Powered-By: PHP/8.3.36` → back to
+FrankenPHP → 200. (`.htaccess` was proven on the dev build in T7, `docs/archive/PLAN-windows-servers.md`; this
+run's probe wrote to a guessed docroot that does not exist and proved nothing about it.) No `HKCU\…\Run` value on
+the Dell: the dev build had been put there by a file swap, never by the installer or a login-item setting — not
+0.9.1's Win11 VM shape, where the key existed and was kept.
+**Not run:** the Win11 ARM VM (stopped; the Dell is the Windows host of record since the churn-breaker finding);
+the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the AppImages (hashed, not run);
+§M waits for the publish. **Owner:** Publish → six descriptors (`check-app-manifest.sh` each) → apt.
+
 ## A) ✅ 0.9.1 — PUBLISHED 23 Oct 2026 — §A0, §A, the deb, the setup.exe (Win11 VM), Defender, the six descriptors, apt and §M on all three green (one Windows finding)
 
 **Run 40006338995, source `6c832240` (tag `v0.9.1`, pushed), every lane green, 16 assets, the body the
