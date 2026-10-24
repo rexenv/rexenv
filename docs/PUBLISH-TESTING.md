@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.2 — DRAFTED 24 Oct 2026 (the re-tag) — §A0, §A, the deb, the setup.exe (Dell), Defender, all green; Publish + descriptors + apt are the owner's
+## A) ✅ 0.9.2 — PUBLISHED 24 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell), Defender, the six descriptors, apt and §M on all three green
 
 **Run 40095045003, source `cab45c65` (tag `v0.9.2`, moved once), every lane green, 16 assets, the body the
 tag's verbatim.** dmg `a43a1863…`, `.app.tar.gz` `765aee1b…`, arm64 deb `dcdbddee…`, amd64 deb `3543e60c…`,
@@ -158,7 +158,42 @@ the Dell: the dev build had been put there by a file swap, never by the installe
 0.9.1's Win11 VM shape, where the key existed and was kept.
 **Not run:** the Win11 ARM VM (stopped; the Dell is the Windows host of record since the churn-breaker finding);
 the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the AppImages (hashed, not run);
-§M waits for the publish. **Owner:** Publish → six descriptors (`check-app-manifest.sh` each) → apt.
+the Win11 VM's §M.
+**Published 24 Oct 2026 14:51Z** → the tap's `Update cask` ran on the publish (`version "0.9.2"`, the dmg's sha256),
+Install scripts and Notify the website green; the six app descriptors dispatched together (runs 40104499089 …
+40104525602) and apt (40104555417), each approved by the owner → `check-app-manifest.sh` ×6 (plain, `--windows`,
+`--linux deb|appimage x86_64|aarch64`) all green, `check-apt-repo.sh` "arm64: rexenv 0.9.2 (the latest release)".
+**§M — the update itself, 0.9.1 → 0.9.2 in-app, on all three (each machine rolled back to the PUBLISHED 0.9.1
+first; the stack kept running throughout):**
+- **macOS 15.8 VM:** 0.9.1 relaunched → "0.9.2 can be installed (serial 23, 32251370 bytes)" at +7 s; the rail
+  `● Updates ready` → Settings → Updates (two rows: `Adminer 6.1.2 → 6.2.0`, `rexenv 0.9.1 → 0.9.2 · 30.8 MB`, the
+  consent sentence, Install + Skip) → Install → `swapped to 0.9.2 (AtomicSwap)` **15 s** after the press → the
+  "rexenv 0.9.2 is installed" dialog (the in-app one — `System Events` sees no `OK` button, click its position) → OK
+  → **back as 0.9.2 in 2 s** ("parent 19845 was already gone … opened /Applications/rexenv.app"), "rexenv is now
+  0.9.2 (updated from 0.9.1)", "swept 1 leftover(s)", "adopted 8", `smoke1`/`php74`/`sm763`/`l14vm` 200, 0 crash
+  reports.
+- **Ubuntu 22.04 arm64 VM:** `apt-get install --allow-downgrades` the 0.9.1 deb → launched → "0.9.2 can be
+  installed (serial 9, 16686586 bytes)" at +6 s. **First press (the app launched by `gtk-launch` over ssh,
+  `session-11.scope`): the download ran to 15.9 MB / 15.9 MB and the row went BACK to `Install rexenv 0.9.2` with
+  nothing in the log at all** — no "could not put", no toast in the screenshot 90 s later (0.9.1's run saw the
+  honest toast for the same no-agent session; this time the refusal left no trace a reader could find → TODO row).
+  Relaunched from GNOME's own search (`app-gnome-rexenv-20236.scope`) → Install → the GNOME polkit prompt
+  ("rexenv needs administrator permission to install the update it downloaded — the new rexenv package"; it is
+  gnome-shell's modal, NOT an X window — `xdotool search --name` never finds it, type blind) → password →
+  `swapped to 0.9.2 (RenamePair)` **3 s** later, `dpkg -s` 0.9.2 → the dialog → OK → **back as 0.9.2 in 1 s**
+  ("parent 20236 was already gone … started /usr/bin/rexenv"), "swept 2 leftover(s)", "adopted 7", `conv71l`,
+  `gitl`, `l16lx`, `try.gitl`, phpMyAdmin, Adminer 200, `/var/crash` empty.
+- **Dell (Win10 22H2):** `setup.exe /S` of 0.9.1 over 0.9.2 → launched → "0.9.2 can be installed (serial 18,
+  15403458 bytes)" at +8 s (and 0.9.1 logged "fetching what this build moved or re-pinned: frankenphp 1.13.3 …
+  1 of 1 downloads failed": 0.9.1 has no Windows FrankenPHP arm and the `fpw.rex` site made by the dev build asks
+  for one — the adopted FrankenPHP kept serving, `fpw.rex` 200; expected on a rollback, not a defect) → `2 updates`
+  → Install → "Apps & Features now reads 0.9.2", `swapped to 0.9.2 (RenamePair)` **9 s** after the press → the
+  dialog → OK → **back as 0.9.2 in 0 s** ("parent 14248 exited after 0.0s → started …\rexenv.exe (pid 9720)"),
+  "rexenv is now 0.9.2 (updated from 0.9.1)", "swept 1 leftover(s)", "adopted 9"; **every php-cgi group kept its
+  pid and 11/11 sites were 200** — the churn breaker (#605) did not trip on native hardware, which is what the
+  0.9.1 Win11 finding predicted.
+**Not run:** the Win11 ARM VM (stopped; the Dell is the Windows host of record since the churn-breaker finding);
+the clean-Mac list; the Intel spot-run; the tunnel probe; the second-browser rows; the AppImages (hashed, not run).
 
 ## A) ✅ 0.9.1 — PUBLISHED 23 Oct 2026 — §A0, §A, the deb, the setup.exe (Win11 VM), Defender, the six descriptors, apt and §M on all three green (one Windows finding)
 

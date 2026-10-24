@@ -138,6 +138,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
 
+- [ ] **Linux: an in-app update apply that pkexec refuses leaves NO trace** (found 24 Oct 2026, 0.9.2's §M on the
+  22.04 VM — `docs/PUBLISH-TESTING.md` §A 0.9.2): with the app in an ssh login session (no polkit agent) the
+  download ran to 15.9 MB and the Updates row silently went back to `Install rexenv 0.9.2` — no `rexenv.log` line,
+  no toast in a screenshot 90 s later. 0.9.1's run of the same shape showed the honest toast ("could not put rexenv
+  … no authentication agent is running"). Either the toast is too short-lived to count or this path skips both;
+  the log line is owed in every case (an apply that did nothing must say so somewhere a reader can find).
+
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned
   builds, `health: [gave-up] PHP-FPM 8.2/8.3: stopped — its php-cgi parent was using most of a CPU core in a
