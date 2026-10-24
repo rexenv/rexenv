@@ -1970,6 +1970,32 @@ fn php_spec(kind: &str, version: &str, arch: Arch) -> Option<BinarySpec> {
     })
 }
 
+/// A PHP artifact from the verified catalog for `os`, with `archive` and `member` DERIVED
+/// from the name and the OS — never read from the document (a manifest that could choose
+/// them would be choosing which extractor runs). The per-OS shapes are the pins': macOS and
+/// Linux a `TarGz` of one binary (`php` / `php-fpm`), Windows the php.net zip tree with
+/// `php.exe` at its root (the pool is php-cgi inside the same zip, so a `php-fpm` row has
+/// no meaning there and is never asked for). `None` when the catalog has no such row —
+/// each OS reads its own document (`updates::manifest_urls_on`), so a Windows row is only
+/// ever in the Windows catalog (docs/PLAN-per-os-php-manifests.md D1–D3).
+fn catalog_php_spec(name: &str, version: &str, arch: Arch, os: &str) -> Option<BinarySpec> {
+    if !crate::core::updates::nameable(name) {
+        return None;
+    }
+    if os == "windows" && name != "php" {
+        return None;
+    }
+    let arch_s = crate::core::updates::catalog_arch(arch);
+    let guard = CATALOG.read().ok()?;
+    let a = guard.as_ref()?.artifact_on(name, version, arch_s, os)?;
+    let (archive, member) = match (os, name) {
+        ("windows", _) => (Archive::ZipTree { strip: 0 }, "php.exe"),
+        (_, "php-fpm") => (Archive::TarGz, "php-fpm"),
+        _ => (Archive::TarGz, "php"),
+    };
+    Some(BinarySpec { url: a.url.clone(), checksum: Checksum::Sha256(a.sha256.clone()), archive, member })
+}
+
 /// The pinned Adminer build, else the verified catalog — the same precedence as
 /// [`php_spec`], for the same reason.
 ///
@@ -2892,12 +2918,16 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // A TREE on Windows: `php.exe` and `php-cgi.exe` beside `ext/*.dll`. There is
         // no `php-fpm` on Windows at all — the pool is php-cgi (plan D1).
-        ("php", "windows", v) => php_windows_sha256(v).map(|hex| BinarySpec {
-            url: php_windows_url(v),
-            checksum: Checksum::Sha256(hex.to_string()),
-            archive: Archive::ZipTree { strip: 0 },
-            member: "php.exe",
-        }),
+        // The pin first, then the verified Windows catalog (docs/PLAN-per-os-php-manifests.md):
+        // a signed document may ADD a php.net patch the build was pinned before, never move a pin.
+        ("php", "windows", v) => php_windows_sha256(v)
+            .map(|hex| BinarySpec {
+                url: php_windows_url(v),
+                checksum: Checksum::Sha256(hex.to_string()),
+                archive: Archive::ZipTree { strip: 0 },
+                member: "php.exe",
+            })
+            .or_else(|| catalog_php_spec("php", v, arch, "windows")),
         // nginx.org's own Windows build — a tree (`conf/`, `html/`, `logs/` beside the
         // exe), unlike the single binary rexenv builds for macOS.
         ("nginx", "windows", "1.30.4") => Some(BinarySpec {
@@ -2983,18 +3013,23 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         // static-php.dev's Linux builds — the same publisher and the same tarball shape as
         // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
         // 8.0-8.5: ours (`php_linux_tag`).
-        ("php", "linux", v) => php_linux_sha256("cli", v, arch).map(|hex| BinarySpec {
-            url: php_linux_url("cli", v, arch),
-            checksum: Checksum::Sha256(hex.to_string()),
-            archive: Archive::TarGz,
-            member: "php",
-        }),
-        ("php-fpm", "linux", v) => php_linux_sha256("fpm", v, arch).map(|hex| BinarySpec {
-            url: php_linux_url("fpm", v, arch),
-            checksum: Checksum::Sha256(hex.to_string()),
-            archive: Archive::TarGz,
-            member: "php-fpm",
-        }),
+        // The pin first, then the verified Linux catalog (docs/PLAN-per-os-php-manifests.md).
+        ("php", "linux", v) => php_linux_sha256("cli", v, arch)
+            .map(|hex| BinarySpec {
+                url: php_linux_url("cli", v, arch),
+                checksum: Checksum::Sha256(hex.to_string()),
+                archive: Archive::TarGz,
+                member: "php",
+            })
+            .or_else(|| catalog_php_spec("php", v, arch, "linux")),
+        ("php-fpm", "linux", v) => php_linux_sha256("fpm", v, arch)
+            .map(|hex| BinarySpec {
+                url: php_linux_url("fpm", v, arch),
+                checksum: Checksum::Sha256(hex.to_string()),
+                archive: Archive::TarGz,
+                member: "php-fpm",
+            })
+            .or_else(|| catalog_php_spec("php-fpm", v, arch, "linux")),
         // jirutka's static build (raw binary), the interim until rexenv/runtimes has a Linux nginx.
         ("nginx", "linux", "1.30.4") => Some(BinarySpec {
             url: format!("https://jirutka.github.io/nginx-binaries/nginx-{version}-{}-linux", linux_arch(arch)),
@@ -6803,6 +6838,54 @@ mod tests {
             }
         }
         assert!(checked >= 5, "found {checked} installs — the scan stopped working");
+    }
+
+    /// docs/PLAN-per-os-php-manifests.md T1 — **a Windows or Linux catalog row resolves on
+    /// that OS, pins first, with the OS's own archive shape derived here, never read from the
+    /// document.** Windows: ONE `php` row per arch (php.net's zip; the pool is php-cgi inside
+    /// it) → `ZipTree { strip: 0 }` / `php.exe`, and a `php-fpm` row is meaningless there.
+    /// Linux: `php` + `php-fpm` tarballs → `TarGz`. A pinned version stays on its pin.
+    #[test]
+    fn a_windows_or_linux_catalog_row_resolves_with_the_os_shape_and_never_moves_a_pin() {
+        let _catalog = catalog_test_lock();
+        let added = format!("{}.9999", crate::core::php::minor_of(PHP_VERSION));
+        let zip = format!("https://downloads.php.net/~windows/releases/archives/php-{added}-nts-Win32-vs17-x64.zip");
+        install_catalog(crate::core::updates::catalog_for_tests_on("windows", &[
+            ("php", PHP_VERSION, "x86_64", "https://downloads.php.net/~windows/releases/archives/evil.zip", &"b".repeat(64)),
+            ("php", &added, "x86_64", &zip, &"c".repeat(64)),
+            ("php", &added, "arm64", &zip, &"c".repeat(64)),
+            ("php-fpm", &added, "x86_64", &zip, &"d".repeat(64)),
+        ]));
+        let pinned = manifest("php", PHP_VERSION, "windows", Arch::X86_64).unwrap();
+        assert_ne!(checksum_hex(&pinned.checksum), "b".repeat(64), "the catalog moved a Windows pin");
+        for arch in [Arch::X86_64, Arch::Arm64] {
+            let s = manifest("php", &added, "windows", arch).expect("a Windows catalog row resolves");
+            assert_eq!(s.url, zip);
+            assert_eq!(checksum_hex(&s.checksum), "c".repeat(64));
+            assert_eq!(s.archive, Archive::ZipTree { strip: 0 }, "the shape is the OS's, not the document's");
+            assert_eq!(s.member, "php.exe");
+        }
+        assert!(manifest("php-fpm", &added, "windows", Arch::X86_64).is_none(), "no php-fpm on Windows, whatever a document says");
+        // The Windows document is not the macOS or Linux one: nothing leaks across.
+        assert!(manifest("php", &added, "macos", Arch::X86_64).is_none());
+        assert!(manifest("php", &added, "linux", Arch::X86_64).is_none());
+
+        let base = format!("{RUNTIMES_RELEASE_BASE}/php-8x-linux-9/php-{added}");
+        install_catalog(crate::core::updates::catalog_for_tests_on("linux", &[
+            ("php", &added, "x86_64", &format!("{base}-cli-linux-x86_64.tar.gz"), &"e".repeat(64)),
+            ("php-fpm", &added, "x86_64", &format!("{base}-fpm-linux-x86_64.tar.gz"), &"f".repeat(64)),
+            ("php", &added, "arm64", &format!("{base}-cli-linux-aarch64.tar.gz"), &"1".repeat(64)),
+            ("php-fpm", &added, "arm64", &format!("{base}-fpm-linux-aarch64.tar.gz"), &"2".repeat(64)),
+        ]));
+        let cli = manifest("php", &added, "linux", Arch::Arm64).expect("a Linux catalog row resolves");
+        assert_eq!((cli.archive, cli.member), (Archive::TarGz, "php"));
+        assert!(cli.url.ends_with("-cli-linux-aarch64.tar.gz"));
+        let fpm = manifest("php-fpm", &added, "linux", Arch::X86_64).unwrap();
+        assert_eq!((fpm.archive, fpm.member), (Archive::TarGz, "php-fpm"));
+        assert_eq!(checksum_hex(&fpm.checksum), "f".repeat(64));
+        assert!(manifest("php", &added, "windows", Arch::X86_64).is_none());
+        // Leave no catalog behind for the rest of this test binary.
+        install_catalog(crate::core::updates::VersionCatalog::default());
     }
 
     #[test]

@@ -134,6 +134,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   last), one vocabulary on pill/toast/tray, Settings → Updates with Update all (sequential, stops at the first
   failure), `rex status` + MCP `stack_status.updates`, a read-only WordPress plugin-updates line per site.
 
+- [ ] **PHP update documents per OS** (owner, 24 Oct 2026: "we build every PHP ourselves — does the in-app check
+  reach every OS?"). Built: `updates::manifest_urls_on` + `catalog_php_spec` (ledger #910), runtimes
+  `publish-manifest.sh --document linux|windows` + guard (PR #49). **Open:** publish `manifest-linux.json` and
+  `manifest-windows.json` (dry runs 40082527578 / 40082534831 wait on `manifest-signing`), then read them live on
+  the Dell and the Ubuntu VM ("runtime updates: manifest accepted"); the first OFFER needs php.net's next patch.
+  Plan: `docs/PLAN-per-os-php-manifests.md`.
+
 - [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned
   builds, `health: [gave-up] PHP-FPM 8.2/8.3: stopped — its php-cgi parent was using most of a CPU core in a

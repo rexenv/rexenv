@@ -69,6 +69,10 @@ const RELEASE_PUBKEY: &str = "faa52f961af3e0542d836ab539823f598ef88b976055809f73
 const ALLOWED_HOSTS: &[&str] = &[
     "https://dl.static-php.dev/",
     "https://github.com/rexenv/",
+    // php.net's own Windows builds, the ARCHIVE path (it keeps every release; the current
+    // directory drops a patch once superseded). The Windows document's PHP rows name these
+    // (docs/PLAN-per-os-php-manifests.md D3) — the same publisher the Windows pins trust.
+    "https://downloads.php.net/~windows/releases/archives/",
     // Adminer's own releases. A PATH prefix, not a host: `github.com/` alone
     // would let any GitHub account serve any artifact this app will execute, and
     // anyone can create an account. `vrana/adminer` is the upstream rexenv
@@ -464,12 +468,19 @@ impl VersionCatalog {
     ///
     /// `arch` is the MANIFEST's spelling — use [`catalog_arch`], never a literal.
     pub fn artifact(&self, name: &str, version: &str, arch: &str) -> Option<&Artifact> {
+        self.artifact_on(name, version, arch, std::env::consts::OS)
+    }
+
+    /// [`artifact`](Self::artifact) for a NAMED os — what `os`'s own document would answer,
+    /// so a resolver arm for another OS can be exercised from any host
+    /// (docs/PLAN-per-os-php-manifests.md). Production readers always pass the host's OS.
+    pub fn artifact_on(&self, name: &str, version: &str, arch: &str, os: &str) -> Option<&Artifact> {
         let tier = crate::core::binaries::tier();
         self.entries.iter().find(|a| {
             a.name == name
                 && a.version == version
                 && a.arch == arch
-                && a.for_os(std::env::consts::OS)
+                && a.for_os(os)
                 && a.admitted_on(tier)
         })
     }
@@ -722,6 +733,29 @@ const MANIFEST_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json";
 const MANIFEST_SIG_URL: &str =
     "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest.json.sig";
+/// The Linux and Windows documents (docs/PLAN-per-os-php-manifests.md D1): the same schema
+/// and key, a document per OS because the unsuffixed one is macOS's and FROZEN — shipped
+/// Macs keep every row they do not understand, so a Linux tarball row in it would be
+/// resolved by Macs that cannot run it (PLAN-windows-port §3b). Each OS reads one document
+/// that carries everything it needs: its PHP rows marked `os`, plus the file rows.
+const MANIFEST_URL_LINUX: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest-linux.json";
+const MANIFEST_SIG_URL_LINUX: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest-linux.json.sig";
+const MANIFEST_URL_WINDOWS: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest-windows.json";
+const MANIFEST_SIG_URL_WINDOWS: &str =
+    "https://raw.githubusercontent.com/rexenv/runtimes/main/manifest-windows.json.sig";
+
+/// `(document, signature)` URLs for `os` — the one place the choice is made, as
+/// `app_update::manifest_urls_on` is for the app descriptor.
+pub fn manifest_urls_on(os: &str) -> (&'static str, &'static str) {
+    match os {
+        "linux" => (MANIFEST_URL_LINUX, MANIFEST_SIG_URL_LINUX),
+        "windows" => (MANIFEST_URL_WINDOWS, MANIFEST_SIG_URL_WINDOWS),
+        _ => (MANIFEST_URL, MANIFEST_SIG_URL),
+    }
+}
 
 /// Refuse a document larger than this before parsing. A manifest of every patch
 /// of every minor is a few KB; this is a poll, not a download.
@@ -751,7 +785,8 @@ async fn fetch_with(deadline: std::time::Duration) -> Result<(Vec<u8>, String)> 
             "this build has no PHP update key pinned, so it does not fetch a manifest".into(),
         ));
     }
-    fetch_signed_pair(MANIFEST_URL, MANIFEST_SIG_URL, MAX_DOC, deadline).await
+    let (doc, sig) = manifest_urls_on(std::env::consts::OS);
+    fetch_signed_pair(doc, sig, MAX_DOC, deadline).await
 }
 
 /// Fetch a signed document and its detached signature. **Takes no `Connection`**
@@ -987,6 +1022,13 @@ pub fn allowed_hosts() -> &'static [&'static str] {
 /// field exists to enforce. A production constructor here would delete it.
 #[cfg(test)]
 pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCatalog {
+    catalog_for_tests_on(std::env::consts::OS, rows)
+}
+
+/// [`catalog_for_tests`] for a NAMED os — the document that OS would read, so a test can
+/// exercise another OS's resolver arm from any host (docs/PLAN-per-os-php-manifests.md).
+#[cfg(test)]
+pub fn catalog_for_tests_on(os: &str, rows: &[(&str, &str, &str, &str, &str)]) -> VersionCatalog {
     VersionCatalog {
         entries: rows
             .iter()
@@ -997,7 +1039,7 @@ pub fn catalog_for_tests(rows: &[(&str, &str, &str, &str, &str)]) -> VersionCata
                 url: (*url).to_string(),
                 sha256: (*sha256).to_string(),
                 min_macos: None,
-                os: Some(std::env::consts::OS.to_string()),
+                os: Some(os.to_string()),
             })
             .collect(),
     }
@@ -1454,6 +1496,26 @@ mod tests {
         for arch in ["aarch64", "amd64", "arm", ""] {
             assert!(!acceptable(&Artifact { arch: arch.into(), ..good.clone() }));
         }
+    }
+
+    /// docs/PLAN-per-os-php-manifests.md D1/D3 — **each OS reads its own document, and php.net's
+    /// Windows archive is an admitted publisher.** The unsuffixed document stays macOS's (frozen),
+    /// Linux and Windows read `manifest-<os>.json` beside it — the same repo, the same key.
+    #[test]
+    fn each_os_reads_its_own_php_update_document() {
+        let (m, ms) = manifest_urls_on("macos");
+        assert!(m.ends_with("/main/manifest.json") && ms.ends_with("/main/manifest.json.sig"));
+        let (l, ls) = manifest_urls_on("linux");
+        assert!(l.ends_with("/main/manifest-linux.json") && ls.ends_with("/main/manifest-linux.json.sig"));
+        let (w, ws) = manifest_urls_on("windows");
+        assert!(w.ends_with("/main/manifest-windows.json") && ws.ends_with("/main/manifest-windows.json.sig"));
+        for (d, s) in [manifest_urls_on("macos"), manifest_urls_on("linux"), manifest_urls_on("windows")] {
+            assert!(d.starts_with("https://raw.githubusercontent.com/rexenv/runtimes/main/"), "{d}");
+            assert_eq!(format!("{d}.sig"), s);
+        }
+        // The Windows rows name php.net's ARCHIVE (every release kept), and only that path.
+        assert!(allowed_hosts().contains(&"https://downloads.php.net/~windows/releases/archives/"));
+        assert!(!allowed_hosts().contains(&"https://downloads.php.net/"), "a bare php.net prefix would admit the current directory, whose patches disappear");
     }
 
     /// The host list must never become a bare domain. `github.com` serves Caddy,
