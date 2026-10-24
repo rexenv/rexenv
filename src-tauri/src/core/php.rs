@@ -1555,7 +1555,7 @@ mod tests {
         // Nothing to say in every other direction:
         assert_eq!(update_cost("8.3.36", None, &none), None, "no offer, no cost");
         assert_eq!(
-            update_cost("8.0.30", Some("8.0.31"), &none),
+            update_cost("8.3.37", Some("8.3.38"), &none),
             None,
             "neither build has the driver — the update takes nothing away"
         );
@@ -1572,8 +1572,9 @@ mod tests {
 
     #[test]
     fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {
-        // The versions rexenv builds itself (release php-8x-1) have the driver.
-        for yes in ["8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"] {
+        // The versions rexenv builds itself (release php-8x-1, 8.0.30 since php-8x-11) have
+        // the driver.
+        for yes in ["8.0.30", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"] {
             assert!(pdo_pgsql_supported(yes), "{yes} is one of ours");
         }
         // Upstream's do not — including patches NEWER than our pins, which is
@@ -1582,7 +1583,7 @@ mod tests {
         // (#550). 8.3.32 WAS that version and is now ours, which is the fix; a
         // future 8.3.33 puts the machine right back there, so the shape is
         // asserted with the versions upstream will publish next.
-        for no in ["7.4.33", "8.0.30", "8.3.37", "8.2.36", "8.4.28", "8.5.13"] {
+        for no in ["7.4.33", "8.0.31", "8.3.37", "8.2.36", "8.4.28", "8.5.13"] {
             assert!(!pdo_pgsql_supported(no), "{no} is not a build rexenv made");
         }
         // 7.4 is OURS and still has no driver: the answer must come from the
@@ -1593,7 +1594,7 @@ mod tests {
         // refusals tell users to switch to, so a release that drops 8.1 or adds
         // 8.6 must move the sentence without anyone remembering to.
         let oldest = oldest_pdo_pgsql_minor();
-        assert_eq!(oldest, "8.1");
+        assert_eq!(oldest, "8.0");
         assert!(
             binaries::pins().php_versions
                 .iter()
@@ -1799,6 +1800,7 @@ mod tests {
         // Same 9900-based scheme, disjoint from the normal pool range — asked OF macOS,
         // where Xdebug is pinned. Nothing is pinned for Windows, so the host-reading form
         // answers `None` for every minor and this says nothing about the SCHEME (W12).
+        assert_eq!(debug_fpm_port_on("8.0", "macos"), Some(9980));
         assert_eq!(debug_fpm_port_on("8.1", "macos"), Some(9981));
         assert_eq!(debug_fpm_port_on("8.4", "macos"), Some(9984));
         assert_eq!(debug_fpm_port_on("8.5", "macos"), Some(9985));
@@ -1807,10 +1809,9 @@ mod tests {
                 assert_ne!(d, n);
             }
         }
-        // 8.0's static build can't dlopen — no debug port EXISTS for it, so no
-        // caller can ever route a site there. True on both, for different reasons.
-        assert_eq!(debug_fpm_port_on("8.0", "macos"), None);
-        assert_eq!(debug_fpm_port("8.0"), None);
+        // 7.4's build can't dlopen — no debug port EXISTS for it, so no caller can
+        // ever route a site there.
+        assert_eq!(debug_fpm_port_on("7.4", "macos"), None);
         assert_eq!(debug_fpm_port("8.3.31"), None);
         assert_eq!(debug_fpm_port("banana"), None);
     }
@@ -1885,38 +1886,22 @@ mod tests {
 
     /// The tell reaches the row the UI actually renders.
     /// §6.3 of the macOS-13 plan (ledger #710): a minor this host's macOS cannot
-    /// run is LISTED — disabled, with core's sentence, the patch it would have
-    /// run — never omitted; and every door that installs it says the same words.
+    /// run is LISTED — disabled, with core's sentence — never omitted. PHP 8.0 was
+    /// that minor while static-php.dev's `minos 14.0` 8.0.30 was pinned; ours
+    /// (`php-8x-11`) is 12.0, so a 13 host now lists every minor as an ordinary,
+    /// seeded row, in order. The name is the one ledger row #710 cites.
     #[test]
     fn a_legacy_host_lists_the_refused_minor_with_the_reason_and_refuses_to_install_it() {
         use crate::core::binaries::{install_tier, BinaryTier};
         let conn = db::open_in_memory().unwrap();
         install_tier(BinaryTier::Legacy13);
-        // The seed follows the tier's pins, so 8.0 is never a registry row here…
         seed_registry(&conn).unwrap();
-        assert!(!store::list_php_versions(&conn).unwrap().iter().any(|v| v.minor == "8.0"));
-        // …and the LIST still carries it, as a refusal.
+        assert!(store::list_php_versions(&conn).unwrap().iter().any(|v| v.minor == "8.0"));
         let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
-        let r = rows.iter().find(|r| r.minor == "8.0").expect("8.0 listed, not omitted");
-        // …in its place, not appended: 7.4, 8.0, 8.1, … (the first VM run showed 8.0 last).
         let minors: Vec<&str> = rows.iter().map(|r| r.minor.as_str()).collect();
         assert_eq!(&minors[..3], &["7.4", "8.0", "8.1"], "{minors:?}");
-        let reason = r.unavailable_reason.as_deref().expect("the reason travels with the row");
-        // The host's words: this tier only exists on macOS 13 in production, but the test runs
-        // on every release runner, and windows-latest answered "Windows 14" (27 Sep 2026).
-        let os = crate::platform::words::current().os_name;
-        assert!(reason.contains(&format!("{os} 14")), "{reason}");
-        assert!(!r.installed && !r.is_default && !r.xdebug_supported);
-        assert_eq!(r.patch, "8.0.30", "the patch it would have run, from the Standard set");
         assert!(rows.iter().filter(|r| r.minor == "8.0").count() == 1);
-        // Every other row is an ordinary one.
-        assert!(rows.iter().filter(|r| r.minor != "8.0").all(|r| r.unavailable_reason.is_none()));
-        // The install door refuses with the SAME sentence (Settings, `rex php
-        // install`, the MCP tool all arrive here) — not "unknown PHP version".
-        let err = set_installed(&conn, "8.0", true).expect_err("refused").to_string();
-        assert!(err.contains(reason), "{err}");
-        // Plant: with `php_minor_needs_macos` returning `None` the row vanished
-        // and the first `expect` above failed (23 Sep 2026).
+        assert!(rows.iter().all(|r| r.unavailable_reason.is_none()), "{rows:?}");
         install_tier(BinaryTier::Standard);
         let rows = list_versions(&conn, &[], &Default::default(), "arm64").unwrap();
         assert!(rows.iter().all(|r| r.unavailable_reason.is_none()), "a standard host refuses nothing");

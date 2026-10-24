@@ -3405,7 +3405,7 @@ mod tests {
         // refused on one without, and the two messages must not be confusable —
         // only one of them names a way forward, because only one has one.
         for t in [SiteType::Laravel, SiteType::Php] {
-            for good in ["8.1.34", "8.5.12"] {
+            for good in ["8.0.30", "8.1.34", "8.5.12"] {
                 assert!(
                     ensure_engine_supports(t, SiteDbEngine::Postgres, good).is_ok(),
                     "{t:?} on PostgreSQL must be allowed on PHP {good}"
@@ -3414,7 +3414,7 @@ mod tests {
             // A patch NEWER than our pin for a minor that otherwise has the
             // driver — the shape that hung a real provision (#550), and the one
             // an in-app update recreates the day upstream ships 8.3.33.
-            for bad in ["7.4.33", "8.0.30", "8.3.33"] {
+            for bad in ["7.4.33", "8.0.31", "8.3.33"] {
                 let m = ensure_engine_supports(t, SiteDbEngine::Postgres, bad)
                     .expect_err("PostgreSQL needs PDO, which this build lacks")
                     .to_string();
@@ -3805,14 +3805,14 @@ mod tests {
         assert!(set_xdebug_on(&conn, &site.id, true, "macos").is_err());
         set_web_server_on(&conn, &site.id, WebServer::Nginx, "macos").unwrap();
 
-        // PHP 8.0 refused (static build can't dlopen any .so).
-        set_php_version(&conn, &site.id, "8.0").unwrap();
+        // PHP 7.4 refused (its static build can't dlopen any .so).
+        set_php_version(&conn, &site.id, "7.4").unwrap();
         assert!(set_xdebug_on(&conn, &site.id, true, "macos").is_err());
         set_php_version(&conn, &site.id, "8.4").unwrap();
         assert!(set_xdebug_on(&conn, &site.id, true, "macos").unwrap().unwrap().xdebug);
 
         // Disabling never validates (a stale flag must always be clearable).
-        set_php_version(&conn, &site.id, "8.0").unwrap();
+        set_php_version(&conn, &site.id, "7.4").unwrap();
         assert!(!set_xdebug_on(&conn, &site.id, false, "macos").unwrap().unwrap().xdebug);
 
         // Unknown id → None, not an error.
@@ -3822,8 +3822,8 @@ mod tests {
         // And the os is a real parameter, not decoration: the same enable that succeeds
         // on macOS is refused on Windows, with the sentence that says why (D4).
         //
-        // On a minor whose reason is the OS and nothing else — the site is left on 8.0 by
-        // the leg above, and 8.0's refusal is `CannotLoadExtensions` on every host, so
+        // On a minor whose reason is the OS and nothing else — the site is left on 7.4 by
+        // the leg above, and 7.4's refusal is `CannotLoadExtensions` on every host, so
         // asking there would have proven nothing about the os parameter. That is what my
         // first version of this leg did, and the Mac caught it.
         set_php_version(&conn, &site.id, "8.4").unwrap();
@@ -3854,8 +3854,8 @@ mod tests {
         }
         // A stale flag on an unsupported minor falls back to the normal pool —
         // never a port nothing will ever listen on.
-        site.php_version = "8.0".into();
-        assert_eq!(pool_port_for_site(&site), pool_port_for("8.0"));
+        site.php_version = "7.4".into();
+        assert_eq!(pool_port_for_site(&site), pool_port_for("7.4"));
     }
 
     /// The collision the v42 table opened up, from the OTHER two directions:

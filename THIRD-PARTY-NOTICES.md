@@ -12,7 +12,10 @@ pinned versions and sources are listed in `docs/PORTS.md`.
 
 **Windows (shipped since 0.8.x; this paragraph dated 13 Sep 2026, corrected 9 Oct 2026).** The
 Windows build downloads from distributors too, never from us: PHP from the PHP project's own
-Windows builds (`downloads.php.net/~windows`) — for PHP 8.4 and 8.5 also the PECL `imap` 1.0.3
+Windows builds (`downloads.php.net/~windows`) — for the end-of-life 7.4.33, 8.0.30 and 8.1.34,
+from Shivam Mathur's builds of the PHP security backports (`github.com/shivammathur/php-builder-windows`,
+PHP License 3.01; since 24 Oct 2026, the CVE-2026-109618/109619 fix php.net never built for
+them) — for PHP 8.4 and 8.5 also the PECL `imap` 1.0.3
 extension from the same site's official PECL builds (`~windows/pecl`, PHP License 3.01), because
 php.net's 8.4+ zips stopped carrying IMAP — nginx from nginx.org's Windows zip, MySQL
 from Oracle's `winx64` zips, PostgreSQL from theseus-rs's `x86_64-pc-windows-msvc`
@@ -56,8 +59,8 @@ GitHub Release assets that the app then downloads. **8.1 through 8.5 joined for
 a different reason: upstream's builds ship `pgsql` and no `pdo_pgsql`**, while
 their PDO advertises `pgsql` — so a PDO connection is accepted and then stalls
 until PostgreSQL closes it, which is every Laravel `pgsql` app. Ours add the
-driver and prove it in CI against a real cluster; 8.0 remains upstream's, since
-it aborts on x86_64 in a way nobody has explained and is EOL. nginx joined for
+driver and prove it in CI against a real cluster. 8.0 joined last (24 Oct 2026),
+for its CVE-2026-109618/109619 fix, which exists only as a source backport. nginx joined for
 yet another reason — upstream's darwin builds moved to a macOS 26
 deployment target, which would have locked out every Intel user below macOS 26 —
 and it carries the same obligations. Every other row in
@@ -238,7 +241,7 @@ libbcrypt (CC0), udns (LGPL-2.1, statically linked; its source is on the release
 (BSD-3), zlib, expat (MIT). The same refusal as nginx's applies: no pinned licence archive,
 no resolve.
 
-## PHP 8.1-8.5 — rexenv's own builds (downloaded at runtime, distributed BY US)
+## PHP 8.0-8.5 — rexenv's own builds (downloaded at runtime, distributed BY US)
 
 Same standing as the 7.4 row below, for a different reason: these versions ARE
 published upstream, and the upstream build has a hole. `pdo_pgsql` is absent
@@ -247,11 +250,11 @@ connects to nothing and stalls until the server times it out.
 
 | | |
 |---|---|
-| Artifacts | `php-{8.1.34,8.2.35,8.3.36,8.4.27,8.5.12}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz`; since 23 Oct 2026 also `php-{…}-{cli,fpm}-linux-{aarch64,x86_64}.tar.gz` (fully static musl ELFs, same script and gates on Ubuntu runners — static-php.dev's Linux builds have the same `pdo_pgsql` hole and had no build of the CVE-2026-109618/109619 patches) |
+| Artifacts | `php-{8.0.30,8.1.34,8.2.35,8.3.36,8.4.27,8.5.12}-{cli,fpm}-macos-{aarch64,x86_64}.tar.gz`; since 23 Oct 2026 also `php-{…}-{cli,fpm}-linux-{aarch64,x86_64}.tar.gz` (fully static musl ELFs, same script and gates on Ubuntu runners — static-php.dev's Linux builds have the same `pdo_pgsql` hole and had no build of the CVE-2026-109618/109619 patches) |
 | Built by | `rexenv/runtimes` (public), static-php-cli 2.8.5, GitHub Actions |
-| Source | php.net release tarballs, fetched and pinned by static-php-cli; 8.1.34 since `php-8x-10`: `shivammathur/php-src-backports` @ `ae65ef4b9ede` (8.1 is EOL and php.net shipped no patch for CVE-2026-109618/109619), mirrored as an asset in the same release |
-| Release | macOS 8.2–8.5: `php-8x-9` (23 Oct 2026, php.net's CVE-2026-109618/109619 patches 8.2.35/8.3.36/8.4.27/8.5.12). macOS 8.1.34: `php-8x-10` (23 Oct 2026, the backport — same version, new bytes). Linux 8.1–8.5: `php-8x-linux-1` (23 Oct 2026, its own tag series). Before them, `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
-| Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`; Linux: `php_linux_sha256`, `php_linux_licenses_sha256`, `PHP_8X_LINUX_TAG`) |
+| Source | php.net release tarballs, fetched and pinned by static-php-cli; 8.1.34 since `php-8x-10`: `shivammathur/php-src-backports` @ `ae65ef4b9ede` (8.1 is EOL and php.net shipped no patch for CVE-2026-109618/109619), mirrored as an asset in the same release; 8.0.30 since `php-8x-11`: the same repository @ `190a0202b460`, mirrored the same way |
+| Release | macOS 8.2–8.5: `php-8x-9` (23 Oct 2026, php.net's CVE-2026-109618/109619 patches 8.2.35/8.3.36/8.4.27/8.5.12). macOS 8.1.34: `php-8x-10` (23 Oct 2026, the backport — same version, new bytes). Linux 8.1–8.5: `php-8x-linux-1` (23 Oct 2026, its own tag series). 8.0.30: `php-8x-11` (macOS) and `php-8x-linux-2` (Linux), 24 Oct 2026, the backport. Before them, `php-8x-8` (7 Oct 2026) — all five versions in one rebuild whose libcurl has no c-ares, so a site's own curl resolves `.rex` names — immutable, never re-uploaded; a rebuild is the next build number. `php-8x-3`…`php-8x-7` (one per version, libcurl linked to c-ares) are superseded and still published, as are `php-8x-1` and `php-8x-2`, whose builds lacked mbstring's regex half and gd's avif, which a module list cannot see |
+| Pinned in | `core/binaries.rs` (`PHP_8_*_SHA256`, `php_self_hosted_tag`; Linux: `php_linux_sha256`, `php_linux_licenses_sha256`, `php_linux_tag`) |
 | Licence | **PHP License 3.01** (`licenses/PHP-3.01.txt`) |
 
 Four build gates decide whether these ship, and each exists because the one
@@ -280,10 +283,12 @@ extension and gives up two coroutine constants (`SWOOLE_HOOK_PDO_PGSQL`,
 `SWOOLE_HOOK_PDO_SQLITE`) — the only difference between these builds and
 upstream's, and a deliberate one.
 
-**PHP 8.0.30 is NOT ours** and still comes from static-php.dev, so it has no
-working `pdo_pgsql`. It builds and passes every gate on arm64 and aborts on
-x86_64 inside static-php-cli's own sanity check, reproducibly and unexplained;
-it has been end-of-life since Nov 2023. Statically linked dependencies' licences
+**PHP 8.0.30 is ours since `php-8x-11`** (macOS) and `php-8x-linux-2` (Linux),
+24 Oct 2026: built from `shivammathur/php-src-backports` @ `190a0202b460` for the
+CVE-2026-109618/109619 fix (end-of-life since Nov 2023, so php.net shipped no
+patch), with the same gates — and so, for the first time, a working `pdo_pgsql`.
+Until then it came from static-php.dev, whose x86_64 build of it aborted on the
+Intel runners. Statically linked dependencies' licences
 travel the same way as for 7.4 below, as `licenses-php-<version>-<arch>.tar.gz`
 in the same release.
 

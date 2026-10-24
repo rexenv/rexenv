@@ -21,11 +21,11 @@ const PHP_VERSION: &str = "8.3.36";
 /// All PHP versions with pinned static-php "bulk" builds (one minor each, newest
 /// last). The per-version FPM pool manager + UI (Phase 2 §1.2/§1.5) install from
 /// this set; each caches independently under `bin_dir/php-<version>/`.
-/// **Not all from one source, and only one of them is somebody else's now.**
-/// 8.0.30 is static-php.dev's bulk build; **7.4.33 and 8.1-8.5 are OURS**
-/// (`rexenv/runtimes`, immutable release assets) — 7.4 because nobody publishes
-/// a portable one, the 8.x rows because the bulk builds' `pdo_pgsql` does not
-/// connect. `php_url` picks the source; this list only says which versions exist.
+/// **Every one of them is OURS on macOS and Linux** (`rexenv/runtimes`, immutable
+/// release assets) — 7.4 because nobody publishes a portable one, the 8.x rows
+/// because the bulk builds' `pdo_pgsql` does not connect, and 8.0.30 since
+/// `php-8x-11` because its CVE-2026-109618/109619 fix exists only as a source
+/// backport. `php_url` picks the source; this list only says which versions exist.
 /// 7.4 and 8.0 are both upstream-EOL and say so in the UI (`php::eol_since`).
 ///
 /// **8.2 and 8.3 pin `.32` rather than `.31`, and that is a fix rather than a
@@ -284,9 +284,9 @@ const LEGACY14_PINS: PinSet = PinSet {
 };
 
 /// macOS 13: `docs/PLAN-macos-13-floor.md` §6.2, row for row. PostgreSQL has
-/// NO build that loads on Apple Silicon at 13 and PHP 8.0.30 is 14.0 there, so
-/// their offered sets are empty / without 8.0 — the refusal that explains it to
-/// the user is T3's. `postgres` keeps a version that exists so nothing here is a
+/// NO build that loads on Apple Silicon at 13, so its offered set is empty — the
+/// refusal that explains it to the user is T3's. (PHP 8.0 was refused here too
+/// while static-php.dev's `minos 14.0` build was pinned; ours is 12.0.) `postgres` keeps a version that exists so nothing here is a
 /// sentinel string; an empty `postgres_versions` is what says "not offered".
 const LEGACY13_PINS: PinSet = PinSet {
     cloudflared: LEGACY_CLOUDFLARED_VERSION,
@@ -605,8 +605,9 @@ const BUNDLED_APR_UTIL_VERSION: &str = "1.6.3";
 /// EXISTING static-php binaries (ABI = Zend API nr + NTS + non-debug, all
 /// matching; live-proven cli+fpm on 8.1–8.5, full DBGp handshake). No debug PHP
 /// build needed; the debug pool is the same fpm binary + `-d zend_extension`.
-/// PHP 8.0 is EXCLUDED: the Nov 2024 static 8.0.30 build exports no Zend symbols,
-/// so any external .so fails to dlopen (`_OnUpdateBool` unresolved).
+/// PHP 8.0 had NO row while static-php.dev's Nov 2024 8.0.30 was pinned: it
+/// exported no Zend symbols, so any external .so failed to dlopen
+/// (`_OnUpdateBool` unresolved). Ours (`php-8x-11`) exports them, and has a row.
 ///
 /// **This is a DEFAULT, not the law.** Xdebug's own support windows close: 3.1.6
 /// is the last release for PHP 7.4 and no later one will ever exist, so a single
@@ -708,8 +709,8 @@ const GHCR_ANON_AUTH: &[(&str, &str)] = &[("Authorization", "Bearer QQ==")];
 const CADDY_2_11_4_MAC_ARM64_SHA512: &str = "3190ae0df98b59ab4b6021556fa35adc3c526a4f3e138776b0eaec8a037cc26121cbbb1ad53453f565551b47d37d5ba4755e2c2c3652256737fe2ce9e53c8ec0";
 const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164888d1edbb1a49e5d15be4eab691b57e89ed36bb29c65ba43f1ba8d9279e0967b1003991c13fe4cb78384c3caf25de";
 
-// PHP artifact digests. **8.0.30 is static-php.dev's; 8.1-8.5 are OURS** since
-// 10 Sep 2026 (release `php-8x-1`, immutable) — see `php_self_hosted_tag` for
+// PHP artifact digests. **8.0-8.5 are all OURS**: 8.1-8.5 since 10 Sep 2026
+// (release `php-8x-1`, immutable), 8.0.30 since 24 Oct 2026 (`php-8x-11`) — see `php_self_hosted_tag` for
 // why, in one line: the bulk builds' `pdo_pgsql` does not exist while their PDO
 // says it does.
 //
@@ -721,8 +722,8 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 // - **static-php.dev REBUILDS in place** (same URL, new bytes), so a sudden
 //   mismatch there usually means a rebuild rather than tampering. On mismatch:
 //   download, verify (`php -v` version + `php -m` has mysqli, Mach-O arch), then
-//   re-pin. 8.2/8.3 were re-pinned 2026-07-05 after the 2026-07-01 rebuild;
-//   8.0.30 was pinned 2026-07-11, downloaded, hashed, extracted and RUN.
+//   re-pin. 8.2/8.3 were re-pinned 2026-07-05 after the 2026-07-01 rebuild.
+//   No row below is theirs any more; the note stays for whoever pins one again.
 //
 // One digest per version × {cli,fpm} × {arm64,amd64}; both arches pinned
 // together. The 8.2-8.5 rows below are `php-8x-9`'s (23 Oct 2026, from the publisher's
@@ -732,10 +733,12 @@ const CADDY_2_11_4_MAC_AMD64_SHA512: &str = "e04eb10f9ce7e2e079bc9bff1bd5d3a3164
 // release's own `.sha256` files by script — one re-hashed from the downloaded bytes
 // — whose artifacts CI had already run: parity against the bulk module list for that
 // minor, a live PostgreSQL connection through PDO, and a libcurl with no c-ares.
-const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "13c77c837cd50c027e1c614c192b25205123311a30d2335e9a3c8f82d23acb9a";
-const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "b025f2c343916dd97d4cad543f0cc4c07ac882af10bc72773ad27ab8f6c9f59a";
-const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "e91bc2624c4469ceb0d7f7d93d643e1aebadd451556b0b1cc8d5142531b14138";
-const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "ec02cd54162c190c0029ddccbc382e21442b4941aedef9455b8d6fd32bc472d5";
+// 8.0.30's are `php-8x-11`'s (24 Oct 2026), hashed from full downloads, equal to its
+// SHA256SUMS.
+const PHP_8_0_30_CLI_MAC_ARM64_SHA256: &str = "cb33c9880028389c9756f633f4316de090a03356157c29da0beff00ef194e2ff";
+const PHP_8_0_30_CLI_MAC_AMD64_SHA256: &str = "e56ac0412edf8247a803a7b8c2ef4e5c1c55d0cb5ab69bccfd4a217008ee4769";
+const PHP_8_0_30_FPM_MAC_ARM64_SHA256: &str = "b801a22018a865da7e44dd54fa28d41f3594e15eb78754086f6e89120d146f30";
+const PHP_8_0_30_FPM_MAC_AMD64_SHA256: &str = "bd3025d6c9a6fb2757fa2f0dc1e29149b13c14bf4a2614314a5f1edf39a4c759";
 const PHP_8_1_34_CLI_MAC_ARM64_SHA256: &str = "bb44afd78d7dcc7087adaa6808069c3b9f4afcc0e8cf0ea56c0ece505c83eb16";
 const PHP_8_1_34_CLI_MAC_AMD64_SHA256: &str = "b267d8cf7076dc40b9cb0dffeac04f13e35623c6dd184fe69c5e7462bebd1cce";
 const PHP_8_1_34_FPM_MAC_ARM64_SHA256: &str = "8532d8d041e448499c0604f67cc3153731db19e51fcd27bc6ce11c4aa5834d64";
@@ -1026,6 +1029,12 @@ const APR_UTIL_1_6_3_BOTTLE_AMD64_SHA256: &str = "a59301c0e98b321c57fc3c8fac679a
 // static php x86_64 + sonoma .so → loads). Old tags on this repo stay
 // pullable (verified back to 3.2.2), so these pins can 404 only on a
 // registry-side prune — never drift.
+// 8.0's (`xdebug@8.0`, same release, same tags) pinned 24 Oct 2026, when 8.0.30 became
+// ours (`php-8x-11`): both blobs downloaded + hashed, each .so LOADED into that build's
+// php and php-fpm of its arch (x86_64 under Rosetta) — `with Xdebug v3.5.3`. No legacy
+// row for 8.0: the 13 tier is `NotPinned` for it, as for 8.5.
+const XDEBUG_PHP80_BOTTLE_ARM64_SHA256: &str = "2e5a4c04e7c06020b5b8485bd3d13415a424231ef67a619a5173c4b7aad45eea";
+const XDEBUG_PHP80_BOTTLE_AMD64_SHA256: &str = "d20df1ec3c051a549292ba72c13eaf758873953f549a26bcac20a5c03f3885b8";
 const XDEBUG_PHP81_BOTTLE_ARM64_SHA256: &str = "78531e924acdca0f8b89c9f0059cf37aacd49e3d42e4daf3b78afa9da99d1507";
 const XDEBUG_PHP81_BOTTLE_AMD64_SHA256: &str = "3995225ef848dc149b49be17c86c657e869f28ff4f64d222dabdd516fc022909";
 const XDEBUG_PHP82_BOTTLE_ARM64_SHA256: &str = "9f7142dd46a12d0f5599c3268c47053f6fe82bceb1d266284f7d3f2b233cdf7b";
@@ -1128,10 +1137,10 @@ const XDEBUG_PHP83_VENTURA_BOTTLE_AMD64_SHA256: &str = "fae1e4d5fd38c308731f64a6
 const XDEBUG_PHP84_VENTURA_BOTTLE_ARM64_SHA256: &str = "100d4377d2d5420d4cdc5d419147694752a60bdec15387883ca3b1124feaa910";
 const XDEBUG_PHP84_VENTURA_BOTTLE_AMD64_SHA256: &str = "e6a028aa2b5feaaad579ea5cda8e641801fc1b3dd22e0ee22865f8db38e3fc80";
 
-/// PHP 8.0.30 is static-php.dev's build and `minos 14.0` on arm64; there is no
-/// older artifact to pin (they rebuild in place) and no self-build (its x86_64
-/// build aborts — see `php_self_hosted_tag`). So a 13 host is not offered it.
-const LEGACY13_PHP_VERSIONS: &[&str] = &["7.4.33", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"];
+/// Every Standard PHP. 8.0.30 was left out while it was static-php.dev's build
+/// (`minos 14.0` on arm64); ours (`php-8x-11`) is `minos 12.0` on both arches,
+/// read off the artifacts 24 Oct 2026, so a 13 host is offered it again.
+const LEGACY13_PHP_VERSIONS: &[&str] = &["7.4.33", "8.0.30", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"];
 
 /// One PHP minor's Xdebug row: the version pinned FOR THAT MINOR, the tap
 /// formula, and the two arch digests. Kept as one struct so the four facts can
@@ -1225,9 +1234,8 @@ fn xdebug_absence(minor: &str) -> XdebugStatus {
         "7.4" => XdebugStatus::CannotLoadExtensions {
             measured: "rexenv's own 7.4.33 build, 14 Aug 2026",
         },
-        "8.0" => XdebugStatus::CannotLoadExtensions {
-            measured: "static-php.dev's 8.0.30 build, Nov 2024",
-        },
+        // 8.0 was here while static-php.dev's 8.0.30 (Nov 2024) was pinned. Ours
+        // (`php-8x-11`) exports `_OnUpdateBool` and the rest, and has a bottle row.
         _ => XdebugStatus::NotPinned,
     }
 }
@@ -1252,6 +1260,7 @@ fn xdebug_row_at(minor: &str, version: &str) -> Option<XdebugBottle> {
     match (minor, version) {
         // Measured, not assumed. Both exports checked with `nm -gU`; 7.4's build
         // shows ~22,400 symbols and not the one that matters.
+        ("8.0", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.0", XDEBUG_PHP80_BOTTLE_ARM64_SHA256, XDEBUG_PHP80_BOTTLE_AMD64_SHA256),
         ("8.1", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.1", XDEBUG_PHP81_BOTTLE_ARM64_SHA256, XDEBUG_PHP81_BOTTLE_AMD64_SHA256),
         ("8.2", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.2", XDEBUG_PHP82_BOTTLE_ARM64_SHA256, XDEBUG_PHP82_BOTTLE_AMD64_SHA256),
         ("8.3", XDEBUG_VERSION) => row(XDEBUG_VERSION, "xdebug@8.3", XDEBUG_PHP83_BOTTLE_ARM64_SHA256, XDEBUG_PHP83_BOTTLE_AMD64_SHA256),
@@ -1320,7 +1329,7 @@ pub(crate) fn xdebug_unavailable_reason_on(minor: &str, os: &str) -> Option<Stri
         XdebugStatus::CannotLoadExtensions { measured } => Some(format!(
             "Xdebug isn't available for PHP {minor} — its static build exports no Zend \
              symbols, so it can't load any extension ({measured}). No version of Xdebug \
-             can change that. Switch the site to PHP 8.1 or newer first."
+             can change that. Switch the site to PHP 8.0 or newer first."
         )),
         XdebugStatus::NotPinned => Some(format!(
             "Xdebug isn't available for PHP {minor} yet — rexenv has no Xdebug build \
@@ -1452,17 +1461,58 @@ const MAILPIT_1_30_3_WIN_AMD64_SHA256: &str = "7e9bdf9a299ae6df2c3e73d8c666af8a0
 const CLOUDFLARED_2026_6_1_WIN_AMD64_SHA256: &str = "5253e66f1f493c4e13539749f1aa86fd0c61e3072900fec29a44ba046a6d97e2";
 
 /// php.net's Windows builds: NTS x64 zips from the permanent `archives/` path,
-/// which keeps every release (the current-releases directory moves on).
+/// which keeps every release (the current-releases directory moves on) — except the
+/// three end-of-life minors, see [`php_windows_backport_tag`].
 fn php_windows_sha256(version: &str) -> Option<&'static str> {
     match version {
-        "7.4.33" => Some("14ae3250d4447c8ccfc4c45a70d90adfbcd61e728d85f0be56a7ddf8f9c8aace"),
-        "8.0.30" => Some("dfb70498ffa2c617f2f655a155564697e3c9cca41709938fd1a5997d1d5b0785"),
-        "8.1.34" => Some("9cfe246cb144076c16f5913a3ef88a474c3dd7e60f0f0c8bb95faf68674016cc"),
+        // shivammathur/php-builder-windows' builds of 21 Oct 2026 (the php.net bytes these
+        // replace were 14ae3250…, dfb70498…, 9cfe246c…).
+        "7.4.33" => Some("a6f4a5f868e13e1fff802fe337e72d4483f496fe40a10216e25e28c370ccab24"),
+        "8.0.30" => Some("98f4aa8269171842df943258395c3b476d9ac80d2c422397a629bd81845130a6"),
+        "8.1.34" => Some("0b57b72712e9bfe680499c1f0c3267ce4ac3ee5f571e7af569c1683dc12819e3"),
         "8.2.35" => Some("798ffa4b9ce22a820d57048e9695df7245bf917ed067917f256942a10918a8cc"),
         "8.3.36" => Some("3c9242622c7402b47c38d2ec2ed779cef3a290fd6f2bde6c35f9c482699e7900"),
         "8.4.27" => Some("93bd8a815a52156606fb906d0573437908c61f96e2cc52c03a51e36a41bf5236"),
         "8.5.12" => Some("2ab242af38d76bdf417cde5ec048b1bcd76a5a40f39a3d15d5f046f38571c477"),
         _ => None,
+    }
+}
+
+/// The release on shivammathur/php-builder-windows serving a Windows PHP, or `None` for
+/// php.net's archive.
+///
+/// The fix for CVE-2026-109618/109619 ("PHP2Shell", unauthenticated RCE through FPM/CGI —
+/// and Windows' pool IS php-cgi) reached 7.4, 8.0 and 8.1 only as a source backport, and
+/// php.net publishes no Windows build of it. Shivam Mathur (who maintains the backports,
+/// setup-php and these builds) rebuilt all three on 21 Oct 2026, still named 7.4.33 /
+/// 8.0.30 / 8.1.34. Measured 24 Oct 2026, rexenv/runtimes `php-windows.yml` run
+/// 40006548177: each `php*.dll` EXPORTS `zend_mm_safe_error_ex` — the ZEND_API function
+/// the backport adds — and php.net's zips of the same versions do not; on Windows
+/// `php -m` equals php.net's; and memory exhaustion takes the fixed path (exit 1, no
+/// shutdown functions) where php.net's takes the old one (255). The file set is php.net's
+/// minus the Oracle bindings (`php_oci8_*.dll`, `php_pdo_oci.dll`), which php.net's own
+/// 8.2/8.3 zips also dropped and which the ini model never enables.
+///
+/// Pinned at the PUBLISHER, not mirrored: served from rexenv's host, rexenv would be the
+/// distributor of the OpenSSL, ICU, libpq… DLLs inside, and these zips carry no licence
+/// texts for them (`license.txt` is PHP's; `readme-redist-bins.txt` covers php-src's own
+/// bundled code). Those assets are REPLACED IN PLACE under the same name, so a rebuild
+/// there turns this pin into a checksum failure — loud, and never different bytes. The
+/// gated copy in rexenv/runtimes `php-windows-legacy-1` is the record of what was pinned.
+fn php_windows_backport_tag(version: &str) -> Option<&'static str> {
+    match version {
+        "7.4.33" => Some("php7.4"),
+        "8.0.30" => Some("php8.0"),
+        "8.1.34" => Some("php8.1"),
+        _ => None,
+    }
+}
+
+fn php_windows_url(version: &str) -> String {
+    let file = format!("php-{version}-nts-Win32-{}-x64.zip", php_windows_toolset(version));
+    match php_windows_backport_tag(version) {
+        Some(tag) => format!("https://github.com/shivammathur/php-builder-windows/releases/download/{tag}/{file}"),
+        None => format!("https://downloads.php.net/~windows/releases/archives/{file}"),
     }
 }
 
@@ -1603,7 +1653,7 @@ const FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256: &str = "49f09d389ab7b9e4511001ad67
 /// Where a Linux PHP comes from: our release for the versions we build, static-php.dev otherwise.
 fn php_linux_url(kind: &str, version: &str, arch: Arch) -> String {
     if php_linux_licenses_sha256(version).is_some() {
-        format!("{RUNTIMES_RELEASE_BASE}/{PHP_8X_LINUX_TAG}/php-{version}-{kind}-linux-{}.tar.gz", linux_arch(arch))
+        format!("{RUNTIMES_RELEASE_BASE}/{}/php-{version}-{kind}-linux-{}.tar.gz", php_linux_tag(version), linux_arch(arch))
     } else {
         format!("https://dl.static-php.dev/static-php-cli/bulk/php-{version}-{kind}-linux-{}.tar.gz", linux_arch(arch))
     }
@@ -1616,8 +1666,9 @@ fn linux_arch(arch: Arch) -> &'static str {
     php_arch(arch)
 }
 
-/// The Linux PHP builds: `(aarch64, x86_64)` per `(kind, version)`. 8.0.30 is static-php.dev's;
-/// **8.1-8.5 are OURS since `php-8x-linux-1`** (23 Oct 2026, [`PHP_8X_LINUX_TAG`]) — the bulk
+/// The Linux PHP builds: `(aarch64, x86_64)` per `(kind, version)`. 8.0.30 is ours since
+/// `php-8x-linux-2` (24 Oct 2026, the backports source, same hashing); **8.1-8.5 are OURS
+/// since `php-8x-linux-1`** (23 Oct 2026, [`PHP_8X_LINUX_TAG`]) — the bulk
 /// Linux builds had the macOS ones' `pdo_pgsql` hole AND stopped at 8.5.8/8.4.23/8.3.32/8.2.32,
 /// so no Linux build of the CVE-2026-109618/109619 patches existed to pin. Same script and gates
 /// as macOS (`rexenv/runtimes` `build-php.sh`), fully static musl, function and configure-flag
@@ -1625,8 +1676,8 @@ fn linux_arch(arch: Arch) -> &'static str {
 /// `releases/download` URLs, equal to the release's own `SHA256SUMS` (23 Oct 2026).
 fn php_linux_sha256(kind: &str, version: &str, arch: Arch) -> Option<&'static str> {
     let (arm, amd) = match (kind, version) {
-        ("cli", "8.0.30") => ("2c3fbc72d878862cf3b3d18849d4ab2ca7c02d38821d880eb8fb74a2e6f5c1d3", "805fadfc7eaa97541344d53a5ef2912d7be1e6bdeab753fddc2ce0c63b40c1a5"),
-        ("fpm", "8.0.30") => ("b693b0c1150b12287bfe915a67bd57d3189a791e8b0c0de534e803e04fade625", "08176de6fe5125b7c1486f723f601f5c1273663bc5f719abc9c62adaa55cafc7"),
+        ("cli", "8.0.30") => ("639d1104cf382a45d2adfc4bcffe5857dd065fe43e1e6ee1672f6405dc531b45", "efb5cbba9f2c5401ef8b9d7290086253809e9e599fca7b0af94b89e0618c47ce"),
+        ("fpm", "8.0.30") => ("2dd7e2b1fb0b31cad14812af5a9c8188b9524615cf8c704b1e393ad3bb3188c1", "e4a42c0493faa034d3fa22454061ebd3c2dc150badbb483674aae5d71a750948"),
                 ("cli", "8.1.34") => ("8d38a3991c7385c5fffd94e51ab389fb44a66fe3d4abfbd148733b4d2ae58cca", "671593badf791f54010b542e87e9a46202a20b7e2285b66104fb84e336343c8c"),
         ("cli", "8.2.35") => ("f7b6d114c8852003ca2c8083bb7422320b91f079ed458be79c1e05ea41635ed1", "a13b0c7706debd0499b76fa9b7e1575ac9580ede2aa43214df3c2334653eb2c2"),
         ("cli", "8.3.36") => ("fcd7b95a6a2ddc559f2b7591b844eca1ab87601bbe04f0ebf68f3589bdfd7e25", "6d800701104dd35a0cbab0b38530f0ce8e1a4818696bca6410177269e3794f5c"),
@@ -1731,13 +1782,10 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // extension PARITY with the artifacts they replace as a build gate, per
         // minor, against a module list generated from the shipped bulk binary.
         //
-        // **8.0.30 is deliberately NOT here.** It builds and passes every gate on
-        // arm64 and aborts on x86_64 inside static-php-cli's own sanity check
-        // (`php -n -r 'echo "hello";'` exits 6 with no output), reproducibly, with
-        // three different extension subsets excluded in turn. Cause unknown, EOL
-        // since Nov 2023, and half an architecture is not shippable — so it keeps
-        // coming from static-php.dev, without a PDO PostgreSQL driver. That is
-        // the whole reason `php::pdo_pgsql_supported` answers per MINOR.
+        // 8.0.30 was long NOT here: it aborted on x86_64 inside static-php-cli's own
+        // sanity check (`php -n -r 'echo "hello";'` exited 6 with no output) on the
+        // macos-15-intel runners, so it came from static-php.dev, without a PDO
+        // PostgreSQL driver. On the Rosetta x86_64 host the same build passes.
         // One tag per version, and each is the build that produced exactly those
         // bytes. They were built as five SEPARATE runs rather than one matrix —
         // a shape change fails identically on every version, so a matrix spends
@@ -1766,6 +1814,14 @@ fn php_self_hosted_tag(version: &str) -> Option<&'static str> {
         // identical. 8.2-8.5's fixed patches (php-8x-9) reach installs via the signed
         // manifest: pinning them here would move Linux too, where no build exists yet.
         "8.1.34" => Some("php-8x-10"),
+        //
+        // -11 (24 Oct 2026) is 8.0.30, ours for the first time, and for the same
+        // CVE-2026-109618/109619: built from shivammathur/php-src-backports @
+        // 190a0202b460 (the source tarball is in the release), still calling itself
+        // 8.0.30. static-php.dev's 8.0.30 is unfixed. Every gate of the 8.x rows,
+        // including function and flag parity with upstream's 8.0.30 and a live
+        // PostgreSQL connection through PDO — so 8.0 gains `pdo_pgsql`.
+        "8.0.30" => Some("php-8x-11"),
         //
         // -9 (23 Oct 2026): 8.2.35, 8.3.36, 8.4.27 and 8.5.12 — php.net's fix for
         // CVE-2026-109618/109619 ("PHP2Shell", unauthenticated RCE through FPM/CGI).
@@ -2158,11 +2214,24 @@ const PHP_7_4_33_LICENSES_LINUX_AARCH64_SHA256: &str = "3ae6cef515773ada807557a3
 /// The Linux 8.1-8.5 release (`rexenv/runtimes`, immutable): its own tag series, because a
 /// published macOS release is never amended with a second OS.
 pub(crate) const PHP_8X_LINUX_TAG: &str = "php-8x-linux-1";
+/// 8.0.30's Linux release (24 Oct 2026): built from the backports source for
+/// CVE-2026-109618/109619, one version alone, so the next number of the series.
+const PHP_8_0_30_LINUX_TAG: &str = "php-8x-linux-2";
 
-/// `licenses-php-<version>-linux-<arch>.tar.gz` of [`PHP_8X_LINUX_TAG`]: `(aarch64, x86_64)`.
+/// Which Linux release holds `version`'s artifacts. Per version, because a rebuild is a
+/// new tag and the series no longer holds one release.
+fn php_linux_tag(version: &str) -> &'static str {
+    match version {
+        "8.0.30" => PHP_8_0_30_LINUX_TAG,
+        _ => PHP_8X_LINUX_TAG,
+    }
+}
+
+/// `licenses-php-<version>-linux-<arch>.tar.gz` of [`php_linux_tag`]: `(aarch64, x86_64)`.
 /// `Some` exactly for the Linux versions rexenv builds, which is also how a Linux URL is chosen.
 fn php_linux_licenses_sha256(version: &str) -> Option<(&'static str, &'static str)> {
     match version {
+        "8.0.30" => Some(("fabe2654e3a048fb809f8bc1b2b07fe8ac393bbb99996b11036ba157d3c59514", "ac30a73e22d07403bbe2f17b9a108c2cc7d57d7ce561c32035078b34a32bfbf7")),
         "8.1.34" => Some(("20dd621ba9e4aa94c73fabf75049ff5e97a41192a394c8ce18e030bc31301400", "0188cd3f6fdcf94854903d748692f921b4e6f2f5d875de2c87793570f7ca32d9")),
         "8.2.35" => Some(("01a35e33c5b2cc664c8853d04a1626445874b06a9a83d0ecfcfea8c67c60de01", "ba8d08690d7d488f1c4c1e1576eea1e7bd4d4982d6f7bbc2741759d3ee3ee585")),
         "8.3.36" => Some(("f74e76c85d10480a99d6e0488d5560c50bebc332232f3ed9c15472408d0ee05a", "489d322dca70b55748d93fab894c302a6c64410992ca821660923684c6981cdd")),
@@ -2187,6 +2256,8 @@ const NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256: &str = "517f6656ae4bae3f1aa29e64ce
 const NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256: &str = "cbf546b81a7b02bd9e71e50f0ef1a1da549e527c7e528e346514b511bc1f9d2b";
 const PHP_7_4_33_LICENSES_MAC_ARM64_SHA256: &str = "31db20400311c77222a866d71ba6bff721be84ad6a1359bb48f923f734416964";
 const PHP_7_4_33_LICENSES_MAC_AMD64_SHA256: &str = "b8b88400ba21c9e4cbccb4cace1fee203caf7288ee1fb4e87121e51bbd11c4cc";
+const PHP_8_0_30_LICENSES_MAC_ARM64_SHA256: &str = "d52c7887b2ffb148c1aa42e0800316738bda19b5d9b816e8679d7c72c02019d5";
+const PHP_8_0_30_LICENSES_MAC_AMD64_SHA256: &str = "f1f55242b5c79b73ebe2e1d983143c69c3b53490b64482d1d39fc4fb631653b7";
 const PHP_8_1_34_LICENSES_MAC_ARM64_SHA256: &str = "ef509e12088d178a987f33a0f33a1d6d72c4cefa927978e0bc90d511fc4d9a8a";
 const PHP_8_1_34_LICENSES_MAC_AMD64_SHA256: &str = "2adfda52949a8cdb084b5426c71019756d662c7283295dc3857c35768f1d0abf";
 const PHP_8_2_35_LICENSES_MAC_ARM64_SHA256: &str = "efe7478d061f2313728ea5d3e1272b543320f2b33236da81ae2b48e082611cfe";
@@ -2341,6 +2412,11 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             PHP_7_4_33_LICENSES_MAC_ARM64_SHA256,
             PHP_7_4_33_LICENSES_MAC_AMD64_SHA256,
             format!("licenses-{}.tar.gz", php_arch(arch)),
+        ),
+        ("php", "8.0.30") | ("php-fpm", "8.0.30") => (
+            PHP_8_0_30_LICENSES_MAC_ARM64_SHA256,
+            PHP_8_0_30_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-php-8.0.30-{}.tar.gz", php_arch(arch)),
         ),
         ("php", "8.1.34") | ("php-fpm", "8.1.34") => (
             PHP_8_1_34_LICENSES_MAC_ARM64_SHA256,
@@ -2803,10 +2879,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         // A TREE on Windows: `php.exe` and `php-cgi.exe` beside `ext/*.dll`. There is
         // no `php-fpm` on Windows at all — the pool is php-cgi (plan D1).
         ("php", "windows", v) => php_windows_sha256(v).map(|hex| BinarySpec {
-            url: format!(
-                "https://downloads.php.net/~windows/releases/archives/php-{v}-nts-Win32-{}-x64.zip",
-                php_windows_toolset(v)
-            ),
+            url: php_windows_url(v),
             checksum: Checksum::Sha256(hex.to_string()),
             archive: Archive::ZipTree { strip: 0 },
             member: "php.exe",
@@ -2894,7 +2967,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
         }),
         // static-php.dev's Linux builds — the same publisher and the same tarball shape as
         // its macOS ones (a single static `php` / `php-fpm`), so the pool model is macOS's.
-        // 8.1-8.5: ours (`PHP_8X_LINUX_TAG`); 8.0.30: static-php.dev's bulk build.
+        // 8.0-8.5: ours (`php_linux_tag`).
         ("php", "linux", v) => php_linux_sha256("cli", v, arch).map(|hex| BinarySpec {
             url: php_linux_url("cli", v, arch),
             checksum: Checksum::Sha256(hex.to_string()),
@@ -4817,7 +4890,8 @@ mod tier_tests {
     #[test]
     fn a_refusal_names_the_oldest_macos_that_offers_the_thing() {
         install_tier(BinaryTier::Legacy13);
-        assert_eq!(php_minor_needs_macos("8.0"), Some(14), "8.0.30 is 14.0 on arm64");
+        // 8.0 was the one PHP refusal (static-php.dev's 8.0.30 was minos 14.0); ours is 12.0.
+        assert_eq!(php_minor_needs_macos("8.0"), None, "offered here since php-8x-11");
         assert_eq!(php_minor_needs_macos("8.3"), None, "offered here");
         assert_eq!(php_minor_needs_macos("7.4"), None, "offered here");
         assert_eq!(php_minor_needs_macos("9.9"), None, "shipped nowhere — not a tier refusal");
@@ -4826,7 +4900,7 @@ mod tier_tests {
         assert_eq!(engine_needs_macos("mariadb"), None);
         assert_eq!(engine_needs_macos("redis"), None);
         assert_eq!(engine_needs_macos("nosuch"), None);
-        assert_eq!(refused_php_minors(), vec![("8.0".to_string(), 14)]);
+        assert!(refused_php_minors().is_empty(), "no PHP minor needs a newer macOS");
         // Plant: with `needs_macos_for` returning the HIGHEST tier instead of the
         // lowest, PostgreSQL read `Some(15)` here and this line failed.
         install_tier(BinaryTier::Legacy14);
@@ -4918,7 +4992,7 @@ mod tier_tests {
         assert_eq!(PinSet { cloudflared: std.cloudflared, postgres: std.postgres, postgres_versions: std.postgres_versions, ..l14 }, std);
         // Legacy13: every engine row, both slices, own bytes.
         let l13 = PinSet::for_tier(BinaryTier::Legacy13);
-        assert!(!l13.php_versions.contains(&"8.0.30"), "8.0.30 is minos 14.0 on arm64");
+        assert!(l13.php_versions.contains(&"8.0.30"), "ours is minos 12.0 (php-8x-11)");
         assert!(l13.php_versions.contains(&"7.4.33") && l13.php_versions.contains(&"8.5.12"));
         for (name, versions) in [("mysql", l13.mysql_versions), ("postgres", &["16.4.0"][..])] {
             for v in versions {
@@ -5996,11 +6070,11 @@ mod tests {
         // wrongly fired on macOS would flip the expectation with it and still pass.
         assert!(available >= 5, "only {available} minors with a pinned bottle");
         assert_eq!(not_here, 0, "bottles ship on macOS, so no minor may answer NotOnThisOs there");
-        assert_eq!(cannot_load, 2, "expected exactly 7.4 and 8.0 to be unloadable");
+        assert_eq!(cannot_load, 1, "expected exactly 7.4 to be unloadable (8.0 loads since php-8x-11)");
 
         // …and D4's half, measured from this host rather than only on Windows: every minor
         // whose bottle exists answers NotOnThisOs there, because no xdebug bundle has a
-        // Windows arm. The two absences stay apart — 7.4 and 8.0 keep saying why.
+        // Windows arm. The two absences stay apart — 7.4 keeps saying why.
         let mut windows_not_here = 0;
         for v in PHP_VERSIONS {
             let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
@@ -6036,11 +6110,12 @@ mod tests {
         assert!(!why.contains("exports no Zend symbols"), "that is a claim about the PHP build: {why}");
         assert!(!why.contains("or newer"), "there is no way out to offer here: {why}");
 
-        for minor in ["7.4", "8.0"] {
+        {
+            let minor = "7.4";
             let why = xdebug_unavailable_reason(minor).expect("no bottle for this minor");
             assert!(why.contains(minor), "{minor}: the message does not name the version");
             assert!(why.contains("exports no Zend symbols"), "{minor}: {why}");
-            assert!(why.contains("8.1 or newer"), "{minor}: no way out offered — {why}");
+            assert!(why.contains("8.0 or newer"), "{minor}: no way out offered — {why}");
             // The permanence is the point: a user who reads "not yet" will wait
             // for a fix that is not coming.
             assert!(why.contains("No version of Xdebug can change that"), "{minor}: {why}");
@@ -6053,19 +6128,20 @@ mod tests {
             "an unpinned minor must not be told its PHP is broken: {unpinned}"
         );
         assert!(
-            !unpinned.contains("8.1 or newer"),
+            !unpinned.contains("8.0 or newer"),
             "'switch to something newer' is not advice for a minor NEWER than the table: {unpinned}"
         );
     }
 
     #[test]
     fn xdebug_is_refused_for_php_80_and_unknown_minors() {
-        // 8.0's static build exports no Zend symbols — dlopen fails, so the
-        // toggle must be unofferable by construction.
+        // A minor with no row must be unofferable by construction. 8.0 was the
+        // measured case here until its build became ours (php-8x-11, 24 Oct 2026);
+        // the name stays because ledger rows #320/#657 cite it.
         // Asked OF macOS: on Windows nothing is pinned at all, so the host-reading form
         // makes every line below true for the wrong reason — a refusal that proves
         // nothing because there is nothing to refuse (W12).
-        for minor in ["8.0", crate::core::php::unshipped_minor(), "9.0", ""] {
+        for minor in [crate::core::php::unshipped_minor(), "9.0", ""] {
             assert!(!xdebug_supported_on(minor, "macos"), "{minor}");
             assert!(xdebug_bundle_id(minor).is_none());
             assert!(xdebug_version_for_on(minor, "macos").is_none(), "{minor}");
@@ -6269,12 +6345,18 @@ mod tests {
     /// rather than named, because which versions are ours changes (7.4 in Aug
     /// 2026, then 8.1-8.5 in Sep) and every test that spelled one asserted a
     /// stale fact the day after it moved.
+    ///
+    /// No PINNED version is upstream's since 8.0.30 became ours (24 Oct 2026). What can
+    /// still come from static-php.dev is a patch the signed manifest offers before rexenv
+    /// has built it — the next patch of the newest pinned minor is exactly that shape.
     fn upstream_php_version() -> &'static str {
-        PHP_VERSIONS
-            .iter()
-            .copied()
-            .find(|v| php_self_hosted_tag(v).is_none())
-            .expect("at least one PHP version still comes from upstream")
+        if let Some(v) = PHP_VERSIONS.iter().copied().find(|v| php_self_hosted_tag(v).is_none()) {
+            return v;
+        }
+        let (minor, patch) = PHP_VERSIONS.last().and_then(|v| v.rsplit_once('.')).expect("a pinned PHP");
+        let next = format!("{minor}.{}", patch.parse::<u32>().expect("numeric patch") + 1);
+        assert!(php_self_hosted_tag(&next).is_none(), "{next} is ours — pick another");
+        Box::leak(next.into_boxed_str())
     }
 
     #[test]
@@ -7565,6 +7647,21 @@ mod tests {
         for (v, toolset) in [("7.4.33", "vc15"), ("8.0.30", "vs16"), ("8.3.36", "vs16"), ("8.4.27", "vs17"), ("8.5.12", "vs17")] {
             let url = manifest("php", v, "windows", Arch::X86_64).unwrap().url;
             assert!(url.ends_with(&format!("php-{v}-nts-Win32-{toolset}-x64.zip")), "{url}");
+        }
+        // The EOL minors carry the CVE-2026-109618/109619 backport only in Shivam Mathur's
+        // builds; php.net's 7.4.33/8.0.30/8.1.34 zips are the vulnerable ones. Served from
+        // their publisher, so rexenv owes no licence archive for them.
+        for (v, tag) in [("7.4.33", "php7.4"), ("8.0.30", "php8.0"), ("8.1.34", "php8.1")] {
+            let url = manifest("php", v, "windows", Arch::X86_64).unwrap().url;
+            assert!(
+                url.starts_with(&format!("https://github.com/shivammathur/php-builder-windows/releases/download/{tag}/")),
+                "{url}"
+            );
+            assert!(!is_self_distributed(&url), "{url}");
+        }
+        for v in ["8.2.35", "8.3.36", "8.4.27", "8.5.12"] {
+            let url = manifest("php", v, "windows", Arch::X86_64).unwrap().url;
+            assert!(url.starts_with("https://downloads.php.net/~windows/releases/archives/"), "{url}");
         }
     }
 
