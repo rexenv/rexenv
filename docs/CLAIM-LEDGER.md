@@ -1478,4 +1478,4 @@ Closed since this list was first ranked — see the rows: #33, #307, #308 (tunne
 replay + ordering), #10, #13 (cross-site + override fallthrough), #103 (dotfiles —
 nginx first, and since 15 Aug 2026 genuinely all three backends; this line claimed all three EARLY, the stale-summary shape again), #37, #36, #44; #40/#166 (webview dialogs + custom-scheme
 redirect — automatable halves landed at L0+L1, the L2 idea measured impossible,
-the eye-only remainder mapped to SMOKE).**✅ 754 · ◐ 133 · 🔨 5 · 🚫 17** of 909 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+the eye-only remainder mapped to SMOKE).**✅ 755 · ◐ 132 · 🔨 5 · 🚫 17** of 909 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
