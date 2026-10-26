@@ -1,7 +1,9 @@
 # PLAN — headless rexenv on a server, driven from a browser and from `rex`
 
 **Status:** PLANNED — 26 Oct 2026. Nothing built. The facts in §2 were read from the tree at `14ab9608`;
-the open measurements are T0's (§6), and the shape waits on the owner's rulings D1–D5 (§5).
+the open measurements are T0's (§6), and the shape waits on the owner's rulings D1–D6 (§5). Re-ordered the
+same day after GitHub issue rexenv/rexenv#7: Phase 1a (headless + `rex`/`rex mcp` + configurable edge
+ports) ships before the web UI, because it alone is what that user needs.
 Tracked as the "Headless rexenv on a VPS" row in `docs/TODO.md` (Phase 4+).
 
 ## 1. The ask
@@ -9,6 +11,19 @@ Tracked as the "Headless rexenv on a VPS" row in `docs/TODO.md` (Phase 4+).
 Owner, 26 Oct 2026: installing rexenv on a local PC is all it takes today. Installing it on a
 remote VPS should be the same. A VPS has no display, so the app's GUI should be served on a port of the
 VPS, and opening that port in a browser should give the whole app. `rex` should keep working on the VPS too.
+
+The same day a user asked for the same thing from the other end, in GitHub issue rexenv/rexenv#7
+("Linux: run headless on a server (no GUI, configurable ports, `rex mcp`)"). Their use is automated
+pull-request QA. An agent (Claude Code CLI) on an Ubuntu 24.04 x86_64 server creates a fresh WordPress
+site per PR, installs the plugin build, tests it through `rex` and `rex mcp`, and deletes the site. They
+need no browser UI at all. They list five asks:
+1. a headless systemd service controlled only through `rex` and `rex mcp`;
+2. configurable HTTP/HTTPS ports or a bind address, because their nginx already holds 80 and 443;
+3. `rex mcp` on Linux, documented;
+4. scratch sites created and deleted per run on Linux;
+5. Redis and MariaDB on Linux, and Apache if practical (they test a caching plugin and `.htaccess`).
+
+Asks 1–4 are this plan (§4 Phase 1a). Ask 5 is a catalog question, outside it (§4 "Not in this plan").
 
 What this is NOT: a hosting panel, a multi-user/team product, or a way to put the developer's sites
 on the public internet. It is ONE developer's rexenv, running on a machine they reach over the network.
@@ -47,6 +62,16 @@ on the public internet. It is ONE developer's rexenv, running on a machine they 
   fallback open.
 - **The DNS agent is a per-user systemd unit.** A user unit stops at logout unless the user is
   lingering (`loginctl enable-linger`).
+- **The edge's ports are fixed.** `core/service_manager.rs:35` takes `proxy::DEFAULT_HTTP_PORT` (80) and
+  `proxy::DEFAULT_HTTPS_PORT` (443). There is no setting. On macOS and Linux the edge binds the wildcard
+  `*:443` (`core/proxy.rs:137`); Windows binds `127.0.0.1` only. A server whose nginx holds `:443` fails
+  the `core/ports::ensure_free` gate, which is issue #7's ask 2.
+- **`rex mcp` and scratch sites are common code.** `rex mcp` is a bridge in `cli/src/main.rs` to the MCP
+  socket (a unix socket on Linux, `LocalIpc`). `scratch_create_site`/`scratch_delete_site` live in
+  `mcp_server/scratch.rs` with no OS branch. Both compile for Linux, but no Linux run and no Linux doc of
+  either was found. That is a missing proof, not a missing feature.
+- **The Linux catalog has no Redis, MariaDB or Apache httpd** (`docs/PORTS.md` §Linux, D-L8 of
+  `docs/PLAN-linux-port.md`). `ships_on` refuses them on Linux.
 - **The edge is loopback-scoped by design.** It runs auto-HTTPS off, with leaves from the local CA,
   and `.rex` resolves only on the machine itself. So a site on the VPS is reachable from the
   developer's own browser only through a tunnel, a proxy, or a real domain (§4 Phase 3).
@@ -82,10 +107,28 @@ rexenv --headless [--web 127.0.0.1:9443]
 
 ## 4. Phases
 
-### Phase 1 — headless + web UI on loopback, reached over SSH (the first ship)
+### Phase 1a — headless, driven by `rex` and `rex mcp` (the first ship; issue #7 asks 1–4)
 
-- `rexenv --headless` runs the full backend without a window. `rex` works against it unchanged, which
-  answers the first half of the ask.
+- `rexenv --headless` runs the full backend without a window. `rex` and `rex mcp` work against it
+  unchanged, which answers the first half of the owner's ask and all of issue #7's asks 1, 3 and 4.
+- **Configurable edge ports and bind address.** New settings for the HTTP port, the HTTPS port and the
+  edge bind address (default `80`/`443`/the OS's current bind, so nothing changes for a desktop user).
+  Every start stays port-gated through `core/ports::ensure_free` on the chosen ports. This is common code
+  and lands on all three OSes, desktop included. It is not only a config value:
+  - A non-443 port makes a site's URL carry it (`https://x.rex:8443`). WordPress stores it in `siteurl`/
+    `home`, so creating, importing, renaming a domain and live sync must all write the port. Cookies,
+    multisite (subdomain and subdirectory) and the edge's HTTP→HTTPS redirect must be tested with it.
+  - Changing the port with sites already present means rewriting those URLs, the same job as a domain
+    change. The first version may refuse the change while sites exist, with a sentence saying why.
+  - The Share/tunnel and every place that prints a site URL (`rex site info`, MCP `site_info`, the UI)
+    must take the port from one place, never assume 443.
+- **Linux proof of `rex mcp` and scratch sites** on the headless instance: an agent creates, uses and
+  deletes a scratch site end to end, and `docs/INSTALL.md`'s Linux section documents `rex mcp`.
+- Privilege, secrets and the DNS agent's lingering follow the rules in Phase 1b below; 1a needs them
+  first.
+
+### Phase 1b — the web UI on loopback, reached over SSH
+
 - The web UI binds **`127.0.0.1` only**. The developer runs `ssh -L 9443:localhost:9443 vps` and opens
   `http://localhost:9443`. Browsers treat `localhost` as a secure context, so the tunnel needs no TLS.
 - **Auth even on loopback.** Loopback on a VPS is not private: every local user and every process on
@@ -106,6 +149,13 @@ rexenv --headless [--web 127.0.0.1:9443]
   service runs as the user, never as root, and a privileged op that turns up later fails with a sentence
   naming `sudo rexenv --headless-setup`.
 - **Secrets.** `SecretStore` on a box without Secret Service, as D4 rules.
+
+### Not in this plan — Redis, MariaDB and Apache on Linux (issue #7 ask 5)
+
+These are catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of
+`docs/PLAN-linux-port.md`: a build or a relinked bottle per arch, pinned and checksum-locked, with
+`ships_on` opened once a Linux run passes. They are tracked as their own row in `docs/TODO.md`. Headless
+mode does not depend on them, and they do not depend on headless mode.
 
 ### Phase 2 — the web UI on a public address
 
@@ -144,40 +194,54 @@ rexenv --headless [--web 127.0.0.1:9443]
 - **D4 — secrets without a keyring:** an honest refusal for live sync, or a `0600` file under
   app-data with the sentence saying so. Same question as `docs/PLAN-wp-live-sync.md` §11 Q4; one
   ruling should answer both.
-- **D5 — the port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
+- **D6 — the edge port setting's shape.** Recommended: global settings (one HTTP port, one HTTPS port,
+  one bind address) rather than per site, changeable only while no site exists in the first version.
+  The alternative is a full rewrite of every site's URLs on change, as a later task.
+- **D5 — the web UI's port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
   `core/ports::ensure_free` like every other service.
 
 ## 6. Tasks
+
+Phase 1a first (T0–T5), then Phase 1b (T6–T9).
 
 - **T0 — measure (no code shipped).** Done when every answer is written into §2:
   - Does a Tauri 2 app start on Ubuntu 22.04 with no `DISPLAY`/`WAYLAND_DISPLAY` and no window built?
     Under Xvfb?
   - The full list of `PrivilegeManager` calls on Linux, and of anything else that assumes a desktop
     session.
+  - Every place that builds a site URL or assumes port 443 (for T2).
   - What breaks in the frontend with the Tauri internals absent, beyond §2's list. The wk-checks
     already render without Tauri, so start there.
   - Run on the Ubuntu VM (no desktop session), not the dev Mac.
 - **T1 — headless mode.** `--headless` boots the app with no window, tray or menu. Done when `rex status`,
   `rex site create`, `rex start/stop` work against it on the VM over SSH, and a second launch hands off
   to it (ledger #441).
-- **T2 — web transport.** The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
+- **T2 — configurable edge ports and bind address (D6).** Done when, on the VM with a foreign nginx
+  holding `:80`/`:443`, the stack starts on `8080`/`8443`, a WordPress site and a subdirectory multisite
+  load with the port in their URLs, login cookies hold, and the HTTP→HTTPS redirect keeps the port. Also
+  run on macOS and Windows, because the setting is common code.
+- **T3 — `rex mcp` + scratch sites on headless Linux.** Done when an MCP client over `rex mcp` on the VM
+  runs `scratch_create_site` → a plugin install → `scratch_delete_site`, with nothing left behind, and
+  `docs/INSTALL.md` documents it.
+- **T4 — install + setup.** The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
+  `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
+  Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
+- **T5 — the other OSes per D3.**
+- **T6 — web transport.** The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
   with the equal-lists test. Done when the Sites screen lists and creates a site in a browser through an
   SSH tunnel, and the test fails when a command is missing from either list (plant it).
-- **T3 — auth.** The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
+- **T7 — auth.** The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
   row and a plant that proves the request is refused without it.
-- **T4 — the rest of the screens.** The folder picker (`browse_dir`), `/db` and `/pma`, the mail
+- **T8 — the rest of the screens.** The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
   browser on the VM.
-- **T5 — install + setup.** The systemd unit, `--headless-setup`, the deb's post-install note, and the
-  CA download. `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the
-  rows.
-- **T6 — the other OSes per D3.**
+- **T9 — the CA download** for viewing sites through `ssh -D`, with a sentence per OS.
 - **Phase 2 and Phase 3 get their task lists when Phase 1 ships.**
 
 ## 7. Docs this touches when built
 
 `docs/ARCHITECTURE.md` (§8.2's "app not running" rule gains the headless instance; a new §
-for the web server), `docs/MAP.md`, `docs/PORTS.md` (D5), `docs/INSTALL.md`,
+for the web server), `docs/MAP.md`, `docs/PORTS.md` (D5, and the edge's ports becoming settings), `docs/INSTALL.md`,
 `docs/SMOKE-TEST.md`, `docs/CLI-ROADMAP.md` (`rex web url`, `rex web passwd`),
 `docs/PLATFORMS.md` §3 (the per-OS service manager and the headless capability),
 `docs/CLAIM-LEDGER.md` (the auth checks, the equal-lists guard), and `docs/PLAN-linux-port.md`
