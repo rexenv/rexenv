@@ -524,7 +524,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **Headless rexenv on a VPS — open: T0's measurements and the owner's rulings D1–D6, then
+- [ ] **Headless rexenv on a VPS — open: the owner's rulings D1–D7 (T0 measured 26 Oct 2026 on the Ubuntu VM: no display → tao panics in `gtk::init`; under Xvfb the whole stack runs and `rex site create` works; `rex stop` needs polkit every time; `rex mcp` cannot be enabled headless), then
   Phase 1a (T1–T5: headless, configurable edge ports + bind address, `rex mcp` + scratch sites proven
   on Linux, systemd + setup) and Phase 1b (T6–T9: the web UI).** Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,

@@ -1,7 +1,8 @@
 # PLAN — headless rexenv on a server, driven from a browser and from `rex`
 
 **Status:** PLANNED — 26 Oct 2026. Nothing built. The facts in §2 were read from the tree at `14ab9608`;
-the open measurements are T0's (§6), and the shape waits on the owner's rulings D1–D6 (§5). Re-ordered the
+**T0 was measured the same day on the Ubuntu 22.04 arm64 VM (§2a)**, and the shape waits on the owner's
+rulings D1–D7 (§5). Re-ordered the
 same day after GitHub issue rexenv/rexenv#7: Phase 1a (headless + `rex`/`rex mcp` + configurable edge
 ports) ships before the web UI, because it alone is what that user needs.
 Tracked as the "Headless rexenv on a VPS" row in `docs/TODO.md` (Phase 4+).
@@ -45,9 +46,11 @@ on the public internet. It is ONE developer's rexenv, running on a machine they 
   - Every backend call goes through ONE `invoke` (`src/lib/ipc/index.ts:46`). It covers 269 command
     names.
   - Events: `@tauri-apps/api/event` is used only in `src/lib/ipc/index.ts` (and the dev-only
-    `DevUiReview.tsx`). The backend emits `service-health`, `download-progress`, `scratch-reaped`,
-    the updates events (`UPDATES_EVENT`, `APP_UPDATE_EVENT`), `WATCH_GLOBAL_EVENT`, plus the tray
-    and menu events, which have no meaning on a server.
+    `DevUiReview.tsx`), in about 22 `listen` calls. Some channels are fixed (`service-health`,
+    `download-progress`, `scratch-reaped`, the updates events, `WATCH_GLOBAL_EVENT`); others are
+    per job (`db-import://state/<id>`, `live-sync://state/<id>`, `valet-import://row`, …). So the
+    `/events` socket must carry the channel name, not a fixed list. The tray and menu events have no
+    meaning on a server.
   - Native dialogs: three folder pickers in `src/lib/ipc/index.ts:78/87/104`.
   - Window: `src/lib/window-focus.ts` already renders with no Tauri window (the wk-checks path).
     `src/lib/window-drag.ts` becomes a no-op.
@@ -75,6 +78,59 @@ on the public internet. It is ONE developer's rexenv, running on a machine they 
 - **The edge is loopback-scoped by design.** It runs auto-HTTPS off, with leaves from the local CA,
   and `.rex` resolves only on the machine itself. So a site on the VPS is reachable from the
   developer's own browser only through a tunnel, a proxy, or a real domain (§4 Phase 3).
+
+## 2a. T0 — measured on the Ubuntu VM, 26 Oct 2026
+
+The installed 0.9.2 deb (arm64) on the UTM VM, with the desktop (`gdm`) stopped so the box looks like a
+VPS, driven over SSH. Every site and process the run made was its own and was removed after; the VM was
+handed back with `gdm` running and the GUI app relaunched by its autostart.
+
+- **No display → the app panics before anything starts.** `env -u DISPLAY -u WAYLAND_DISPLAY
+  rexenv --hidden` exits 101: `Failed to initialize gtk backend!: BoolError { message: "Failed to
+  initialize GTK" … }` from `tao-0.35.3/src/platform_impl/linux/event_loop.rs:217`. tao calls
+  `gtk::init()` while building the event loop, before Tauri's `setup` and before any window exists, so
+  "a Tauri app with no window" (D1 option a) does not exist on Linux without patching tao. The panic
+  left nothing behind: the next launch claimed the CLI socket normally.
+- **Under Xvfb the whole app runs headless.** `xvfb-run -a -s "-screen 0 1280x800x24" rexenv --hidden`,
+  started from SSH with no desktop session: it adopted the running stack, `rex status` showed all seven
+  services, and `rex site create t0probe.rex --type wordpress` made a WordPress site in 9.7 s that
+  answered `200` over HTTPS. `rex site delete … --yes` removed it. Xvfb's RSS was about 63 MB. `xvfb` +
+  `xauth` were installed with apt on the VM (they stay; harmless).
+- **Stop all needs polkit on every run.** `rex stop` failed with `This account is not allowed to
+  administer the computer (polkit refused), or no authentication agent is running.` and stopped NOTHING
+  (all services still running after, the refusal precedes the stops). The reason is
+  `core/proxy.rs` `stop_edge_daemon`: the edge is a root system unit (`rexenv-edge.service`), and stopping
+  it is a `run_privileged` call each time. `start_edge_daemon` (install/refresh of the unit) is the same.
+  `rex start` worked only because the edge was already up. The full list of `run_privileged` callers
+  on Linux:
+  - `core/proxy.rs` — `start_privileged`, `start_edge_daemon`, `stop_edge_daemon` (the edge);
+  - `core/dns.rs` — the resolver route install, removal and `hand_back_resolver`;
+  - `core/setup.rs` — `run_system_setup` and `run_system_teardown`;
+  - `core/cli.rs` — `install` (the `rex` symlink when unprivileged fails);
+  - `platform/linux/mod.rs` — `trust_ca` / `untrust_ca`, and the self-update's `dpkg -i`.
+  So `--headless-setup` alone is not enough: Stop all and edge refreshes recur at runtime. Phase 1a needs
+  a runtime path for them (D7's sibling, see T1).
+- **`rex mcp` cannot be turned on headless.** `rex mcp` answered `rexenv is running, but its AI agent
+  (MCP) endpoint is off — turn it on in rexenv → Settings → AI agents (MCP), then reconnect.` That is the
+  opt-in of ledger #203, and `rex config` deliberately cannot write it or the agent-access dial (ledger
+  #397, `core/settings_access.rs`), because the toggle's sentence IS the consent. A headless box has no
+  Settings screen, so issue #7's ask 3 needs a consent path that is not the GUI (D7). The scratch-site
+  run (T3) therefore was not reached in T0.
+- **Reboot: nothing of the user side comes back on a server.** Read from the code, not rebooted:
+  the app's autostart is an XDG `.desktop` file (`platform/linux/mod.rs` `AutostartManager::enable`),
+  which only a graphical login runs; the DNS agent is a user unit `WantedBy=default.target`
+  (`platform/linux/units.rs:55`), which needs a session or lingering (`Linger=no` on the VM); only the
+  edge (`WantedBy=multi-user.target`) starts at boot. The services the app spawns stay down until the
+  app runs. During the run the DNS agent survived the SSH logouts only because the app's own session
+  scope kept the user manager alive.
+- **There is no one place that builds a site URL.** `https://{domain}` is formatted in 16 Rust files
+  (`core/proxy.rs`, `core/wordpress.rs`, `core/tunnels.rs`, `core/wp_login.rs`, `core/worktree.rs`,
+  `core/live_sync/{pull,push}.rs`, `commands/site_provision.rs`, `mcp_server/scratch.rs`, …) and 5 TSX
+  files (`Sites.tsx`, `SiteDetail.tsx`, `LiveTab.tsx`, `lib/adminer.ts`, `lib/phpmyadmin.ts`). T2's first
+  step is one `site_url(domain)` that knows the port, and a TEXT test that no other `https://{}` remains.
+- **The frontend without Tauri**: the dev and wk-check builds already run with `isTauri()` false
+  (`src/lib/ipc/index.ts:41`) against `@/lib/mock`, so a browser renders the shell. What that path does
+  not cover is the real transport; T6 still owes it.
 
 ## 3. Shape
 
@@ -179,9 +235,12 @@ mode does not depend on them, and they do not depend on headless mode.
 
 ## 5. Owner decisions
 
-- **D1 — how a window-less Tauri app runs.** Recommended: (a) if T0 proves it works, else (b).
-  - (a) The Tauri app with no window created, if the event loop starts with no display. T0 measures this.
-  - (b) The same under a virtual display (Xvfb). Needs an extra package on the server, but touches no code.
+- **D1 — how a window-less Tauri app runs.** T0 settled (a): it does not exist on Linux (§2a, tao
+  panics in `gtk::init`). Recommended now: **(b) for Phase 1a**, because it ran the whole stack on the VM
+  with no code change, and (c) later only if Xvfb proves a burden on real servers.
+  - (a) ~~The Tauri app with no window created~~ — measured impossible without patching tao.
+  - (b) The same under a virtual display (Xvfb). One apt dependency (`xvfb`, ~63 MB RSS), no code change
+    to run; `--headless` becomes "start under Xvfb with no window shown".
   - (c) Refactor `commands/` and the socket servers off `AppHandle` onto an app-owned host that Tauri,
     the CLI, the MCP and the web server all hold. This is the cleanest, but it touches 17 command
     files and both servers.
@@ -197,6 +256,12 @@ mode does not depend on them, and they do not depend on headless mode.
 - **D6 — the edge port setting's shape.** Recommended: global settings (one HTTP port, one HTTPS port,
   one bind address) rather than per site, changeable only while no site exists in the first version.
   The alternative is a full rewrite of every site's URLs on change, as a later task.
+- **D7 — consent on a box with no Settings screen.** The MCP opt-in and the agent-access dial are GUI
+  consents by rule (ledger #203, #397), and the edge's Stop/refresh need polkit at runtime (§2a).
+  Recommended: `sudo rexenv --headless-setup` asks both in the terminal, as full sentences the same Rust
+  owns for the toggles, with `--enable-mcp --agent-access <level>` for unattended installs (the
+  flags ARE the consent, typed by an admin); and it installs a polkit rule letting the service user run
+  rexenv's own privileged step without an agent. Phase 1b's web Settings then carries the same toggles.
 - **D5 — the web UI's port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
   `core/ports::ensure_free` like every other service.
 
@@ -204,7 +269,8 @@ mode does not depend on them, and they do not depend on headless mode.
 
 Phase 1a first (T0–T5), then Phase 1b (T6–T9).
 
-- **T0 — measure (no code shipped).** Done when every answer is written into §2:
+- **T0 — measure (no code shipped).** ✓ 26 Oct 2026, the Ubuntu VM — answers in §2a. Was: done when
+  every answer is written into §2:
   - Does a Tauri 2 app start on Ubuntu 22.04 with no `DISPLAY`/`WAYLAND_DISPLAY` and no window built?
     Under Xvfb?
   - The full list of `PrivilegeManager` calls on Linux, and of anything else that assumes a desktop
@@ -213,9 +279,10 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   - What breaks in the frontend with the Tauri internals absent, beyond §2's list. The wk-checks
     already render without Tauri, so start there.
   - Run on the Ubuntu VM (no desktop session), not the dev Mac.
-- **T1 — headless mode.** `--headless` boots the app with no window, tray or menu. Done when `rex status`,
-  `rex site create`, `rex start/stop` work against it on the VM over SSH, and a second launch hands off
-  to it (ledger #441).
+- **T1 — headless mode.** `--headless` boots the app with no window, tray or menu (under Xvfb per D1).
+  Done when `rex status`, `rex site create`, `rex start/stop` work against it on the VM over SSH with no
+  desktop session, a second launch hands off to it (ledger #441), and `rex stop` no longer needs a polkit
+  agent (D7's rule).
 - **T2 — configurable edge ports and bind address (D6).** Done when, on the VM with a foreign nginx
   holding `:80`/`:443`, the stack starts on `8080`/`8443`, a WordPress site and a subdirectory multisite
   load with the port in their URLs, login cookies hold, and the HTTP→HTTPS redirect keeps the port. Also
