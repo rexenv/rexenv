@@ -84,7 +84,9 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   #729/#730), with the pure
   halves in `proc_table.rs`, `dnsroute.rs`, `units.rs`, `desktop.rs` (the catalog + each app's `.desktop`
   ids and the `Icon=` → theme-file rules, #887), `trust.rs`, `app_bundle_rules.rs` — mounted as
-  `platform::linux_pure` in every non-Linux test build (ledger #716–#719); `parent_death_guard.rs`
+  `platform::linux_pure` in every non-Linux test build (ledger #716–#719), and `headless_rules.rs` (the
+  Xvfb argv, the passwordless closed set + the sudoers rule built from it, #911) beside its runner
+  `headless.rs` (`--headless` → rexenv's own Xvfb; `--headless-setup`; `docs/PLAN-headless-web.md`); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
   `src-tauri/linux/dev.rexenv.rexenv.policy` (#723), and the in-app update's own door —
   `src-tauri/linux/rexenv-privileged-update` under the policy's second action (#747));

@@ -240,7 +240,9 @@ pub fn run() {
             // `docs/archive/PLAN-menubar-tray.md`. Failure to build it is logged, not
             // fatal — an app with no status item is still a working app, and
             // refusing to launch over a missing icon would be worse.
-            if let Err(e) = install_tray(app.handle()) {
+            if is_headless_launch() {
+                log::info!("headless: no tray icon — rexenv is driven by `rex` and `rex mcp`");
+            } else if let Err(e) = install_tray(app.handle()) {
                 log::warn!("tray: could not install the menu-bar item: {e}");
                 // With no status item the dock tile is the only way back to
                 // a hidden window and the app menu the only Cmd+Q — so the
@@ -1793,6 +1795,10 @@ fn first_window_decision(app: &tauri::AppHandle, needs_window: bool) {
         // No state means init failed; that path shows the window itself.
         return;
     }
+    if is_headless_launch() {
+        log::info!("launched headless — no window, no tray; `rex` and `rex mcp` drive it");
+        return;
+    }
     if !needs_window {
         log::info!("launched at login — staying in the {}", crate::platform::words::current().tray_home);
         return;
@@ -2179,7 +2185,21 @@ pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 /// on first read, and both the pipe claim and `setup` ask.
 pub(crate) fn is_hidden_launch() -> bool {
     static HIDDEN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *HIDDEN.get_or_init(|| std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG) || platform::hopped_hidden())
+    *HIDDEN.get_or_init(|| {
+        std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG) || platform::hopped_hidden() || is_headless_launch()
+    })
+}
+
+/// `--headless`: rexenv on a server with no display (docs/PLAN-headless-web.md T1) — `main.rs` has
+/// already started the off-screen display (`platform::prepare_headless`). It is a login launch too
+/// (`is_hidden_launch`: Start all runs, as at a sign-in), and beyond that it shows NO window — not
+/// even the onboarding one a login launch with setup incomplete would raise, since nobody could see
+/// it (`show_main_window`) — and installs no tray icon.
+pub const HEADLESS_FLAG: &str = "--headless";
+
+pub(crate) fn is_headless_launch() -> bool {
+    static HEADLESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HEADLESS.get_or_init(|| std::env::args().any(|a| a == HEADLESS_FLAG))
 }
 
 /// **Login-start runs once per process, for either of the two ways a login reaches it.**
@@ -2671,6 +2691,12 @@ fn dock_follows_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>, window_up: 
 /// focus. All four, because a window can be hidden AND minimised, and an
 /// accessory app that merely shows one has not come to the front.
 pub(crate) fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    // The ONE door every "show the window" goes through (setup, a hand-off, the tray, the menus):
+    // a headless instance's window is on a display nobody can see.
+    if is_headless_launch() {
+        log::info!("headless: asked to show the window — there is no display to show it on");
+        return;
+    }
     let Some(window) = app.get_webview_window("main") else {
         log::warn!("tray: no main window to show");
         return;

@@ -22,6 +22,8 @@ pub mod app_bundle;
 mod app_bundle_rules;
 mod desktop;
 mod dnsroute;
+mod headless;
+mod headless_rules;
 mod libcompat;
 pub mod parent_death_guard;
 mod proc_table;
@@ -407,6 +409,11 @@ impl LinuxPrivileges {
 
 impl PrivilegeManager for LinuxPrivileges {
     fn run_privileged(&self, script: &str, _reason: &PromptReason) -> Result<String> {
+        // Headless: no agent can ever answer pkexec, and the passwordless door is the edge's own
+        // start/stop and nothing else (`headless_rules`, ledger #911).
+        if crate::is_headless_launch() {
+            return headless::run_privileged(script);
+        }
         // The reason is on screen already (the consent card). The dialog's own words come from
         // the polkit action the deb installs, which names `/usr/bin/rexenv`: when both exist the
         // step runs through rexenv itself (`--privileged-step`, `run_step` below) and the dialog
@@ -451,6 +458,14 @@ fn privileged_update_usable() -> bool {
 /// inherited, so the caller reads exactly what the shell form would have produced. Only rexenv's
 /// own scripts reach here (through `run_privileged`), and polkit asked for an administrator's
 /// password first. `None` when argv is not a step.
+/// `--headless`'s preparation and `--headless-setup` (`headless.rs`), for `platform/mod.rs`.
+pub(crate) fn prepare_headless() -> Result<()> {
+    headless::prepare()
+}
+pub(crate) fn run_headless_setup(argv: &[String]) -> Option<i32> {
+    headless::run_setup(argv)
+}
+
 pub(crate) fn run_step(argv: &[String]) -> Option<i32> {
     let i = argv.iter().position(|a| a == PRIVILEGED_STEP_FLAG)?;
     let script = argv.get(i + 1)?;
@@ -840,6 +855,9 @@ impl DnsAgentManager for LinuxDnsAgent {
 
 pub struct LinuxEdge;
 impl EdgeSupervisor for LinuxEdge {
+    fn restarts_identical_install(&self) -> bool {
+        true
+    }
     fn plist_path(&self) -> PathBuf {
         units::edge_unit_path()
     }

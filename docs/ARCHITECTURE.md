@@ -2349,6 +2349,22 @@ words (the browser shell's mock and two dev review pages excepted).
   watchdog racing the GUI — the exact second-brain class the stack guard exists to
   kill. Protocol: newline-delimited JSON, one request per connection,
   `{"ok":true,"data":…}` / `{"ok":false,"error":…}`; `--json` for scripting.
+- **Headless (`rexenv --headless`, Linux, 26 Oct 2026 — `docs/PLAN-headless-web.md` T1).** Not
+  that second brain: the SAME app, the same single-instance lock, on a server with no display, so
+  `rex` and `rex mcp` have something to talk to. tao initialises GTK while it builds the event
+  loop — before any window — and with no display that panics (T0, exit 101), so `main.rs` first
+  starts rexenv's own Xvfb (`platform/linux/headless.rs`: `-nolisten tcp`, a random cookie in an
+  owner-only `Xauthority`, `PR_SET_PDEATHSIG` from the main thread) and points GTK at it. A headless
+  launch is a login launch (Start all runs) that never shows a window (`show_main_window` is the
+  one door and refuses) and installs no tray. Its privileged steps cannot reach `pkexec` — no agent
+  could answer — and go through `sudo -n` for a CLOSED set only: the edge unit's enable, restart
+  and stop, granted by `sudo rexenv --headless-setup` from the same list the matcher reads
+  (`headless_rules.rs`, ledger #911). Everything else privileged is refused with that sentence. A
+  passwordless `--privileged-step` would have been passwordless root for every site's PHP: the step
+  runs any script. So that a `rex start` after a `rex stop` stays inside the set, a Linux edge
+  start whose three root files already match byte for byte runs `start_command` instead of the
+  install (`EdgeSupervisor::restarts_identical_install`, ledger #912). macOS and Windows refuse
+  `--headless` with a sentence (owner ruling D3).
 
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 

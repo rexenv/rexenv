@@ -1,0 +1,255 @@
+//! Headless mode's rules on Linux, as pure text (docs/PLAN-headless-web.md T1): the Xvfb display
+//! rexenv draws its window on, and the CLOSED set of root commands a headless instance may run
+//! without a password.
+//!
+//! **Why a closed set, and why so small.** A headless box has no polkit agent, so `pkexec` can
+//! never ask anyone (T0, 26 Oct 2026: `rex stop` refused). The tempting fix — a polkit rule that
+//! lets the service user run `rexenv --privileged-step` with no password — would be passwordless
+//! ROOT for every process of that user: the step runs ANY shell script it is handed
+//! (`linux::run_step`), and the user's processes include every site's PHP-FPM and every plugin
+//! under test. So the passwordless half is three fixed argv lists for rexenv's own edge unit,
+//! written into `/etc/sudoers.d/` by an administrator (`sudo rexenv --headless-setup`) from the
+//! SAME list the matcher reads, and nothing else. A script that is not exactly one of the edge's
+//! start/stop scripts is refused with a sentence naming the setup command — never run, never
+//! widened. The edge's INSTALL stays out on purpose: it copies a binary from the user-writable
+//! download cache into the root tree.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
+use super::units::{edge_start_command, edge_stop_command, EDGE_UNIT};
+use std::path::{Path, PathBuf};
+
+/// The flag that runs rexenv with no display (`main.rs` → `platform::prepare_headless`).
+pub(crate) const HEADLESS_FLAG: &str = "--headless";
+/// The administrator's one-time step (`sudo rexenv --headless-setup`).
+pub(crate) const SETUP_FLAG: &str = "--headless-setup";
+/// Where the setup writes the passwordless rule. No `.` in the name: sudo skips such files in
+/// `sudoers.d`, which is also why the staging copy beside it starts with one.
+pub(crate) const SUDOERS_PATH: &str = "/etc/sudoers.d/rexenv-headless";
+pub(crate) const SUDOERS_STAGING: &str = "/etc/sudoers.d/.rexenv-headless.new";
+pub(crate) const SUDO: &str = "/usr/bin/sudo";
+pub(crate) const SYSTEMCTL: &str = "/usr/bin/systemctl";
+pub(crate) const VISUDO: &str = "/usr/sbin/visudo";
+pub(crate) const SYNC: &str = "/bin/sync";
+pub(crate) const XVFB: &str = "/usr/bin/Xvfb";
+pub(crate) const XAUTH: &str = "/usr/bin/xauth";
+
+/// The virtual screen's size. The window is never shown; the size only has to fit its minimum.
+pub(crate) const SCREEN: &str = "1280x800x24";
+/// The display numbers tried, first free one wins — 99 and up, where `xvfb-run` starts too.
+pub(crate) const DISPLAYS: std::ops::RangeInclusive<u32> = 99..=199;
+
+/// The sentence for anything privileged a headless instance cannot do by itself.
+pub(crate) const NEEDS_SETUP: &str = "rexenv is running headless, so there is no one to ask for an \
+administrator's password. Run this once on the server as an administrator, then retry:\n$ sudo rexenv --headless-setup";
+pub(crate) const XVFB_MISSING: &str = "rexenv's headless mode draws its window off-screen with Xvfb, \
+which is not installed. Install it, then retry:\n$ sudo apt install xvfb xauth";
+
+/// Every root command a headless instance may run without a password: the edge unit's enable,
+/// restart and stop. The ONE list — `steps_for` maps a script onto it and `sudoers_contents`
+/// grants exactly it, so the rule and the matcher cannot disagree.
+pub(crate) fn passwordless_commands() -> [[&'static str; 4]; 3] {
+    [
+        [SYSTEMCTL, "enable", EDGE_UNIT, ""],
+        [SYSTEMCTL, "restart", EDGE_UNIT, ""],
+        [SYSTEMCTL, "disable", "--now", EDGE_UNIT],
+    ]
+}
+
+/// One passwordless command, and whether its failure fails the step (the scripts it stands in
+/// for ignore a failed `enable`/`disable` and so does this).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Step {
+    pub argv: Vec<&'static str>,
+    pub must_succeed: bool,
+}
+
+fn argv(i: usize) -> Vec<&'static str> {
+    passwordless_commands()[i].iter().copied().filter(|a| !a.is_empty()).collect()
+}
+
+/// The passwordless steps that do exactly what `script` does, when `script` is one of the
+/// edge's own start/stop scripts byte for byte (`units::edge_start_command` /
+/// `edge_stop_command`). `None` for anything else — which a headless instance refuses.
+pub(crate) fn steps_for(script: &str) -> Option<Vec<Step>> {
+    if script == edge_start_command() {
+        Some(vec![Step { argv: argv(0), must_succeed: false }, Step { argv: argv(1), must_succeed: true }])
+    } else if script == edge_stop_command() {
+        Some(vec![Step { argv: argv(2), must_succeed: false }])
+    } else {
+        None
+    }
+}
+
+/// A login name sudoers can hold as written: what `useradd` accepts by default
+/// (`[a-z_][a-z0-9_-]*`, at most 32). Anything else could carry sudoers syntax into the rule.
+pub(crate) fn valid_user(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase() || c == '_')
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+        && name.len() <= 32
+}
+
+/// The `sudoers.d` file granting `user` the passwordless commands and nothing else.
+/// `None` for a user name `valid_user` refuses.
+pub(crate) fn sudoers_contents(user: &str) -> Option<String> {
+    if !valid_user(user) {
+        return None;
+    }
+    let cmds: Vec<String> = (0..passwordless_commands().len()).map(|i| argv(i).join(" ")).collect();
+    Some(format!(
+        "# Written by `sudo rexenv --headless-setup`: lets rexenv, running headless as {user}, start\n\
+         # and stop its own edge (Caddy on :80/:443). Exactly these commands; nothing else.\n\
+         {user} ALL=(root) NOPASSWD: {}\n",
+        cmds.join(", ")
+    ))
+}
+
+/// Whether `sudo` itself refused to run the command (no rule grants it), as opposed to the
+/// command running and failing. A refusal fails EVERY step, even one whose own failure is
+/// ignored: the stop's `disable` ignores a failed command, and before this told the two apart a
+/// refused stop read as done — "stopped but its admin socket is still answering" (the VM, 26 Oct
+/// 2026, with no rule installed).
+pub(crate) fn sudo_refused(stderr: &str) -> bool {
+    stderr.contains("password is required") || stderr.contains("not allowed") || stderr.contains("may not run")
+}
+
+/// What a failed `sudo -n` step means, as a sentence.
+pub(crate) fn sudo_refusal(stderr: &str) -> String {
+    if sudo_refused(stderr) {
+        NEEDS_SETUP.to_string()
+    } else {
+        format!("the edge's root command failed: {}", stderr.trim())
+    }
+}
+
+/// The socket and lock an X server on display `n` leaves.
+pub(crate) fn display_paths(n: u32) -> [PathBuf; 2] {
+    [PathBuf::from(format!("/tmp/.X11-unix/X{n}")), PathBuf::from(format!("/tmp/.X{n}-lock"))]
+}
+
+/// The first display number with neither a socket nor a lock, or `None` when all are taken.
+pub(crate) fn free_display(taken: impl Fn(&Path) -> bool) -> Option<u32> {
+    DISPLAYS.clone().find(|&n| display_paths(n).iter().all(|p| !taken(p)))
+}
+
+/// Xvfb's arguments: our display, our cookie file, no TCP listener.
+pub(crate) fn xvfb_args(display: u32, auth: &Path) -> Vec<String> {
+    vec![
+        format!(":{display}"),
+        "-auth".into(),
+        auth.display().to_string(),
+        "-nolisten".into(),
+        "tcp".into(),
+        "-screen".into(),
+        "0".into(),
+        SCREEN.into(),
+        "-noreset".into(),
+    ]
+}
+
+/// `xauth`'s arguments to write the cookie for `display` into `auth`.
+pub(crate) fn xauth_args(display: u32, auth: &Path, cookie_hex: &str) -> Vec<String> {
+    vec!["-q".into(), "-f".into(), auth.display().to_string(), "add".into(), format!(":{display}"), ".".into(), cookie_hex.into()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_edges_own_scripts_map_to_passwordless_steps() {
+        let start = steps_for(&edge_start_command()).expect("the start script");
+        assert_eq!(start[0], Step { argv: vec![SYSTEMCTL, "enable", EDGE_UNIT], must_succeed: false });
+        assert_eq!(start[1], Step { argv: vec![SYSTEMCTL, "restart", EDGE_UNIT], must_succeed: true });
+        let stop = steps_for(&edge_stop_command()).expect("the stop script");
+        assert_eq!(stop, vec![Step { argv: vec![SYSTEMCTL, "disable", "--now", EDGE_UNIT], must_succeed: false }]);
+        // Anything else — the install, a DNS route, a CA, a near-copy of a known script — is refused.
+        for other in [
+            "/usr/bin/systemctl restart rexenv-edge.service",
+            &format!("{} ; /bin/sh", edge_stop_command()),
+            &format!(" {}", edge_start_command()),
+            "/bin/cp /home/u/caddy /usr/local/lib/rexenv/bin/caddy",
+            "",
+        ] {
+            assert_eq!(steps_for(other), None, "{other:?} must not run without a password");
+        }
+    }
+
+    #[test]
+    fn the_sudoers_rule_grants_exactly_the_steps_and_nothing_else() {
+        let rule = sudoers_contents("rexenv").expect("a valid user");
+        let grant = rule.lines().find(|l| !l.starts_with('#')).expect("the grant line");
+        let (who, cmds) = grant.split_once(" NOPASSWD: ").expect("the NOPASSWD form");
+        assert_eq!(who, "rexenv ALL=(root)");
+        let granted: Vec<&str> = cmds.split(", ").collect();
+        let mut stepped: Vec<String> = [edge_start_command(), edge_stop_command()]
+            .iter()
+            .flat_map(|s| steps_for(s).unwrap())
+            .map(|s| s.argv.join(" "))
+            .collect();
+        stepped.sort();
+        let mut sorted = granted.clone();
+        sorted.sort();
+        assert_eq!(sorted, stepped, "the rule and the matcher must name the same commands");
+        // Exact argv: no wildcard, no shell, no rexenv binary.
+        assert!(!cmds.contains('*') && !cmds.contains("sh") && !cmds.contains("rexenv "), "{cmds}");
+    }
+
+    #[test]
+    fn a_headless_instance_never_reaches_pkexec() {
+        let src = include_str!("mod.rs");
+        let body = &src[src.find("    fn run_privileged(&self, script: &str, _reason: &PromptReason)").expect("the trait impl")..];
+        let headless = body.find("if crate::is_headless_launch() {\n            return headless::run_privileged(script);").expect("the headless branch");
+        let pkexec = body.find("Self::pkexec(").expect("the pkexec call");
+        assert!(headless < pkexec, "the headless branch must come before any pkexec");
+        // And the headless door runs nothing `steps_for` did not hand it.
+        let door = include_str!("headless.rs");
+        let run = &door[door.find("pub(crate) fn run_privileged(").expect("the door")..];
+        let run = &run[..run.find("\n}\n").expect("its end")];
+        assert!(run.contains("let Some(steps) = rules::steps_for(script) else {"), "{run}");
+        assert_eq!(run.matches("crate::platform::command(").count(), 2, "sudo for the steps, then sync");
+        assert!(run.contains("crate::platform::command(rules::SUDO).arg(\"-n\").args(&step.argv)"));
+        assert!(run.contains("crate::platform::command(rules::SYNC).status()"), "the boot links reach the disk (#740)");
+    }
+
+    #[test]
+    fn a_user_name_that_could_carry_sudoers_syntax_is_refused() {
+        for ok in ["rexenv", "_ci", "dev-1", "a"] {
+            assert!(valid_user(ok), "{ok}");
+        }
+        for bad in ["", "root ALL=(ALL) NOPASSWD: ALL", "a,b", "Dev", "1dev", "dev\n", "%sudo", &"a".repeat(33)] {
+            assert!(!valid_user(bad), "{bad:?}");
+            assert_eq!(sudoers_contents(bad), None);
+        }
+    }
+
+    #[test]
+    fn a_refused_sudo_names_the_setup_command() {
+        assert_eq!(sudo_refusal("sudo: a password is required\n"), NEEDS_SETUP);
+        assert_eq!(sudo_refusal("Sorry, user ci is not allowed to execute '/usr/bin/systemctl …' as root"), NEEDS_SETUP);
+        assert!(sudo_refusal("Failed to restart rexenv-edge.service: Unit not found.").contains("Unit not found"));
+        assert!(sudo_refused("sudo: a password is required\n"));
+        assert!(!sudo_refused("Failed to disable unit: Unit file rexenv-edge.service does not exist."));
+        // The door fails a refused step whatever its `must_succeed`.
+        let door = include_str!("headless.rs");
+        assert!(door.contains("if !out.status.success() && (step.must_succeed || rules::sudo_refused(&stderr)) {"), "a refused ignorable step must still fail");
+        assert!(NEEDS_SETUP.contains("sudo rexenv --headless-setup"));
+    }
+
+    #[test]
+    fn the_first_display_with_no_socket_and_no_lock_wins() {
+        assert_eq!(free_display(|_| false), Some(99));
+        let taken = |p: &Path| p.ends_with("X99") || p.ends_with(".X100-lock");
+        assert_eq!(free_display(taken), Some(101));
+        assert_eq!(free_display(|_| true), None);
+    }
+
+    #[test]
+    fn xvfb_listens_on_no_tcp_and_needs_our_cookie() {
+        let args = xvfb_args(99, Path::new("/home/u/.config/rexenv/headless/Xauthority"));
+        assert_eq!(args[0], ":99");
+        assert!(args.windows(2).any(|w| w == ["-nolisten", "tcp"]));
+        assert!(args.windows(2).any(|w| w[0] == "-auth" && w[1].ends_with("Xauthority")));
+        assert_eq!(xauth_args(99, Path::new("/a"), "ff")[4..], [":99".to_string(), ".".into(), "ff".into()]);
+    }
+}

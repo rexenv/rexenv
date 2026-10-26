@@ -1,6 +1,7 @@
 # PLAN — headless rexenv on a server, driven from a browser and from `rex`
 
-**Status:** PLANNED — 26 Oct 2026. Nothing built. The facts in §2 were read from the tree at `14ab9608`;
+**Status:** IN PROGRESS — 26 Oct 2026. T0 measured and **T1 built and run on the Ubuntu VM the same day**
+(§6); T2 onward not started. The facts in §2 were read from the tree at `14ab9608`;
 **T0 was measured the same day on the Ubuntu 22.04 arm64 VM (§2a)**, and the shape waits on the owner's
 rulings D1–D7 (§5). Re-ordered the
 same day after GitHub issue rexenv/rexenv#7: Phase 1a (headless + `rex`/`rex mcp` + configurable edge
@@ -260,8 +261,15 @@ mode does not depend on them, and they do not depend on headless mode.
   consents by rule (ledger #203, #397), and the edge's Stop/refresh need polkit at runtime (§2a).
   Recommended: `sudo rexenv --headless-setup` asks both in the terminal, as full sentences the same Rust
   owns for the toggles, with `--enable-mcp --agent-access <level>` for unattended installs (the
-  flags ARE the consent, typed by an admin); and it installs a polkit rule letting the service user run
-  rexenv's own privileged step without an agent. Phase 1b's web Settings then carries the same toggles.
+  flags ARE the consent, typed by an admin). Phase 1b's web Settings then carries the same toggles.
+  **Ruled 26 Oct 2026, with the privilege half CORRECTED before any code:** as first written here, D7
+  also installed "a polkit rule letting the service user run rexenv's own privileged step without an
+  agent". That would have been passwordless root for every process of that user, because
+  `--privileged-step` runs ANY script (`linux::run_step`), and the user's processes include every site's
+  PHP-FPM and every plugin under test. The owner re-ruled it to a CLOSED set: the edge unit's
+  `systemctl enable` / `restart` / `disable --now`, three fixed argv in a sudoers drop-in, with every
+  other privileged step refused, naming the setup (T1, ledger #911). The consent half (MCP, agent access)
+  is T3's.
 - **D5 — the web UI's port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
   `core/ports::ensure_free` like every other service.
 
@@ -279,7 +287,14 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   - What breaks in the frontend with the Tauri internals absent, beyond §2's list. The wk-checks
     already render without Tauri, so start there.
   - Run on the Ubuntu VM (no desktop session), not the dev Mac.
-- **T1 — headless mode.** `--headless` boots the app with no window, tray or menu (under Xvfb per D1).
+- **T1 — headless mode.** ✓ 26 Oct 2026 — built and run on the Ubuntu VM (ledger #911–#913, SMOKE Linux
+  "Headless on a server"). What it took beyond the sketch: the app starts its OWN Xvfb (no `xvfb-run`
+  wrapper; `-nolisten tcp`, a cookie, dies with the app); GTK gets NO session bus, because with one it
+  waited ~25 s on xdg-desktop-portal's missing GNOME backend (31 s → 1 s); the passwordless set is
+  `sudo -n` + a sudoers drop-in, not polkit (D7 as corrected); a Linux edge start with identical root
+  files is a restart, or `rex start` after `rex stop` would have needed the install's copy; the
+  hand-off note and `rex open` learned the holder can be headless. Was: `--headless` boots the app with
+  no window, tray or menu (under Xvfb per D1).
   Done when `rex status`, `rex site create`, `rex start/stop` work against it on the VM over SSH with no
   desktop session, a second launch hands off to it (ledger #441), and `rex stop` no longer needs a polkit
   agent (D7's rule).

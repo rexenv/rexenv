@@ -1130,7 +1130,13 @@ fn print_json(data: &Value) {
 /// (`cli_server::hand_off_to_running_instance`), so "another instance brought
 /// the window forward" and `rex open` are one code path, not two.
 fn cmd_open_app(json_output: bool) {
-    request("app.open", Value::Null);
+    let answer = request("app.open", Value::Null);
+    // A headless app (`rexenv --headless`, a server with no display) has no window to open; an
+    // older app answers `null`, which reads as "opened" as it always did.
+    if answer.get("headless").and_then(Value::as_bool) == Some(true) {
+        errln!("rex: rexenv is running headless on this machine — it has no window to open. Use `rex` commands instead.");
+        exit(1)
+    }
     if json_output {
         outln!("{}", json!({ "opened": true }));
     } else {

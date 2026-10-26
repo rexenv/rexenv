@@ -524,13 +524,24 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **Headless rexenv on a VPS — open: the owner's rulings D1–D7 (T0 measured 26 Oct 2026 on the Ubuntu VM: no display → tao panics in `gtk::init`; under Xvfb the whole stack runs and `rex site create` works; `rex stop` needs polkit every time; `rex mcp` cannot be enabled headless), then
-  Phase 1a (T1–T5: headless, configurable edge ports + bind address, `rex mcp` + scratch sites proven
-  on Linux, systemd + setup) and Phase 1b (T6–T9: the web UI).** Owner ask 26 Oct 2026: install rexenv
+- [ ] **Headless rexenv on a VPS — open: Phase 1a's T2–T5 (configurable edge ports + bind address,
+  `rex mcp` + scratch sites on Linux with D7's setup-time consent, systemd + the rest of the setup, the
+  D3 tail) and Phase 1b (T6–T9: the web UI); D2, D4–D6 unruled.** T0 measured 26 Oct 2026 on the Ubuntu
+  VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
+  would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
+  `rexenv --headless` (own Xvfb, no session bus — 31 s → 1 s to `setup` — no window, no tray),
+  `sudo rexenv --headless-setup` (the edge's three `systemctl` argv only), a Linux edge start with
+  identical root files is a restart, honest hand-off and `rex open` (ledger #911–#913; SMOKE Linux
+  "Headless on a server"). Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
   offered to test a build. A public bind and real site domains are later phases. Nothing built.
   Plan: `docs/PLAN-headless-web.md`.
+- [ ] **Headless mode on macOS and Windows** — `--headless` and `--headless-setup` refuse there with a
+  sentence (owner ruling D3, 26 Oct 2026: Linux first; `platform::prepare_headless`). macOS would need a
+  LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
+  boot-time task or service with no desktop, and UAC has no unattended form. Plan:
+  `docs/PLAN-headless-web.md` T5.
 - [ ] **Redis, MariaDB and Apache httpd on Linux.** Not in Linux v1 (D-L8 of
   `docs/PLAN-linux-port.md`; `ships_on` refuses them; `docs/PORTS.md` §Linux). Asked for in GitHub
   issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs Apache, many hosts run

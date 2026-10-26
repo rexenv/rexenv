@@ -254,7 +254,8 @@ rexenv/
         │   ├── macos/          # all 13 impls real (+ app_bundle.rs, relauncher.rs, webview_dialogs.rs, parent_death_guard.rs, activation.rs, prompt_applet.rs, keychain_trust.rs)
         │   ├── windows/        # all impls real (docs/PLAN-windows-port.md)
         │   └── linux/          # all impls real since 24 Sep 2026, run on Ubuntu 22.04 (docs/PLAN-linux-port.md);
-        │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host
+        │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host;
+        │                       #   headless.rs + headless_rules.rs: `--headless` on a server (own Xvfb)
         │
         └── state/              # app state
             ├── db.rs           # SQLite + migrations (v1–v45)

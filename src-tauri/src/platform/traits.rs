@@ -1088,6 +1088,17 @@ pub trait EdgeSupervisor: Send + Sync {
         -> String;
     /// Privileged shell to (re)start after an explicit stop.
     fn start_command(&self) -> String;
+    /// Whether a start may run [`start_command`](Self::start_command) instead of
+    /// [`install_command`](Self::install_command) when every root file the install would write is
+    /// ALREADY byte-identical to its source (`core::proxy::start_edge_daemon`, ledger #912). Linux:
+    /// `true` — `systemctl restart` of an identical unit is what the install ends with anyway, and
+    /// it is the one start a headless instance can run without a password (the install copies from
+    /// the user-writable cache, so it never can). Default `false`, and macOS and Windows keep it:
+    /// their install also re-registers the job with the OS (`bootout`/`bootstrap`), which a plain
+    /// start does not — unproven there, so unchanged.
+    fn restarts_identical_install(&self) -> bool {
+        false
+    }
     /// Privileged shell to EXPLICITLY stop — keep-alive must not relaunch it, and the job
     /// should stay registered with the OS so the next start registers nothing new (macOS:
     /// lower the switch and `kill`; a plist from before the switch still gets `disable` +

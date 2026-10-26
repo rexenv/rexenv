@@ -4355,6 +4355,21 @@ rexenv0 <name>` and read `Current Scopes:`.
       carries make-default, ini settings and remove — no Xdebug control (8.3's row has ini
       settings only); the version list shows "EOL November 2022" beside it.
 
+### Headless on a server (`rexenv --headless`, `docs/PLAN-headless-web.md` T1, ledger #911–#913)
+
+Run on a box with NO desktop session (the VM with `sudo systemctl stop gdm`, or a server), over SSH,
+and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
+(`/etc/sudoers.d/90-cloud-init-users`), and with it every refusal below passes for the wrong reason.
+- [ ] `rexenv --headless` with `xvfb` + `xauth` installed → `rex status` answers within a few seconds;
+  `ps` shows `Xvfb :99 -auth … -nolisten tcp` as rexenv's child; no tray, no window; the log says
+  "launched headless". Without `xvfb`: exit 2 with the `sudo apt install xvfb xauth` sentence.
+- [ ] Before `sudo rexenv --headless-setup`: `rex stop` / `rex start` exit 1 with the setup sentence and
+  stop or start nothing of the edge. After it: both work, `sudo -l` lists exactly three `systemctl`
+  commands for `rexenv-edge.service`, and a `.test` site (a new DNS route) is still refused.
+- [ ] A second `rexenv` and `rex open` say "running headless"; killing the app takes its Xvfb with it
+  and leaves every service running.
+  ✓ 26 Oct 2026 (the 22.04 arm64 VM, a container release build, cloud-init's rule parked) — all three.
+
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
   ✓ 24 Sep 2026 (VM) for Apache and MariaDB in New Site (P5 above).

@@ -28,6 +28,12 @@ fn main() {
     if let Some(code) = rexenv_lib::platform::run_elevated_step(&argv) {
         std::process::exit(code);
     }
+    // `sudo rexenv --headless-setup`: an administrator's one-time step for a headless install
+    // (docs/PLAN-headless-web.md T1). Run as root, it writes one rule and exits — no window, no
+    // app state, no services.
+    if let Some(code) = rexenv_lib::platform::run_headless_setup(&argv) {
+        std::process::exit(code);
+    }
 
     // Headless resolver mode, run by the per-user LaunchAgent so local-TLD DNS
     // survives app quits (and is up from login). Checked BEFORE Tauri boots:
@@ -66,6 +72,15 @@ fn main() {
     // the pipe or a window exists; off Windows this is always `None`.
     if let Some(code) = rexenv_lib::platform::relaunch_outside_confining_job() {
         std::process::exit(code);
+    }
+    // `--headless`: no display on this machine. Make one before Tauri boots — GTK is initialised
+    // while the event loop is built, before any window, and with no display that panics (T0,
+    // docs/PLAN-headless-web.md §2a). Still on the one thread `main` started with.
+    if argv.iter().any(|a| a == rexenv_lib::HEADLESS_FLAG) {
+        if let Err(e) = rexenv_lib::platform::prepare_headless() {
+            eprintln!("rexenv --headless: {e}");
+            std::process::exit(2);
+        }
     }
     rexenv_lib::run();
 }

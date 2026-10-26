@@ -582,8 +582,20 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
         edge.wrapper_contents(&edge.daemon_binary_path(), caddyfile, &sock, &appdata),
     )?;
     std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
+    // Where the OS allows it, an install that would change nothing is only a start: the root
+    // tree already holds these exact bytes, so nothing from the user's side is copied (ledger #912).
+    let script = if edge.restarts_identical_install()
+        && installed_identical(&[
+            (src_caddy, &edge.daemon_binary_path()),
+            (&staged_wrapper, &edge.wrapper_path()),
+            (&staged_plist, &edge.plist_path()),
+        ]) {
+        edge.start_command()
+    } else {
+        edge.install_command(src_caddy, &staged_wrapper, &staged_plist)
+    };
     platform.privileges().run_privileged(
-        &edge.install_command(src_caddy, &staged_wrapper, &staged_plist),
+        &script,
         &crate::platform::traits::PromptReason::new("start its HTTPS server on ports 80 and 443"),
     )?;
 
@@ -616,6 +628,15 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
          check logs/caddy-start.log."
             .to_string(),
     ))
+}
+
+/// Whether every `(source, installed)` pair holds the same bytes — `false` when either side is
+/// missing or unreadable, so a doubt always means the full install.
+pub(crate) fn installed_identical(pairs: &[(&Path, &Path)]) -> bool {
+    pairs.iter().all(|(src, installed)| match (std::fs::read(src), std::fs::read(installed)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    })
 }
 
 /// EXPLICITLY stop the edge daemon (Stop-all). With `KeepAlive` a graceful
@@ -867,6 +888,36 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn an_install_is_skipped_only_when_every_root_file_already_matches() {
+        use super::installed_identical;
+        let dir = std::env::temp_dir().join(format!("rexenv-edge-identical-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = |name: &str, bytes: &[u8]| {
+            let p = dir.join(name);
+            std::fs::write(&p, bytes).unwrap();
+            p
+        };
+        let (src, root) = (file("caddy", b"bin"), file("root-caddy", b"bin"));
+        let (wrapper, root_wrapper) = (file("w", b"exec caddy"), file("root-w", b"exec caddy"));
+        let changed = file("root-w2", b"exec caddy --other");
+        let missing = dir.join("absent");
+        assert!(installed_identical(&[(&src, &root), (&wrapper, &root_wrapper)]));
+        assert!(!installed_identical(&[(&src, &root), (&wrapper, &changed)]), "one changed file means install");
+        assert!(!installed_identical(&[(&src, &missing)]), "nothing installed means install");
+        assert!(!installed_identical(&[(&missing, &root)]), "an unreadable source means install");
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        // And the start compares ALL THREE root files, behind the OS's own capability.
+        let src = include_str!("proxy.rs");
+        let body = &src[src.find("pub fn start_edge_daemon").expect("the start")..];
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        assert!(body.contains("edge.restarts_identical_install()\n        && installed_identical(&["), "the capability gates the skip");
+        for pair in ["(src_caddy, &edge.daemon_binary_path())", "(&staged_wrapper, &edge.wrapper_path())", "(&staged_plist, &edge.plist_path())"] {
+            assert!(body.contains(pair), "the skip no longer compares {pair}");
+        }
+    }
+
     #[test]
     fn admin_socket_path_refuses_a_length_the_kernel_cannot_bind() {
         use super::{check_unix_socket_len, MAX_UNIX_SOCKET_PATH};

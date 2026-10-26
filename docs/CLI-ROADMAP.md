@@ -31,7 +31,7 @@ convention) — see "Infrastructure" for progress streaming.
 | `rex site info <domain>` | `list_sites`+`probe_serving` (the MCP's classification, #748)+`sites_resources`+`site_cert_info`+`wp_info` |
 | `rex site open <domain>` | CLI-only (`open https://…`, domain validated via `site.list`) |
 | `rex site login <domain> [--print]` | `wp_admin_login_url` |
-| `rex open` | `app.open` — brings the app window to the front (`args.login: true` = a `--hidden` launch's handoff: runs login-start instead, #739; `rex open` never sends it) |
+| `rex open` | `app.open` — brings the app window to the front (`args.login: true` = a `--hidden` launch's handoff: runs login-start instead, #739; `rex open` never sends it). **26 Oct 2026:** the arm answers `{headless}`; against a headless app (`rexenv --headless`) `rex open` exits 1 with a sentence instead of printing "window opened", and a second launch's note says the holder is headless (#913); an older app's `null` reads as before |
 | `rex help`, exit codes 0/1/2 | — |
 
 **When the app isn't running**, every command exits 2 with the reason AND the command

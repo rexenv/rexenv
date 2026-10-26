@@ -91,7 +91,9 @@ mod tests {
         for (os, src) in [("macOS", include_str!("macos/mod.rs")), ("Linux", include_str!("linux/mod.rs"))] {
             let src = crate::core::copy_scan::production_source(src);
             let start = src.find("fn run_privileged(").unwrap_or_else(|| panic!("{os}: run_privileged is gone"));
-            let body = &src[start..];
+            // Linux's headless branch hands the RAW script to its own door, which matches it against
+            // the closed set and syncs after (`linux/headless.rs`, held by `headless_rules`' test).
+            let body = src[start..].replacen("headless::run_privileged(script)", "headless::run_privileged(SCRIPT)", 1);
             let wrap = body.find("let script = &crate::platform::durable::flushed_script(script);");
             let first_use = body.find("(script").or_else(|| body.find(", script"));
             assert!(wrap.is_some(), "{os}: run_privileged no longer flushes what the step wrote");

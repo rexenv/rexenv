@@ -64,6 +64,8 @@ mod linux_pure {
     pub(crate) mod proc_table;
     #[path = "dnsroute.rs"]
     pub(crate) mod dnsroute;
+    #[path = "headless_rules.rs"]
+    pub(crate) mod headless_rules;
     #[path = "libcompat.rs"]
     pub(crate) mod libcompat;
     #[path = "trust.rs"]
@@ -300,6 +302,46 @@ pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
         let _ = argv;
         None
     }
+}
+
+/// `--headless`: make this process able to run with no display — on Linux, start rexenv's own Xvfb
+/// and point GTK at it (`linux/headless.rs`, docs/PLAN-headless-web.md T1). Called by `main.rs` on
+/// the main thread before Tauri boots. macOS and Windows have no headless mode yet (owner ruling D3,
+/// 26 Oct 2026: Linux first) and refuse with a sentence — never a launch that silently opens a window.
+pub fn prepare_headless() -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::prepare_headless().map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err(headless_unsupported(words::current().os_name))
+    }
+}
+
+/// `sudo rexenv --headless-setup`: the administrator's one-time step for a headless install. `None`
+/// when argv is not the setup; off Linux the setup answers with the same refusal as `--headless`.
+pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
+    #[cfg(target_os = "linux")]
+    {
+        linux::run_headless_setup(argv)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        argv.iter().any(|a| a == "--headless-setup").then(|| {
+            eprintln!("{}", headless_unsupported(words::current().os_name));
+            2
+        })
+    }
+}
+
+/// The refusal an OS without a headless mode gives (`--headless`, `--headless-setup`).
+#[cfg(not(target_os = "linux"))]
+fn headless_unsupported(os_name: &str) -> String {
+    format!(
+        "rexenv's headless mode is not available on {os_name} yet — it runs on Linux, on a server \
+         with no display. On {os_name}, open the rexenv app instead."
+    )
 }
 
 /// Clear the inherit flag on every handle this process was born holding, so no child — a
