@@ -351,15 +351,19 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   child forked from the root setup that drops to the user first (the database stays theirs, a link
   they planted is not followed as root); there is deliberately no argv mode that writes the keys,
   since an agent can run anything the user can. Run in the cloud session's container (flags, pty,
-  ownership, a planted link); **the VM run below is still owed.** Done when an MCP client over `rex mcp` on the VM
+  ownership, a planted link); **run on the VM 26 Oct 2026** (ledger #920): the consents by flag, pty and no-tty,
+  and over `rex mcp` a scratch create → plugin add + `wp_run` activate → the plugin's output → delete, nothing
+  left behind. ✓. Was: done when an MCP client over `rex mcp` on the VM
   runs `scratch_create_site` → a plugin install → `scratch_delete_site`, with nothing left behind, and
   `docs/INSTALL.md` documents it.
-- **T4 — install + setup.** **Unit + lingering + INSTALL ✓ 26 Oct 2026, NOT run on the VM** (ledger
+- **T4 — install + setup.** **Unit + lingering + INSTALL ✓ 26 Oct 2026; run on the VM the same day** (ledger
   #921): `--headless-setup` writes and enables `rexenv-headless.service` (`User=`, `/usr/bin/rexenv
   --headless`, `Restart=on-failure`, `KillMode=process` so the stack outlives the app,
   `XDG_RUNTIME_DIR` + `After=user@<uid>.service` for the DNS agent's user unit) and runs `loginctl
   enable-linger`; it refuses without the `.deb`'s `/usr/bin/rexenv`. INSTALL § Linux "Server
-  (headless)". Still open: the VM run (SMOKE rows), the deb's post-install note, and a FRESH server —
+  (headless)". The VM run (#921): restart keeps the stack, `kill -9` is restarted, a hand-launched second
+  copy hands off, and a boot with no one logged in brings the service, the user manager, the DNS agent
+  and the stack up. Still open: the deb's post-install note, and a FRESH server —
   the edge install, the `.rex` route and the CA trust are root steps the closed set refuses (#911),
   so they need either the setup to do them or a GUI-less first setup. The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,

@@ -545,11 +545,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `sudo rexenv --headless-setup` takes `--enable-mcp` / `--agent-access <level>` or asks in the
   terminal with the card's own sentences (the paragraph moved into Rust, `mcp_server::ENABLE_CONSENT`),
   and writes as the user from a forked child — `rex config` still refuses both (#920; run in the cloud
-  container only). **Open in T3: the VM run** — the endpoint opening at relaunch and an MCP client's
-  scratch create → plugin → delete over `rex mcp`. **T4's unit built 26 Oct 2026**: the setup writes
+  container only). **T3's VM run done 26 Oct 2026** (#920): the consents by flag, pty and no-tty, and over `rex mcp` a
+  scratch create → plugin add + activate → its output → delete, nothing left. **T4's unit built 26 Oct 2026**: the setup writes
   and enables `rexenv-headless.service` (`KillMode=process`, the user's runtime dir) and lingering
-  (#921), INSTALL § Linux "Server (headless)"; **open in T4: the VM boot run (SMOKE "At boot"), the
-  deb's post-install note, and a FRESH server** — the edge install, the `.rex` route and the CA
+  (#921), INSTALL § Linux "Server (headless)"; **T4's VM run done the same day** (#921: restart keeps the stack, `kill -9` restarted, hand-off, a boot
+  with no login brings everything up); **open in T4: the deb's post-install note, and a FRESH server** — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
   to do them. Owner ask 26 Oct 2026: install rexenv
@@ -562,6 +562,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
+- [ ] **`scratch_add_package`'s reply says "the site runs it as of now" — it copies and does NOT activate.**
+  Found 26 Oct 2026 on the Ubuntu VM (the T3 run, ledger #920): a plugin added this way stayed
+  `inactive` and the site never ran it until `wp_run ["plugin","activate",<slug>]`. An agent reading the
+  reply would test code that is not running. Either activate a plugin on add (a theme: leave it, say so),
+  or say "copied — activate it with wp_run" (and the tool description too). Ledger #217's row.
 - [ ] **Redis, MariaDB and Apache httpd on Linux.** Not in Linux v1 (D-L8 of
   `docs/PLAN-linux-port.md`; `ships_on` refuses them; `docs/PORTS.md` §Linux). Asked for in GitHub
   issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs Apache, many hosts run
