@@ -172,13 +172,14 @@ const WP_DB_ERROR_MARKER: &str = "Error establishing a database connection";
 /// WordPress database-error page. `false` means COULDN'T CONFIRM — never
 /// "not connected" — and the caller's only use for it is
 /// [`Verified::with_http_confirmed`], which needs a sign-in proof first.
-pub async fn probe_http(domain: &str) -> bool {
+pub async fn probe_http(domain: &str, edge_https_port: u16) -> bool {
     let url = format!("https://{domain}/");
     let Ok(client) = reqwest::Client::builder()
         // Our local-CA leaf won't chain for reqwest's store; this is a
         // loopback request to our own edge, pinned by .resolve().
         .danger_accept_invalid_certs(true)
-        .resolve(domain, std::net::SocketAddr::from(([127, 0, 0, 1], 443)))
+        // The edge's port (`core::edge_ports`); the URL carries none, so this one is dialled.
+        .resolve(domain, std::net::SocketAddr::from(([127, 0, 0, 1], edge_https_port)))
         .timeout(std::time::Duration::from_secs(5))
         .build()
     else {

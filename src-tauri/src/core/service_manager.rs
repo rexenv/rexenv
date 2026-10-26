@@ -2776,9 +2776,11 @@ impl ServiceManager {
                         self.ports.https
                     )
                 } else {
-                    "its KeepAlive daemon is not bringing it back — port 443 may be \
-                     blocked, or it is crash-looping (check logs/caddy-start.log)"
-                        .to_string()
+                    format!(
+                        "its KeepAlive daemon is not bringing it back — port {} may be \
+                         blocked, or it is crash-looping (check logs/caddy-start.log)",
+                        self.ports.https
+                    )
                 };
                 events.push(HealthEvent {
                     service: "Caddy".into(),

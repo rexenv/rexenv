@@ -27,9 +27,6 @@ use crate::state::app::AppState;
 use crate::state::models::{Site, SiteType};
 use std::collections::{HashMap, HashSet};
 
-/// The edge's HTTPS port — the one place a browser reaches a site.
-const EDGE_HTTPS_PORT: u16 = 443;
-
 /// One service in the stack snapshot — name, liveness (ownership AND liveness,
 /// the manager's own verdict), port. No pid.
 #[derive(serde::Serialize)]
@@ -149,6 +146,12 @@ pub struct ReadCtx<'a> {
 impl<'a> ReadCtx<'a> {
     pub fn new(state: &'a AppState) -> Self {
         ReadCtx { state }
+    }
+
+    /// The edge's HTTPS port as the user set it (`core::edge_ports`, ledger #914) — a READ, so the
+    /// tools reach it through the bridge like every other fact.
+    pub fn edge_https_port(&self) -> u16 {
+        self.state.db.lock().map(|conn| core::edge_ports::load(&conn)).unwrap_or_default().https
     }
 
     /// The sites rexenv manages (read-only).
@@ -386,14 +389,15 @@ impl<'a> ReadCtx<'a> {
 
         // Wire: does OUR edge answer (marker header) for this host? The probe path
         // short-circuits at the edge (`respond 204`), so this NEVER runs the site.
-        let edge_answers_ours =
-            core::proxy::edge_answers_as_ours(&site.domain, EDGE_HTTPS_PORT).await;
+        // The edge's HTTPS port as the user set it (`core::edge_ports`, ledger #914).
+        let https_port = self.edge_https_port();
+        let edge_answers_ours = core::proxy::edge_answers_as_ours(&site.domain, https_port).await;
 
         // Wire: is ANYTHING listening on :443 (to tell "stack stopped" from
         // "another server holds the port")? A bare TCP connect, no request.
         let tcp_443_open = tokio::time::timeout(
             std::time::Duration::from_secs(2),
-            tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, EDGE_HTTPS_PORT)),
+            tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, https_port)),
         )
         .await
         .map(|r| r.is_ok())
@@ -402,9 +406,9 @@ impl<'a> ReadCtx<'a> {
         // Only when something ELSE holds :443: name it, the way the Services
         // screen does (lsof on the listener — no request to it).
         let holder = (!edge_answers_ours && tcp_443_open)
-            .then(|| self.state.platform.supervisor().port_conflict_help(EDGE_HTTPS_PORT, false).holder)
+            .then(|| self.state.platform.supervisor().port_conflict_help(https_port, false).holder)
             .flatten();
-        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager, holder }
+        ServingSignals { edge_answers_ours, tcp_443_open, serving_manager, holder, https_port }
     }
 
     /// The RAW tail of the site's WordPress debug log (the caller scrubs), capped

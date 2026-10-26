@@ -399,10 +399,12 @@ fn stack_status<'a>(
 ) -> ToolFuture<'a> {
     Box::pin(async move {
         let snap = ctx.stack_snapshot()?;
-        // The two wire facts `site_status` probes, once, for the stack as a whole.
+        // The two wire facts `site_status` probes, once, for the stack as a whole — on the edge's
+        // port as the user set it (`core::edge_ports`); the field keeps its `tcp443Open` name.
+        let https_port = ctx.edge_https_port();
         let tcp_443_open = tokio::time::timeout(
             std::time::Duration::from_secs(2),
-            tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, 443)),
+            tokio::net::TcpStream::connect((std::net::Ipv4Addr::LOCALHOST, https_port)),
         )
         .await
         .map(|r| r.is_ok())

@@ -335,7 +335,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   adoption) and at every Start all, and the runtime readers above switched to the configured port.
   **S2** `site_url` + the 21 files, with a TEXT guard that no other `https://{domain}` remains; the
   WordPress install writes the port. **S3** the edge-kind transitions. **S4** the Settings control
-  (all three OSes) and the VM / macOS / Windows runs of the done-when.
+  (all three OSes), Onboarding's edge-conflict sentence (it says "port 443" in TSX — the port belongs
+  in Rust's answer, `setup_edge_conflict`), and the VM / macOS / Windows runs of the done-when.
 - **T3 — `rex mcp` + scratch sites on headless Linux.** Done when an MCP client over `rex mcp` on the VM
   runs `scratch_create_site` → a plugin install → `scratch_delete_site`, with nothing left behind, and
   `docs/INSTALL.md` documents it.

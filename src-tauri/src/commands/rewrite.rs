@@ -485,7 +485,11 @@ pub async fn rewrite_apply(
 
     // D4: the supplementary probe can only upgrade the proof.
     let proof =
-        if confverify::probe_http(&r.site.domain).await { proof.with_http_confirmed() } else { proof };
+        if confverify::probe_http(&r.site.domain, crate::commands::services::edge_ports(&state).https).await {
+            proof.with_http_confirmed()
+        } else {
+            proof
+        };
 
     let record = {
         let conn = lock(&state)?;

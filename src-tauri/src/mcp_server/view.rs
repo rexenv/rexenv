@@ -94,6 +94,9 @@ pub struct ServingSignals {
     /// attributes it (lsof — no request). `None` when nothing else holds it or
     /// the holder is invisible without privileges (a root listener).
     pub holder: Option<String>,
+    /// The edge's HTTPS port the probes asked (`core::edge_ports` — 443 unless the user moved
+    /// it), named in the sentences. `tcp_443_open` keeps its name on the wire for older agents.
+    pub https_port: u16,
 }
 
 /// A serving verdict — kept DISTINCT rather than collapsed into "not serving",
@@ -170,10 +173,10 @@ impl ServingSignals {
                 // Local router, 12 Sep 2026, read as "can't identify"); keep the
                 // stated scope when it can't.
                 let (who, scope) = match &self.holder {
-                    Some(h) => (format!("{h} is answering on port 443"), ""),
+                    Some(h) => (format!("{h} is answering on port {}", self.https_port), ""),
                     // `Resolution::*` is in scope, and it has a `None` variant.
                     Option::None => (
-                        "Another server is answering on port 443".to_string(),
+                        format!("Another server is answering on port {}", self.https_port),
                         " The probe can't identify the other server, only that it isn't rexenv's \
                          edge.",
                     ),
@@ -187,9 +190,9 @@ impl ServingSignals {
                  UserActionInRexenv)
             } else {
                 (EdgeDown,
-                 "Nothing is serving on port 443 — the rexenv stack looks stopped. Start it in the \
+                 format!("Nothing is serving on port {} — the rexenv stack looks stopped. Start it in the \
                   rexenv app (Start all); an agent can't start services. If you just started it, \
-                  give it a moment — the probe only knows the edge didn't answer right now.".into(),
+                  give it a moment — the probe only knows the edge didn't answer right now.", self.https_port),
                  UserActionInRexenv)
             };
         }
@@ -594,7 +597,7 @@ mod tests {
     }
 
     fn sig(edge_ours: bool, tcp443: bool, mgr: bool) -> ServingSignals {
-        ServingSignals { edge_answers_ours: edge_ours, tcp_443_open: tcp443, serving_manager: mgr, holder: None }
+        ServingSignals { edge_answers_ours: edge_ours, tcp_443_open: tcp443, serving_manager: mgr, holder: None, https_port: 443 }
     }
 
     /// A holder the port-conflict help can name replaces the "can't identify"

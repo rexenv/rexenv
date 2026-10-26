@@ -2252,10 +2252,8 @@ async fn drive<R: tauri::Runtime>(
                 // The site really was created and the stack really did reload —
                 // but something else owns :443, so claiming it is serving would
                 // be a lie the user discovers by clicking the link.
-                let help = state
-                    .platform
-                    .supervisor()
-                    .port_conflict_help(crate::commands::services::edge_ports(state.inner()).https, false);
+                let https = crate::commands::services::edge_ports(state.inner()).https;
+                let help = state.platform.supervisor().port_conflict_help(https, false);
                 let quit = help.app.clone().unwrap_or_else(|| "it".into());
                 {
                     let mut st = entry.state.lock().expect("provision state lock");
@@ -2264,7 +2262,7 @@ async fn drive<R: tauri::Runtime>(
                     st.serving_app = help.app.clone();
                 }
                 return JobEnd::Ok(format!(
-                    "created — but {} is answering port 443, so {} won't load until you quit {quit}",
+                    "created — but {} is answering port {https}, so {} won't load until you quit {quit}",
                     help.holder.as_deref().unwrap_or("another app"),
                     site.domain
                 ));

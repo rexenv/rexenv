@@ -1169,6 +1169,7 @@ mod tests {
             tcp_443_open: false,
             serving_manager: false,
             holder: None,
+            https_port: 443,
         };
         let view = AgentScratchSite {
             url: format!("https://{}", site.domain),

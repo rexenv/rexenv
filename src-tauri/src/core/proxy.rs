@@ -655,7 +655,7 @@ pub(crate) fn installed_identical(pairs: &[(&Path, &Path)]) -> bool {
 pub fn stop_edge_daemon(platform: &dyn Platform) -> Result<()> {
     platform.privileges().run_privileged(
         &platform.edge().stop_command(),
-        &crate::platform::traits::PromptReason::new("stop its HTTPS server on ports 80 and 443"),
+        &crate::platform::traits::PromptReason::new("stop its HTTPS server"),
     )?;
     for _ in 0..20 {
         if !admin_alive(platform) {

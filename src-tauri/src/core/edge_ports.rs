@@ -159,11 +159,15 @@ mod tests {
     /// edge — the port gate, the wire probe, the conflict help, the database console's client, the
     /// privileged start's sentence — asks the user's ports; the defaults appear only where they ARE
     /// the default. Scans the whole tree, because a file not on a list is exactly where the next
-    /// hard-coded 443 would hide (the guard-covers-claimed-surface family).
+    /// hard-coded 443 would hide (the guard-covers-claimed-surface family). And not only the
+    /// constant's NAME: the first version of this guard missed a literal `([127, 0, 0, 1], 443)` in
+    /// `confverify.rs`, a `const EDGE_HTTPS_PORT: u16 = 443` in the MCP server and four sentences
+    /// saying "port 443" — so loopback-shaped literals and the sentence count too. A public 443
+    /// (the tunnel host, `wp_tunnel`'s `SERVER_PORT`) is not the edge and has neither shape.
     #[test]
     fn the_default_ports_are_named_only_where_they_are_the_default() {
         let allowed: &[(&str, &str)] = &[
-            ("core/proxy.rs", "the constants and `CaddyConfig::default`"),
+            ("core/proxy.rs", "the constants, `CaddyConfig::default`, and the legacy `start_privileged` only `caddy_443.rs` calls"),
             ("core/service_manager.rs", "`Ports::default`, replaced by `set_edge_ports` before any start"),
             ("core/edge_ports.rs", "`EdgePorts::default` and `load`'s fallbacks"),
             ("core/ports.rs", "`default_ports`, a thin `ports_for(defaults)`"),
@@ -179,8 +183,18 @@ mod tests {
                     walk(&path, root, found);
                 } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
                     let text = std::fs::read_to_string(&path).unwrap_or_default();
-                    let body = crate::core::copy_scan::production_source(&text);
-                    if body.contains("DEFAULT_HTTPS_PORT") || body.contains("DEFAULT_HTTP_PORT") {
+                    // Code only: a comment that recalls `127.0.0.1:443` (Herd's shadow bind) is history.
+                    // A whole-line comment, or a trailing ` // …` — never the `//` of `https://`.
+                    let body: String = crate::core::copy_scan::production_source(&text)
+                        .lines()
+                        .map(|l| if l.trim_start().starts_with("//") { "" } else { l.split(" // ").next().unwrap_or("") })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let literal = ["[127, 0, 0, 1], 443", "LOCALHOST, 443", "127.0.0.1:443", "u16 = 443", "port 443", "ports 80 and 443"];
+                    if body.contains("DEFAULT_HTTPS_PORT")
+                        || body.contains("DEFAULT_HTTP_PORT")
+                        || literal.iter().any(|l| body.contains(l))
+                    {
                         found.push(path.strip_prefix(root).unwrap().display().to_string().replace('\\', "/"));
                     }
                 }
