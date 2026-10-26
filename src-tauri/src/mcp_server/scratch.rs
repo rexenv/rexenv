@@ -111,8 +111,9 @@ static REGISTRY: &[ScratchTool] = &[ScratchTool {
                   tested. Takes `site_id` and `source` (the directory holding the plugin's main \
                   PHP file or the theme's style.css). rexenv works out which it is from the \
                   source's own header. **It is COPIED, not linked**: nothing the site does can \
-                  write back to the source, and the site runs the code as of this moment — call \
-                  scratch_sync_package after you change it.",
+                  write back to the source, and the site has the code as of this moment — call \
+                  scratch_sync_package after you change it. **It is NOT activated**: activate a \
+                  plugin with wp_run [\"plugin\", \"activate\", <slug>] (a theme: \"theme\").",
     input_schema: || json!({
         "type": "object",
         "properties": {
@@ -1162,6 +1163,17 @@ mod tests {
         }
     }
 
+    /// The add reply says the package is NOT active and names the `wp_run` that activates it
+    /// (the T3 VM run, 26 Oct 2026: the old "the site runs it as of now" was false).
+    #[test]
+    fn an_added_package_is_said_to_be_inactive_with_the_command_that_activates_it() {
+        let p = super::added_detail("acme", "plugin", "probe.scratch.rex");
+        assert!(p.contains("NOT active") && p.contains(r#"wp_run ["plugin", "activate", "acme"]"#), "{p}");
+        assert!(!p.contains("runs it"), "{p}");
+        let t = super::added_detail("acme-theme", "theme", "probe.scratch.rex");
+        assert!(t.contains(r#"wp_run ["theme", "activate", "acme-theme"]"#), "{t}");
+    }
+
     #[test]
     fn the_created_view_speaks_m1s_verdict_and_resolution_vocabulary() {
         // A create that lands while the stack is stopped is a SUCCESS whose site
@@ -1709,6 +1721,21 @@ mod tests {
 
 }
 
+/// What `scratch_add_package` tells the agent. The copy does NOT activate it, and the reply says
+/// so with the exact `wp_run` that does: until 26 Oct 2026 it said "the site runs it as of now",
+/// and on the Ubuntu VM (the T3 run) a plugin added that way stayed `inactive` while the page
+/// never ran it — an agent reading the old reply would test code that was not running. Not
+/// activated on add on purpose: activation runs the package's own hook, which is often what is
+/// under test.
+fn added_detail(slug: &str, kind: &str, domain: &str) -> String {
+    let verb = if kind == "theme" { "theme" } else { "plugin" };
+    format!(
+        "`{slug}` was COPIED into {domain} — nothing it does can write back to your source. It is \
+         NOT active yet: activate it with wp_run [\"{verb}\", \"activate\", \"{slug}\"]. Call \
+         scratch_sync_package after you change the source."
+    )
+}
+
 /// Where a package lands inside a site, and what it is called there.
 fn package_dest(site: &Site, kind: &str, slug: &str) -> std::path::PathBuf {
     std::path::Path::new(&site.path)
@@ -1766,11 +1793,7 @@ fn add_package<'a>(
             "slug": slug,
             "kind": kind,
             "syncedAt": synced_at,
-            "detail": format!(
-                "`{slug}` was COPIED into {} — the site runs it as of now, and nothing it does \
-                 can write back to your source. Call scratch_sync_package after you change it.",
-                scratch.domain()
-            ),
+            "detail": added_detail(&slug, kind, scratch.domain()),
         }))
     })
 }

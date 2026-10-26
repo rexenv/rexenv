@@ -549,7 +549,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   scratch create → plugin add + activate → its output → delete, nothing left. **T4's unit built 26 Oct 2026**: the setup writes
   and enables `rexenv-headless.service` (`KillMode=process`, the user's runtime dir) and lingering
   (#921), INSTALL § Linux "Server (headless)"; **T4's VM run done the same day** (#921: restart keeps the stack, `kill -9` restarted, hand-off, a boot
-  with no login brings everything up); **open in T4: the deb's post-install note, and a FRESH server** — the edge install, the `.rex` route and the CA
+  with no login brings everything up); **T4's deb note added the same day** (print-only postinst, #922); **open in T4: a FRESH server** — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
   to do them. Owner ask 26 Oct 2026: install rexenv
@@ -562,11 +562,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
-- [ ] **`scratch_add_package`'s reply says "the site runs it as of now" — it copies and does NOT activate.**
-  Found 26 Oct 2026 on the Ubuntu VM (the T3 run, ledger #920): a plugin added this way stayed
-  `inactive` and the site never ran it until `wp_run ["plugin","activate",<slug>]`. An agent reading the
-  reply would test code that is not running. Either activate a plugin on add (a theme: leave it, say so),
-  or say "copied — activate it with wp_run" (and the tool description too). Ledger #217's row.
+- [x] **`scratch_add_package`'s reply said "the site runs it as of now" — it copies and does NOT activate.**
+  Found 26 Oct 2026 on the Ubuntu VM (the T3 run, ledger #920). ✓ 26 Oct 2026: the reply and the tool's
+  description now say it is NOT active and give the exact `wp_run ["plugin"|"theme", "activate", <slug>]`
+  (not auto-activated — activation runs the package's own hook, often what is under test); L0
+  `an_added_package_is_said_to_be_inactive_with_the_command_that_activates_it`, ledger #217.
 - [ ] **Redis, MariaDB and Apache httpd on Linux.** Not in Linux v1 (D-L8 of
   `docs/PLAN-linux-port.md`; `ships_on` refuses them; `docs/PORTS.md` §Linux). Asked for in GitHub
   issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs Apache, many hosts run

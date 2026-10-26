@@ -323,6 +323,37 @@ mod tests {
         assert!(run.contains("crate::platform::command(rules::SYNC).status()"), "the boot links reach the disk (#740)");
     }
 
+    /// The deb's post-install is a NOTE and nothing else (ledger #922): a package must not change
+    /// a server on its own — the setup is the administrator's deliberate `sudo rexenv
+    /// --headless-setup`. Every command line in it is the shell's own control flow, `cat` of a
+    /// here-doc, or `exit 0`; and the deb really ships it.
+    #[test]
+    fn the_debs_post_install_only_prints_a_note() {
+        let script = include_str!("../../../linux/postinst");
+        assert!(script.starts_with("#!/bin/sh\n"), "a POSIX sh script");
+        assert!(script.contains("sudo rexenv --headless-setup") && script.contains("xvfb xauth"), "the note names the two steps");
+        let mut in_note = false;
+        for line in script.lines().map(str::trim) {
+            if in_note {
+                in_note = line != "NOTE";
+                continue;
+            }
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let allowed = line == "set -e"
+                || line == "fi"
+                || line == "exit 0"
+                || line == "cat <<'NOTE'"
+                || (line.starts_with("if [ \"$1\" = \"configure\" ]") && line.ends_with("then"));
+            assert!(allowed, "the post-install runs `{line}` — it may only print its note");
+            in_note = line == "cat <<'NOTE'";
+        }
+        assert!(script.trim_end().ends_with("exit 0"), "never fails an install");
+        let conf = include_str!("../../../tauri.conf.json");
+        assert!(conf.contains("\"postInstallScript\": \"linux/postinst\""), "the deb does not ship the note");
+    }
+
     #[test]
     fn a_user_name_that_could_carry_sudoers_syntax_is_refused() {
         for ok in ["rexenv", "_ci", "dev-1", "a"] {

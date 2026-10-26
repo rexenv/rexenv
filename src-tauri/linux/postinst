@@ -1,0 +1,16 @@
+#!/bin/sh
+# rexenv's deb post-install (docs/PLAN-headless-web.md T4): one note for a server with no display.
+# It changes nothing on the machine — a desktop needs no step here, and a server's setup is an
+# administrator's deliberate `sudo rexenv --headless-setup`, never something a package does on its own.
+set -e
+if [ "$1" = "configure" ] && [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  cat <<'NOTE'
+
+rexenv: on a server with no display, run it headless (driven by `rex` and `rex mcp`):
+  sudo apt install xvfb xauth
+  sudo rexenv --headless-setup        # as the account rexenv will run as, via sudo
+See "Server (headless)" in https://github.com/rexenv/rexenv/blob/master/docs/INSTALL.md
+
+NOTE
+fi
+exit 0

@@ -61,9 +61,11 @@ on the public internet. It is ONE developer's rexenv, running on a machine they 
   three ends of the frame policy must be right (our CSP, the replayed `frame-ancestors`, the frame URL).
 - **Linux privilege needs a desktop.** Linux privilege goes through `pkexec`/polkit
   (`PrivilegeManager`), which needs an authentication agent. A headless server has none.
-- **Secrets need a keyring.** The live-sync credentials go through `SecretStore`. On Linux that is the
-  Secret Service, which a headless box does not run; `docs/PLAN-wp-live-sync.md` §11 Q4 leaves the
-  fallback open.
+- **~~Secrets need a keyring.~~ WRONG, corrected 26 Oct 2026.** This line was written from the live-sync
+  PLAN's open question, not the code: §11 Q4 was decided on 10 Oct 2026, and the pairing lives in an
+  owner-only `0600` file under app data on every OS (`core/live_sync/secrets.rs` — "a Linux box without
+  one (headless, a minimal WM) still has to work"). There is no `SecretStore` and no Secret Service
+  dependency, so headless live sync needs nothing here. (Off 443 it is refused anyway, #917.)
 - **The DNS agent is a per-user systemd unit.** A user unit stops at logout unless the user is
   lingering (`loginctl enable-linger`).
 - **The edge's ports are fixed.** `core/service_manager.rs:35` takes `proxy::DEFAULT_HTTP_PORT` (80) and
@@ -205,7 +207,7 @@ rexenv --headless [--web 127.0.0.1:9443]
   needs (T0 lists them), and `loginctl enable-linger` for the DNS agent's user unit. At runtime the
   service runs as the user, never as root, and a privileged op that turns up later fails with a sentence
   naming `sudo rexenv --headless-setup`.
-- **Secrets.** `SecretStore` on a box without Secret Service, as D4 rules.
+- **Secrets.** Nothing to do — live sync's pairing is a `0600` file already (see §2, corrected).
 
 ### Not in this plan — Redis, MariaDB and Apache on Linux (issue #7 ask 5)
 
@@ -251,9 +253,11 @@ mode does not depend on them, and they do not depend on headless mode.
   the VPS, with macOS (LaunchDaemon) and Windows (service / boot-time task) filled in the same change
   as `Error::Unported` plus a sentence in `platform/words.rs`, and a TODO row each. The web transport
   itself is common code and works on all three as soon as their headless mode exists.
-- **D4 — secrets without a keyring:** an honest refusal for live sync, or a `0600` file under
-  app-data with the sentence saying so. Same question as `docs/PLAN-wp-live-sync.md` §11 Q4; one
-  ruling should answer both.
+- **D4 — secrets without a keyring:** **moot, 26 Oct 2026.** The owner ruled "honest refusal" on the
+  question as this plan framed it — and the framing was wrong: live sync never used a keyring; its
+  pairing has been a `0600` file under app data on every OS since 10 Oct (`core/live_sync/secrets.rs`,
+  `docs/PLAN-wp-live-sync.md` §11 Q4). A refusal would have removed a working feature on headless
+  boxes for a problem that does not exist, so none was built; the owner was told.
 - **D6 — the edge port setting's shape.** Recommended: global settings (one HTTP port, one HTTPS port,
   one bind address) rather than per site, changeable only while no site exists in the first version.
   The alternative is a full rewrite of every site's URLs on change, as a later task.
@@ -363,7 +367,7 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   enable-linger`; it refuses without the `.deb`'s `/usr/bin/rexenv`. INSTALL § Linux "Server
   (headless)". The VM run (#921): restart keeps the stack, `kill -9` is restarted, a hand-launched second
   copy hands off, and a boot with no one logged in brings the service, the user manager, the DNS agent
-  and the stack up. Still open: the deb's post-install note, and a FRESH server —
+  and the stack up. The deb's post-install note ✓ (print-only, #922). Still open: a FRESH server —
   the edge install, the `.rex` route and the CA trust are root steps the closed set refuses (#911),
   so they need either the setup to do them or a GUI-less first setup. The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
