@@ -121,6 +121,8 @@ mod tests {
         // `sites_dir` is a gated setter, and `settings_access::cli_access` makes every
         // gated key ReadWrite — so `settings_get` reads it.
         ("sites_folder", Tool("settings_get")),
+        // The edge's ports and bind are gated keys too (`core::edge_ports`), read the same way.
+        ("edge_ports_info", Tool("settings_get")),
         // ── site_provision
         ("site_provision_job", Never(JOBS)),
         ("site_provision_active", Never(JOBS)),

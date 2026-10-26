@@ -361,7 +361,19 @@ pub fn generate_caddyfile(cfg: &CaddyConfig) -> String {
         // Windows: loopback only — an all-interfaces bind raised the firewall's allow prompt (#611).
         s.push_str(&format!("\tdefault_bind {bind}\n"));
     }
+    // Off 443, rexenv writes the HTTP→HTTPS redirect itself (ledger #919). Caddy's automatic one
+    // leaves out a port equal to the global `https_port` — it takes that port for the client's —
+    // so with `https_port 8443` `http://x.rex:8080/` was 308'd to `https://x.rex/`: port 443, a
+    // different server (the VM, T2 S4, beside a foreign nginx). Spelling the port in the site
+    // ADDRESS did not change that (measured). At 443 Caddy's own redirect is right and stays.
+    let own_redirect = cfg.https_port != DEFAULT_HTTPS_PORT;
+    if own_redirect {
+        s.push_str("\tauto_https disable_redirects\n");
+    }
     s.push_str("}\n");
+    if own_redirect {
+        s.push_str(&format!("\nhttp:// {{\n\tredir https://{{host}}:{}{{uri}} 308\n}}\n", cfg.https_port));
+    }
     for r in &cfg.routes {
         s.push('\n');
         // Subdomain multisite serves the apex plus every sub-site host; Caddy
@@ -894,6 +906,21 @@ fn wait_ok_within(mut child: Child, what: &str, timeout: std::time::Duration) ->
 
 #[cfg(test)]
 mod tests {
+    /// Off 443 the HTTP→HTTPS redirect is rexenv's and keeps the port (T2 S4, ledger #919): Caddy's
+    /// automatic one dropped a port equal to `https_port` — measured on the VM,
+    /// `http://x.rex:8080/` went to `https://x.rex/`.
+    #[test]
+    fn off_443_the_http_redirect_keeps_the_port() {
+        let mut cfg = sample();
+        cfg.https_port = 8443;
+        let f = generate_caddyfile(&cfg);
+        assert!(f.contains("\tauto_https disable_redirects\n"), "{f}");
+        assert!(f.contains("http:// {\n\tredir https://{host}:8443{uri} 308\n}"), "{f}");
+        // …and at 443 Caddy's own redirect stays, untouched.
+        let d = generate_caddyfile(&sample());
+        assert!(!d.contains("disable_redirects") && !d.contains("http:// {"), "{d}");
+    }
+
     #[test]
     fn an_install_is_skipped_only_when_every_root_file_already_matches() {
         use super::installed_identical;
@@ -991,7 +1018,7 @@ mod tests {
                  but…\") is meaningless here",
             ),
             (
-                "rexenv needs port 443 to serve sites",
+                "rexenv needs port {data.port} to serve sites",
                 "WHY it matters — and it names the port, which is the vocabulary every other \
                  :443 message in the app uses",
             ),
@@ -1231,7 +1258,7 @@ mod tests {
     fn sample() -> CaddyConfig {
         CaddyConfig {
             http_port: 8080,
-            https_port: 8443,
+            https_port: 443,
             routes: vec![SiteRoute {
                 aliases: Vec::new(),
                 host: "proxytest.test".into(),
@@ -1253,7 +1280,7 @@ mod tests {
         // redirects HTTP→HTTPS; explicit per-site tls still bypasses the issuer.
         assert!(!f.contains("disable_redirects"));
         assert!(f.contains("http_port 8080"));
-        assert!(f.contains("https_port 8443"));
+        assert!(f.contains("https_port 443"));
         assert!(f.contains("https://proxytest.test {"));
         assert!(f.contains("tls \"/c/cert.pem\" \"/c/key.pem\""));
         assert!(f.contains("reverse_proxy 127.0.0.1:9999"));

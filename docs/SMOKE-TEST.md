@@ -2065,6 +2065,13 @@ hand can prove a spec entry became the item it describes.*
   15.6.1 VM, `39610cc7` + self-update to 0.7.2).
 - [x] **Quit rexenv** with a public share up still pauses once and names the count.
   ✓ 18 Sep 2026 (clean 15.6.1 VM, `39610cc7` + self-update to 0.7.2).
+- [ ] **Edge ports** (Settings → Services, ledger #914–#919; macOS, Windows and Linux): the card shows
+  HTTP 80 / HTTPS 443 / Bind = the platform's (every interface; `127.0.0.1` on Windows). With any site
+  present the two ports are disabled and the card shows the "only while there are no sites" sentence.
+  On a fresh profile with no sites: set 8080/8443, Save → the toast; Start all → the Sites screen's
+  Open button and the tray's Open land on `https://<site>:8443` for a site created after; set back to
+  80/443 before creating anything else. **Not run** on any OS yet — the card is S4's (26 Oct 2026); the
+  same settings through `rex config` ran on the Ubuntu VM (§ Linux, "The edge off 80/443").
 - [x] **Start rexenv at login** (Settings → Services; "Open rexenv at login" until 29 Sep
   2026, "Start on login" before 28 Sep) → log out and back in: rexenv comes up in the MENU
   BAR with **no window** (and no dock tile). Check the FILE first —
@@ -4369,6 +4376,21 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
 - [ ] A second `rexenv` and `rex open` say "running headless"; killing the app takes its Xvfb with it
   and leaves every service running.
   ✓ 26 Oct 2026 (the 22.04 arm64 VM, a container release build, cloud-init's rule parked) — all three.
+
+### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
+
+On a FRESH account (no sites — a port change is refused with any), with another web server holding
+:80/:443 (a distro nginx). The machine must not already carry another account's root edge unit (#918).
+- [ ] `rex config set edge_http_port 8080`, `edge_https_port 8443`; `edge_http_port 18088` refused
+  naming Nginx. Start all → `ss` shows 8080/8443, the other server still answers :80/:443, `rex status`
+  names Caddy on 8443, the edge is a user process (no sudo, no root unit).
+- [ ] A WordPress site: `rex site create` prints `https://<site>:8443`; the page 200;
+  `http://<site>:8080/x?y=1` → 308 `https://<site>:8443/x?y=1`; `rex site login --print` → wp-admin
+  Dashboard with every admin link on `:8443`.
+- [ ] With the site present: `rex config set edge_https_port 9443` and `rex site domain …` both refused
+  with their sentences. Kill the app → the site still serves; relaunch → adopted; `rex stop` stops the
+  edge with no prompt.
+  ✓ 26 Oct 2026 (the 22.04 arm64 VM, a fresh `t2` account in headless mode) — all three.
 
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
 - **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.

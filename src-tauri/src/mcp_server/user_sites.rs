@@ -4478,7 +4478,7 @@ pub(crate) mod tests {
         fn retry_download<'a>(&'a self, name: String, version: String) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("downloads retry {name} {version}")); Box::pin(async { Ok(()) }) }
         fn set_autostart<'a>(&'a self, enabled: bool) -> OpFuture<'a, Result<()>> { self.calls.lock().unwrap().push(format!("autostart {enabled}")); Box::pin(async { Ok(()) }) }
         fn edge_conflict<'a>(&'a self) -> OpFuture<'a, Result<Option<crate::commands::system::SetupEdgeConflict>>> {
-            Box::pin(async { Ok(Some(crate::commands::system::SetupEdgeConflict { holder: Some("Herd (pid 4242)".into()), app: Some("Herd".into()), fix: Some("quit Herd".into()) })) })
+            Box::pin(async { Ok(Some(crate::commands::system::SetupEdgeConflict { holder: Some("Herd (pid 4242)".into()), app: Some("Herd".into()), fix: Some("quit Herd".into()), port: 443 })) })
         }
     }
 

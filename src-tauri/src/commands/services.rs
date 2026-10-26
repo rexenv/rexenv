@@ -824,6 +824,36 @@ pub(crate) fn edge_ports(state: &AppState) -> core::edge_ports::EdgePorts {
     state.db.lock().map(|conn| core::edge_ports::load(&conn)).unwrap_or_default()
 }
 
+/// The Settings card's view of the edge's ports (`EdgePortsCard`): the stored values, the bind the
+/// platform uses when none is set, whether a port change is locked (any site exists) — and the
+/// sentences, which live beside the rule in `core::edge_ports` and are rendered as sent.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdgePortsInfo {
+    pub http: u16,
+    pub https: u16,
+    pub bind: Option<String>,
+    pub platform_bind: Option<&'static str>,
+    pub ports_locked: bool,
+    pub note: &'static str,
+    pub locked_note: &'static str,
+}
+
+#[tauri::command]
+pub fn edge_ports_info(state: State<'_, AppState>) -> Result<EdgePortsInfo> {
+    let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
+    let ports = core::edge_ports::load(&conn);
+    Ok(EdgePortsInfo {
+        http: ports.http,
+        https: ports.https,
+        bind: ports.bind,
+        platform_bind: state.platform.edge().default_bind(),
+        ports_locked: !crate::state::store::list_sites(&conn)?.is_empty(),
+        note: core::edge_ports::NOTE,
+        locked_note: core::edge_ports::SITES_EXIST,
+    })
+}
+
 /// Load the ServiceManager's MIRRORS of per-site state — env vars, extra domains, ini settings —
 /// from the database. Called at launch BEFORE `adopt_startup` (`lib.rs`), so an adopted session
 /// renders every config from the user's real state. (ledger #785)

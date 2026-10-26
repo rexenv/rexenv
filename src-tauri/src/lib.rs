@@ -1308,6 +1308,7 @@ pub fn run() {
             commands::system::init_error,
             commands::system::startup_notices,
             commands::system::global_status,
+            commands::services::edge_ports_info,
             commands::system::open_external,
             commands::system::reveal_path,
             commands::system::list_editors,

@@ -23,6 +23,10 @@ pub const HTTP_PORT_KEY: &str = "edge_http_port";
 pub const HTTPS_PORT_KEY: &str = "edge_https_port";
 pub const BIND_KEY: &str = "edge_bind";
 
+/// What the Settings card says about these three, beside the rule it states (the UI renders it).
+pub const NOTE: &str = "The ports a browser reaches your sites on. Move them off 80/443 when another \
+web server already holds those (a server's own nginx). A change takes effect at the next Start all.";
+
 /// The sentence a port change gets while sites exist.
 pub const SITES_EXIST: &str = "the edge's ports can change only while there are no sites: every site's \
 address carries the port (WordPress stores it), so changing it would break each one. Delete the sites \
@@ -263,7 +267,7 @@ mod tests {
     fn a_site_url_is_built_only_by_site_url() {
         let allowed: &[(&str, usize, &str)] = &[
             ("core/edge_ports.rs", 1, "THE builder"),
-            ("core/proxy.rs", 4, "the edge probe (port explicit) and the Caddyfile's site addresses, which take the global https_port"),
+            ("core/proxy.rs", 5, "the edge probe (port explicit), the Caddyfile's site addresses, which take the global https_port, and its own HTTP→HTTPS redirect off 443 (port explicit)"),
             ("core/dbconsole_proxy.rs", 2, "the console's own host, port-less by design: the client's resolve carries the port"),
             ("core/tunnels.rs", 1, "the PUBLIC tunnel host, not the edge"),
             ("core/wporg.rs", 1, "wordpress.org"),

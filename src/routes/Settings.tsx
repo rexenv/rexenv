@@ -37,6 +37,7 @@ import {
   firefoxTrustStatus,
   getAppInfo,
   getPhpSettings,
+  edgePortsInfo,
   getSetting,
   mailCatchAll,
   setMailCatchAll,
@@ -1546,30 +1547,77 @@ function MailCatchAllCard() {
 }
 
 /** Default ports card (UI-only — rexenv's ports are fixed today; see CLAUDE.md). */
-function DefaultPortsCard() {
-  const [http, setHttp] = useState("80");
-  const [https, setHttps] = useState("443");
-  const [mysql, setMysql] = useState("13306");
-  const input = (label: string, value: string, onChange: (v: string) => void) => (
+/** The edge's HTTP/HTTPS ports and bind address (`core::edge_ports`, docs/PLAN-headless-web.md T2).
+ *  Real settings — this card used to hold three inputs that saved nothing. Each value goes through
+ *  its validating setter (`set_setting` → `GATED_SETTERS`); a refusal arrives as Rust's sentence. */
+function EdgePortsCard() {
+  const qc = useQueryClient();
+  const { data: info } = useQuery({ queryKey: ["edge-ports"], queryFn: edgePortsInfo });
+  const [http, setHttp] = useState<string | null>(null);
+  const [https, setHttps] = useState<string | null>(null);
+  const [bind, setBind] = useState<string | null>(null);
+  const shown = {
+    http: http ?? String(info?.http ?? 80),
+    https: https ?? String(info?.https ?? 443),
+    bind: bind ?? info?.bind ?? "",
+  };
+  const dirty =
+    info !== undefined &&
+    (shown.http !== String(info.http) || shown.https !== String(info.https) || shown.bind !== (info.bind ?? ""));
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!info) return;
+      if (shown.http !== String(info.http)) await setSetting("edge_http_port", shown.http);
+      if (shown.https !== String(info.https)) await setSetting("edge_https_port", shown.https);
+      if (shown.bind !== (info.bind ?? "")) await setSetting("edge_bind", shown.bind);
+    },
+    onSuccess: () => {
+      setHttp(null);
+      setHttps(null);
+      setBind(null);
+      toast.success("Saved — the edge takes it at the next Start all.");
+    },
+    onError: (e) => toastBackendError(e),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: ["edge-ports"] });
+      void qc.invalidateQueries({ queryKey: ["global-status"] });
+    },
+  });
+  const locked = info?.portsLocked ?? false;
+  const input = (label: string, value: string, onChange: (v: string) => void, disabled: boolean, placeholder?: string) => (
     <div>
       <label className="mb-1.5 block text-[0.75rem] text-rex-text-muted">{label}</label>
       <input {...TECH_INPUT}
         value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        title={disabled ? info?.lockedNote : undefined}
         onChange={(e) => onChange(e.target.value)}
-        className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand"
+        className="h-[34px] w-full rounded-[9px] border border-rex-border-strong bg-rex-well px-[11px] font-mono text-[0.78125rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-60"
       />
     </div>
   );
   return (
     <div className="rounded-[13px] border border-rex-border-subtle bg-rex-surface-1 p-5">
-      <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
-        Default ports
+      <div className="mb-[6px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
+        Edge ports
       </div>
+      {info?.note && <div className="mb-[14px] text-[0.75rem] text-rex-text-muted">{info.note}</div>}
       <div className="grid grid-cols-3 gap-3">
-        {input("HTTP", http, setHttp)}
-        {input("HTTPS", https, setHttps)}
-        {input("MySQL", mysql, setMysql)}
+        {input("HTTP", shown.http, setHttp, locked)}
+        {input("HTTPS", shown.https, setHttps, locked)}
+        {input("Bind address", shown.bind, setBind, false, info?.platformBind ?? "every interface")}
       </div>
+      {locked && info?.lockedNote && (
+        <div className="mt-3 text-[0.71875rem] leading-[1.55] text-rex-text-muted">{info.lockedNote}</div>
+      )}
+      {dirty && (
+        <div className="mt-3 flex justify-end">
+          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            Save
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2015,7 +2063,7 @@ export function Settings() {
               <>
                 <ServicePrefsCard />
                 <MailCatchAllCard />
-                <DefaultPortsCard />
+                <EdgePortsCard />
                 <Card title="PHP versions">
                   <PhpVersionsSetting />
                 </Card>

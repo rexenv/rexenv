@@ -33,7 +33,11 @@ pub(crate) fn prepare() -> Result<()> {
     let dir = crate::platform::traits::Paths::config_dir(&paths)?.join("headless");
     std::fs::create_dir_all(&dir)?;
     let auth = dir.join("Xauthority");
-    let log = crate::platform::traits::Paths::log_dir(&paths)?.join("xvfb.log");
+    // Created here: on a fresh account nothing has made the log folder yet, and opening the log
+    // inside a missing one failed the whole launch with a bare ENOENT (a new user on the VM, T2 S4).
+    let log_dir = crate::platform::traits::Paths::log_dir(&paths)?;
+    std::fs::create_dir_all(&log_dir)?;
+    let log = log_dir.join("xvfb.log");
     let mut last = String::new();
     for _ in 0..XVFB_TRIES {
         let Some(display) = rules::free_display(|p| p.exists()) else {

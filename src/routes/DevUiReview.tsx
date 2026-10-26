@@ -1493,7 +1493,7 @@ export function DevUiReview() {
           // No param = nothing on :443. The backend returns null there and the
           // notice must not render: at onboarding the stack is not running yet.
           if (params.get("edge") === "herd") {
-            return { holder: "Herd (nginx, pid 554)", app: "Herd", fix: "osascript -e 'quit app \"Herd\"'" };
+            return { holder: "Herd (nginx, pid 554)", app: "Herd", fix: "osascript -e 'quit app \"Herd\"'", port: 443 };
           }
           if (params.get("edge") === "anon") {
             return { holder: null, app: null, fix: null };

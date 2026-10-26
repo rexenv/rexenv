@@ -465,7 +465,7 @@ function EdgeConflictNotice() {
         {holder} is answering HTTPS on {words.host}.
       </div>
       <div className="mt-1 text-[0.71875rem] leading-[1.55] text-rex-text-muted">
-        rexenv needs port 443 to serve sites, so they won't load while {quit === "it" ? "it" : quit} has
+        rexenv needs port {data.port} to serve sites, so they won't load while {quit === "it" ? "it" : quit} has
         it. Nothing here depends on it — you can finish setting up and quit {quit} whenever you like.
       </div>
       {data.fix && <CommandLine command={data.fix} />}

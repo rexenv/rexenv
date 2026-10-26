@@ -1255,6 +1255,8 @@ export interface SetupEdgeConflict {
   holder: string | null;
   app: string | null;
   fix: string | null;
+  /** The edge's HTTPS port (`core::edge_ports` — 443 unless moved), named in the sentence. */
+  port: number;
 }
 
 export async function setupEdgeConflict(): Promise<SetupEdgeConflict | null> {
@@ -2105,6 +2107,27 @@ export async function tunnelsStatus(): Promise<TunnelInfo[]> {
     ];
   }
   return invoke<TunnelInfo[]>("tunnels_status");
+}
+
+/** The edge's ports and bind as the Settings card shows them (`commands::services::edge_ports_info`).
+ *  The sentences are Rust's (`core::edge_ports`), rendered as sent. */
+export interface EdgePortsInfo {
+  http: number;
+  https: number;
+  bind: string | null;
+  /** The bind the platform uses when none is set (`127.0.0.1` on Windows; null = every interface). */
+  platformBind: string | null;
+  /** A port change is refused while any site exists — every site's address carries the port. */
+  portsLocked: boolean;
+  note: string;
+  lockedNote: string;
+}
+
+export async function edgePortsInfo(): Promise<EdgePortsInfo> {
+  if (!isTauri()) {
+    return { http: 80, https: 443, bind: null, platformBind: null, portsLocked: false, note: "", lockedNote: "" };
+  }
+  return invoke<EdgePortsInfo>("edge_ports_info");
 }
 
 /** Read a setting (or null). */

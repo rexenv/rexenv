@@ -32,6 +32,9 @@ pub struct SetupEdgeConflict {
     pub app: Option<String>,
     /// A copy-paste line that frees the port.
     pub fix: Option<String>,
+    /// The port in question — the edge's HTTPS port as the user set it (`core::edge_ports`); the
+    /// onboarding sentence names it instead of assuming 443.
+    pub port: u16,
 }
 
 #[tauri::command]
@@ -44,7 +47,7 @@ pub async fn setup_edge_conflict(
         return Ok(None);
     }
     let help = state.platform.supervisor().port_conflict_help(https, false);
-    Ok(Some(SetupEdgeConflict { holder: help.holder, app: help.app, fix: help.free_command }))
+    Ok(Some(SetupEdgeConflict { holder: help.holder, app: help.app, fix: help.free_command, port: https }))
 }
 
 /// `webview_note` — a line from the webview into the app log, so what the GUI waited

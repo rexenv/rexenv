@@ -120,7 +120,12 @@ unprivileged port takes the user-level child edge (Windows' production shape) ra
 unit. A site's address is then `https://x.rex:8443`, built in one place per side (`edge_ports::site_url`,
 `src/lib/siteUrl.ts`) and written into WordPress at install (#916); the flows that rewrite a site's
 URLs — live sync, worktrees, imports, a domain change, a multisite conversion — refuse off 443 until
-each is measured (#917).
+each is measured (#917). Off 443 the HTTP→HTTPS redirect is rexenv's own (`auto_https
+disable_redirects` + an `http://` block), because Caddy's drops a port equal to its `https_port`
+(#919). The root unit is one per MACHINE, so one rexenv account per machine is the supported shape:
+a second account on a box whose edge is already installed is asked for the setup, not given a second
+edge (#918). Settings → Services → "Edge ports" is the UI for the three settings; it replaced a card
+of three inputs that saved nothing.
 
 - **No direct Caddy→php-fpm path for default sites.** Caddy is invisible plumbing.
 - Local CA via `rcgen` (`core/ssl.rs`); per-domain leaf certs, wildcard SAN for
