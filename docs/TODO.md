@@ -6,6 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 27 Oct 2026, before 0.9.3** (HEAD `fb6afd95`): 1 ticked block moved (Phase 4+ —
+`scratch_add_package`'s reply, #217). The headless plan stays in flight (`docs/PLAN-headless-web.md`: Phase 1a done,
+Phase 1b and T5 open). Shapes 1–4: 0 new. Open after the pass: 37 rows.
+
 **Reconciled 24 Oct 2026 (evening), after the per-OS PHP manifests** (HEAD `646d03db`): 1 ticked block moved (Now —
 PHP update documents per OS, #910); `PLAN-per-os-php-manifests.md` archived, its citations repointed. Shapes 1–4: 0.
 Open after the pass: 33 rows.
@@ -567,11 +571,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
-- [x] **`scratch_add_package`'s reply said "the site runs it as of now" — it copies and does NOT activate.**
-  Found 26 Oct 2026 on the Ubuntu VM (the T3 run, ledger #920). ✓ 26 Oct 2026: the reply and the tool's
-  description now say it is NOT active and give the exact `wp_run ["plugin"|"theme", "activate", <slug>]`
-  (not auto-activated — activation runs the package's own hook, often what is under test); L0
-  `an_added_package_is_said_to_be_inactive_with_the_command_that_activates_it`, ledger #217.
 - [ ] **Redis, MariaDB and Apache httpd on Linux.** Not in Linux v1 (D-L8 of
   `docs/PLAN-linux-port.md`; `ships_on` refuses them; `docs/PORTS.md` §Linux). Asked for in GitHub
   issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs Apache, many hosts run

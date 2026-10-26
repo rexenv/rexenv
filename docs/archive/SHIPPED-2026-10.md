@@ -2455,3 +2455,14 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   live on the Dell and the Ubuntu VM — `Adminer 6.2.0` offered on both. Owed in SMOKE § Windows / § Linux: the first
   PHP row INSTALLED through a per-OS document, the day php.net ships a patch above the pins.
 
+
+## Reconcile of 27 Oct 2026
+
+### From “Phase 4+ (next era)”
+
+- [x] **`scratch_add_package`'s reply said "the site runs it as of now" — it copies and does NOT activate.**
+  Found 26 Oct 2026 on the Ubuntu VM (the T3 run, ledger #920). ✓ 26 Oct 2026: the reply and the tool's
+  description now say it is NOT active and give the exact `wp_run ["plugin"|"theme", "activate", <slug>]`
+  (not auto-activated — activation runs the package's own hook, often what is under test); L0
+  `an_added_package_is_said_to_be_inactive_with_the_command_that_activates_it`, ledger #217.
+
