@@ -409,6 +409,10 @@ impl LinuxPrivileges {
 
 impl PrivilegeManager for LinuxPrivileges {
     fn run_privileged(&self, script: &str, _reason: &PromptReason) -> Result<String> {
+        // Inside the root setup's `prepare_as_user` child: the setup that forked us runs it (#923).
+        if let Some(answer) = headless::relay_run(script) {
+            return answer;
+        }
         // Headless: no agent can ever answer pkexec, and the passwordless door is the edge's own
         // start/stop and nothing else (`headless_rules`, ledger #911).
         if crate::is_headless_launch() {

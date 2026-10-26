@@ -223,8 +223,12 @@ mod tests {
         assert!(root < drop, "the root check must come before the write");
         let child = &door[door.find("fn write_as_user(").expect("the child")..];
         let child = &child[..child.find("\n}\n").unwrap()];
-        let uid = child.find("libc::setuid(account.uid)").expect("the uid drop");
+        // The drop lives in `become_user`, shared with the fresh-server preparation's child (#923).
+        let uid = child.find("if !become_user(account, &name) {").expect("the uid drop");
         let write = child.find("headless_consent::apply(").expect("the write, inside the child");
         assert!(uid < write, "the write must run after the child dropped to the user");
+        let drop_fn = &door[door.find("fn become_user(").expect("the drop")..];
+        let drop_fn = &drop_fn[..drop_fn.find("\n}\n").unwrap()];
+        assert!(drop_fn.contains("libc::setuid(account.uid) == 0") && drop_fn.contains("libc::setuid(0) != 0"), "the drop, proven");
     }
 }

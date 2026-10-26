@@ -549,7 +549,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   scratch create → plugin add + activate → its output → delete, nothing left. **T4's unit built 26 Oct 2026**: the setup writes
   and enables `rexenv-headless.service` (`KillMode=process`, the user's runtime dir) and lingering
   (#921), INSTALL § Linux "Server (headless)"; **T4's VM run done the same day** (#921: restart keeps the stack, `kill -9` restarted, hand-off, a boot
-  with no login brings everything up); **T4's deb note added the same day** (print-only postinst, #922); **open in T4: a FRESH server** — the edge install, the `.rex` route and the CA
+  with no login brings everything up); **T4's deb note added the same day** (print-only postinst, #922), **and the FRESH server** (#923: the
+  setup makes the route, the CA's trust and the root edge through the desktop's own code, run on a
+  fresh account with the VM's rexenv state parked). **Open in Phase 1a: T2's macOS and Windows runs
+  only.** Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
   to do them. Owner ask 26 Oct 2026: install rexenv

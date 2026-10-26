@@ -367,7 +367,9 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   enable-linger`; it refuses without the `.deb`'s `/usr/bin/rexenv`. INSTALL § Linux "Server
   (headless)". The VM run (#921): restart keeps the stack, `kill -9` is restarted, a hand-launched second
   copy hands off, and a boot with no one logged in brings the service, the user manager, the DNS agent
-  and the stack up. The deb's post-install note ✓ (print-only, #922). Still open: a FRESH server —
+  and the stack up. The deb's post-install note ✓ (print-only, #922). **A FRESH server ✓ the same day**
+  (#923): the setup runs the desktop's own route/trust/edge code as the account and relays its root
+  scripts to itself; run on a fresh account with the VM's rexenv state parked. Was open: a FRESH server —
   the edge install, the `.rex` route and the CA trust are root steps the closed set refuses (#911),
   so they need either the setup to do them or a GUI-less first setup. The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,

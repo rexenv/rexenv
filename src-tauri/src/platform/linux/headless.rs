@@ -266,6 +266,9 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
         "✓ {} starts rexenv headless as {user} at every boot, with no one logged in (lingering on for {user}).",
         rules::SERVICE_PATH
     ));
+    // A fresh server's first-run root steps, which a headless instance can never make itself
+    // (#911): the same scripts the desktop's onboarding runs, made here for the account (#923).
+    said.extend(prepare_as_user(&account)?.into_iter().map(|l| format!("✓ {l}")));
     if consent.is_empty() {
         said.push(rules::CONSENT_UNCHANGED.into());
     } else {
@@ -328,28 +331,9 @@ fn write_as_user(account: &Account, consent: &Consent) -> Result<Vec<String>> {
             libc::close(fds[0]);
             std::fs::File::from_raw_fd(fds[1])
         };
-        // SAFETY: plain syscalls on values owned here. Groups first, then the gid, then the uid —
-        // the only order that works (each later one gives up the right to the earlier) — and then
-        // proof it took: our uid is theirs, and root cannot be taken back.
-        let dropped = unsafe {
-            libc::initgroups(name.as_ptr(), account.gid) == 0
-                && libc::setgid(account.gid) == 0
-                && libc::setuid(account.uid) == 0
-                && libc::getuid() == account.uid
-                && libc::geteuid() == account.uid
-                && libc::setuid(0) != 0
-        };
-        let result = if !dropped {
+        let result = if !become_user(account, &name) {
             Err(Error::Other(format!("could not become {} to write the settings", account.name)))
         } else {
-            // The user's own paths: `directories` reads HOME, and root's XDG overrides must not leak.
-            std::env::set_var("HOME", &account.home);
-            std::env::set_var("USER", &account.name);
-            std::env::set_var("LOGNAME", &account.name);
-            for v in ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"] {
-                std::env::remove_var(v);
-            }
-            let _ = std::env::set_current_dir(&account.home);
             crate::state::db::open_for_platform(&super::LinuxPaths)
                 .and_then(|conn| crate::core::headless_consent::apply(&conn, consent))
         };
@@ -383,4 +367,200 @@ fn write_as_user(account: &Account, consent: &Consent) -> Result<Vec<String>> {
         )));
     }
     Ok(said.lines().map(String::from).collect())
+}
+
+/// In a forked child of the root setup: become `account` for good — groups first, then the gid,
+/// then the uid (the only order that works: each later one gives up the right to the earlier) —
+/// prove it took (our uid is theirs, root cannot be taken back), and take on the account's own
+/// environment (`directories` reads HOME; root's XDG overrides must not leak). `false` when any
+/// step failed; the caller then does nothing as anyone. After the uid change the kernel marks the
+/// process non-dumpable, so the account's own processes cannot ptrace it.
+fn become_user(account: &Account, name: &std::ffi::CString) -> bool {
+    // SAFETY: plain syscalls on values owned here.
+    let dropped = unsafe {
+        libc::initgroups(name.as_ptr(), account.gid) == 0
+            && libc::setgid(account.gid) == 0
+            && libc::setuid(account.uid) == 0
+            && libc::getuid() == account.uid
+            && libc::geteuid() == account.uid
+            && libc::setuid(0) != 0
+    };
+    if dropped {
+        std::env::set_var("HOME", &account.home);
+        std::env::set_var("USER", &account.name);
+        std::env::set_var("LOGNAME", &account.name);
+        for v in ["XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"] {
+            std::env::remove_var(v);
+        }
+        let _ = std::env::set_current_dir(&account.home);
+    }
+    dropped
+}
+
+/// The pipe pair a `prepare_as_user` child relays its privileged scripts over: requests out to
+/// the root parent, answers back. Set ONLY in that child, after it became the user; empty
+/// everywhere else, so `relay_run` is `None` in the app, in `--headless` and on every desktop.
+static RELAY: std::sync::OnceLock<std::sync::Mutex<(std::fs::File, std::io::BufReader<std::fs::File>)>> =
+    std::sync::OnceLock::new();
+
+/// `LinuxPrivileges::run_privileged`'s first door: in a `prepare_as_user` child, hand the script to
+/// the root setup that forked it and return its answer. `None` outside that child.
+pub(crate) fn relay_run(script: &str) -> Option<Result<String>> {
+    use std::io::{BufRead, Write};
+    let relay = RELAY.get()?;
+    let mut guard = relay.lock().unwrap_or_else(|p| p.into_inner());
+    let (to_root, from_root) = &mut *guard;
+    let sent = serde_json::to_string(&serde_json::json!({ "script": script }))
+        .map_err(|e| Error::Other(e.to_string()))
+        .and_then(|line| writeln!(to_root, "{line}").map_err(Error::from));
+    if let Err(e) = sent {
+        return Some(Err(e));
+    }
+    let mut answer = String::new();
+    if let Err(e) = from_root.read_line(&mut answer) {
+        return Some(Err(e.into()));
+    }
+    let v: serde_json::Value = serde_json::from_str(&answer).unwrap_or_default();
+    Some(if v["ok"].as_bool() == Some(true) {
+        Ok(v["out"].as_str().unwrap_or_default().to_string())
+    } else {
+        Err(Error::Other(format!("the root step failed: {}", v["err"].as_str().unwrap_or("no answer from the setup"))))
+    })
+}
+
+/// A fresh server's first-run root steps — the `.rex` route, the CA in the system store, and (on a
+/// privileged edge port) the root edge — which a desktop onboarding makes through pkexec and a
+/// headless instance can never make (#911). The root setup runs them FOR the user's own code: a
+/// forked child, dropped to the account, runs the SAME `core::setup::run_system_setup` and the
+/// edge's first install (`proxy::edge_install_script`) the app would; every privileged script it
+/// reaches comes over a pipe to this parent, which runs it as root (durable, as every step's is)
+/// and answers. So nothing new decides what root runs: these are the scripts the desktop's dialog
+/// would have authorised, authorised here by the administrator who typed the setup (ledger #923).
+fn prepare_as_user(account: &Account) -> Result<Vec<String>> {
+    use std::io::{BufRead, Write};
+    use std::os::fd::FromRawFd;
+    let name = std::ffi::CString::new(account.name.as_str()).map_err(|_| Error::Other("a user name with a NUL".into()))?;
+    if std::fs::read_dir("/proc/self/task").map(|d| d.count()).unwrap_or(0) != 1 {
+        return Err(Error::Other("the setup is not running on one thread, so it will not fork to prepare the machine".into()));
+    }
+    let (mut req, mut resp) = ([0 as libc::c_int; 2], [0 as libc::c_int; 2]);
+    // SAFETY: `pipe` fills the two-element arrays it is handed.
+    if unsafe { libc::pipe(req.as_mut_ptr()) } != 0 || unsafe { libc::pipe(resp.as_mut_ptr()) } != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    // SAFETY: one thread (checked above); the child becomes the user, then runs ordinary code.
+    let pid = unsafe { libc::fork() };
+    if pid < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if pid == 0 {
+        // SAFETY: the parent's ends are closed; ours become Files.
+        let (to_root, from_root) = unsafe {
+            libc::close(req[0]);
+            libc::close(resp[1]);
+            (std::fs::File::from_raw_fd(req[1]), std::fs::File::from_raw_fd(resp[0]))
+        };
+        let result = if !become_user(account, &name) {
+            Err(Error::Other(format!("could not become {} to prepare the machine", account.name)))
+        } else {
+            let _ = RELAY.set(std::sync::Mutex::new((to_root.try_clone().expect("dup the relay"), std::io::BufReader::new(from_root))));
+            prepare_steps()
+        };
+        let done = match &result {
+            Ok(lines) => serde_json::json!({ "done": true, "lines": lines }),
+            Err(e) => serde_json::json!({ "done": false, "err": e.to_string() }),
+        };
+        let mut out = to_root;
+        let _ = writeln!(out, "{done}");
+        // SAFETY: leave without running the parent's exit handlers twice.
+        unsafe { libc::_exit(if result.is_ok() { 0 } else { 1 }) }
+    }
+    // SAFETY: the child's ends are closed; ours become Files.
+    let (from_child, mut to_child) = unsafe {
+        libc::close(req[1]);
+        libc::close(resp[0]);
+        (std::io::BufReader::new(std::fs::File::from_raw_fd(req[0])), std::fs::File::from_raw_fd(resp[1]))
+    };
+    let mut outcome: Option<serde_json::Value> = None;
+    for line in from_child.lines() {
+        let Ok(line) = line else { break };
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+        if let Some(script) = v["script"].as_str() {
+            let answer = match crate::platform::command("/bin/sh")
+                .arg("-c")
+                .arg(crate::platform::durable::flushed_script(script))
+                .output()
+            {
+                Ok(o) if o.status.success() => serde_json::json!({ "ok": true, "out": String::from_utf8_lossy(&o.stdout) }),
+                Ok(o) => serde_json::json!({ "ok": false, "err": String::from_utf8_lossy(&o.stderr).trim() }),
+                Err(e) => serde_json::json!({ "ok": false, "err": e.to_string() }),
+            };
+            let _ = writeln!(to_child, "{answer}");
+        } else if v.get("done").is_some() {
+            outcome = Some(v);
+        }
+    }
+    let mut status = 0;
+    // SAFETY: waits for the child forked above.
+    let exited = unsafe { libc::waitpid(pid, &mut status, 0) } == pid && libc::WIFEXITED(status);
+    match outcome {
+        Some(v) if v["done"].as_bool() == Some(true) && exited => Ok(v["lines"]
+            .as_array()
+            .map(|l| l.iter().filter_map(|x| x.as_str()).map(String::from).collect())
+            .unwrap_or_default()),
+        Some(v) => Err(Error::Other(format!(
+            "the machine is not fully prepared: {}",
+            v["err"].as_str().unwrap_or("the preparation did not finish")
+        ))),
+        None => Err(Error::Other("the machine is not fully prepared: the preparation did not finish".into())),
+    }
+}
+
+/// What the `prepare_as_user` child does, as the user: the desktop's own first-run setup, then the
+/// edge's first install when it is the root unit's to make.
+fn prepare_steps() -> Result<Vec<String>> {
+    use crate::core::{binaries, edge_ports, proxy, setup, tld};
+    let platform = crate::platform::current();
+    let ca = setup::run_system_setup(platform.as_ref())?;
+    let mut said = vec![format!(
+        ".{} names resolve to this machine, and rexenv's local CA ({}) is trusted by the system store and this account's browsers.",
+        tld::BACKBONE_TLD,
+        ca.cert_path.display()
+    )];
+    let conn = crate::state::db::open_for_platform(platform.paths())?;
+    let ports = edge_ports::load(&conn);
+    let edge = platform.edge();
+    if !platform.privileges().port_needs_privilege(ports.https) {
+        said.push(format!("the edge listens on {} — a user process, no root service to install.", ports.https));
+    } else if edge.is_installed() {
+        said.push("the edge's root service is already installed.".into());
+    } else {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| Error::Other(format!("a runtime for the download: {e}")))?;
+        let caddy = rt.block_on(binaries::resolve(platform.as_ref(), "caddy", binaries::pins().caddy))?;
+        let caddyfile = platform.paths().config_dir()?.join(proxy::CADDYFILE);
+        // The unit starts at once; with no Caddyfile yet it would restart-loop until the first
+        // Start all writes the real one. An empty one (no sites, our admin socket) keeps it quiet.
+        if !caddyfile.exists() {
+            proxy::write_caddyfile(
+                platform.as_ref(),
+                &proxy::CaddyConfig {
+                    http_port: ports.http,
+                    https_port: ports.https,
+                    routes: Vec::new(),
+                    admin_socket: Some(proxy::admin_socket_path(platform.as_ref())?),
+                    default_bind: ports.bind.clone().or_else(|| edge.default_bind().map(str::to_string)),
+                },
+            )?;
+        }
+        let script = proxy::edge_install_script(platform.as_ref(), &caddy, &caddyfile)?;
+        platform.privileges().run_privileged(
+            &script,
+            &crate::platform::traits::PromptReason::new(format!("start its HTTPS server on ports {} and {}", ports.http, ports.https)),
+        )?;
+        said.push(format!("the edge (Caddy on :{} / :{}) is installed as a root service.", ports.http, ports.https));
+    }
+    Ok(said)
 }

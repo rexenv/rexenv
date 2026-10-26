@@ -2381,8 +2381,11 @@ words (the browser shell's mock and two dev review pages excepted).
   passwordless `--privileged-step` would have been passwordless root for every site's PHP: the step
   runs any script. So that a `rex start` after a `rex stop` stays inside the set, a Linux edge
   start whose three root files already match byte for byte runs `start_command` instead of the
-  install (`EdgeSupervisor::restarts_identical_install`, ledger #912). macOS and Windows refuse
-  `--headless` with a sentence (owner ruling D3).
+  install (`EdgeSupervisor::restarts_identical_install`, ledger #912). On a fresh server the first-run
+  root steps (the `.rex` route, the CA's trust, the root edge) are the setup's: it forks a child that
+  becomes the account and runs the desktop's own `run_system_setup` and `edge_install_script`, and
+  every script that code would hand pkexec is relayed to the root parent instead (#923). macOS and
+  Windows refuse `--headless` with a sentence (owner ruling D3).
   **The two GUI consents on a box with no GUI (T3, D7).** The MCP opt-in and the Agent access dial
   are consents by rule — `rex config` and the MCP `settings` tool refuse them (#203, #397) — and a
   headless server has no Settings card. So the administrator's `sudo rexenv --headless-setup` carries

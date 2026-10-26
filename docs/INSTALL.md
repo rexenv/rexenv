@@ -590,9 +590,10 @@ so the two never disagree about what is on the machine.
 
 ### Server (headless) — no desktop, driven by `rex` and `rex mcp`
 
-> **Built 26 Oct 2026, not yet released** (`docs/PLAN-headless-web.md` T1–T4). The pieces were run
-> on an Ubuntu 22.04 VM over SSH (`--headless`, the passwordless edge rule) and in a cloud container
-> (the setup's consent questions); the boot service below has NOT been run on a real server yet.
+> **Built 26 Oct 2026, not yet released** (`docs/PLAN-headless-web.md` T1–T4). Run on an Ubuntu
+> 22.04 VM over SSH: on an account whose desktop setup had run, and on a FRESH account on a machine
+> with no rexenv system changes at all (the setup then made the `.rex` route, the CA's trust and the
+> root edge), plus the boot service across reboots with no one logged in.
 
 For a server or CI box with no display — e.g. automated PR QA. rexenv runs the whole app off-screen
 (its own Xvfb) as an ordinary account, and you drive it with `rex` and an MCP agent over `rex mcp`.
@@ -605,7 +606,7 @@ For a server or CI box with no display — e.g. automated PR QA. rexenv runs the
    ```sh
    sudo rexenv --headless-setup
    ```
-   It does four things, and asks before any of them when it is run in a terminal:
+   It does five things, and asks before any of them when it is run in a terminal:
    - **asks two questions** — whether to turn the MCP endpoint on (it prints the same paragraph the
      Settings card shows before that toggle) and, if yes, the Agent access level (`read`, `changes`
      or `full`, each with the card's sentence for it). Enter answers "off" / "read". A level above
@@ -619,6 +620,10 @@ For a server or CI box with no display — e.g. automated PR QA. rexenv runs the
      MySQL, PHP and the web server keep running and the next start adopts them.
    - turns on lingering for your account (`loginctl enable-linger`), so your own systemd — where
      rexenv's DNS resolver runs — is up at boot with no one logged in.
+   - makes the machine's first-run changes the desktop's onboarding would ask a password for: the
+     `.rex` DNS route (the `rexenv0` link), your local CA in the system store and in your account's
+     browser databases, and — while the edge is on a privileged port such as the default 443 — the
+     root edge service, downloading Caddy as your account first. Each is skipped when already done.
 
    For an unattended install, type the answers as flags — typed by an administrator, they ARE the
    consent: `sudo rexenv --headless-setup --user ci --enable-mcp --agent-access changes`. With no
@@ -628,12 +633,14 @@ For a server or CI box with no display — e.g. automated PR QA. rexenv runs the
    `rex status`, `rex site create demo.rex --type wordpress`, and for an agent
    `claude mcp add rexenv -- rex mcp`.
 
-**Not yet on a server where rexenv's system setup never ran:** the root edge on :80/:443, the
-`.rex` DNS route and the local CA's trust are administrator steps, and a headless instance runs
-none of them except the edge's start/stop (there is no one to ask for a password). Until the setup
-does them (`docs/TODO.md`), put the edge on unprivileged ports before the first site — `rex config
-set edge_http_port 8080` and `rex config set edge_https_port 8443`, which needs no root at all —
-and expect `.rex` names to resolve only where rexenv's own route exists.
+**One rexenv account per machine.** The route, the CA's place in the system store and the root
+edge are one per MACHINE: a second account on a box where another already ran the setup is not
+given a second edge (its Start all asks for the setup). On a server whose other web server holds
+:80/:443, set the edge's ports before the first site — `rex config set edge_http_port 8080` and
+`rex config set edge_https_port 8443` (with the app running) — and re-run the setup: an unprivileged
+port needs no root edge at all. The first boot after the setup leaves the services idle until the
+first `rex` command that needs them (the login start is offline-only, and the binaries are not
+cached yet); every later boot starts them.
 
 Sites are reached from the server itself (`curl https://demo.rex`) or through an SSH tunnel; a
 public address is a later phase. To undo: `sudo systemctl disable --now rexenv-headless.service`,

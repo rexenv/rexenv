@@ -354,6 +354,34 @@ mod tests {
         assert!(conf.contains("\"postInstallScript\": \"linux/postinst\""), "the deb does not ship the note");
     }
 
+    /// The fresh-server preparation's shape (ledger #923): root runs ONLY what the user-side child
+    /// of the setup relays, the child relays only from the desktop's own code paths, and the relay
+    /// exists only in that child, after it became the user.
+    #[test]
+    fn the_setups_root_relay_runs_only_the_desktops_own_scripts_from_its_own_child() {
+        let door = include_str!("mod.rs");
+        let body = &door[door.find("    fn run_privileged(&self, script: &str, _reason: &PromptReason)").expect("the door")..];
+        let relay = body.find("if let Some(answer) = headless::relay_run(script) {").expect("the relay branch");
+        let headless = body.find("if crate::is_headless_launch() {").expect("the headless branch");
+        let pkexec = body.find("Self::pkexec(").expect("pkexec");
+        assert!(relay < headless && headless < pkexec, "relay, then headless, then pkexec");
+
+        let src = include_str!("headless.rs");
+        assert_eq!(src.matches("RELAY.set(").count(), 1, "the relay is set in one place");
+        let prep = &src[src.find("fn prepare_as_user(").expect("the preparation")..];
+        let prep = &prep[..prep.find("\n}\n").expect("its end")];
+        let became = prep.find("become_user(account, &name)").expect("the child becomes the user");
+        let set = prep.find("RELAY.set(").expect("…and sets the relay");
+        assert!(became < set, "the relay must not exist while the child is still root");
+        assert!(prep.contains(".arg(crate::platform::durable::flushed_script(script))"), "root runs the relayed script, flushed (#740)");
+        assert_eq!(prep.matches("crate::platform::command(").count(), 1, "root runs nothing but the relayed script");
+
+        let steps = &src[src.find("fn prepare_steps()").expect("the steps")..];
+        let steps = &steps[..steps.find("\n}\n").expect("its end")];
+        assert!(steps.contains("setup::run_system_setup(platform.as_ref())"), "the desktop's own first-run setup");
+        assert!(steps.contains("proxy::edge_install_script(platform.as_ref(), &caddy, &caddyfile)"), "the edge's own install");
+    }
+
     #[test]
     fn a_user_name_that_could_carry_sudoers_syntax_is_refused() {
         for ok in ["rexenv", "_ci", "dev-1", "a"] {

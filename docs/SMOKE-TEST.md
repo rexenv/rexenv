@@ -4402,6 +4402,13 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
   up 4 s after boot before any login, 7/7, a site 200; restart kept mysqld's pid; `kill -9` → back in
   ~7 s; a hand launch handed off; no `/usr/bin/rexenv` → refused, nothing written.
 
+- [ ] **A fresh server (ledger #923).** On a machine where rexenv's system setup never ran (no
+  `rexenv0`, no CA in `/usr/local/share/ca-certificates`, no `rexenv-edge.service`), as a fresh
+  account: `sudo rexenv --headless-setup` prints the route, CA and edge lines; `systemctl start
+  rexenv-headless`, `rex site create demo.rex --type wordpress`, then a plain `curl https://demo.rex/`
+  (no `-k`, no `--resolve`) → 200 and `http://` → 308.
+  ✓ 26 Oct 2026 (the 22.04 arm64 VM, fresh account `t4`, the VM's own rexenv state parked and restored).
+
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
 On a FRESH account (no sites — a port change is refused with any), with another web server holding

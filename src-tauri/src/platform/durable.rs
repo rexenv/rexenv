@@ -93,7 +93,10 @@ mod tests {
             let start = src.find("fn run_privileged(").unwrap_or_else(|| panic!("{os}: run_privileged is gone"));
             // Linux's headless branch hands the RAW script to its own door, which matches it against
             // the closed set and syncs after (`linux/headless.rs`, held by `headless_rules`' test).
-            let body = src[start..].replacen("headless::run_privileged(script)", "headless::run_privileged(SCRIPT)", 1);
+            let body = src[start..]
+                .replacen("headless::run_privileged(script)", "headless::run_privileged(SCRIPT)", 1)
+                // …and the setup's relay hands it raw to the root parent, which flushes it (#923).
+                .replacen("headless::relay_run(script)", "headless::relay_run(SCRIPT)", 1);
             let wrap = body.find("let script = &crate::platform::durable::flushed_script(script);");
             let first_use = body.find("(script").or_else(|| body.find(", script"));
             assert!(wrap.is_some(), "{os}: run_privileged no longer flushes what the step wrote");

@@ -579,10 +579,39 @@ pub fn start_edge_daemon(
     http_port: u16,
     https_port: u16,
 ) -> Result<()> {
+    let script = edge_install_script(platform, src_caddy, caddyfile)?;
+    platform.privileges().run_privileged(
+        &script,
+        &crate::platform::traits::PromptReason::new(format!("start its HTTPS server on ports {http_port} and {https_port}")),
+    )?;
+
+    // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
+    // (the wrapper also needs a beat to chown the socket to us) so the edge reads
+    // live to the caller — same bounded poll as the old privileged start.
+    for _ in 0..25 {
+        if admin_alive(platform) {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+    edge_never_came_up(platform, http_port, https_port)
+}
+
+/// Stage the edge daemon's launcher + supervisor definition (unprivileged) and return the ONE
+/// root script that installs them — or, where the OS allows and the root tree already holds these
+/// exact bytes, only starts it (ledger #912). Shared by `start_edge_daemon` and the headless
+/// setup's first install (`platform/linux/headless.rs`), so both run the same script.
+pub fn edge_install_script(platform: &dyn Platform, src_caddy: &Path, caddyfile: &Path) -> Result<String> {
     let edge = platform.edge();
     let sock = admin_socket_path(platform)?;
     let appdata = platform.paths().app_data_dir()?;
-    let start_log = platform.paths().log_dir()?.join("caddy-start.log");
+    let log_dir = platform.paths().log_dir()?;
+    // The supervisor appends the edge's start output here (Linux: the unit's
+    // `StandardOutput=append:`); on a fresh account nothing has made the folder yet, and systemd
+    // then failed the unit with `209/STDOUT` before caddy ran (the headless setup's first install,
+    // the VM, 26 Oct 2026).
+    std::fs::create_dir_all(&log_dir)?;
+    let start_log = log_dir.join("caddy-start.log");
 
     // Always (re)install: stage the launcher + plist unprivileged, then the ONE
     // privileged cp+bootstrap. This is idempotent AND self-healing — a first install,
@@ -602,7 +631,7 @@ pub fn start_edge_daemon(
     std::fs::write(&staged_plist, edge.plist_contents(&edge.wrapper_path(), &start_log))?;
     // Where the OS allows it, an install that would change nothing is only a start: the root
     // tree already holds these exact bytes, so nothing from the user's side is copied (ledger #912).
-    let script = if edge.restarts_identical_install()
+    Ok(if edge.restarts_identical_install()
         && installed_identical(&[
             (src_caddy, &edge.daemon_binary_path()),
             (&staged_wrapper, &edge.wrapper_path()),
@@ -611,21 +640,12 @@ pub fn start_edge_daemon(
         edge.start_command()
     } else {
         edge.install_command(src_caddy, &staged_wrapper, &staged_plist)
-    };
-    platform.privileges().run_privileged(
-        &script,
-        &crate::platform::traits::PromptReason::new(format!("start its HTTPS server on ports {http_port} and {https_port}")),
-    )?;
+    })
+}
 
-    // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
-    // (the wrapper also needs a beat to chown the socket to us) so the edge reads
-    // live to the caller — same bounded poll as the old privileged start.
-    for _ in 0..25 {
-        if admin_alive(platform) {
-            return Ok(());
-        }
-        std::thread::sleep(std::time::Duration::from_millis(200));
-    }
+/// Why an installed edge daemon's admin socket never answered — the holder of a port when there
+/// is one, else the start log.
+fn edge_never_came_up(platform: &dyn Platform, http_port: u16, https_port: u16) -> Result<()> {
     // Most common real-world cause: another local proxy (Herd — the target user's
     // other tool — ships its own nginx/caddy) already holds :443/:80, so our edge
     // crash-loops under launchd instead of binding. NAME the holder honestly; a
@@ -941,9 +961,13 @@ mod tests {
         assert!(!installed_identical(&[(&missing, &root)]), "an unreadable source means install");
         std::fs::remove_dir_all(&dir).unwrap();
 
-        // And the start compares ALL THREE root files, behind the OS's own capability.
+        // And the start compares ALL THREE root files, behind the OS's own capability — in the ONE
+        // helper both the start and the headless setup's first install use.
         let src = include_str!("proxy.rs");
-        let body = &src[src.find("pub fn start_edge_daemon").expect("the start")..];
+        let start = &src[src.find("pub fn start_edge_daemon").expect("the start")..];
+        let start = &start[..start.find("\n}\n").expect("its end")];
+        assert!(start.contains("let script = edge_install_script(platform, src_caddy, caddyfile)?;"), "the start builds its script elsewhere");
+        let body = &src[src.find("pub fn edge_install_script").expect("the helper")..];
         let body = &body[..body.find("\n}\n").expect("its end")];
         assert!(body.contains("edge.restarts_identical_install()\n        && installed_identical(&["), "the capability gates the skip");
         for pair in ["(src_caddy, &edge.daemon_binary_path())", "(&staged_wrapper, &edge.wrapper_path())", "(&staged_plist, &edge.plist_path())"] {

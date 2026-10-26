@@ -52,13 +52,13 @@ App version **0.9.2** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 ### Phase 4+ (next era) — 4
 
 - `TODO.md:527` Headless rexenv on a VPS — open: Phase 1a's T2–T5 (configurable edge ports + bind address, `rex mcp` + scra…
-- `TODO.md:560` Headless mode on macOS and Windows
-- `TODO.md:570` Redis, MariaDB and Apache httpd on Linux
-- `TODO.md:576` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:563` Headless mode on macOS and Windows
+- `TODO.md:573` Redis, MariaDB and Apache httpd on Linux
+- `TODO.md:579` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 759 · ◐ 141 · 🔨 5 · 🚫 17** of 922 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 760 · ◐ 141 · 🔨 5 · 🚫 17** of 923 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
