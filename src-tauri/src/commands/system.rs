@@ -38,18 +38,12 @@ pub struct SetupEdgeConflict {
 pub async fn setup_edge_conflict(
     state: State<'_, AppState>,
 ) -> Result<Option<SetupEdgeConflict>> {
-    let wire = core::proxy::edge_wire(
-        core::adminer::ADMINER_HOST,
-        core::proxy::DEFAULT_HTTPS_PORT,
-    )
-    .await;
+    let https = crate::commands::services::edge_ports(state.inner()).https;
+    let wire = core::proxy::edge_wire(core::adminer::ADMINER_HOST, https).await;
     if wire != core::proxy::EdgeWire::Foreign {
         return Ok(None);
     }
-    let help = state
-        .platform
-        .supervisor()
-        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+    let help = state.platform.supervisor().port_conflict_help(https, false);
     Ok(Some(SetupEdgeConflict { holder: help.holder, app: help.app, fix: help.free_command }))
 }
 

@@ -33,7 +33,7 @@ async fn main() {
     let deep_link = "/?server=127.0.0.1:13306&username=root&rexenv_auto=1";
 
     // 1. Login form with the auto-submit script (what the iframe first loads).
-    let form = forward(Console::Adminer, "GET", deep_link, None, Vec::new())
+    let form = forward(Console::Adminer, rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT, "GET", deep_link, None, Vec::new())
         .await
         .expect("GET login form through the proxy (is the stack running?)");
     let html = String::from_utf8_lossy(&form.body).to_string();
@@ -70,6 +70,7 @@ async fn main() {
     .into_bytes();
     let post = forward(
         Console::Adminer,
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
         "POST",
         deep_link,
         Some("application/x-www-form-urlencoded"),

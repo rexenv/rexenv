@@ -69,7 +69,7 @@ async fn main() -> std::process::ExitCode {
             starter_db: false,
     }).expect("provision");
 
-    let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT });
+    let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: CADDY_HTTPS, nginx: services::NGINX_HTTP_PORT, bind: None });
     let all = sites::list(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &["8.3".to_string()], binaries::pins().adminer, true).await {
         eprintln!("start_all failed: {e}");

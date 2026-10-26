@@ -120,7 +120,7 @@ async fn main() {
     .expect("install_for_site");
 
     // 3) Bring the shared stack up so the site is browsable.
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();
     let mut fpm =
         common::OwnedService::new(services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap(), "php-fpm");

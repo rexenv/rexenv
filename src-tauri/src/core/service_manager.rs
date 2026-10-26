@@ -26,6 +26,9 @@ pub struct Ports {
     pub http: u16,
     pub https: u16,
     pub nginx: u16,
+    /// The edge's bind address when the user set one (`core::edge_ports`), else `None` = the
+    /// platform's own (`EdgeSupervisor::default_bind`).
+    pub bind: Option<String>,
 }
 
 impl Default for Ports {
@@ -34,6 +37,7 @@ impl Default for Ports {
             http: proxy::DEFAULT_HTTP_PORT,
             https: proxy::DEFAULT_HTTPS_PORT,
             nginx: services::NGINX_HTTP_PORT,
+            bind: None,
         }
     }
 }
@@ -80,6 +84,10 @@ pub struct EdgePlan {
     pub privileged: bool,
     pub caddy_bin: PathBuf,
     pub caddyfile: PathBuf,
+    /// The ports the edge is being started on (`Ports`, from `core::edge_ports`) — what a failed
+    /// start names when it looks for who holds them.
+    pub http_port: u16,
+    pub https_port: u16,
 }
 
 /// What an UNATTENDED start may do with a prepared edge plan — LOGIN-SAFETY
@@ -746,7 +754,7 @@ impl ServiceManager {
         if let Some(plan) = self.prepare_edge(platform, caddyfile)? {
             if plan.privileged {
                 crate::core::prompt::while_prompting(|| {
-                    proxy::start_edge_daemon(platform, &plan.caddy_bin, &plan.caddyfile)
+                    proxy::start_edge_daemon(platform, &plan.caddy_bin, &plan.caddyfile, plan.http_port, plan.https_port)
                 })?;
                 self.set_edge_daemon();
             } else {
@@ -855,9 +863,7 @@ impl ServiceManager {
             sites,
             platform,
             ca,
-            self.ports.nginx,
-            self.ports.http,
-            self.ports.https,
+            &self.ports,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
             &self.site_aliases,
@@ -967,6 +973,8 @@ impl ServiceManager {
             privileged: platform.privileges().port_needs_privilege(self.ports.https),
             caddy_bin,
             caddyfile,
+            http_port: self.ports.http,
+            https_port: self.ports.https,
         }))
     }
 
@@ -1052,6 +1060,22 @@ impl ServiceManager {
         self.edge_blocked = false;
         self.edge_wire_misses = 0;
         self.edge_wire_slow = 0;
+    }
+
+    /// The edge's ports and bind as the user set them (`core::edge_ports`). Taken at launch before
+    /// adoption (`commands::services::load_mirrors`) and at every Start all, so `self.ports` is
+    /// always what the running edge was — or will next be — given; a change reaches the edge through
+    /// the Caddyfile reload, which rebinds. The internal nginx port is not the user's.
+    pub fn set_edge_ports(&mut self, edge: crate::core::edge_ports::EdgePorts) {
+        self.ports.http = edge.http;
+        self.ports.https = edge.https;
+        self.ports.bind = edge.bind;
+    }
+
+    /// The ports the edge was last given (`set_edge_ports`) — what every runtime check of the edge
+    /// (the port gate, conflict help, probes) must ask instead of the defaults.
+    pub fn edge_ports(&self) -> (u16, u16) {
+        (self.ports.http, self.ports.https)
     }
 
     /// Record the edge as a child Caddy we own (unprivileged high port).
@@ -1336,9 +1360,7 @@ impl ServiceManager {
                     sites,
                     platform,
                     ca,
-                    self.ports.nginx,
-                    self.ports.http,
-                    self.ports.https,
+                    &self.ports,
                     &php::nginx_body_limits(&self.php_settings),
                     &self.site_env,
                     &self.site_aliases,
@@ -1391,9 +1413,7 @@ impl ServiceManager {
                     sites,
                     platform,
                     ca,
-                    self.ports.nginx,
-                    self.ports.http,
-                    self.ports.https,
+                    &self.ports,
                     &php::nginx_body_limits(&self.php_settings),
                     &self.site_env,
                     &self.site_aliases,
@@ -1714,9 +1734,7 @@ impl ServiceManager {
             sites,
             platform,
             ca,
-            self.ports.nginx,
-            self.ports.http,
-            self.ports.https,
+            &self.ports,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
             &self.site_aliases,
@@ -1772,9 +1790,7 @@ impl ServiceManager {
             sites,
             platform,
             ca,
-            self.ports.nginx,
-            self.ports.http,
-            self.ports.https,
+            &self.ports,
             &php::nginx_body_limits(&self.php_settings),
             &self.site_env,
             &self.site_aliases,
@@ -2675,9 +2691,7 @@ impl ServiceManager {
                             sites,
                             platform,
                             ca,
-                            self.ports.nginx,
-                            self.ports.http,
-                            self.ports.https,
+                            &self.ports,
                             &php::nginx_body_limits(&self.php_settings),
                             &self.site_env,
                             &self.site_aliases,
@@ -3418,13 +3432,13 @@ mod tests {
     fn login_edge_action_never_runs_a_privileged_plan() {
         assert!(matches!(login_edge_action(&None), LoginEdgeAction::AlreadyServing));
         let privileged =
-            EdgePlan { privileged: true, caddy_bin: "/x".into(), caddyfile: "/y".into() };
+            EdgePlan { privileged: true, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 80, https_port: 443 };
         assert!(matches!(
             login_edge_action(&Some(privileged)),
             LoginEdgeAction::SkipNeedsPrompt
         ));
         let high_port =
-            EdgePlan { privileged: false, caddy_bin: "/x".into(), caddyfile: "/y".into() };
+            EdgePlan { privileged: false, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 8080, https_port: 8443 };
         assert!(matches!(
             login_edge_action(&Some(high_port)),
             LoginEdgeAction::StartUnprivileged

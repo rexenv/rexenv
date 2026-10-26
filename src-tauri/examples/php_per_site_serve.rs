@@ -72,7 +72,7 @@ async fn main() {
     pools.start(&*plat, &minors).await.expect("start pools");
 
     // Configs: each server block routes to its version's pool.
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS)
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None })
         .expect("rebuild configs");
 
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();

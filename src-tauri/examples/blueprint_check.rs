@@ -92,7 +92,7 @@ async fn main() -> std::process::ExitCode {
     let site = sites::list(&conn).unwrap().into_iter().find(|s| s.domain == domain).unwrap();
     let docroot = PathBuf::from(&site.path);
 
-    let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT });
+    let mut mgr = ServiceManager::with_ports(Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT, bind: None });
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();
     if let Err(e) = mgr.start_all(&*plat, &ca, &all, &php_minors, binaries::pins().adminer, true).await {

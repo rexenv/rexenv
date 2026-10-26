@@ -82,7 +82,7 @@ async fn main() {
     let del = sites::provision(&conn, &*plat, &ca, new_site("Del", "del.test")).unwrap();
     sites::provision(&conn, &*plat, &ca, new_site("Keep", "keep.test")).unwrap();
 
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
@@ -138,7 +138,7 @@ async fn main() {
 
     // Delete del.test: DB row + cert + docroot, then rebuild configs + reload.
     let removed = sites::teardown(&conn, &*plat, &del.id).unwrap();
-    let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     // `.unwrap()` here is deliberate, and the reason is not laziness.
     //
     // `docs/TODO.md` filed a sub-item to replace it — "a panic with a backtrace

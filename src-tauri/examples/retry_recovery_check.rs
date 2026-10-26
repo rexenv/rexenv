@@ -86,7 +86,7 @@ async fn main() {
 
     println!("=== a site is already being served ===");
     sites::provision(&conn, &*plat, &ca, mk(FIRST, &first_path)).expect("first site");
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let mut nginx = Reaped::new(
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
@@ -107,7 +107,7 @@ async fn main() {
     println!("  master {real_master} alive; pid file emptied");
 
     sites::provision(&conn, &*plat, &ca, mk(SECOND, &second_path)).expect("second site");
-    let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let cfg2 = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
 
     println!("\n=== the serve phase's reload must recover UNAIDED ===");
     let outcome = services::reload_nginx(

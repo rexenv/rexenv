@@ -560,7 +560,13 @@ pub fn start_privileged(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &P
 ///
 /// `src_caddy` is our resolved caddy cache path (the install SOURCE). Waits for the
 /// admin socket to answer before returning so the caller can mark the edge live.
-pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &Path) -> Result<()> {
+pub fn start_edge_daemon(
+    platform: &dyn Platform,
+    src_caddy: &Path,
+    caddyfile: &Path,
+    http_port: u16,
+    https_port: u16,
+) -> Result<()> {
     let edge = platform.edge();
     let sock = admin_socket_path(platform)?;
     let appdata = platform.paths().app_data_dir()?;
@@ -596,7 +602,7 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
     };
     platform.privileges().run_privileged(
         &script,
-        &crate::platform::traits::PromptReason::new("start its HTTPS server on ports 80 and 443"),
+        &crate::platform::traits::PromptReason::new(format!("start its HTTPS server on ports {http_port} and {https_port}")),
     )?;
 
     // Bootstrap/kickstart returns before caddy has bound the socket; wait for it
@@ -612,7 +618,7 @@ pub fn start_edge_daemon(platform: &dyn Platform, src_caddy: &Path, caddyfile: &
     // other tool — ships its own nginx/caddy) already holds :443/:80, so our edge
     // crash-loops under launchd instead of binding. NAME the holder honestly; a
     // generic "socket never came up" cost a real user a confused debugging session.
-    for port in [DEFAULT_HTTPS_PORT, DEFAULT_HTTP_PORT] {
+    for port in [https_port, http_port] {
         let help = platform.supervisor().port_conflict_help(port, false);
         if let Some(holder) = help.holder {
             let quit = help.app.unwrap_or_else(|| "that app".into());

@@ -82,7 +82,7 @@ pub struct ProxiedResponse {
     pub body: Vec<u8>,
 }
 
-fn build_client(console: Console) -> reqwest::Client {
+fn build_client(console: Console, edge_https_port: u16) -> reqwest::Client {
     reqwest::Client::builder()
         .cookie_store(true)
         // Loopback-pinned; our local-CA leaf won't chain for reqwest's store
@@ -90,7 +90,10 @@ fn build_client(console: Console) -> reqwest::Client {
         .danger_accept_invalid_certs(true)
         .resolve(
             console.host(),
-            std::net::SocketAddr::from(([127, 0, 0, 1], crate::core::proxy::DEFAULT_HTTPS_PORT)),
+            // The edge's port as the user set it (`core::edge_ports`). The URL carries none, so this
+            // one is used — and the Host header stays port-less, which keeps `forward`'s Location
+            // rewrite exact.
+            std::net::SocketAddr::from(([127, 0, 0, 1], edge_https_port)),
         )
         // Redirect policy `none` so [`forward`] resolves POST-redirect-GET itself —
         // WKWebView does NOT follow redirects returned by a custom-scheme handler.
@@ -100,17 +103,23 @@ fn build_client(console: Console) -> reqwest::Client {
         .expect("db console proxy client")
 }
 
-/// One client — and so ONE cookie jar — per console, living for the app run so
-/// a session persists across iframe remounts. Never shared between the two: a
+/// One client — and so ONE cookie jar — per console AND edge port, living for the app run so
+/// a session persists across iframe remounts. Never shared between the two consoles: a
 /// jar is keyed by host, but a bug that let one console's login land in the
-/// other's jar would be invisible until it was a security report.
-fn client(console: Console) -> &'static reqwest::Client {
-    static ADMINER: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    static PHPMYADMIN: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
-    match console {
-        Console::Adminer => ADMINER.get_or_init(|| build_client(console)),
-        Console::PhpMyAdmin => PHPMYADMIN.get_or_init(|| build_client(console)),
+/// other's jar would be invisible until it was a security report. Keyed by the port too since the
+/// edge's port became a setting (docs/PLAN-headless-web.md T2): a client pinned to the old port
+/// would keep dialling it after the change. Each is leaked once to stay `'static`: one per console
+/// per port the edge has ever had in this run, so the leak is bounded by how often a user changes it.
+fn client(console: Console, edge_https_port: u16) -> &'static reqwest::Client {
+    type Clients = std::sync::Mutex<Vec<((Console, u16), &'static reqwest::Client)>>;
+    static CLIENTS: std::sync::OnceLock<Clients> = std::sync::OnceLock::new();
+    let mut clients = CLIENTS.get_or_init(Default::default).lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((_, c)) = clients.iter().find(|(k, _)| *k == (console, edge_https_port)) {
+        return c;
     }
+    let c: &'static reqwest::Client = Box::leak(Box::new(build_client(console, edge_https_port)));
+    clients.push(((console, edge_https_port), c));
+    c
 }
 
 /// Response headers that must NOT be replayed to the webview: cookies stay in the
@@ -173,6 +182,7 @@ pub(crate) fn replay_headers<'a>(
 /// body.
 pub async fn forward(
     console: Console,
+    edge_https_port: u16,
     method: &str,
     path_and_query: &str,
     content_type: Option<&str>,
@@ -186,7 +196,7 @@ pub async fn forward(
 
     let mut hops = 0u8;
     let resp = loop {
-        let mut req = client(console).request(method.clone(), url.clone());
+        let mut req = client(console, edge_https_port).request(method.clone(), url.clone());
         if let Some(ct) = &content_type {
             req = req.header(reqwest::header::CONTENT_TYPE, ct);
         }
@@ -273,10 +283,11 @@ mod tests {
     /// cookie ride along to the other's host.
     #[test]
     fn the_two_consoles_never_share_a_client_or_a_jar() {
-        let a = client(Console::Adminer) as *const reqwest::Client;
-        let p = client(Console::PhpMyAdmin) as *const reqwest::Client;
+        let a = client(Console::Adminer, 443) as *const reqwest::Client;
+        let p = client(Console::PhpMyAdmin, 443) as *const reqwest::Client;
         assert_ne!(a, p, "one client — one jar — for both consoles");
-        assert_eq!(client(Console::Adminer) as *const _, a, "stable per console");
+        assert_eq!(client(Console::Adminer, 443) as *const _, a, "stable per console and port");
+        assert_ne!(client(Console::Adminer, 8443) as *const _, a, "a new edge port is a new client");
     }
 
     /// The replayed copy: cookies and `X-Frame-Options` gone, the CSP's

@@ -82,11 +82,15 @@ pub fn run() {
         // policy: `tauri.conf.json`'s `frame-src` names every scheme here (#699/#703).
         .register_asynchronous_uri_scheme_protocol(
             core::dbconsole_proxy::Console::Adminer.scheme(),
-            |_ctx, request, responder| db_console_request(core::dbconsole_proxy::Console::Adminer, request, responder),
+            |ctx, request, responder| {
+                db_console_request(ctx.app_handle(), core::dbconsole_proxy::Console::Adminer, request, responder)
+            },
         )
         .register_asynchronous_uri_scheme_protocol(
             core::dbconsole_proxy::Console::PhpMyAdmin.scheme(),
-            |_ctx, request, responder| db_console_request(core::dbconsole_proxy::Console::PhpMyAdmin, request, responder),
+            |ctx, request, responder| {
+                db_console_request(ctx.app_handle(), core::dbconsole_proxy::Console::PhpMyAdmin, request, responder)
+            },
         )
         .setup(move |app| {
             let platform = platform::current();
@@ -2826,11 +2830,18 @@ fn install_about_menu_item(app: &tauri::AppHandle) -> tauri::Result<()> {
 /// One Database Browser request, for either console: forwarded through
 /// `core::dbconsole_proxy` and answered to the webview's responder. Shared by the
 /// two scheme registrations so the handling cannot differ per console.
-fn db_console_request(
+fn db_console_request<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     console: core::dbconsole_proxy::Console,
     request: tauri::http::Request<Vec<u8>>,
     responder: tauri::UriSchemeResponder,
 ) {
+    use tauri::Manager;
+    // The edge's port as the user set it (`core::edge_ports`); 443 before the state exists.
+    let edge_https_port = app
+        .try_state::<state::app::AppState>()
+        .map(|s| commands::services::edge_ports(s.inner()).https)
+        .unwrap_or(core::proxy::DEFAULT_HTTPS_PORT);
     let (parts, body) = request.into_parts();
     let method = parts.method.as_str().to_string();
     let path_and_query = parts
@@ -2846,6 +2857,7 @@ fn db_console_request(
     tauri::async_runtime::spawn(async move {
         let result = core::dbconsole_proxy::forward(
             console,
+            edge_https_port,
             &method,
             &path_and_query,
             content_type.as_deref(),

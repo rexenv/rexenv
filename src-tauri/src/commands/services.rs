@@ -87,6 +87,7 @@ fn start_inputs(
     std::collections::HashMap<String, String>,
     String,
     bool,
+    core::edge_ports::EdgePorts,
 )> {
     let conn = state
         .db
@@ -115,7 +116,9 @@ fn start_inputs(
     // a site's mail is caught is a user setting, and the pools that are about to
     // be written have to agree with the one the user last chose.
     let catch_mail = core::mail::catch_all_enabled(&conn);
-    Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail))
+    // The edge's ports and bind, the user's (`core::edge_ports`), in the same snapshot.
+    let edge_ports = core::edge_ports::load(&conn);
+    Ok((sites, minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail, edge_ports))
 }
 
 /// A system runtime the servers need that this machine lacks (`BinaryProvider::runtime_problem`):
@@ -148,7 +151,7 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
     if let Some(problem) = state.platform.binaries().runtime_problem().filter(|p| p.blocking) {
         return Err(Error::Other(format!("{} ({})", problem.message, problem.url)));
     }
-    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail, edge_ports) =
         start_inputs(state)?;
     // Phase 0 (UNLOCKED): plan the full binary set, then prefetch every missing
     // one through the download hub — real progress events for the UI, EVERY
@@ -175,6 +178,7 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
         mgr.set_site_env(site_env);
         mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
+        mgr.set_edge_ports(edge_ports);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version, catch_mail)
             .await?
     };
@@ -201,7 +205,7 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
             // death/sleep/reboot. First run installs the daemon (one admin prompt);
             // later starts just enable + kickstart. `caddy_bin` is the install SOURCE.
             core::prompt::while_prompting(|| {
-                core::proxy::start_edge_daemon(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile)
+                core::proxy::start_edge_daemon(state.platform.as_ref(), &plan.caddy_bin, &plan.caddyfile, plan.http_port, plan.https_port)
             })?;
             state.services.lock().await.set_edge_daemon();
         } else {
@@ -253,11 +257,8 @@ async fn wait_for_starting_edge(state: &AppState, floor: std::time::Duration) ->
 /// the intercepting process. The watchdog keeps re-checking afterwards and flips
 /// the status truthfully (`edge-blocked` / `edge-unblocked` events).
 async fn verify_edge_wire(state: &AppState) -> Result<()> {
-    let wire = core::proxy::edge_wire(
-        core::adminer::ADMINER_HOST,
-        core::proxy::DEFAULT_HTTPS_PORT,
-    )
-    .await;
+    let https = edge_ports(state).https;
+    let wire = core::proxy::edge_wire(core::adminer::ADMINER_HOST, https).await;
     if wire == core::proxy::EdgeWire::Ours {
         return Ok(());
     }
@@ -268,16 +269,17 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     // that failed is ours. Different problem, different fix.
     if wire == core::proxy::EdgeWire::NoAnswer {
         return Err(Error::Other(
-            "services started, but nothing is answering port 443 — rexenv's edge did not come \
-             up. Nothing else is holding the port, so this is ours to fix: check the edge log \
-             (Services → Caddy → Logs), then Start all again."
-                .into(),
+            format!(
+                "services started, but nothing is answering port {https} — rexenv's edge did not come \
+                 up. Nothing else is holding the port, so this is ours to fix: check the edge log \
+                 (Services → Caddy → Logs), then Start all again."
+            ),
         ));
     }
     let help = state
         .platform
         .supervisor()
-        .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+        .port_conflict_help(https, false);
     let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
     // "quit Herd" beats "quit that app" — name the application when we know it.
     let quit = help.app.map_or("that app".to_string(), |a| a.to_string());
@@ -286,7 +288,7 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     // app instead of killing a worker its supervisor would respawn.
     let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
     Err(Error::Other(format!(
-        "services are running, but {holder} answers port 443 in front of rexenv — \
+        "services are running, but {holder} answers port {https} in front of rexenv — \
          sites cannot load until you quit {quit} (then Start all again, or just \
          wait: rexenv re-checks automatically).{fix}"
     )))
@@ -378,7 +380,7 @@ impl LaunchFetch {
 /// unlocked; restart under the lock; readiness awaited after it drops (M4).
 pub async fn launch_refetch_stack(state: &AppState) {
     let platform = state.platform.as_ref();
-    let Ok((sites, php_minors, _, _, _, db_versions, php_patches, adminer_version, _)) = start_inputs(state) else {
+    let Ok((sites, php_minors, _, _, _, db_versions, php_patches, adminer_version, _, _)) = start_inputs(state) else {
         log::warn!("launch: skipped the binary re-fetch — the stack's inputs could not be read");
         return;
     };
@@ -480,7 +482,7 @@ pub async fn auto_start_services<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
 /// `Ok(None)` = everything started; `Ok(Some(note))` = started with a caveat
 /// (edge skipped); `Err` = aborted (nothing/partial started, reason inside).
 async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>> {
-    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail) =
+    let (sites, php_minors, php_settings, site_env, site_aliases, db_versions, php_patches, adminer_version, catch_mail, edge_ports) =
         start_inputs(state)?;
     // Guard 1: strictly offline. Every needed binary must already be cached
     // (the decision fn lives in core::downloads with its own test).
@@ -524,6 +526,7 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
         mgr.set_site_env(site_env);
         mgr.set_site_aliases(site_aliases);
         mgr.set_db_versions(db_versions);
+        mgr.set_edge_ports(edge_ports);
         mgr.start_core(state.platform.as_ref(), &state.ca, &sites, &php_minors, &adminer_version, catch_mail).await?
     };
     core::service_manager::await_ready(checks).await?;
@@ -813,6 +816,14 @@ pub async fn restart_web_service(
     })
 }
 
+/// The edge's ports and bind as the user set them (`core::edge_ports`) — what every runtime check
+/// of the edge asks (the wire probe, the conflict help, the database console's client) instead of
+/// 80/443. Read from the database, the one source the manager is also handed at launch and at
+/// every Start all; a poisoned lock reads as the defaults rather than failing the check.
+pub(crate) fn edge_ports(state: &AppState) -> core::edge_ports::EdgePorts {
+    state.db.lock().map(|conn| core::edge_ports::load(&conn)).unwrap_or_default()
+}
+
 /// Load the ServiceManager's MIRRORS of per-site state — env vars, extra domains, ini settings —
 /// from the database. Called at launch BEFORE `adopt_startup` (`lib.rs`), so an adopted session
 /// renders every config from the user's real state. (ledger #785)
@@ -832,6 +843,9 @@ pub(crate) fn load_mirrors(conn: &rusqlite::Connection, mgr: &mut core::service_
     if let Ok(settings) = crate::state::store::all_php_settings(conn) {
         mgr.set_php_settings(settings);
     }
+    // The edge's ports and bind (docs/PLAN-headless-web.md T2): an adopted edge is probed, gated
+    // and reloaded on the ports the user set, not on 80/443.
+    mgr.set_edge_ports(core::edge_ports::load(conn));
 }
 
 #[cfg(test)]

@@ -2255,7 +2255,7 @@ async fn drive<R: tauri::Runtime>(
                 let help = state
                     .platform
                     .supervisor()
-                    .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false);
+                    .port_conflict_help(crate::commands::services::edge_ports(state.inner()).https, false);
                 let quit = help.app.clone().unwrap_or_else(|| "it".into());
                 {
                     let mut st = entry.state.lock().expect("provision state lock");

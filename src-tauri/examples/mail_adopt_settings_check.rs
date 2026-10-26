@@ -90,7 +90,7 @@ async fn main() {
     //    path (nginx → fpm → sendmail shim → Mailpit) never touches Caddy, and
     //    skipping the edge keeps this example away from a REAL KeepAlive edge
     //    daemon (adopt-reloading it would push this example's config into it).
-    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
+    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT, bind: None };
     let mut a = ServiceManager::with_ports(ports.clone());
     let minors = vec![MINOR.to_string()];
     // Mirror real app boot: adopt rexenv-owned survivors (e.g. a MySQL that

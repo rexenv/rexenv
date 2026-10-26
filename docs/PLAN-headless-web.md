@@ -302,6 +302,40 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   holding `:80`/`:443`, the stack starts on `8080`/`8443`, a WordPress site and a subdirectory multisite
   load with the port in their URLs, login cookies hold, and the HTTP→HTTPS redirect keeps the port. Also
   run on macOS and Windows, because the setting is common code.
+
+  **T2 design (D6 ruled 26 Oct 2026: global, changeable only while no site exists).** Read from the tree
+  the same day:
+  - Most of the plumbing exists, unused. `ServiceManager` already holds `Ports { http, https, nginx }`,
+    `CaddyConfig` already renders `http_port`/`https_port`/`default_bind`, and an unprivileged port
+    already takes the CHILD edge path (`prepare_edge`: `privileged = port_needs_privilege(https)`).
+    That path is Windows' production edge today: a user process, adopted after a relaunch through its
+    admin socket, stopped through the admin API, with no privilege anywhere. So on macOS and Linux an
+    edge on `8443` needs no root unit and no sudo at all — issue #7's server needs neither.
+  - What is missing: the setting itself; `Ports` filled from it instead of `Ports::default()`;
+    `default_bind` overridable (today only the platform answers it); the runtime readers that still
+    name `DEFAULT_HTTPS_PORT` (the port gate's table `core/ports.rs:191`, the conflict help in
+    `commands/{services,system,site_provision,valet_import}.rs` and `cli_server.rs`'s doctor,
+    `core/dbconsole_proxy.rs:93`, `core/php.rs:1761`); and one `site_url(domain)` that knows the
+    port, replacing `https://{domain}` in 16 Rust and 5 TSX files (§2a).
+  - **The edge's kind follows the port.** A privileged port keeps the root unit; an unprivileged one
+    gets the child edge. A change takes effect at the next Start all, through Caddy's reload (it
+    rebinds), so the running edge never has to know. Two transitions need care: a root daemon left
+    installed when the port moves above 1024 (adoption would still call it `Daemon`), and a child
+    edge when the port moves below 1024 (it cannot bind it). The first version stops the running edge
+    and starts the right kind when Start all finds the kind changed.
+  - **Multisite with a port: measure, do not assume.** WordPress used to refuse a network on a
+    non-standard port ("You cannot use port numbers such as…"). That check is gone from current core
+    (read in `wp-admin/includes/network.php`, 26 Oct 2026), but whether a subdirectory network then
+    WORKS with `:8443` in its domain is unknown. T2's VM run answers it, and if it fails, a multisite
+    on a non-443 port is refused with a sentence, never created broken.
+
+  Slices, one commit each (**S1 ✓ 26 Oct 2026**, ledger #914/#915 — L0 + plants, no live edge yet): **S1** the three settings (`edge_http_port`, `edge_https_port`,
+  `edge_bind`) as gated keys with validating setters (range, distinct, not a port rexenv already
+  uses, refused while any site exists), `Ports` and the bind filled from them at launch (before
+  adoption) and at every Start all, and the runtime readers above switched to the configured port.
+  **S2** `site_url` + the 21 files, with a TEXT guard that no other `https://{domain}` remains; the
+  WordPress install writes the port. **S3** the edge-kind transitions. **S4** the Settings control
+  (all three OSes) and the VM / macOS / Windows runs of the done-when.
 - **T3 — `rex mcp` + scratch sites on headless Linux.** Done when an MCP client over `rex mcp` on the VM
   runs `scratch_create_site` → a plugin install → `scratch_delete_site`, with nothing left behind, and
   `docs/INSTALL.md` documents it.

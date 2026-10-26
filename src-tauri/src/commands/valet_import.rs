@@ -1101,7 +1101,7 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     // running yet" rather than "something else took the port".
     let wire = core::proxy::edge_wire(
         core::adminer::ADMINER_HOST,
-        core::proxy::DEFAULT_HTTPS_PORT,
+        crate::commands::services::edge_ports(state.inner()).https,
     )
     .await;
 
@@ -1145,7 +1145,7 @@ fn serving_caveat(state: &State<'_, AppState>, wire: core::proxy::EdgeWire) -> O
         state
             .platform
             .supervisor()
-            .port_conflict_help(core::proxy::DEFAULT_HTTPS_PORT, false)
+            .port_conflict_help(crate::commands::services::edge_ports(state.inner()).https, false)
     });
     caveat_for(wire, help)
 }

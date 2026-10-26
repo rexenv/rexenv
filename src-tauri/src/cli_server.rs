@@ -2029,11 +2029,8 @@ where
             // Edge WIRE identity — the Herd class: every process check can be
             // green while a foreign 127.0.0.1:443 listener answers all sites.
             let caddy_running = services.iter().any(|s| s.name == "Caddy" && s.running);
-            let wire = crate::core::proxy::edge_wire(
-                crate::core::adminer::ADMINER_HOST,
-                crate::core::proxy::DEFAULT_HTTPS_PORT,
-            )
-            .await;
+            let edge = commands::services::edge_ports(&state);
+            let wire = crate::core::proxy::edge_wire(crate::core::adminer::ADMINER_HOST, edge.https).await;
             let wire_ours = wire == crate::core::proxy::EdgeWire::Ours;
             // NOTHING listening while our Caddy is running is not a conflict —
             // it is our edge failing to serve, which has a different fix. The
@@ -2046,7 +2043,7 @@ where
                 let help = state
                     .platform
                     .supervisor()
-                    .port_conflict_help(crate::core::proxy::DEFAULT_HTTPS_PORT, false);
+                    .port_conflict_help(edge.https, false);
                 json!({ "holder": help.holder, "app": help.app, "fix": help.free_command })
             });
             // Foreign holders on rexenv's fixed ports. Ours-by-marker is fine
@@ -2060,10 +2057,10 @@ where
                 .map(|d| d.display().to_string())
                 .unwrap_or_default();
             let mut port_conflicts = Vec::new();
-            for req in crate::core::ports::default_ports() {
+            for req in crate::core::ports::ports_for(edge.http, edge.https) {
                 if matches!(req.proto, crate::core::ports::Proto::Udp)
-                    || req.port == crate::core::proxy::DEFAULT_HTTPS_PORT
-                    || req.port == crate::core::proxy::DEFAULT_HTTP_PORT
+                    || req.port == edge.https
+                    || req.port == edge.http
                     || crate::core::ports::is_free(&*state.platform, req.port, req.proto)
                     || (!marker.is_empty()
                         && state.platform.supervisor().owned_master(req.port, &marker).is_some())

@@ -185,7 +185,7 @@ mod windows {
         check.is("the site's docroot is inside the sandbox", Path::new(&site.path).starts_with(root), &site.path);
 
         // ── 1. The Caddyfile the app writes. ──
-        let cfg = sites::rebuild_configs(&conn, plat, &ca, NGINX_HTTP_PORT, 80, 443);
+        let cfg = sites::rebuild_configs(&conn, plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 80, https: 443, nginx: NGINX_HTTP_PORT, bind: None });
         check.is("sites::rebuild_configs writes the Caddyfile", cfg.is_ok(), &format!("{:?}", cfg.as_ref().err()));
         let caddyfile = std::fs::read_to_string(cfg.ok()?.caddyfile).unwrap_or_default();
         let global = caddyfile.split("\n}\n").next().unwrap_or("");

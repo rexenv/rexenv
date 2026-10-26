@@ -172,9 +172,7 @@ async fn main() {
         &sites::list(&conn).unwrap(),
         &*plat,
         &ca,
-        NGINX_PORT,
-        8081,
-        8444,
+        &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None },
         &Default::default(),
         &Default::default(),
         &std::collections::HashMap::new(),
@@ -183,7 +181,7 @@ async fn main() {
     let stale_conf = std::fs::read_to_string(&stale.nginx_conf).unwrap_or_default();
     let stale_serves = stale_conf.contains(ALIAS);
     println!("  empty mirror  → nginx.conf names {ALIAS}: {stale_serves} (want false — the recorded name is DARK)");
-    let fresh = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let fresh = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
     let fresh_conf = std::fs::read_to_string(&fresh.nginx_conf).unwrap_or_default();
     let fresh_serves = fresh_conf
         .lines()

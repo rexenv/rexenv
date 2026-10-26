@@ -44,7 +44,7 @@ async fn main() {
     // server. FIRST statement — after anything is spawned, exiting leaks it.
     common::require_stack_stopped();
     let plat = platform::current();
-    let ports = Ports { http: 8080, https: 8443, nginx: services::NGINX_HTTP_PORT };
+    let ports = Ports { http: 8080, https: 8443, nginx: services::NGINX_HTTP_PORT, bind: None };
 
     let conn = {
         let p = std::env::temp_dir().join("rexenv-health-check.db");

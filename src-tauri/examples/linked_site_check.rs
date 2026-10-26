@@ -97,7 +97,7 @@ async fn main() {
     ok &= move_refused;
 
     println!("\n=== serve it from where it lives ===");
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     // Drop-guarded: every check below can panic, and a leaked master's workers
     // would keep the port (examples/common).
@@ -188,7 +188,7 @@ async fn main() {
         .expect("set_path")
         .expect("site exists");
     ok &= site.docroot_managed == Some(false); // still theirs, still never deletable
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8081, 8444).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
     let outcome =
         services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, NGINX_PORT)
             .expect("reload nginx");

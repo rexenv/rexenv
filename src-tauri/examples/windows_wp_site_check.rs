@@ -163,7 +163,7 @@ mod windows {
         let verified = wordpress::wp_cli_checked(&php, &wp, &["core", "verify-checksums", &format!("--path={}", docroot.display())], None);
         check.is("wp core verify-checksums passes on Windows", verified.is_ok(), &format!("{verified:?}"));
 
-        let cfg = step(check, "sites::rebuild_configs writes the nginx config", sites::rebuild_configs(&conn, plat, &ca, NGINX_HTTP_PORT, 8080, 8443))?;
+        let cfg = step(check, "sites::rebuild_configs writes the nginx config", sites::rebuild_configs(&conn, plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8080, https: 8443, nginx: NGINX_HTTP_PORT, bind: None }))?;
         let mut ngx = OwnedService::new(
             step(check, "the shared nginx starts", services::start_nginx(plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix))?,
             "nginx",

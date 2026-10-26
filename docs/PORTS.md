@@ -9,8 +9,8 @@ below, then the Windows and Linux artifact tables). Ports are common except wher
 
 | Service | Port | Proto | Constant |
 |---|---|---|---|
-| Caddy edge HTTP | **80** | TCP | `core/proxy.rs` `DEFAULT_HTTP_PORT` |
-| Caddy edge HTTPS | **443** | TCP | `core/proxy.rs` `DEFAULT_HTTPS_PORT` |
+| Caddy edge HTTP | **80** — a default since 26 Oct 2026: the `edge_http_port` setting (`core/edge_ports.rs`; `rex config set edge_http_port <n>`, only while no site exists) | TCP | `core/proxy.rs` `DEFAULT_HTTP_PORT` |
+| Caddy edge HTTPS | **443** — likewise `edge_https_port`; an unprivileged port takes the user-level child edge, no root unit (`docs/PLAN-headless-web.md` T2). The bind address is `edge_bind` (empty = the platform's: every interface, `127.0.0.1` on Windows) | TCP | `core/proxy.rs` `DEFAULT_HTTPS_PORT` |
 | Caddy admin | **unix socket** (`<config>/caddy-admin.sock`, `0600`) — never TCP `:2019` | — | `core/proxy.rs` `ADMIN_SOCKET_FILE` |
 | Embedded DNS | **15353** (macOS) · **53** (Windows — NRPT has no port field, plan §3 D2) | UDP | `core/dns.rs` `DEFAULT_DNS_PORT` = `platform::RESOLVER_PORT` (ledger #615) |
 | Shared Nginx | **18088** | TCP | `core/services.rs` `NGINX_HTTP_PORT` |

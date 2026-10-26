@@ -184,12 +184,18 @@ fn in_use(port: u16, proto: Proto, service: &str, help: &crate::platform::traits
 }
 
 /// The canonical ports rexenv's services use, in startup order. One php-fpm port
-/// per pinned PHP version (8.1→9781, 8.2→9782, 8.3→9783).
+/// per pinned PHP version (8.1→9781, 8.2→9782, 8.3→9783). The edge's two at their defaults —
+/// [`ports_for`] when the user set others (`core::edge_ports`).
 pub fn default_ports() -> Vec<PortReq> {
+    ports_for(proxy::DEFAULT_HTTP_PORT, proxy::DEFAULT_HTTPS_PORT)
+}
+
+/// [`default_ports`] with the edge on `http`/`https`.
+pub fn ports_for(http: u16, https: u16) -> Vec<PortReq> {
     let mut reqs = vec![
         PortReq { service: "DNS resolver", port: dns::DEFAULT_DNS_PORT, proto: Proto::Udp },
-        PortReq { service: "Caddy (HTTP)", port: proxy::DEFAULT_HTTP_PORT, proto: Proto::Tcp },
-        PortReq { service: "Caddy (HTTPS)", port: proxy::DEFAULT_HTTPS_PORT, proto: Proto::Tcp },
+        PortReq { service: "Caddy (HTTP)", port: http, proto: Proto::Tcp },
+        PortReq { service: "Caddy (HTTPS)", port: https, proto: Proto::Tcp },
         PortReq { service: "Nginx", port: services::NGINX_HTTP_PORT, proto: Proto::Tcp },
     ];
     for minor in php::all_minors() {

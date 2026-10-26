@@ -97,7 +97,7 @@ async fn main() {
     // Serve: start the 8.1 pool + nginx + Caddy.
     let mut pools = PhpFpmPools::default();
     pools.start(&*plat, &["8.1".to_string()]).await.expect("pools");
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
     // Drop-GUARDED: four PANICKING readiness gates follow (two here, two after
@@ -129,7 +129,7 @@ async fn main() {
         "php-fpm 8.3",
         None,
     );
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     thread::sleep(Duration::from_millis(800));
     services::reload_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix, NGINX_PORT).expect("reload");
     thread::sleep(Duration::from_millis(800));

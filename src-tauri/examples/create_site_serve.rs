@@ -64,7 +64,7 @@ async fn main() {
     println!("provisioned: {} -> {}", site.domain, site.path);
 
     // 2) rebuild shared configs from all sites.
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, CADDY_HTTP, CADDY_HTTPS)
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None })
         .expect("rebuild configs");
 
     // 3) resolve binaries + start services.

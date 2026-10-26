@@ -877,7 +877,7 @@ pub fn sandbox_platform_at(root: PathBuf) -> Box<dyn Platform> {
 ///
 /// ```ignore
 /// let (plat, _sandbox) = common::sandbox("my_check");
-/// let cfg = sites::rebuild_configs(&conn, &*plat, &ca, PORT, 8081, 8444)?; // writes into the sandbox
+/// let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: PORT, bind: None })?; // writes into the sandbox
 /// ```
 ///
 /// Two deliberate exceptions, stated on the methods above: the binary cache is

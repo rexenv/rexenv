@@ -63,7 +63,7 @@ async fn main() -> std::process::ExitCode {
     )
     .unwrap();
 
-    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
+    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT, bind: None };
     let mut mgr = ServiceManager::with_ports(ports);
     let all = sites::list(&conn).unwrap();
     let php_minors = rexenv_lib::core::php::installed_minors(&conn).unwrap();

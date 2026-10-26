@@ -103,7 +103,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 
 | Subsystem | Core | Commands / IPC | Platform traits touched | Proof anchors |
 |---|---|---|---|---|
-| Edge proxy (Caddy :443, root daemon, unix-socket admin) | `core/proxy.rs` | `commands/services.rs` | EdgeSupervisor, PrivilegeManager, ProcessSupervisor | ledger #62–69; `examples/wire_probe_check`, `edge_adopt_reload_check` |
+| Edge proxy (Caddy :443, root daemon, unix-socket admin) | `core/proxy.rs`, `core/edge_ports.rs` (the user's HTTP/HTTPS ports + bind — gated settings, no port change while a site exists; T2 of `docs/PLAN-headless-web.md`) | `commands/services.rs` | EdgeSupervisor, PrivilegeManager, ProcessSupervisor | ledger #62–69; `examples/wire_probe_check`, `edge_adopt_reload_check` |
 | Shared web server (nginx :18088, vhost gen, dotfile guard) | `core/services.rs` | `commands/services.rs` | ProcessSupervisor | #102–107; `dotfile_guard_check`, `nginx_php_serve` |
 | PHP versions + FPM pools (+ Xdebug debug pools) | `core/php.rs` (also: `unshipped_minor` — the DERIVED "a version we don't ship" fixture; `security_end`/`eol_since` — the EOL tell's dates), `core/phpconf.rs` (config readers) | `commands/php.rs` (returns `PhpVersionView`, not the stored row) | BinaryProvider, ProcessSupervisor | #108–110, #318, #321, #322; `php_pools_serve`, `xdebug_pool_check` |
 | Upstream PHP version check (read-only, no updater) | `core/php_upstream.rs` | via `commands/php.rs` (`PhpVersionView.upstream`) | — (one plain reqwest GET) | #343; php.net `active.php?json`, launch-time + best-effort; produces a version STRING and nothing else |

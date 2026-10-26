@@ -220,7 +220,7 @@ async fn main() {
     std::fs::write(docroot.join("hello.html"), HELLO).expect("hello page");
     std::fs::write(Path::new(&other.path).join("hello.html"), HELLO_OTHER).expect("other hello");
 
-    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT };
+    let ports = Ports { http: 8080, https: HTTPS, nginx: services::NGINX_HTTP_PORT, bind: None };
     let mut mgr = ServiceManager::with_ports(ports);
     let minors = corephp::installed_minors(&conn).expect("php minors");
     let start = mgr.start_all(&*plat, &ca, &all, &minors, binaries::pins().adminer, true).await;

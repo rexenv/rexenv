@@ -83,7 +83,7 @@ async fn main() {
     let _fpm = services::start_fpm(&*plat, &php_fpm, &fpm_conf).unwrap();
 
     // Configs for real :80/:443 (Caddy) + nginx on its internal port.
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, services::NGINX_HTTP_PORT, 80, 443).unwrap();
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 80, https: 443, nginx: services::NGINX_HTTP_PORT, bind: None }).unwrap();
     let _nginx = services::start_nginx(&*plat, &nginx, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap();
     // Both spawns return at fork; the READY line below invites a real request.
     common::await_listening(services::PHP_FPM_PORT, "php-fpm 8.3", None);

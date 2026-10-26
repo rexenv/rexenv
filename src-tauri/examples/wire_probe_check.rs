@@ -49,7 +49,7 @@ async fn main() {
     if proxy::admin_alive(&*plat) {
         let conn = db::open_for_platform(plat.paths()).unwrap();
         let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-        let cfg = sites::rebuild_configs(&conn, &*plat, &ca, services::NGINX_HTTP_PORT, 80, 443)
+        let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 80, https: 443, nginx: services::NGINX_HTTP_PORT, bind: None })
             .unwrap();
         let caddyfile_text = std::fs::read_to_string(&cfg.caddyfile).unwrap();
         assert!(

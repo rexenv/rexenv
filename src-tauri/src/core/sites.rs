@@ -2852,9 +2852,7 @@ pub fn rebuild_configs(
     conn: &Connection,
     platform: &dyn Platform,
     ca: &ssl::LocalCa,
-    nginx_http_port: u16,
-    caddy_http_port: u16,
-    caddy_https_port: u16,
+    ports: &crate::core::service_manager::Ports,
 ) -> Result<RebuiltConfigs> {
     let sites = list(conn)?;
     let body_limits = php::nginx_body_limits(&store::all_php_settings(conn)?);
@@ -2864,9 +2862,7 @@ pub fn rebuild_configs(
         &sites,
         platform,
         ca,
-        nginx_http_port,
-        caddy_http_port,
-        caddy_https_port,
+        ports,
         &body_limits,
         &site_env,
         &aliases,
@@ -2909,21 +2905,16 @@ pub(crate) fn console_vhosts(
 /// keep the DB connection borrowed across `.await`). `body_limits` comes from
 /// `php::nginx_body_limits`; `site_env` from `store::all_site_env`, keyed by
 /// site id.
-// The three ports + two per-site maps are a config-inputs cluster that wants
-// a struct — a deliberate deferral until this assembly is next touched for
-// real work, not a threshold raise (clippy-zero bar, 28 Jul 2026).
-#[allow(clippy::too_many_arguments)]
 pub fn rebuild_configs_for(
     sites: &[Site],
     platform: &dyn Platform,
     ca: &ssl::LocalCa,
-    nginx_http_port: u16,
-    caddy_http_port: u16,
-    caddy_https_port: u16,
+    ports: &crate::core::service_manager::Ports,
     body_limits: &std::collections::HashMap<String, u64>,
     site_env: &std::collections::HashMap<String, Vec<(String, String)>>,
     aliases: &std::collections::HashMap<String, Vec<String>>,
 ) -> Result<RebuiltConfigs> {
+    let (nginx_http_port, caddy_http_port, caddy_https_port) = (ports.nginx, ports.http, ports.https);
     // Only nginx-served sites get a server block; override servers (§2/§3) have
     // their own backend process.
     let mut nginx_sites: Vec<services::NginxSite> = sites
@@ -3054,8 +3045,9 @@ pub fn rebuild_configs_for(
             // Bind Caddy's admin API to our unix socket (not TCP :2019) so the root
             // edge exposes no unauthenticated local control surface (task 2.3 / H5).
             admin_socket: Some(proxy::admin_socket_path(platform)?),
-            // Windows binds loopback only — no firewall prompt (owner ruling, ledger #611).
-            default_bind: platform.edge().default_bind().map(str::to_string),
+            // The user's bind when they set one (`core::edge_ports`), else the platform's: Windows
+            // binds loopback only — no firewall prompt (owner ruling, ledger #611).
+            default_bind: ports.bind.clone().or_else(|| platform.edge().default_bind().map(str::to_string)),
             // Written on EVERY rebuild, not only when missing: the page is
             // generated, and "only if absent" is how a wording fix in an update
             // never reaches a machine that already has yesterday's file.
@@ -4955,6 +4947,9 @@ mod tests {
             (SITES_DIR_KEY, "relative/not/absolute"),
             (crate::core::scratch::SCRATCH_CAP_KEY, "0"),
             (crate::core::scratch::SCRATCH_TTL_KEY, "999"),
+            (crate::core::edge_ports::HTTP_PORT_KEY, "0"),
+            (crate::core::edge_ports::HTTPS_PORT_KEY, "18088"),
+            (crate::core::edge_ports::BIND_KEY, "localhost"),
         ];
         let conn = db::open_in_memory().unwrap();
         for (key, setter) in sa::GATED_SETTERS {

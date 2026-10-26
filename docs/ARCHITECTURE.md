@@ -109,6 +109,16 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                 Redis :16379 are optional engines on the Databases page.
 ```
 
+**The edge's ports are the user's (26 Oct 2026, `core/edge_ports.rs`, `docs/PLAN-headless-web.md` T2).**
+`:80`/`:443` are defaults of three gated settings — `edge_http_port`, `edge_https_port`, `edge_bind` —
+which a server whose own nginx holds those ports moves aside (GitHub issue rexenv/rexenv#7). A port
+change is refused while any site exists, because every site's address carries the port. The manager
+takes them at launch before adoption and at every Start all, and the edge picks them up through the
+Caddyfile reload (Caddy rebinds); every runtime check of the edge — the wire probe, conflict help,
+doctor, the database console's client — asks them rather than 443 (ledger #914, #915). An
+unprivileged port takes the user-level child edge (Windows' production shape) rather than the root
+unit.
+
 - **No direct Caddy→php-fpm path for default sites.** Caddy is invisible plumbing.
 - Local CA via `rcgen` (`core/ssl.rs`); per-domain leaf certs, wildcard SAN for
   multisite (`*.site.rex`). **Leaves must stay ≤398 days** — Safari/WebKit rejects

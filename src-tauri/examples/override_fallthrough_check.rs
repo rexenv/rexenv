@@ -83,7 +83,7 @@ async fn main() {
         std::fs::write(root.join("index.html"), marker(&s.domain)).expect("marker");
     }
 
-    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, 8080, 8443).expect("configs");
+    let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8080, https: 8443, nginx: NGINX_PORT, bind: None }).expect("configs");
     let conf_text = std::fs::read_to_string(&cfg.nginx_conf).expect("read nginx conf");
 
     // The structural half, asserted before anything is served: the override site

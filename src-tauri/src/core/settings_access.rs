@@ -46,6 +46,11 @@ pub const GATED_SETTERS: &[(&str, ValidatingSetter)] = &[
     (crate::core::sites::SITES_DIR_KEY, crate::core::sites::set_sites_dir),
     (crate::core::scratch::SCRATCH_CAP_KEY, crate::core::scratch::set_scratch_cap),
     (crate::core::scratch::SCRATCH_TTL_KEY, crate::core::scratch::set_scratch_ttl_hours),
+    // The edge's ports and bind (docs/PLAN-headless-web.md T2): ranges, collisions, and no port
+    // change while a site exists — every site's address carries the port.
+    (crate::core::edge_ports::HTTP_PORT_KEY, crate::core::edge_ports::set_http_port),
+    (crate::core::edge_ports::HTTPS_PORT_KEY, crate::core::edge_ports::set_https_port),
+    (crate::core::edge_ports::BIND_KEY, crate::core::edge_ports::set_bind),
 ];
 
 /// The validating setter for `key`, if it is gated.

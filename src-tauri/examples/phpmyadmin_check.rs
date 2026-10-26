@@ -51,9 +51,7 @@ async fn main() -> std::process::ExitCode {
             &sites::list(&conn).unwrap(),
             p,
             &ca,
-            services::NGINX_HTTP_PORT,
-            8080,
-            8443,
+            &rexenv_lib::core::service_manager::Ports { http: 8080, https: 8443, nginx: services::NGINX_HTTP_PORT, bind: None },
             &Default::default(),
             &Default::default(),
             &Default::default(),
@@ -201,7 +199,7 @@ async fn main() -> std::process::ExitCode {
     .is_ok();
     match (edge_up, real_staged) {
         (true, Some(v)) => {
-            let r = forward(Console::PhpMyAdmin, "GET", "/index.php?server=1", None, Vec::new())
+            let r = forward(Console::PhpMyAdmin, rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT, "GET", "/index.php?server=1", None, Vec::new())
                 .await
                 .expect("GET through the console proxy");
             let body = String::from_utf8_lossy(&r.body);

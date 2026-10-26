@@ -120,7 +120,7 @@ async fn main() -> ExitCode {
         .expect("caddy binary (warm cache)");
 
     let rebuild = || {
-        sites::rebuild_configs(&conn, &*plat, &ca, NGINX_PORT, EDGE_HTTP, EDGE_HTTPS)
+        sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: EDGE_HTTP, https: EDGE_HTTPS, nginx: NGINX_PORT, bind: None })
             .expect("generate configs")
     };
     let cfg = rebuild();
