@@ -524,6 +524,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
+- [ ] **Headless rexenv on a VPS — open: T0's measurements and the owner's rulings D1–D5, then
+  Phase 1 (T1–T6).** Owner ask 26 Oct 2026: install rexenv on a display-less server, drive it from
+  `rex` and from the same UI served on a port (`rexenv --headless`, the web UI on loopback behind a
+  token + SSH tunnel first; a public bind and real site domains are later phases). Nothing built.
+  Plan: `docs/PLAN-headless-web.md`.
+
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
