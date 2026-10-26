@@ -2070,8 +2070,13 @@ hand can prove a spec entry became the item it describes.*
   present the two ports are disabled and the card shows the "only while there are no sites" sentence.
   On a fresh profile with no sites: set 8080/8443, Save → the toast; Start all → the Sites screen's
   Open button and the tray's Open land on `https://<site>:8443` for a site created after; set back to
-  80/443 before creating anything else. **Not run** on any OS yet — the card is S4's (26 Oct 2026); the
-  same settings through `rex config` ran on the Ubuntu VM (§ Linux, "The edge off 80/443").
+  80/443 before creating anything else. The same settings through `rex config` ran on the Ubuntu VM
+  (§ Linux, "The edge off 80/443").
+  ✓ 27 Oct 2026 — macOS (the 15.8 VM) and Windows (the Dell), each on a fresh `t2rex` account: 8080/8443
+  set, Start all, a WordPress site on `:8443` (home 200, `http://…:8080/x?y=1` → 308 to `:8443`, the
+  magic link to the Dashboard with `:8443` links), both refusals; the card showed 8080/8443 locked with
+  the sentence and the platform's bind ("every interface" / `127.0.0.1`). Not run: Save from the card
+  itself (the values were set with `rex config`), and the tray's Open.
 - [x] **Start rexenv at login** (Settings → Services; "Open rexenv at login" until 29 Sep
   2026, "Start on login" before 28 Sep) → log out and back in: rexenv comes up in the MENU
   BAR with **no window** (and no dock tile). Check the FILE first —

@@ -551,8 +551,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   (#921), INSTALL § Linux "Server (headless)"; **T4's VM run done the same day** (#921: restart keeps the stack, `kill -9` restarted, hand-off, a boot
   with no login brings everything up); **T4's deb note added the same day** (print-only postinst, #922), **and the FRESH server** (#923: the
   setup makes the route, the CA's trust and the root edge through the desktop's own code, run on a
-  fresh account with the VM's rexenv state parked). **Open in Phase 1a: T2's macOS and Windows runs
-  only.** Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
+  fresh account with the VM's rexenv state parked). **T2's macOS and Windows runs done 27 Oct 2026** (fresh `t2rex` accounts
+  on the 15.8 VM and the Dell; #915–#917, #919 now ✅ on all three; the card seen on both). **Phase 1a
+  is complete**; open after it: the 443 → 8443 → 443 round trip on one account (#918 ◐), T5 (headless on
+  macOS/Windows, D3), and Phase 1b (the web UI, T6–T9). Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
   to do them. Owner ask 26 Oct 2026: install rexenv

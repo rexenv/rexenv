@@ -339,7 +339,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   installed-but-stopped daemon beside a child on 8443, fixed by keeping an installed daemon the edge
   on any port; **S4 ✓ on Linux the same day** — the Settings card, Onboarding's port, and the VM run
   on a fresh headless account beside a foreign nginx, which found Caddy's redirect dropping the port
-  (#919) and a fresh account's missing log folder; macOS and Windows runs owed): **S1** the three settings (`edge_http_port`, `edge_https_port`,
+  (#919) and a fresh account's missing log folder; **macOS and Windows run 27 Oct 2026** on fresh
+  `t2rex` accounts — the same checks and the card, all passing): **S1** the three settings (`edge_http_port`, `edge_https_port`,
   `edge_bind`) as gated keys with validating setters (range, distinct, not a port rexenv already
   uses, refused while any site exists), `Ports` and the bind filled from them at launch (before
   adoption) and at every Start all, and the runtime readers above switched to the configured port.
