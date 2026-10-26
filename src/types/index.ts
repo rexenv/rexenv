@@ -2077,4 +2077,7 @@ export interface McpStatus {
   recent: AgentAction[];
   /** The Agent access dial (D15) — level, duration, expiry and Rust's copy. */
   access: AgentAccess;
+  /** The enable-moment paragraph in Rust's words (`mcp_server::ENABLE_CONSENT`); `strong` is the
+   *  card's emphasis. The headless setup prints the same parts in a terminal. */
+  consent: { text: string; strong: boolean }[];
 }

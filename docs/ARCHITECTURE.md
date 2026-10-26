@@ -2383,6 +2383,17 @@ words (the browser shell's mock and two dev review pages excepted).
   start whose three root files already match byte for byte runs `start_command` instead of the
   install (`EdgeSupervisor::restarts_identical_install`, ledger #912). macOS and Windows refuse
   `--headless` with a sentence (owner ruling D3).
+  **The two GUI consents on a box with no GUI (T3, D7).** The MCP opt-in and the Agent access dial
+  are consents by rule — `rex config` and the MCP `settings` tool refuse them (#203, #397) — and a
+  headless server has no Settings card. So the administrator's `sudo rexenv --headless-setup` carries
+  them: `--enable-mcp` / `--agent-access <read|changes|full>` typed by that administrator ARE the
+  consent; with neither it asks in the terminal with the card's own words (the paragraph moved from
+  the TSX into `mcp_server::ENABLE_CONSENT`, which the card now renders from `mcp_status`; the levels
+  are `AccessLevel::what_it_allows`), and with no terminal it changes neither. A level above Read is
+  set for always. The write (`core::headless_consent::apply`, its ONE caller) runs in a child forked
+  from the root setup that has dropped to the user's groups/gid/uid first — the database stays the
+  user's, a link planted in their data folder is not followed as root — and there is no argv mode
+  for "just write it", because anything the user's processes can run, an agent can (ledger #920).
 
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 

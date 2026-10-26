@@ -541,7 +541,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   account beside a foreign nginx — which found and fixed Caddy's redirect dropping the port (#919)
   and a fresh account's missing log folder. **Open in T2: the macOS and Windows runs** (a fresh
   account on the 15.8 VM and on the Dell; the card's GUI rows of SMOKE "Edge ports") and the
-  443 → 8443 → 443 round trip on one account. Owner ask 26 Oct 2026: install rexenv
+  443 → 8443 → 443 round trip on one account. **T3's code half built 26 Oct 2026** (D7's consent):
+  `sudo rexenv --headless-setup` takes `--enable-mcp` / `--agent-access <level>` or asks in the
+  terminal with the card's own sentences (the paragraph moved into Rust, `mcp_server::ENABLE_CONSENT`),
+  and writes as the user from a forked child — `rex config` still refuses both (#920; run in the cloud
+  container only). **Open in T3: the VM run** — the endpoint opening at relaunch and an MCP client's
+  scratch create → plugin → delete over `rex mcp`. Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
   offered to test a build. A public bind and real site domains are later phases. Nothing built.

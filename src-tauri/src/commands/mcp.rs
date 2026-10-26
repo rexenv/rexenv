@@ -61,6 +61,9 @@ pub struct McpStatus {
     /// what the level hands over — served from Rust so the card, the refusal
     /// and the plan cannot drift (#404).
     pub access: crate::core::agent_access::AgentAccess,
+    /// The enable-moment paragraph, in Rust's words (`mcp_server::ENABLE_CONSENT`, ledger #920):
+    /// the headless setup prints the same parts in a terminal.
+    pub consent: &'static [mcp_server::ConsentPart],
 }
 
 /// The header line's state — derived from recent call OUTCOMES, never the socket
@@ -110,6 +113,7 @@ fn status_snapshot(state: &AppState, limit: usize) -> Result<McpStatus> {
         activity,
         recent,
         access,
+        consent: mcp_server::ENABLE_CONSENT,
     })
 }
 

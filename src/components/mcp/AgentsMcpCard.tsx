@@ -156,26 +156,24 @@ export function AgentsMcpCard() {
         )}
       </div>
 
-      {/* The residual — verbatim, above the toggle, not behind an expander.
-          Every sentence here is one the copy guard holds, because this is now
-          the ONE paragraph a person reads before handing an agent the inbox
-          and the databases (D16). */}
-      <p className="mt-3 text-[0.75rem] leading-[1.55] text-rex-text-muted">
-        Before you turn this on: this lets an AI agent connect to rexenv and use its tools. With
-        the endpoint on, an agent can look at your sites — status, logs, users and content,{" "}
-        <strong className="font-medium text-rex-text">every site's mail</strong> (password-reset
-        links included) and their databases,{" "}
-        <strong className="font-medium text-rex-text">read-only</strong> (password hashes and API
-        keys are in there) — and it can create disposable &ldquo;scratch&rdquo; sites of its own,
-        put code into them and run it. It cannot change or delete the sites you made yourself
-        unless you turn Agent access up below, for this session, 7 days or always: that refusal
-        lives in rexenv, not in the agent's good behaviour. Code running in a scratch site — or
-        in one of your sites once you allow changes — runs as you, with your files and your
-        permissions. rexenv never asks for your administrator password on an agent's behalf;
-        at Full an agent can also publish a site to the internet, and rexenv stops any share it
-        starts within the hour. Every call an agent makes is listed below. Turn this off when
-        you're not using it.
-      </p>
+      {/* The residual — verbatim, above the toggle, not behind an expander. The
+          words are Rust's (`mcp_server::ENABLE_CONSENT`, ledger #920): this is
+          the ONE paragraph a person reads before handing an agent the inbox and
+          the databases (D16), and `sudo rexenv --headless-setup` prints the same
+          parts in a terminal, so neither door keeps a copy of its own. */}
+      {data && (
+        <p className="mt-3 text-[0.75rem] leading-[1.55] text-rex-text-muted">
+          {data.consent.map((part, i) =>
+            part.strong ? (
+              <strong key={i} className="font-medium text-rex-text">
+                {part.text}
+              </strong>
+            ) : (
+              <span key={i}>{part.text}</span>
+            ),
+          )}
+        </p>
+      )}
 
       <div className="mt-3.5 flex items-center gap-[14px] border-t border-rex-border-subtle pt-3.5">
         <div className="flex-1">

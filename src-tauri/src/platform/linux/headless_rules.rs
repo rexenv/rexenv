@@ -16,6 +16,8 @@
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use super::units::{edge_start_command, edge_stop_command, EDGE_UNIT};
+use crate::core::agent_access::AccessLevel;
+use crate::core::headless_consent::{self, Consent, AGENT_ACCESS_FLAG, ENABLE_MCP_FLAG};
 use std::path::{Path, PathBuf};
 
 /// The flag that runs rexenv with no display (`main.rs` → `platform::prepare_headless`).
@@ -41,6 +43,10 @@ pub(crate) const DISPLAYS: std::ops::RangeInclusive<u32> = 99..=199;
 /// The sentence for anything privileged a headless instance cannot do by itself.
 pub(crate) const NEEDS_SETUP: &str = "rexenv is running headless, so there is no one to ask for an \
 administrator's password. Run this once on the server as an administrator, then retry:\n$ sudo rexenv --headless-setup";
+/// Said when neither consent was typed and there is no terminal to ask in (a scripted install).
+pub(crate) const CONSENT_UNCHANGED: &str = "MCP endpoint and Agent access: left as they are (off and read \
+unless set before) — there was no terminal to ask in. To set them, re-run with --enable-mcp and \
+--agent-access <read|changes|full>.";
 pub(crate) const XVFB_MISSING: &str = "rexenv's headless mode draws its window off-screen with Xvfb, \
 which is not installed. Install it, then retry:\n$ sudo apt install xvfb xauth";
 
@@ -120,6 +126,49 @@ pub(crate) fn sudo_refusal(stderr: &str) -> String {
     } else {
         format!("the edge's root command failed: {}", stderr.trim())
     }
+}
+
+/// What `sudo rexenv --headless-setup …` was asked to do: the account, and what the administrator
+/// typed as consent (`--enable-mcp`, `--agent-access <level>`, D7). Empty consent = ask in the
+/// terminal, or leave both as they are when there is no terminal.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct SetupArgs {
+    pub user: Option<String>,
+    pub consent: Consent,
+}
+
+/// Every argument the setup takes. Anything else is refused BEFORE any change — a mistyped
+/// `--enable-mpc` must not read as "no consent given" and quietly leave the endpoint off, nor a
+/// misplaced level as some other flag's value.
+pub(crate) fn parse_setup_args(argv: &[String]) -> std::result::Result<SetupArgs, String> {
+    const USAGE: &str = "the setup takes --user <name>, --enable-mcp and --agent-access <read|changes|full>";
+    let mut out = SetupArgs::default();
+    let mut it = argv.iter().skip(1);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            SETUP_FLAG => {}
+            "--user" => {
+                let v = it.next().ok_or_else(|| format!("--user needs a name — {USAGE}"))?;
+                if out.user.replace(v.clone()).is_some() {
+                    return Err("--user given twice".into());
+                }
+            }
+            ENABLE_MCP_FLAG => {
+                if out.consent.mcp.replace(true).is_some() {
+                    return Err(format!("{ENABLE_MCP_FLAG} given twice"));
+                }
+            }
+            AGENT_ACCESS_FLAG => {
+                let v = it.next().ok_or_else(|| headless_consent::bad_level(""))?;
+                let level = AccessLevel::parse(v).ok_or_else(|| headless_consent::bad_level(v))?;
+                if out.consent.access.replace(level).is_some() {
+                    return Err(format!("{AGENT_ACCESS_FLAG} given twice"));
+                }
+            }
+            other => return Err(format!("unknown argument {other:?} — {USAGE}")),
+        }
+    }
+    Ok(out)
 }
 
 /// The socket and lock an X server on display `n` leaves.
@@ -234,6 +283,29 @@ mod tests {
         let door = include_str!("headless.rs");
         assert!(door.contains("if !out.status.success() && (step.must_succeed || rules::sudo_refused(&stderr)) {"), "a refused ignorable step must still fail");
         assert!(NEEDS_SETUP.contains("sudo rexenv --headless-setup"));
+    }
+
+    #[test]
+    fn the_setup_takes_typed_consent_and_refuses_anything_it_does_not_know() {
+        let a = |v: &[&str]| parse_setup_args(&std::iter::once("rexenv").chain(v.iter().copied()).map(String::from).collect::<Vec<_>>());
+        assert_eq!(a(&[SETUP_FLAG]).unwrap(), SetupArgs::default());
+        let full = a(&[SETUP_FLAG, "--user", "ci", ENABLE_MCP_FLAG, AGENT_ACCESS_FLAG, "full"]).unwrap();
+        assert_eq!(full.user.as_deref(), Some("ci"));
+        assert_eq!(full.consent, Consent { mcp: Some(true), access: Some(AccessLevel::Full) });
+        // A level alone is a consent to the dial only; the endpoint is left as it is.
+        assert_eq!(a(&[SETUP_FLAG, AGENT_ACCESS_FLAG, "read"]).unwrap().consent, Consent { mcp: None, access: Some(AccessLevel::Read) });
+        for bad in [
+            &[SETUP_FLAG, "--enable-mpc"][..],
+            &[SETUP_FLAG, AGENT_ACCESS_FLAG][..],
+            &[SETUP_FLAG, AGENT_ACCESS_FLAG, "admin"][..],
+            &[SETUP_FLAG, AGENT_ACCESS_FLAG, ""][..],
+            &[SETUP_FLAG, AGENT_ACCESS_FLAG, "read", AGENT_ACCESS_FLAG, "full"][..],
+            &[SETUP_FLAG, ENABLE_MCP_FLAG, ENABLE_MCP_FLAG][..],
+            &[SETUP_FLAG, "--user"][..],
+            &[SETUP_FLAG, "--yes"][..],
+        ] {
+            assert!(a(bad).is_err(), "{bad:?} must be refused before any change");
+        }
     }
 
     #[test]

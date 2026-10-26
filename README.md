@@ -255,7 +255,8 @@ rexenv/
         │   ├── windows/        # all impls real (docs/PLAN-windows-port.md)
         │   └── linux/          # all impls real since 24 Sep 2026, run on Ubuntu 22.04 (docs/PLAN-linux-port.md);
         │                       #   pure halves proc_table/resolved/units/desktop/trust tested on every host;
-        │                       #   headless.rs + headless_rules.rs: `--headless` on a server (own Xvfb)
+        │                       #   headless.rs + headless_rules.rs: `--headless` on a server (own Xvfb),
+        │                       #   `--headless-setup` (sudoers rule + the MCP/Agent-access consent)
         │
         └── state/              # app state
             ├── db.rs           # SQLite + migrations (v1–v45)

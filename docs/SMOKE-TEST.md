@@ -4376,6 +4376,17 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
 - [ ] A second `rexenv` and `rex open` say "running headless"; killing the app takes its Xvfb with it
   and leaves every service running.
   ✓ 26 Oct 2026 (the 22.04 arm64 VM, a container release build, cloud-init's rule parked) — all three.
+- [ ] **The two consents (T3, D7, ledger #920).** `sudo rexenv --headless-setup --enable-mcp
+  --agent-access changes` → its ✓ lines name the endpoint and the level; `ls -l
+  ~/.local/share/rexenv/rexenv.db` is owned by the account, not root. Relaunch `rexenv --headless`:
+  `rex mcp` connects (no "turn it on in Settings" refusal), and an MCP client runs
+  `scratch_create_site` → a plugin install → `scratch_delete_site`, leaving no site, folder or
+  database behind. Re-run with NO flags in an SSH terminal: the card's paragraph and the three level
+  sentences are printed, Enter answers off. `--enable-mpc` exits 1 and changes nothing. `rex config
+  set mcp_enabled true` is still refused.
+  ◐ 26 Oct 2026 — the setup half only, in the cloud session's container (Ubuntu 24.04, no systemd,
+  debug build): flags, pty answers, ownership, a planted link refused. The relaunch and the MCP run
+  are owed on the VM.
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 

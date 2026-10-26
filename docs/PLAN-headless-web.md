@@ -343,7 +343,15 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   WordPress install writes the port. **S3** the edge-kind transitions. **S4** the Settings control
   (all three OSes), Onboarding's edge-conflict sentence (it says "port 443" in TSX — the port belongs
   in Rust's answer, `setup_edge_conflict`), and the VM / macOS / Windows runs of the done-when.
-- **T3 — `rex mcp` + scratch sites on headless Linux.** Done when an MCP client over `rex mcp` on the VM
+- **T3 — `rex mcp` + scratch sites on headless Linux.** **Code half ✓ 26 Oct 2026** (ledger #920):
+  `sudo rexenv --headless-setup [--enable-mcp] [--agent-access <read|changes|full>]`; with neither
+  flag it asks in the terminal, opening with the card's paragraph — which lived in the TSX and moved
+  into `mcp_server::ENABLE_CONSENT` so both doors read one copy — and the levels' `what_it_allows`;
+  with no terminal it changes neither. A level above Read is set for always. The write runs in a
+  child forked from the root setup that drops to the user first (the database stays theirs, a link
+  they planted is not followed as root); there is deliberately no argv mode that writes the keys,
+  since an agent can run anything the user can. Run in the cloud session's container (flags, pty,
+  ownership, a planted link); **the VM run below is still owed.** Done when an MCP client over `rex mcp` on the VM
   runs `scratch_create_site` → a plugin install → `scratch_delete_site`, with nothing left behind, and
   `docs/INSTALL.md` documents it.
 - **T4 — install + setup.** The systemd unit, `--headless-setup`, lingering, the deb's post-install note.

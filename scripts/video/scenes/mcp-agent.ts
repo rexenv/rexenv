@@ -44,6 +44,14 @@ export default function mcpAgent(ctx: SceneCtx) {
     activity: !enabled ? { kind: "off" } : recent.length ? { kind: "working", lastTool: recent[0].tool, minutesAgo: 0 } : { kind: "idle" },
     recent,
     access: access(),
+    // `mcp_server::ENABLE_CONSENT`'s parts — the card renders what Rust serves.
+    consent: [
+        { text: "Before you turn this on: this lets an AI agent connect to rexenv and use its tools. With the endpoint on, an agent can look at your sites — status, logs, users and content, ", strong: false },
+        { text: "every site's mail", strong: true },
+        { text: " (password-reset links included) and their databases, ", strong: false },
+        { text: "read-only", strong: true },
+        { text: " (password hashes and API keys are in there) — and it can create disposable \u201cscratch\u201d sites of its own, put code into them and run it. It cannot change or delete the sites you made yourself unless you turn Agent access up below, for this session, 7 days or always: that refusal lives in rexenv, not in the agent's good behaviour. Code running in a scratch site — or in one of your sites once you allow changes — runs as you, with your files and your permissions. rexenv never asks for your administrator password on an agent's behalf; at Full an agent can also publish a site to the internet, and rexenv stops any share it starts within the hour. Every call an agent makes is listed below. Turn this off when you're not using it.", strong: false },
+      ],
   });
   const call = (tool: string, target: string | null, outcome: AgentAction["outcome"], argsSummary: string | null = null, detail: string | null = null) => {
     const site = target ? ctx.sites.find((s) => s.domain === target) : null;

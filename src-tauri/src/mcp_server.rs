@@ -168,6 +168,40 @@ pub const SOCKET_FILE: &str = "rexenv-mcp.sock";
 /// the setting alone, so the toggle can never read on while nothing listens.
 pub const MCP_ENABLED_KEY: &str = "mcp_enabled";
 
+/// One run of the enable-moment paragraph; `strong` is the card's emphasis, which a terminal drops.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct ConsentPart {
+    pub text: &'static str,
+    pub strong: bool,
+}
+
+const fn plain(text: &'static str) -> ConsentPart {
+    ConsentPart { text, strong: false }
+}
+const fn strong(text: &'static str) -> ConsentPart {
+    ConsentPart { text, strong: true }
+}
+
+/// **The paragraph a person reads before turning the MCP endpoint on — the consent itself, in the
+/// ONE place both doors read it from:** Settings → AI agents (MCP) renders it above the toggle
+/// (`McpStatus.consent`), and `sudo rexenv --headless-setup` prints it before it asks
+/// (`core::headless_consent`, docs/PLAN-headless-web.md D7). It lived in the card's TSX until a
+/// second door needed the same words; a copy in each would let the terminal's consent drift from
+/// the card's (ledger #920). The copy guard
+/// (`the_enable_moment_copy_says_what_an_agent_can_actually_do`) reads it here.
+pub const ENABLE_CONSENT: &[ConsentPart] = &[
+    plain("Before you turn this on: this lets an AI agent connect to rexenv and use its tools. With the endpoint on, an agent can look at your sites — status, logs, users and content, "),
+    strong("every site's mail"),
+    plain(" (password-reset links included) and their databases, "),
+    strong("read-only"),
+    plain(" (password hashes and API keys are in there) — and it can create disposable \u{201c}scratch\u{201d} sites of its own, put code into them and run it. It cannot change or delete the sites you made yourself unless you turn Agent access up below, for this session, 7 days or always: that refusal lives in rexenv, not in the agent's good behaviour. Code running in a scratch site — or in one of your sites once you allow changes — runs as you, with your files and your permissions. rexenv never asks for your administrator password on an agent's behalf; at Full an agent can also publish a site to the internet, and rexenv stops any share it starts within the hour. Every call an agent makes is listed below. Turn this off when you're not using it."),
+];
+
+/// The paragraph as plain text (the terminal's rendering, and what the copy guard reads).
+pub fn enable_consent_text() -> String {
+    ENABLE_CONSENT.iter().map(|p| p.text).collect()
+}
+
 
 
 /// The MCP revision whose stable JSON-RPC core we implement (docs/PLAN §2.1).
@@ -2683,6 +2717,9 @@ mod tests {
         // The registry-empty early return below is now unreachable in practice;
         // it is kept only so the guard is readable as a rule rather than as a
         // list of today's strings.
+        // The paragraph lives in Rust since the headless setup became its second reader (#920);
+        // the card renders `McpStatus.consent` and holds none of the words.
+        let consent = enable_consent_text();
         const CARD: &str = include_str!("../../src/components/mcp/AgentsMcpCard.tsx");
         // Phrases that are only true while NOTHING an agent calls can execute.
         const ONLY_TRUE_WHEN_READ_ONLY: &[&str] =
@@ -2723,7 +2760,7 @@ mod tests {
         }
         for phrase in ONLY_TRUE_WHEN_READ_ONLY {
             assert!(
-                !CARD.contains(phrase),
+                !CARD.contains(phrase) && !consent.contains(phrase),
                 "the executing registry has {} tool(s), but the enable-moment copy still says \
                  \"{phrase}\" — a sentence that is now FALSE, sitting where the user decides. \
                  Rewrite it to say what an agent can actually do.",
@@ -2741,7 +2778,14 @@ mod tests {
         assert!(include_str!("core/agent_access.rs").contains("AI agents (MCP)"), "the refusal stopped naming the card");
         // Whitespace-insensitive (a JSX re-wrap is not a copy change) over the
         // COMMENT-STRIPPED source, so a doc comment cannot satisfy a must-say.
-        let card_squashed = crate::core::copy_scan::strip_ts_comments(CARD).split_whitespace().collect::<Vec<_>>().join(" ");
+        let card_squashed = consent.split_whitespace().collect::<Vec<_>>().join(" ");
+        // The card renders the served paragraph, and keeps no copy of its own to drift from it.
+        assert!(card.contains("data.consent.map("), "the card no longer renders the paragraph Rust serves");
+        assert!(!card.contains("Before you turn this on"), "the card carries its own copy of the consent paragraph again");
+        assert!(
+            include_str!("commands/mcp.rs").contains("consent: mcp_server::ENABLE_CONSENT,"),
+            "mcp_status no longer serves the paragraph"
+        );
         for (phrase, why) in MUST_SAY_WHEN_EXECUTING {
             assert!(
                 card_squashed.contains(phrase),
@@ -2870,7 +2914,8 @@ mod tests {
         // Whitespace-insensitive (a JSX re-wrap is not a copy change) over the
         // COMMENT-STRIPPED source, so a doc comment cannot satisfy a must-say.
         let squash = |s: &str| crate::core::copy_scan::strip_ts_comments(s).split_whitespace().collect::<Vec<_>>().join(" ");
-        let (card_s, dial_s) = (squash(CARD), squash(DIAL));
+        // The card's paragraph is Rust's since #920 (`ENABLE_CONSENT`): read with the card's own text.
+        let (card_s, dial_s) = (format!("{} {}", squash(CARD), squash(&enable_consent_text())), squash(DIAL));
         for (phrase, why) in CARD_MUST_SAY {
             assert!(card_s.contains(&squash(phrase)), "the card no longer tells the user {why} (looked for \"{phrase}\")");
         }

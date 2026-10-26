@@ -34,6 +34,7 @@ pub mod dbdump;
 pub mod dbimport;
 pub mod agent_db;
 pub mod agent_access;
+pub mod headless_consent;
 pub mod agent_grants;
 pub mod agent_query;
 pub mod dbmirror;

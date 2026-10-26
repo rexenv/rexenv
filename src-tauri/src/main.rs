@@ -29,8 +29,9 @@ fn main() {
         std::process::exit(code);
     }
     // `sudo rexenv --headless-setup`: an administrator's one-time step for a headless install
-    // (docs/PLAN-headless-web.md T1). Run as root, it writes one rule and exits — no window, no
-    // app state, no services.
+    // (docs/PLAN-headless-web.md T1, T3). Run as root, it writes the sudoers rule and, as the user
+    // from a forked child, the MCP / Agent access consent (ledger #920), then exits — no window, no
+    // services. Before any other thread exists, which is what makes that fork sound.
     if let Some(code) = rexenv_lib::platform::run_headless_setup(&argv) {
         std::process::exit(code);
     }
