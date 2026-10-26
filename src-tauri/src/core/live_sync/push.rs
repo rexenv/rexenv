@@ -283,7 +283,7 @@ pub async fn push_from(
         let live_host = super::pull::host_of(&m.site_url);
         // A network's copy moves network-aware (S5): the local wp-config says so.
         let network = crate::core::sites::network_mode_on_disk(local.docroot).is_some();
-        let n = wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &copy, local.domain, &live_host, network)?;
+        let n = wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &copy, local.domain, &live_host, network, local.edge_https_port)?;
         on_line(&format!("URLs: https://{} → https://{live_host} in the copy ({n} replacements)", local.domain));
         Ok(())
     })();

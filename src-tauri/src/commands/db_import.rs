@@ -808,6 +808,7 @@ async fn run<R: tauri::Runtime>(
                 // Recorded by the import's adopt step (ledger #580) before this
                 // job runs; a network's blogs and DOMAIN_CURRENT_SITE move too.
                 !matches!(site.multisite, crate::state::models::MultisiteMode::None),
+                crate::commands::services::edge_ports(state).https,
             )
             .map_err(fail_after_restore)?;
             log_line(

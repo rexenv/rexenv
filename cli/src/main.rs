@@ -1404,13 +1404,13 @@ fn cmd_site_create(words: &[String], json_output: bool) {
         return print_json(&created);
     }
     outln!(
-        "✓ created {} ({}, PHP {}, {}, {}) → https://{}",
+        "✓ created {} ({}, PHP {}, {}, {}) → {}",
         created["domain"].as_str().unwrap_or(domain),
         created["type"].as_str().unwrap_or("?"),
         created["phpVersion"].as_str().unwrap_or("?"),
         created["webServer"].as_str().unwrap_or("?"),
         if has_database(&created) { created["dbEngine"].as_str().unwrap_or("?") } else { "no database" },
-        created["domain"].as_str().unwrap_or(domain),
+        created["url"].as_str().map(str::to_string).unwrap_or_else(|| host_url(created["domain"].as_str().unwrap_or(domain), None)),
     );
     // Reported from the ROW the app wrote back, not from the flag we sent —
     // core records the starter database only where the question was asked, so
@@ -1493,7 +1493,7 @@ fn cmd_site_info(words: &[String], json_output: bool) {
     let s = &data["site"];
     let field = |label: &str, v: String| outln!("{label:<12} {v}");
     let str_of = |v: &Value| v.as_str().unwrap_or("?").to_string();
-    field("domain", format!("https://{}", str_of(&s["domain"])));
+    field("domain", url_of(s));
     // Extra domains (v42) on their own line, and only when there are any: this
     // verb answers "tell me everything about this site", and a site answering
     // on three names while `info` shows one is the half-answer the Sites list
@@ -1502,7 +1502,7 @@ fn cmd_site_info(words: &[String], json_output: bool) {
         if !extra.is_empty() {
             field(
                 "also",
-                extra.iter().map(|d| format!("https://{}", str_of(d))).collect::<Vec<_>>().join("  "),
+                extra.iter().map(|d| host_url(&str_of(d), data["edgeHttpsPort"].as_u64())).collect::<Vec<_>>().join("  "),
             );
         }
     }
@@ -1554,7 +1554,24 @@ fn cmd_site_info(words: &[String], json_output: bool) {
 
 fn cmd_site_open(words: &[String]) {
     let site = find_site(words, "rex site open <domain>");
-    open_url(&format!("https://{}", site["domain"].as_str().unwrap_or_default()));
+    open_url(&url_of(&site));
+}
+
+/// A site's address as the app sent it (`url`: with the edge's port when it is not 443 —
+/// docs/PLAN-headless-web.md T2), else `https://<domain>` from an app older than the field.
+fn url_of(site: &Value) -> String {
+    site["url"]
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| host_url(site["domain"].as_str().unwrap_or_default(), None))
+}
+
+/// `https://<host>`, with `:<port>` when the app says the edge is not on 443 (`edgeHttpsPort`).
+fn host_url(host: &str, edge_https_port: Option<u64>) -> String {
+    match edge_https_port {
+        Some(p) if p != 443 => format!("https://{host}:{p}"),
+        _ => format!("https://{host}"),
+    }
 }
 
 const LOGIN_USAGE: &str = "rex: usage: rex site login <domain> [--print]";
@@ -2803,10 +2820,10 @@ fn cmd_site_domains(words: &[String], json_output: bool) {
     // this site ALSO answers on, not equals of the one its files, database and
     // certificate directory are named for.
     for (i, d) in domains.iter().enumerate() {
-        let name = d.as_str().unwrap_or("?");
+        let url = host_url(d.as_str().unwrap_or("?"), r["edgeHttpsPort"].as_u64());
         match i {
-            0 => outln!("https://{name}   (primary)"),
-            _ => outln!("https://{name}"),
+            0 => outln!("{url}   (primary)"),
+            _ => outln!("{url}"),
         }
     }
     // WordPress decides its own canonical address from `siteurl`, so an extra
@@ -2872,6 +2889,7 @@ fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
         return print_json(&r);
     }
     let domain = site["domain"].as_str().unwrap_or("?").to_string();
+    let url = url_of(&site);
     // The backend's own words when it has something to say (a started site that
     // still is not serving); otherwise the fact plus its blast radius.
     if let Some(note) = r["note"].as_str() {
@@ -2879,10 +2897,10 @@ fn cmd_site_enabled(words: &[String], enabled: bool, json_output: bool) {
         return;
     }
     if enabled {
-        outln!("started {domain} — https://{domain} is serving again");
+        outln!("started {domain} — {url} is serving again");
     } else {
         outln!(
-            "stopped {domain} — https://{domain} now answers \"site stopped\"\n\
+            "stopped {domain} — {url} now answers \"site stopped\"\n\
              your other sites keep running (this is not `rex stop`, which stops the whole stack)"
         );
     }
@@ -4714,6 +4732,19 @@ fn cli_finding(cli: &Value, found: Option<&Path>) -> (bool, String) {
 
 #[cfg(test)]
 mod tests {
+    /// A site's address is the one the app sends (`url`, with the edge's port off 443 — docs/
+    /// PLAN-headless-web.md T2); an older app sends none and the answer is `https://<domain>`.
+    #[test]
+    fn rex_prints_the_address_the_app_sends() {
+        use super::{host_url, url_of};
+        use serde_json::json;
+        assert_eq!(url_of(&json!({ "domain": "a.rex", "url": "https://a.rex:8443" })), "https://a.rex:8443");
+        assert_eq!(url_of(&json!({ "domain": "a.rex" })), "https://a.rex", "an app older than the field");
+        assert_eq!(host_url("b.rex", Some(8443)), "https://b.rex:8443");
+        assert_eq!(host_url("b.rex", Some(443)), "https://b.rex");
+        assert_eq!(host_url("b.rex", None), "https://b.rex");
+    }
+
     /// `rex doctor`'s CLI line reads what THIS shell's PATH runs (user report, 8 Oct 2026: the app's folder
     /// put on PATH by hand was still reported "rex not on PATH"). Real files, a real PATH value.
     #[test]

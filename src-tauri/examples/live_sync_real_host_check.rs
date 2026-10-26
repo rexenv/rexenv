@@ -135,6 +135,7 @@ async fn main() -> std::process::ExitCode {
         php: &php,
         wp_phar: &wp,
         scratch: &scratch,
+        edge_https_port: rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     };
 
     let mut ok = true;

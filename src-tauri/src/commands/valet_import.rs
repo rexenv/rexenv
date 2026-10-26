@@ -846,6 +846,8 @@ pub async fn valet_import_run<R: tauri::Runtime>(
     db_jobs: State<'_, crate::commands::db_import::DbImportJobs>,
     request: ImportRequest,
 ) -> Result<ImportResult> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "Importing sites")?;
     use std::sync::atomic::Ordering;
     use tauri::Emitter;
 

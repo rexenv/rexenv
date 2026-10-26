@@ -531,10 +531,8 @@ pub async fn wp_user_login_url(state: State<'_, AppState>, id: String, user_id: 
     if created_dir {
         crate::commands::tunnels::record_mu_dir_created(&state, &site.id);
     }
-    Ok(format!(
-        "https://{}/?rexenv_login={}&rexenv_user={}",
-        site.domain, token, user_id
-    ))
+    let url = core::edge_ports::site_url(crate::commands::services::edge_ports(&state).https, &site.domain);
+    Ok(format!("{url}/?rexenv_login={token}&rexenv_user={user_id}"))
 }
 
 /// One-click "Open admin": issue a magic login URL for the site's PRIMARY
@@ -603,7 +601,10 @@ pub async fn wp_admin_login_url(
     }
     Ok(match base {
         Some(base) => format!("{base}?rexenv_login={token}&rexenv_user={admin_id}"),
-        None => format!("https://{}/?rexenv_login={}&rexenv_user={}", site.domain, token, admin_id),
+        None => format!(
+            "{}/?rexenv_login={token}&rexenv_user={admin_id}",
+            core::edge_ports::site_url(crate::commands::services::edge_ports(&state).https, &site.domain)
+        ),
     })
 }
 
@@ -1064,9 +1065,10 @@ pub async fn wp_site_reset(state: State<'_, AppState>, id: String) -> Result<()>
         site.name.clone(),
         site.db_name.clone(),
     );
+    let https_port = crate::commands::services::edge_ports(&state).https;
     wp_blocking(move || {
         core::wordpress::reset_site(
-            &php, &wp, &docroot, &domain, &name, &db_name, &db_client, engine.port(),
+            &php, &wp, &docroot, &domain, &name, &db_name, &db_client, engine.port(), https_port,
         )
     })
     .await?;
@@ -1214,6 +1216,8 @@ pub async fn wp_multisite_convert(
     id: String,
     mode: String,
 ) -> Result<Option<Site>> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "Converting to a multisite network")?;
     let mode = MultisiteMode::parse_db(&mode)?;
     // Mutation-under-share guard (audit A2 enumeration, 28 Jul 2026): the
     // conversion rewrites the database and wp-config under the live link —

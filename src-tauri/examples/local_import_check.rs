@@ -156,6 +156,7 @@ async fn main() -> std::process::ExitCode {
         &format!("127.0.0.1:{PORT}"),
         &client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     )
     .expect("install WordPress");
 
@@ -197,7 +198,7 @@ async fn main() -> std::process::ExitCode {
         ("PHP 7.4", binaries::resolve(&*plat, "php", "7.4.33").await.expect("php 7.4"), "ea.rex", "ea2.rex"),
     ] {
         let replaced =
-            wordpress::rehome_urls_on_copy(&*plat, &php, &wp, &docroot, &scratch, PORT, COPY_DB, from, to, false);
+            wordpress::rehome_urls_on_copy(&*plat, &php, &wp, &docroot, &scratch, PORT, COPY_DB, from, to, false, rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT);
         check.is(
             &format!("{label}: the URL pass reaches the copy through the override"),
             matches!(replaced, Ok(n) if n > 0),
@@ -239,6 +240,7 @@ async fn main() -> std::process::ExitCode {
         &format!("127.0.0.1:{PORT}"),
         &client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     )
     .expect("install the network's WordPress");
     wordpress::multisite_convert(&php8, &wp, &net_root, "multi.local", true).expect("convert to a subdomain network");
@@ -278,7 +280,7 @@ async fn main() -> std::process::ExitCode {
 
     let net_scratch = sandbox.root().join("db-imports-net");
     let moved = wordpress::rehome_urls_on_copy(
-        &*plat, &php8, &wp, &net_root, &net_scratch, PORT, NET_DB, "multi.local", "multi.rex", true,
+        &*plat, &php8, &wp, &net_root, &net_scratch, PORT, NET_DB, "multi.local", "multi.rex", true, rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     );
     check.is("network: the URL pass reaches and moves the copy", matches!(moved, Ok(n) if n > 0), &format!("{moved:?}"));
     let sub_new = "https://ea1.multi.rex";

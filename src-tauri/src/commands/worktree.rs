@@ -279,6 +279,8 @@ pub async fn worktree_create<R: tauri::Runtime>(
     jobs: State<'_, ProvisionJobs>,
     request: WorktreeRequest,
 ) -> Result<SiteProvisionState> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "A worktree site")?;
     off_the_runtime(|| start(&app, &state, &jobs, request))
 }
 
@@ -667,6 +669,8 @@ pub async fn worktree_serve<R: tauri::Runtime>(
 #[tauri::command]
 pub async fn worktree_reclone_db<R: tauri::Runtime>(app: AppHandle<R>, site_id: String) -> Result<u64> {
     let state = app.state::<AppState>();
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "Re-cloning a worktree's database")?;
     let (child, parent) = {
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         let w = store::get_site_worktree(&conn, &site_id)?.ok_or_else(|| Error::Other("not a worktree site".into()))?;
@@ -701,7 +705,7 @@ pub async fn worktree_reclone_db<R: tauri::Runtime>(app: AppHandle<R>, site_id: 
             let conn = st.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
             core::dbrestore::record_provenance(&conn, &child_id, exists)
         })?;
-        crate::core::wordpress::rehome_urls_on_copy(st.platform.as_ref(), &php, &wp_phar, &docroot, &scratch, engine.port(), &target, &from, &to, network)
+        crate::core::wordpress::rehome_urls_on_copy(st.platform.as_ref(), &php, &wp_phar, &docroot, &scratch, engine.port(), &target, &from, &to, network, crate::commands::services::edge_ports(&st).https)
     })
     .await
     .map_err(|e| Error::Other(format!("re-clone worker died: {e}")))?

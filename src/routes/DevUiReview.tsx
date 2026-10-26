@@ -1380,7 +1380,7 @@ export function DevUiReview() {
           return mockPlatformWords;
         // The Sidebar's footer, for `?view=updatenotice`.
         case "global_status":
-          return { summary: "all", running: 6, total: 6, cpuPercent: 3, cpuCores: 8, ramMb: 900, ramTotalMb: 16384 };
+          return { summary: "all", running: 6, total: 6, cpuPercent: 3, cpuCores: 8, ramMb: 900, ramTotalMb: 16384, edgeHttpsPort: 443 };
         case "repo_watches":
           return [];
         case "live_sync_preview":

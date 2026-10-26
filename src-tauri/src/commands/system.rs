@@ -297,6 +297,9 @@ pub struct GlobalStatus {
     pub cpu_cores: u32,
     pub ram_mb: u64,
     pub ram_total_mb: u64,
+    /// The edge's HTTPS port as the user set it (`core::edge_ports`) — the UI builds every site
+    /// address from it (`src/lib/siteUrl.ts`), with the port only when it is not 443.
+    pub edge_https_port: u16,
 }
 
 /// Live global status for the sidebar footer (task 7.4): running/total AND the
@@ -317,7 +320,8 @@ pub fn global_status(state: State<'_, AppState>) -> Result<GlobalStatus> {
             .map_err(|_| Error::Other("monitor lock poisoned".into()))?;
         (monitor.cpu_cores(), monitor.machine_ram_total_mb())
     };
-    Ok(GlobalStatus { summary, running, total, cpu_percent, cpu_cores, ram_mb, ram_total_mb })
+    let edge_https_port = crate::commands::services::edge_ports(state.inner()).https;
+    Ok(GlobalStatus { summary, running, total, cpu_percent, cpu_cores, ram_mb, ram_total_mb, edge_https_port })
 }
 
 /// Reduce live per-service `(running, optional)` flags to the footer's

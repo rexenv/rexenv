@@ -3,6 +3,8 @@
  * the backend on a fixed internal host; the UI just builds pre-filled login URLs.
  */
 
+import { siteUrl } from "@/lib/siteUrl";
+
 /** Internal host Adminer is served on (mirrors `core::adminer::ADMINER_HOST`) —
  *  on the .rex backbone TLD, whose resolver onboarding installs. */
 export const ADMINER_HOST = "adminer.rexenv.rex";
@@ -41,8 +43,8 @@ function adminerQuery(opts: AdminerTarget): string {
 }
 
 /** Adminer deep-link for an EXTERNAL browser (first-party page → cookies work). */
-export function adminerUrl(opts: AdminerTarget): string {
-  return `https://${ADMINER_HOST}/?${adminerQuery(opts)}`;
+export function adminerUrl(opts: AdminerTarget, edgeHttpsPort = 443): string {
+  return `${siteUrl(ADMINER_HOST, edgeHttpsPort)}/?${adminerQuery(opts)}`;
 }
 
 /** Adminer src for the IN-APP `<iframe>`. Goes through the `rexdb:` custom

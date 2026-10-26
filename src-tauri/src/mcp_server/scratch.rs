@@ -581,6 +581,12 @@ pub trait SiteCreator: Send + Sync {
 }
 
 impl<'a> ScratchCtx<'a> {
+    /// A site's address with the edge's port when it is not 443 (`core::edge_ports::site_url`).
+    pub(crate) fn site_url(&self, domain: &str) -> String {
+        let port = self.state.db.lock().map(|conn| crate::core::edge_ports::load(&conn)).unwrap_or_default().https;
+        crate::core::edge_ports::site_url(port, domain)
+    }
+
     pub fn new(
         state: &'a AppState,
         creator: &'a dyn SiteCreator,
@@ -972,7 +978,7 @@ fn create_site<'a>(
         ctx.stamp_mail(&site);
         let status = ctx.status_of(&site).await;
         let view = AgentScratchSite {
-            url: format!("https://{}", site.domain),
+            url: ctx.site_url(&site.domain),
             id: site.id.clone(),
             domain: site.domain.clone(),
             expires_at: site.expires_at.clone(),
@@ -1582,7 +1588,7 @@ mod tests {
         // pinned here because every rule an agent needs is IN it — a link that
         // arrived bare would be fetched twice, or ten minutes later, and the
         // plain page that comes back would read as "login is broken".
-        let v = login_reply("probe.scratch.rex", 1, "tok");
+        let v = login_reply("probe.scratch.rex", "https://probe.scratch.rex", 1, "tok");
         assert_eq!(v["url"], "https://probe.scratch.rex/?rexenv_login=tok&rexenv_user=1");
         assert_eq!(v["singleUse"], true);
         assert_eq!(v["expiresInSeconds"], crate::core::wp_login::LOGIN_TTL_SECS);
@@ -2058,10 +2064,10 @@ pub(super) fn agent_stream(raw: &[u8], known: &super::view::KnownPaths) -> (Stri
 /// it works headlessly (the mu-plugin sets the auth cookie and redirects to
 /// wp-admin — `core::wp_login`), so an agent that fetches it twice, or after a
 /// pause, gets a plain WordPress page and must know why.
-fn login_reply(domain: &str, user_id: u64, token: &str) -> Value {
+fn login_reply(domain: &str, site_url: &str, user_id: u64, token: &str) -> Value {
     json!({
         "domain": domain,
-        "url": format!("https://{domain}/?rexenv_login={token}&rexenv_user={user_id}"),
+        "url": format!("{site_url}/?rexenv_login={token}&rexenv_user={user_id}"),
         "userId": user_id,
         "singleUse": true,
         "expiresInSeconds": crate::core::wp_login::LOGIN_TTL_SECS,
@@ -2139,7 +2145,7 @@ fn login_url<'a>(
             let conn = ctx.db()?;
             let _ = crate::state::store::set_site_mu_dir_created(&conn, &site.id);
         }
-        Ok(login_reply(&site.domain, user_id, &token))
+        Ok(login_reply(&site.domain, &ctx.site_url(&site.domain), user_id, &token))
     })
 }
 
@@ -2210,7 +2216,7 @@ fn set_php_version<'a>(
         // fixing it is the user's move in rexenv, not a tool to hunt for.
         let status = ctx.status_of(&site).await;
         let view = AgentScratchSite {
-            url: format!("https://{}", site.domain),
+            url: ctx.site_url(&site.domain),
             id: site.id.clone(),
             domain: site.domain.clone(),
             expires_at: site.expires_at.clone(),

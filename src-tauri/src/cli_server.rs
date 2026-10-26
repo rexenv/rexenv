@@ -646,9 +646,14 @@ where
                     .collect()
             };
             let mut sites = to_value(&sites)?;
+            // Each site's address, with the edge's port when it is not 443 (`core::edge_ports`) —
+            // `rex` prints what it is sent rather than assuming `https://<domain>`.
+            let https = commands::services::edge_ports(&state).https;
             for s in sites.as_array_mut().into_iter().flatten() {
                 let goes = s["id"].as_str().is_some_and(|id| folder_goes.iter().any(|f| f == id));
                 s["removesFolderOnDelete"] = json!(goes);
+                let url = s["domain"].as_str().map(|d| crate::core::edge_ports::site_url(https, d));
+                s["url"] = json!(url);
             }
             Ok(json!({
                 "sites": sites,
@@ -787,7 +792,12 @@ where
                 .unwrap_or(created),
                 None => created,
             };
-            to_value(&created)
+            let mut created = to_value(&created)?;
+            created["url"] = json!(crate::core::edge_ports::site_url(
+                commands::services::edge_ports(&state).https,
+                created["domain"].as_str().unwrap_or_default()
+            ));
+            Ok(created)
         }
         // Site detail: the SiteDetail overview's data, merged. Resources, cert
         // and WP info are best-effort — a stopped stack or a fresh site must
@@ -827,8 +837,12 @@ where
             // three names showing one is the same half-answer the Sites list
             // had until this morning.
             let domains = commands::sites::site_domains(state.clone(), id.clone()).await?;
+            let https = commands::services::edge_ports(&state).https;
+            let mut site_v = to_value(&site)?;
+            site_v["url"] = json!(crate::core::edge_ports::site_url(https, site_v["domain"].as_str().unwrap_or_default()));
             Ok(json!({
-                "site": to_value(&site)?,
+                "edgeHttpsPort": https,
+                "site": site_v,
                 "serving": serving,
                 "status": to_value(&status)?,
                 "resources": to_value(&resources)?,
@@ -1004,7 +1018,7 @@ where
                     ))
                 }
             };
-            Ok(json!({ "domains": domains }))
+            Ok(json!({ "domains": domains, "edgeHttpsPort": commands::services::edge_ports(&state).https }))
         }
         "site.cert" => {
             let state = app_state(app)?;

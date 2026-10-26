@@ -265,6 +265,7 @@ async fn main() {
         // 15 Jul→14 Aug (docs/archive/SHIPPED-2026-08.md).
         &db_client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     ) {
         fail("FIXTURE — WordPress did not install on the shared site", &format!("{e}"));
     }

@@ -117,7 +117,10 @@ takes them at launch before adoption and at every Start all, and the edge picks 
 Caddyfile reload (Caddy rebinds); every runtime check of the edge — the wire probe, conflict help,
 doctor, the database console's client — asks them rather than 443 (ledger #914, #915). An
 unprivileged port takes the user-level child edge (Windows' production shape) rather than the root
-unit.
+unit. A site's address is then `https://x.rex:8443`, built in one place per side (`edge_ports::site_url`,
+`src/lib/siteUrl.ts`) and written into WordPress at install (#916); the flows that rewrite a site's
+URLs — live sync, worktrees, imports, a domain change, a multisite conversion — refuse off 443 until
+each is measured (#917).
 
 - **No direct Caddy→php-fpm path for default sites.** Caddy is invisible plumbing.
 - Local CA via `rcgen` (`core/ssl.rs`); per-domain leaf certs, wildcard SAN for

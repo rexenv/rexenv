@@ -86,6 +86,40 @@ pub fn set_bind(conn: &Connection, value: &str) -> Result<String> {
     Ok(bind.unwrap_or_default())
 }
 
+/// `host`, or `host:port` when the edge's HTTPS port is not 443 — the authority a browser, WordPress
+/// and every printed link must use (docs/PLAN-headless-web.md T2 S2).
+pub fn authority(https_port: u16, host: &str) -> String {
+    if https_port == DEFAULT_HTTPS_PORT {
+        host.to_string()
+    } else {
+        format!("{host}:{https_port}")
+    }
+}
+
+/// A site's address: `https://` + [`authority`]. THE one builder — a TEXT guard holds every other
+/// `https://{domain}` out of the tree.
+pub fn site_url(https_port: u16, host: &str) -> String {
+    format!("https://{}", authority(https_port, host))
+}
+
+/// The refusal for a flow that REWRITES a site's URLs (an import, a sync, a worktree copy, a domain
+/// change, a multisite conversion) while the edge is off 443. Those flows move URLs between hosts
+/// with search-replace passes that also edit plain host names (an `admin@host` address), and
+/// whether WordPress keeps a port through them — or a network through a port at all — is not
+/// measured yet (T2). So the first version refuses before any work is done, rather than writing
+/// URLs that might be wrong.
+pub fn refuse_rehome_off_443(https_port: u16, what: &str) -> Result<()> {
+    if https_port == DEFAULT_HTTPS_PORT {
+        return Ok(());
+    }
+    Err(Error::Other(format!(
+        "{what} isn't available yet while the edge runs on port {https_port}: it rewrites the \
+         site's URLs, and rexenv has not yet proven it can carry a port through that rewrite. \
+         Create the site fresh instead, or move the edge back to 443 (possible only while no \
+         sites exist)."
+    )))
+}
+
 /// The ports rexenv's own services already use (`core::ports::default_ports`, minus the edge's
 /// two), with the service that uses each.
 fn taken_by_rexenv() -> Vec<(u16, &'static str)> {
@@ -142,6 +176,16 @@ mod tests {
         }
         assert!(check_port("8080", 8080, "HTTPS", TAKEN).unwrap_err().to_string().contains("must differ"));
         assert!(check_port("18088", 80, "HTTP", TAKEN).unwrap_err().to_string().contains("Nginx"));
+    }
+
+    #[test]
+    fn a_site_url_carries_the_port_only_when_it_is_not_443() {
+        assert_eq!(site_url(443, "a.rex"), "https://a.rex");
+        assert_eq!(site_url(8443, "a.rex"), "https://a.rex:8443");
+        assert_eq!(authority(8443, "a.rex"), "a.rex:8443");
+        assert!(refuse_rehome_off_443(443, "x").is_ok());
+        let e = refuse_rehome_off_443(8443, "A live sync").unwrap_err().to_string();
+        assert!(e.starts_with("A live sync isn't available yet while the edge runs on port 8443"), "{e}");
     }
 
     #[test]
@@ -209,6 +253,126 @@ mod tests {
             );
         }
         assert!(found.len() >= 4, "the scan found almost nothing — is it reading the tree? {found:?}");
+    }
+
+    /// **A site's address is built in ONE place** (`site_url`, ledger #916): every other
+    /// `https://{…}` left in the tree is counted and has a reason, so a new one fails here instead
+    /// of shipping a link without the port. Exact counts per file, not a file allowlist: a second
+    /// builder inside an allowed file is exactly how this would leak back.
+    #[test]
+    fn a_site_url_is_built_only_by_site_url() {
+        let allowed: &[(&str, usize, &str)] = &[
+            ("core/edge_ports.rs", 1, "THE builder"),
+            ("core/proxy.rs", 4, "the edge probe (port explicit) and the Caddyfile's site addresses, which take the global https_port"),
+            ("core/dbconsole_proxy.rs", 2, "the console's own host, port-less by design: the client's resolve carries the port"),
+            ("core/tunnels.rs", 1, "the PUBLIC tunnel host, not the edge"),
+            ("core/wporg.rs", 1, "wordpress.org"),
+            ("core/wordpress.rs", 4, "URL rehome internals and a network sub-site's `--url` — rehomes and multisite are refused off 443 (`refuse_rehome_off_443`)"),
+            ("core/worktree.rs", 2, "a worktree copy's WP_HOME/WP_SITEURL — worktrees are refused off 443"),
+            ("core/wp_login.rs", 1, "a network sub-site's login base — multisite is refused off 443"),
+            ("core/live_sync/pull.rs", 2, "the log line of a pull (both hosts) — refused off 443"),
+            ("core/live_sync/push.rs", 2, "the log line of a push (both hosts) — refused off 443"),
+            ("commands/site_provision.rs", 3, "the worktree URL phase and its log line (both hosts) — refused off 443"),
+            ("commands/db_import.rs", 1, "the Local import's log line — its rehome is refused off 443"),
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found: Vec<(String, usize)> = Vec::new();
+        fn walk(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<(String, usize)>) {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, root, found);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    let text = std::fs::read_to_string(&path).unwrap_or_default();
+                    let n: usize = crate::core::copy_scan::production_source(&text)
+                        .lines()
+                        .filter(|l| !l.trim_start().starts_with("//"))
+                        .map(|l| l.split(" // ").next().unwrap_or("").matches("https://{").count())
+                        .sum();
+                    if n > 0 {
+                        found.push((path.strip_prefix(root).unwrap().display().to_string().replace('\\', "/"), n));
+                    }
+                }
+            }
+        }
+        walk(&root, &root, &mut found);
+
+        // The frontend's half: `src/lib/siteUrl.ts` is ITS one builder (the same rule), and the
+        // dev-only review page renders fixtures at 443.
+        let ui_allowed: &[(&str, usize)] = &[("lib/siteUrl.ts", 2), ("routes/DevUiReview.tsx", 1)];
+        let ui_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut ui_found: Vec<(String, usize)> = Vec::new();
+        fn walk_ui(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<(String, usize)>) {
+            for entry in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if path.is_dir() {
+                    walk_ui(&path, root, found);
+                } else if (name.ends_with(".ts") || name.ends_with(".tsx")) && !name.contains(".test.") {
+                    let n = std::fs::read_to_string(&path).unwrap_or_default().matches("https://${").count();
+                    if n > 0 {
+                        found.push((path.strip_prefix(root).unwrap().display().to_string().replace('\\', "/"), n));
+                    }
+                }
+            }
+        }
+        walk_ui(&ui_root, &ui_root, &mut ui_found);
+        for (file, n) in &ui_found {
+            assert_eq!(
+                ui_allowed.iter().find(|(f, _)| f == file).map(|(_, c)| *c),
+                Some(*n),
+                "src/{file} builds `https://${{…}}` {n} time(s) — use `siteUrl` / `useSiteUrl` (src/lib/siteUrl.ts)"
+            );
+        }
+        assert_eq!(ui_found.len(), ui_allowed.len(), "the frontend scan: {ui_found:?}");
+
+        for (file, n) in &found {
+            let want = allowed.iter().find(|(f, _, _)| f == file).map(|(_, c, _)| *c);
+            assert_eq!(
+                want,
+                Some(*n),
+                "{file} builds `https://{{…}}` {n} time(s) — a site's address comes from \
+                 `core::edge_ports::site_url`, which carries the port when the edge is off 443"
+            );
+        }
+        assert_eq!(found.len(), allowed.len(), "an allowed file no longer builds one — drop its row: {found:?}");
+    }
+
+    /// **Every flow that rewrites a site's URLs refuses off 443 before it does any work** (ledger
+    /// #916): its command's FIRST statement is the refusal. The choke point
+    /// (`rehome_urls_on_copy`'s `edge_https_port`, enforced by the compiler) is the net under them;
+    /// this is what keeps a refused pull from first copying the live database.
+    #[test]
+    fn every_url_rewriting_flow_refuses_off_443_first() {
+        let flows: &[(&str, &str, &str)] = &[
+            ("commands/live_sync.rs", include_str!("../commands/live_sync.rs"), "pub async fn live_sync_pull<"),
+            ("commands/live_sync.rs", include_str!("../commands/live_sync.rs"), "pub async fn live_sync_push<"),
+            ("commands/live_sync.rs", include_str!("../commands/live_sync.rs"), "pub async fn live_sync_create_from_live<"),
+            ("commands/worktree.rs", include_str!("../commands/worktree.rs"), "pub async fn worktree_create<"),
+            ("commands/worktree.rs", include_str!("../commands/worktree.rs"), "pub async fn worktree_reclone_db<"),
+            ("commands/valet_import.rs", include_str!("../commands/valet_import.rs"), "pub async fn valet_import_run<"),
+            ("commands/sites.rs", include_str!("../commands/sites.rs"), "pub async fn change_site_domain("),
+            ("commands/wordpress.rs", include_str!("../commands/wordpress.rs"), "pub async fn wp_multisite_convert("),
+        ];
+        for (file, src, sig) in flows {
+            let at = src.find(sig).unwrap_or_else(|| panic!("{file}: `{sig}` is gone"));
+            let body = &src[at..];
+            let open = body.find(") -> ").and_then(|i| body[i..].find("{\n").map(|j| i + j + 2)).expect("its body");
+            // The first statement — or the second, after `worktree_reclone_db` binds its state.
+            let head: String = body[open..].lines().filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with("//")).take(2).collect();
+            assert!(
+                head.contains("crate::core::edge_ports::refuse_rehome_off_443("),
+                "{file}: `{sig}` no longer refuses off 443 before its work — a pull would copy the \
+                 live database, or an import create rows, before the URL move refused"
+            );
+        }
+        // …and the net under them: the shared URL move refuses first too.
+        let wp = include_str!("wordpress.rs");
+        let body = &wp[wp.find("pub fn rehome_urls_on_copy(").expect("the URL move")..];
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        let refuse = body.find("crate::core::edge_ports::refuse_rehome_off_443(edge_https_port,").expect("the URL move refuses off 443");
+        let first_work = body.find("validate_db_name(").expect("its first step");
+        assert!(refuse < first_work, "the URL move does work before it refuses off 443");
     }
 
     #[test]

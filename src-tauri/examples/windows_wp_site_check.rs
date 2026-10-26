@@ -157,6 +157,7 @@ mod windows {
                 admin_email: format!("owner@{DOMAIN}"),
                 ..Default::default()
             },
+            rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
         );
         println!("  · install_for_site took {:.0} s", t.elapsed().as_secs_f64());
         step(check, "install_for_site: core zip, wp-config, database, core install, password", installed)?;

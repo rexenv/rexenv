@@ -1,3 +1,4 @@
+import { useEdgeHttpsPort } from "@/lib/siteUrl";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -424,6 +425,7 @@ export function AdminerVersionCard() {
 }
 
 export function Databases() {
+  const edgeHttpsPort = useEdgeHttpsPort();
   const navigate = useNavigate();
   const words = usePlatformWords();
   const [browse, setBrowse] = useState<{
@@ -480,7 +482,7 @@ export function Databases() {
           <AdminerFrame
             console={consoleFor(engine, consoleSetting)}
             src={consoleFrameSrc(engine, consoleSetting, words)}
-            externalUrl={consoleUrl(engine, consoleSetting)}
+            externalUrl={consoleUrl(engine, consoleSetting, undefined, edgeHttpsPort)}
           />
         </div>
       </>
@@ -535,6 +537,8 @@ export function Databases() {
                 browserUrl={consoleUrl(
                   db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql",
                   consoleSetting,
+                  undefined,
+                  edgeHttpsPort,
                 )}
                 console={consoleFor(db.key === "postgres" || db.key === "mariadb" ? db.key : "mysql", consoleSetting)}
                 onGoServices={() => navigate("/services")}

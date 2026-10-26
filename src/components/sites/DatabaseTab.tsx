@@ -4,6 +4,7 @@
  * region chain (UI-REVIEW §C2: the Adminer sizing bugs live in exactly this
  * composition, so the harness must exercise the same code, not a copy).
  */
+import { useEdgeHttpsPort } from "@/lib/siteUrl";
 import { Database } from "lucide-react";
 import { Placeholder } from "@/components/common/Placeholder";
 import { StackNeededPanel, useStoppedDependency } from "@/components/common/StackNeededPanel";
@@ -14,6 +15,7 @@ import { usePlatformWords } from "@/lib/usePlatformWords";
 import type { Site } from "@/types";
 
 export function DatabaseTab({ site }: { site: Site }) {
+  const edgeHttpsPort = useEdgeHttpsPort();
   const words = usePlatformWords();
   // Which console this engine opens in: the app-wide choice for MySQL/MariaDB,
   // Adminer for PostgreSQL (`src/lib/dbconsole.ts`).
@@ -60,7 +62,7 @@ export function DatabaseTab({ site }: { site: Site }) {
           <AdminerFrame
             console={console}
             src={consoleFrameSrc(site.dbEngine, consoleSetting, words, site.dbName)}
-            externalUrl={consoleUrl(site.dbEngine, consoleSetting, site.dbName)}
+            externalUrl={consoleUrl(site.dbEngine, consoleSetting, site.dbName, edgeHttpsPort)}
           />
         </div>
       )}

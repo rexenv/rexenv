@@ -1307,6 +1307,12 @@ pub struct UserCtx<'a> {
 }
 
 impl<'a> UserCtx<'a> {
+    /// The edge's HTTPS port as the user set it (`core::edge_ports`) — a read, for the URLs the
+    /// tools report (docs/PLAN-headless-web.md T2).
+    pub(crate) fn edge_https_port(&self) -> u16 {
+        self.state.db.lock().map(|conn| crate::core::edge_ports::load(&conn)).unwrap_or_default().https
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(state: &'a AppState, ops: &'a dyn SiteOps, wp: &'a dyn WpOps, mail: &'a dyn MailOps, stack: &'a dyn StackOps, sys: &'a dyn SystemOps, repo: &'a dyn RepoOps, import: &'a dyn ImportOps, client: &'a str) -> Self {
         UserCtx { state, client, ops, wp, mail, stack, sys, repo, import }
@@ -1563,7 +1569,12 @@ fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
         // The resolved credentials are computed from the SAME function the
         // provision job uses, so what the reply reports is what was set.
         let admin = plan.wp.as_ref().map(|opts| {
-            let r = crate::core::wordpress::resolve_install_options(&domain, &plan.new.name, opts);
+            let r = crate::core::wordpress::resolve_install_options(
+                &domain,
+                &plan.new.name,
+                opts,
+                ctx.edge_https_port(),
+            );
             AgentAdmin {
                 user: r.admin_user,
                 password: r.admin_password,
@@ -1605,7 +1616,7 @@ fn site_create<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::Ac
         let serving = signals.serving_manager && signals.edge_answers_ours;
         let view = AgentCreatedSite {
             site: super::view::AgentSiteView::from_site(&site, serving, Vec::new()),
-            url: format!("https://{}", site.domain),
+            url: crate::core::edge_ports::site_url(ctx.edge_https_port(), &site.domain),
             status: super::view::AgentSiteStatus::from_signals(&site, &signals),
             admin,
             multisite_conversion: multisite,
@@ -3301,8 +3312,9 @@ fn open<'a>(ctx: UserCtx<'a>, args: &'a Value, acted: &'a super::feed::ActedTarg
                     Some(w) => browsers.iter().find(|b| b.id == w).map(|b| b.id.clone()).ok_or_else(|| Error::Other(format!("`{w}` is not an installed browser. Installed: {}.", browsers.iter().map(|b| b.id.as_str()).collect::<Vec<_>>().join(", "))))?,
                     None => browsers.first().map(|b| b.id.clone()).ok_or_else(|| Error::Other("no browser was detected on this machine.".into()))?,
                 };
-                sys.open_in_browser(chosen.clone(), format!("https://{}", site.domain), private).await?;
-                json!({ "browser": chosen, "url": format!("https://{}", site.domain), "private": private })
+                let url = crate::core::edge_ports::site_url(ctx.edge_https_port(), &site.domain);
+                sys.open_in_browser(chosen.clone(), url.clone(), private).await?;
+                json!({ "browser": chosen, "url": url, "private": private })
             }
             "editor" => {
                 let editors = sys.editors().await;

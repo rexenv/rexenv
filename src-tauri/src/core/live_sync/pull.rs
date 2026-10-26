@@ -88,6 +88,8 @@ pub struct LocalSite<'a> {
     pub wp_phar: &'a Path,
     /// Private scratch space in app data (dumps, the wp-cli override).
     pub scratch: &'a Path,
+    /// The edge's HTTPS port (`core::edge_ports`) — the URL move refuses anything but 443 (T2).
+    pub edge_https_port: u16,
 }
 
 /// What a pull did.
@@ -412,7 +414,7 @@ pub async fn pull_into(
         }
         on_line("wp-config: the live site is a single site — the network constants are out");
     }
-    match wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &stage, &from, local.domain, m.multisite) {
+    match wordpress::rehome_urls_on_copy(local.platform, local.php, local.wp_phar, local.docroot, local.scratch, local.port, &stage, &from, local.domain, m.multisite, local.edge_https_port) {
         Ok(n) => {
             report.replacements = n;
             on_line(&format!("URLs: https://{from} → https://{} ({n} replacements)", local.domain));

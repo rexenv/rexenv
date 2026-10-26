@@ -460,6 +460,7 @@ pub fn install_wp(
         &format!("127.0.0.1:{}", rexenv_lib::core::database::MYSQL_PORT),
         db_client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     )
     .unwrap_or_else(|e| panic!("install wordpress into {domain}: {e}"));
 }

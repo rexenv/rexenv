@@ -1423,6 +1423,8 @@ pub async fn change_site_domain(
     id: String,
     domain: String,
 ) -> Result<DomainChange> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "Changing a site's domain")?;
     // The user is changing this site's domain — that adopts it (promotion
     // choke point; a scratch site they touched is theirs).
     promote_if_scratch(&state, &id);

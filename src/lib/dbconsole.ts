@@ -30,11 +30,11 @@ export function consoleFor(engine: ConsoleEngine, setting: DbConsole | undefined
 export const CONSOLE_LABEL: Record<DbConsole, string> = { adminer: "Adminer", phpmyadmin: "phpMyAdmin" };
 
 /** First-party https deep link for a real browser. */
-export function consoleUrl(engine: ConsoleEngine, setting: DbConsole | undefined, db?: string): string {
+export function consoleUrl(engine: ConsoleEngine, setting: DbConsole | undefined, db?: string, edgeHttpsPort = 443): string {
   if (consoleFor(engine, setting) === "phpmyadmin" && engine !== "postgres") {
-    return phpmyadminUrl({ engine, db });
+    return phpmyadminUrl({ engine, db }, edgeHttpsPort);
   }
-  return adminerUrl({ engine, db });
+  return adminerUrl({ engine, db }, edgeHttpsPort);
 }
 
 /** The in-app frame src, through the console's own proxy origin — both from the

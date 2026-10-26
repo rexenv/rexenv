@@ -266,6 +266,7 @@ export const mockGlobalStatus: GlobalStatus = {
   cpuCores: 8,
   ramMb: 612,
   ramTotalMb: 16384,
+  edgeHttpsPort: 443,
 };
 
 export const mockMailList: MailList = {

@@ -23,6 +23,7 @@ import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
+import { useSiteUrl } from "@/lib/siteUrl";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, DriftedTakeover, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
@@ -293,6 +294,7 @@ export function SiteRow({
   togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
+  const url = useSiteUrl()(site.domain);
   const scratch = isScratch(site);
   const ttl = scratch ? expiryLabel(site.expiresAt) : null;
   const pkg = scratch ? packages?.[0] : undefined;
@@ -363,10 +365,10 @@ export function SiteRow({
         <span
           title={
             status !== "running" && !stoppedByUser
-              ? `Nothing is serving https://${site.domain} — Start all first`
+              ? `Nothing is serving ${url} — Start all first`
               : browser
-                ? `Open https://${site.domain} in ${browser.name}`
-                : `Open https://${site.domain}`
+                ? `Open ${url} in ${browser.name}`
+                : `Open ${url}`
           }
         >
         <Button
@@ -374,7 +376,7 @@ export function SiteRow({
           size="icon"
           aria-label="Open in browser"
           disabled={status !== "running" && !stoppedByUser}
-          onClick={() => void openExternal(`https://${site.domain}`).catch(toastBackendError)}
+          onClick={() => void openExternal(url).catch(toastBackendError)}
         >
           {/* Icon of the browser the click really uses — no chevron here: the
               row already reserves a fixed width for its quick actions, and a

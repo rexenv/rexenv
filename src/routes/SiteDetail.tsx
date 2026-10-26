@@ -84,14 +84,15 @@ import {
   type TerminalAsset,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
+import { useSiteUrl } from "@/lib/siteUrl";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
 /** One-click "Open admin": open a magic auto-login link for the site's primary
  *  administrator (lands on /wp-admin/). If the link can't be issued — services
  *  stopped, no admin user, tools missing — say so and fall back to the plain
  *  WordPress login page. */
-async function openWpAdmin(site: Pick<Site, "id" | "domain">) {
-  await openExternal(await magicLoginUrl(site));
+async function openWpAdmin(site: Pick<Site, "id" | "domain">, url: string) {
+  await openExternal(await magicLoginUrl(site, url));
 }
 
 /** The url "Magic Login" should open, minted per click (the token is one-time,
@@ -99,12 +100,12 @@ async function openWpAdmin(site: Pick<Site, "id" | "domain">) {
  *  beside the button so BOTH paths get the same fallback — the failure the
  *  fallback covers (services stopped, no admin user, tools missing) doesn't
  *  care which browser the user picked. */
-async function magicLoginUrl(site: Pick<Site, "id" | "domain">): Promise<string> {
+async function magicLoginUrl(site: Pick<Site, "id" | "domain">, url: string): Promise<string> {
   try {
     return await wpAdminLoginUrl(site.id);
   } catch (e) {
     toast.error(`Auto-login unavailable — opening the WordPress login page instead.\n${String(e)}`);
-    return `https://${site.domain}/wp-admin/`;
+    return `${url}/wp-admin/`;
   }
 }
 
@@ -410,16 +411,17 @@ function SiteHeader({
 }) {
   const t = siteTypeMeta(site.type);
   const words = usePlatformWords();
-  const url = `https://${site.domain}`;
+  const siteUrlOf = useSiteUrl();
+  const url = siteUrlOf(site.domain);
   // The button wears the icon of the browser the click will ACTUALLY use —
   // `PreferredBrowserIcon`, the one component every open-in-browser control shares.
   const browserMenu = useBrowserMenu(url);
-  const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
+  const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
   const [adminBusy, setAdminBusy] = useState(false);
   const onOpenAdmin = async () => {
     setAdminBusy(true);
     try {
-      await openWpAdmin(site);
+      await openWpAdmin(site, url);
     } finally {
       setAdminBusy(false);
     }
@@ -559,7 +561,8 @@ function Overview({
   onTerminal: () => void;
   onViewLogs: () => void;
 }) {
-  const url = `https://${site.domain}`;
+  const siteUrlOf = useSiteUrl();
+  const url = siteUrlOf(site.domain);
   // FrankenPHP serves every site with its EMBEDDED PHP, never the site's pool
   // — so for a FrankenPHP site the picker is read-only and the number shown is
   // the version that actually serves, not the stored one (ruled 15 Aug 2026;
@@ -582,7 +585,7 @@ function Overview({
   const terminalMenu = useTerminalMenu(site.id);
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
-  const adminMenu = useBrowserMenu(() => magicLoginUrl(site));
+  const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.name ?? site.webServer;
   // The switch offers what core would ACCEPT (the New Site dialog's rule, ledger #643): a
   // server with no pin on this OS is absent, not listed-then-refused. The site's current
@@ -734,7 +737,7 @@ function Overview({
                 icon={<WordPressIcon className="h-4 w-4" />}
                 iconColor="text-rex-accent-blue"
                 label="Magic Login"
-                onClick={() => void openWpAdmin(site)}
+                onClick={() => void openWpAdmin(site, url)}
                 menu={adminMenu}
                 menuWidth={BROWSER_MENU_WIDTH}
                 menuLabel="Sign in through another browser"
@@ -1465,6 +1468,7 @@ function EnvVarsCard({ siteId }: { siteId: string }) {
 function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void }) {
   const qc = useQueryClient();
   const words = usePlatformWords();
+  const siteUrlOf = useSiteUrl();
   const [input, setInput] = useState("");
   const [done, setDone] = useState<DomainChange | null>(null);
   const next = input.trim().toLowerCase();
@@ -1542,7 +1546,7 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 variant="primary"
-                onClick={() => void openExternal(`https://${done.site.domain}`).catch(toastBackendError)}
+                onClick={() => void openExternal(siteUrlOf(done.site.domain)).catch(toastBackendError)}
               >
                 <PreferredBrowserIcon className="h-[15px] w-[15px]" />
                 Open site

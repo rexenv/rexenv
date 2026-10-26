@@ -6,6 +6,8 @@
  * MariaDB only: phpMyAdmin has no PostgreSQL driver.
  */
 
+import { siteUrl } from "@/lib/siteUrl";
+
 /** Internal host phpMyAdmin is served on (mirrors `core::phpmyadmin::PHPMYADMIN_HOST`). */
 export const PHPMYADMIN_HOST = "phpmyadmin.rexenv.rex";
 
@@ -29,8 +31,8 @@ function phpmyadminQuery(opts: PhpMyAdminTarget): string {
 }
 
 /** phpMyAdmin deep link for an EXTERNAL browser (first-party page). */
-export function phpmyadminUrl(opts: PhpMyAdminTarget): string {
-  return `https://${PHPMYADMIN_HOST}/index.php?${phpmyadminQuery(opts)}`;
+export function phpmyadminUrl(opts: PhpMyAdminTarget, edgeHttpsPort = 443): string {
+  return `${siteUrl(PHPMYADMIN_HOST, edgeHttpsPort)}/index.php?${phpmyadminQuery(opts)}`;
 }
 
 /** phpMyAdmin src for the IN-APP `<iframe>`, through its OWN proxy origin

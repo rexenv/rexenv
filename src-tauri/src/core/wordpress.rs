@@ -2946,7 +2946,11 @@ pub fn rehome_urls_on_copy(
     from: &str,
     to: &str,
     network: bool,
+    edge_https_port: u16,
 ) -> Result<u64> {
+    // The safety net under every flow's own up-front refusal (`edge_ports::refuse_rehome_off_443`):
+    // no copy's URLs are moved onto a port this rewrite has not been proven to carry.
+    crate::core::edge_ports::refuse_rehome_off_443(edge_https_port, "Moving a copy's URLs")?;
     crate::core::database::validate_db_name(db_name)?;
     std::fs::create_dir_all(scratch_dir)?;
     let file = scratch_dir.join(".copy-db-override.php");
@@ -4326,8 +4330,9 @@ pub fn install_for_site(
     db_host: &str,
     db_client: &SqlClient,
     opts: &InstallOptions,
+    https_port: u16,
 ) -> Result<()> {
-    let r = resolve_install_options(domain, name, opts);
+    let r = resolve_install_options(domain, name, opts, https_port);
     install_wordpress(
         php_bin,
         wp_phar,
@@ -4407,10 +4412,12 @@ pub struct ResolvedInstall {
     pub locale: String,
 }
 
-pub fn resolve_install_options(domain: &str, name: &str, opts: &InstallOptions) -> ResolvedInstall {
+pub fn resolve_install_options(domain: &str, name: &str, opts: &InstallOptions, https_port: u16) -> ResolvedInstall {
     let nonempty = |s: &str| !s.trim().is_empty();
     ResolvedInstall {
-        url: format!("https://{domain}"),
+        // The port when the edge is off 443 (`core::edge_ports`): WordPress stores this as
+        // `siteurl`/`home`, and every link it prints is built from it.
+        url: crate::core::edge_ports::site_url(https_port, domain),
         title: if nonempty(&opts.title) { opts.title.trim().into() } else { name.into() },
         admin_user: if nonempty(&opts.admin_user) {
             opts.admin_user.trim().into()
@@ -4478,6 +4485,7 @@ pub fn reset_site(
     db_name: &str,
     db_client: &SqlClient,
     db_port: u16,
+    https_port: u16,
 ) -> Result<()> {
     // 1) Erase: drop the database with the bundled client (PATH-safe).
     db_client.engine().drop_database(db_client, db_port, db_name)?;
@@ -4493,7 +4501,7 @@ pub fn reset_site(
     //    wp-config creation skip (files kept), the DB is recreated, and
     //    `wp core install` runs because `is-installed` is now false.
     let db_host = format!("127.0.0.1:{db_port}");
-    let url = format!("https://{domain}");
+    let url = crate::core::edge_ports::site_url(https_port, domain);
     let admin_email = format!("admin@{domain}");
     install_wordpress(
         php_bin,

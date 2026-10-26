@@ -599,6 +599,9 @@ export interface GlobalStatus {
   ramMb: number;
   /** The machine's total RAM, MB — meter denominator only. */
   ramTotalMb: number;
+  /** The edge's HTTPS port (`core::edge_ports`, 443 unless the user moved it) — every site
+   *  address is built from it by `siteUrl` (`src/lib/siteUrl.ts`). */
+  edgeHttpsPort: number;
 }
 
 /** Honest per-site resources (mirrors the Rust SiteResources). A site is not a

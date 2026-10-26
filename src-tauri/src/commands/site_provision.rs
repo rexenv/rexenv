@@ -1418,7 +1418,12 @@ async fn drive<R: tauri::Runtime>(
             };
         let db_host = format!("127.0.0.1:{}", engine.port());
         let resolved =
-            wordpress::resolve_install_options(&site.domain, &site.name, &entry.wp_opts);
+            wordpress::resolve_install_options(
+                &site.domain,
+                &site.name,
+                &entry.wp_opts,
+                crate::commands::services::edge_ports(state.inner()).https,
+            );
 
         // ── deps (a CLONED WordPress site) ───────────────────────────────
         // Bedrock's WordPress CORE arrives here, which is why this runs before
@@ -1511,7 +1516,7 @@ async fn drive<R: tauri::Runtime>(
             };
             let wired = core::wordpress::wire_bedrock_env(
                 &original,
-                &format!("https://{}", site.domain),
+                &core::edge_ports::site_url(crate::commands::services::edge_ports(state.inner()).https, &site.domain),
                 &core::wordpress::BedrockDb {
                     name: site.db_name.clone(),
                     user: "root".into(),
@@ -1801,7 +1806,7 @@ async fn drive<R: tauri::Runtime>(
         }
         let env_file = core::laravel::env_path(&project);
         let db_settings = core::laravel::DbSettings::for_engine(engine, site.db_name.clone());
-        let app_url = format!("https://{}", site.domain);
+        let app_url = core::edge_ports::site_url(crate::commands::services::edge_ports(state.inner()).https, &site.domain);
         let catch_mail = match state.db.lock() {
             Ok(conn) => core::mail::catch_all_enabled(&conn),
             Err(_) => true,
@@ -2241,7 +2246,10 @@ async fn drive<R: tauri::Runtime>(
             // `start_stack` already awaited every backend and verified OUR edge
             // answers :443; the new site was in the config it wrote.
             finish_phase(app, entry, progress, ix, "ok", None);
-            JobEnd::Ok(format!("created — serving at https://{}", site.domain))
+            JobEnd::Ok(format!(
+                "created — serving at {}",
+                core::edge_ports::site_url(crate::commands::services::edge_ports(state.inner()).https, &site.domain)
+            ))
         }
         Some(checks) => {
             if let Err(e) = service_manager::await_ready(checks).await {
@@ -2267,7 +2275,10 @@ async fn drive<R: tauri::Runtime>(
                     site.domain
                 ));
             }
-            JobEnd::Ok(format!("created — serving at https://{}", site.domain))
+            JobEnd::Ok(format!(
+                "created — serving at {}",
+                core::edge_ports::site_url(crate::commands::services::edge_ports(state.inner()).https, &site.domain)
+            ))
         }
         None => unreachable!("a stopped stack was started above, or the job already ended"),
     }
@@ -2827,6 +2838,7 @@ async fn worktree_urls_phase<R: tauri::Runtime>(
                 &from,
                 &to,
                 network,
+                crate::commands::services::edge_ports(st.inner()).https,
             )
         })
         .await;

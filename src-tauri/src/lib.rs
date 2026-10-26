@@ -2591,7 +2591,8 @@ fn on_tray_click(app: &tauri::AppHandle, id: &str) {
             // applied in ONE place for all dozen call sites, and a tray that
             // opened LaunchServices directly would be the thirteenth that
             // forgot.
-            if let Err(e) = commands::system::open_external(state, format!("https://{domain}")) {
+            let url = core::edge_ports::site_url(commands::services::edge_ports(state.inner()).https, &domain);
+            if let Err(e) = commands::system::open_external(state, url) {
                 log::warn!("tray: could not open {domain}: {e}");
             }
         }

@@ -307,6 +307,8 @@ pub async fn live_sync_pull<R: tauri::Runtime>(
     full: Option<bool>,
     anonymise: Option<bool>,
 ) -> Result<LiveSyncJobState> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "A live-site pull")?;
     let site = wordpress_site(&state, &site_id)?;
     if !site.provisioned {
         return Err(Error::Other(format!("{} has not finished setting up — Retry it first.", site.domain)));
@@ -580,6 +582,7 @@ impl LocalTools {
             php: &self.php,
             wp_phar: &self.wp_phar,
             scratch: &self.scratch,
+            edge_https_port: crate::commands::services::edge_ports(state).https,
         }
     }
 }
@@ -720,6 +723,8 @@ pub async fn live_sync_push<R: tauri::Runtime>(
     override_items: Vec<String>,
     skip_items: Option<Vec<String>>,
 ) -> Result<LiveSyncJobState> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "A push to the live site")?;
     let site = wordpress_site(&state, &site_id)?;
     if !site.provisioned {
         return Err(Error::Other(format!("{} has not finished setting up — Retry it first.", site.domain)));
@@ -942,6 +947,8 @@ pub async fn live_sync_create_from_live<R: tauri::Runtime>(
     php_version: Option<String>,
     web_server: crate::state::models::WebServer,
 ) -> Result<crate::commands::site_provision::SiteProvisionState> {
+    // Off 443 a URL move is not proven yet (docs/PLAN-headless-web.md T2) — refused before any work.
+    crate::core::edge_ports::refuse_rehome_off_443(crate::commands::services::edge_ports(&state).https, "A new site from a live site")?;
     let (pairing_key, auth, client) = client_from(&key, basic_auth_user, basic_auth_password)?;
     let m = client.manifest().await?;
     // A network is copied too (S5, 16 Oct 2026): the pull writes its constants and the

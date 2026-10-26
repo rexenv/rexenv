@@ -108,6 +108,7 @@ async fn main() -> std::process::ExitCode {
         &format!("127.0.0.1:{}", rexenv_lib::core::db::DbEngine::Mysql.port()),
         &db_client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     )
     .expect("install wordpress");
     println!("✓ stack up + WordPress DB `{db_name}` installed (has wp_* tables)");

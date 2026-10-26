@@ -116,6 +116,7 @@ async fn main() {
             admin_email: "owner@wpcreate.test".into(),
             ..Default::default() // title→name, language→en_US
         },
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     )
     .expect("install_for_site");
 

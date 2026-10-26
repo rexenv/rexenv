@@ -173,7 +173,7 @@ const WP_DB_ERROR_MARKER: &str = "Error establishing a database connection";
 /// "not connected" — and the caller's only use for it is
 /// [`Verified::with_http_confirmed`], which needs a sign-in proof first.
 pub async fn probe_http(domain: &str, edge_https_port: u16) -> bool {
-    let url = format!("https://{domain}/");
+    let url = format!("{}/", crate::core::edge_ports::site_url(edge_https_port, domain));
     let Ok(client) = reqwest::Client::builder()
         // Our local-CA leaf won't chain for reqwest's store; this is a
         // loopback request to our own edge, pinned by .resolve().

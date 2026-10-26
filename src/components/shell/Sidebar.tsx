@@ -21,6 +21,7 @@ const ZERO_STATUS: GlobalStatus = {
   cpuCores: 0,
   ramMb: 0,
   ramTotalMb: 0,
+  edgeHttpsPort: 443,
 };
 
 /** A nav badge value: shown only when the count is > 0 (a nav full of "0"s is noise). */

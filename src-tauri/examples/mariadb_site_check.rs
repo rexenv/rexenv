@@ -87,6 +87,7 @@ async fn main() {
         &db_host,
         &client,
         &Default::default(),
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
     );
     println!("  install → {:?}", install.as_ref().map(|_| "ok").map_err(|e| e.to_string()));
     ok &= install.is_ok();
@@ -123,6 +124,7 @@ async fn main() {
             DB,
             &client,
             engine.port(),
+            rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
         );
         let (rok, _) = wp(&php_bin, &phar, &docroot, &["core", "is-installed"]);
         println!("  reset → {:?} · is-installed after = {rok}", reset.as_ref().map(|_| "ok").map_err(|e| e.to_string()));
