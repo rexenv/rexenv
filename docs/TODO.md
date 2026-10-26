@@ -546,7 +546,13 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   terminal with the card's own sentences (the paragraph moved into Rust, `mcp_server::ENABLE_CONSENT`),
   and writes as the user from a forked child — `rex config` still refuses both (#920; run in the cloud
   container only). **Open in T3: the VM run** — the endpoint opening at relaunch and an MCP client's
-  scratch create → plugin → delete over `rex mcp`. Owner ask 26 Oct 2026: install rexenv
+  scratch create → plugin → delete over `rex mcp`. **T4's unit built 26 Oct 2026**: the setup writes
+  and enables `rexenv-headless.service` (`KillMode=process`, the user's runtime dir) and lingering
+  (#921), INSTALL § Linux "Server (headless)"; **open in T4: the VM boot run (SMOKE "At boot"), the
+  deb's post-install note, and a FRESH server** — the edge install, the `.rex` route and the CA
+  trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
+  only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
+  to do them. Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
   offered to test a build. A public bind and real site domains are later phases. Nothing built.

@@ -588,6 +588,59 @@ checking its version. A `cargo` build reads no update descriptor. With the apt r
 configured, `sudo apt upgrade` updates rexenv too — the same package the in-app update installs,
 so the two never disagree about what is on the machine.
 
+### Server (headless) — no desktop, driven by `rex` and `rex mcp`
+
+> **Built 26 Oct 2026, not yet released** (`docs/PLAN-headless-web.md` T1–T4). The pieces were run
+> on an Ubuntu 22.04 VM over SSH (`--headless`, the passwordless edge rule) and in a cloud container
+> (the setup's consent questions); the boot service below has NOT been run on a real server yet.
+
+For a server or CI box with no display — e.g. automated PR QA. rexenv runs the whole app off-screen
+(its own Xvfb) as an ordinary account, and you drive it with `rex` and an MCP agent over `rex mcp`.
+
+1. Install the `.deb` from the apt repository above, plus Xvfb:
+   ```sh
+   sudo apt-get install rexenv xvfb xauth
+   ```
+2. As the account rexenv should run as (not root), run the one administrator step:
+   ```sh
+   sudo rexenv --headless-setup
+   ```
+   It does four things, and asks before any of them when it is run in a terminal:
+   - **asks two questions** — whether to turn the MCP endpoint on (it prints the same paragraph the
+     Settings card shows before that toggle) and, if yes, the Agent access level (`read`, `changes`
+     or `full`, each with the card's sentence for it). Enter answers "off" / "read". A level above
+     read stays until you change it.
+   - writes `/etc/sudoers.d/rexenv-headless`: your account may run exactly three commands as root
+     without a password — `systemctl enable`, `restart` and `disable --now` of rexenv's edge unit.
+     Nothing else. (Anything else privileged — a new DNS route, a certificate — is refused with a
+     sentence naming this command.)
+   - writes and enables `/etc/systemd/system/rexenv-headless.service` — `rexenv --headless` as your
+     account at every boot, restarted if it crashes. Stopping or restarting it ends the app only:
+     MySQL, PHP and the web server keep running and the next start adopts them.
+   - turns on lingering for your account (`loginctl enable-linger`), so your own systemd — where
+     rexenv's DNS resolver runs — is up at boot with no one logged in.
+
+   For an unattended install, type the answers as flags — typed by an administrator, they ARE the
+   consent: `sudo rexenv --headless-setup --user ci --enable-mcp --agent-access changes`. With no
+   flags and no terminal (a script), both stay as they were (off, read). `rex config` cannot change
+   either setting; re-run the setup (e.g. `--agent-access read`) to change them.
+3. Start it (or reboot): `sudo systemctl start rexenv-headless.service`. Then, as that account:
+   `rex status`, `rex site create demo.rex --type wordpress`, and for an agent
+   `claude mcp add rexenv -- rex mcp`.
+
+**Not yet on a server where rexenv's system setup never ran:** the root edge on :80/:443, the
+`.rex` DNS route and the local CA's trust are administrator steps, and a headless instance runs
+none of them except the edge's start/stop (there is no one to ask for a password). Until the setup
+does them (`docs/TODO.md`), put the edge on unprivileged ports before the first site — `rex config
+set edge_http_port 8080` and `rex config set edge_https_port 8443`, which needs no root at all —
+and expect `.rex` names to resolve only where rexenv's own route exists.
+
+Sites are reached from the server itself (`curl https://demo.rex`) or through an SSH tunnel; a
+public address is a later phase. To undo: `sudo systemctl disable --now rexenv-headless.service`,
+`sudo rm /etc/systemd/system/rexenv-headless.service /etc/sudoers.d/rexenv-headless`,
+`sudo loginctl disable-linger <account>`. macOS and Windows have no headless mode yet
+(`--headless` and `--headless-setup` say so).
+
 ### Not in Linux v1
 
 Redis, MariaDB, Apache, Xdebug (Homebrew's Linux bottles are x86_64-only and unrelinked).

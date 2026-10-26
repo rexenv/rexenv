@@ -2394,6 +2394,14 @@ words (the browser shell's mock and two dev review pages excepted).
   from the root setup that has dropped to the user's groups/gid/uid first — the database stays the
   user's, a link planted in their data folder is not followed as root — and there is no argv mode
   for "just write it", because anything the user's processes can run, an agent can (ledger #920).
+  **At boot (T4).** The same setup writes and enables `/etc/systemd/system/rexenv-headless.service`
+  (`User=<account>`, `ExecStart=/usr/bin/rexenv --headless`, `Restart=on-failure`) and turns on
+  lingering for the account. Two lines carry the project's rules into systemd: `KillMode=process`,
+  because the default kills the whole cgroup — every MySQL, PHP-FPM and Nginx rexenv started — on a
+  stop or a crash-restart, and services outlive the app; and `XDG_RUNTIME_DIR=/run/user/<uid>` with
+  `After=user@<uid>.service`, because the DNS agent is a USER unit and a system service has no path
+  to the user's manager otherwise (ledger #921). A running service is restarted when the setup
+  changed a consent, since the endpoint's setting is read at launch.
 
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 

@@ -4387,6 +4387,16 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
   ◐ 26 Oct 2026 — the setup half only, in the cloud session's container (Ubuntu 24.04, no systemd,
   debug build): flags, pty answers, ownership, a planted link refused. The relaunch and the MCP run
   are owed on the VM.
+- [ ] **At boot (T4, ledger #921).** After the setup: `systemctl cat rexenv-headless.service` shows
+  `User=<account>` and `KillMode=process`; `loginctl show-user <account> -p Linger` says `yes`.
+  `sudo reboot`, then log in over SSH WITHOUT starting anything: `rex status` answers, the services
+  are up, `systemctl --user status rexenv-dns.service` (as the account) is active, a `.rex` site
+  answers `curl`. `sudo systemctl restart rexenv-headless.service`: mysqld's pid is unchanged
+  (the stack outlived the app). `sudo kill -9` the app's pid: systemd starts it again within ~5 s.
+  A second `rexenv --headless` by hand hands off and the unit stays active. Without the `.deb`
+  (an AppImage only) the setup refuses before changing anything.
+  ◐ 26 Oct 2026 — the unit text and the setup's refusals only (L0; the cloud container has no
+  systemd). Everything above is owed on the VM.
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 

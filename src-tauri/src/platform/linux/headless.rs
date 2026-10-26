@@ -224,6 +224,12 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
     let contents = rules::sudoers_contents(&user)
         .ok_or_else(|| Error::Other(format!("{user:?} is not a user name rexenv will write into sudoers")))?;
     let account = account(&user)?;
+    // Everything that can refuse, refuses before the first change.
+    if !Path::new(rules::REXENV_BIN).is_file() {
+        return Err(Error::Other(rules::NEEDS_DEB.into()));
+    }
+    let unit = rules::service_unit(&user, account.uid)
+        .ok_or_else(|| Error::Other(format!("{user:?} is not a user name rexenv will write into a unit")))?;
     // Typed consent wins; with none, ask — and with no terminal to ask in, change neither.
     // SAFETY: a plain syscall on fd 0.
     let consent = if !args.consent.is_empty() {
@@ -248,12 +254,46 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
         "✓ {user} may now start and stop rexenv's edge without a password ({}). Nothing else was granted.",
         rules::SUDOERS_PATH
     )];
+    // The boot service (T4): staged, renamed into place, loaded, enabled — and the user's own
+    // systemd kept running with no login, for the DNS agent's user unit.
+    std::fs::write(rules::SERVICE_STAGING, unit)?;
+    std::fs::set_permissions(rules::SERVICE_STAGING, std::fs::Permissions::from_mode(0o644))?;
+    std::fs::rename(rules::SERVICE_STAGING, rules::SERVICE_PATH)?;
+    for argv in rules::install_commands(&user) {
+        run_root(&argv)?;
+    }
+    said.push(format!(
+        "✓ {} starts rexenv headless as {user} at every boot, with no one logged in (lingering on for {user}).",
+        rules::SERVICE_PATH
+    ));
     if consent.is_empty() {
         said.push(rules::CONSENT_UNCHANGED.into());
     } else {
         said.extend(write_as_user(&account, &consent)?.into_iter().map(|l| format!("✓ {l}")));
     }
+    // A running service reads the endpoint's setting at launch: restart it so the consent applies.
+    // `KillMode=process` — only the app restarts; the stack it started keeps running and is adopted.
+    let active = crate::platform::command(rules::SYSTEMCTL).args(["is-active", "--quiet", rules::SERVICE_UNIT]).status()?.success();
+    if active && !consent.is_empty() {
+        run_root(&[rules::SYSTEMCTL.into(), "restart".into(), rules::SERVICE_UNIT.into()])?;
+        said.push("✓ restarted rexenv-headless.service so the settings apply.".into());
+    } else if !active {
+        said.push(format!(
+            "Start it now (stop any rexenv you started by hand first — a second one hands off and exits):\n$ sudo systemctl start {}",
+            rules::SERVICE_UNIT
+        ));
+    }
     Ok(said)
+}
+
+/// One of the setup's own root commands (absolute argv from `headless_rules`), failing the setup
+/// with its output when it fails.
+fn run_root(argv: &[String]) -> Result<()> {
+    let out = crate::platform::command(&argv[0]).args(&argv[1..]).output()?;
+    if !out.status.success() {
+        return Err(Error::Other(format!("`{}` failed: {}", argv.join(" "), String::from_utf8_lossy(&out.stderr).trim())));
+    }
+    Ok(())
 }
 
 /// Write the consent into `account`'s own database, as that account: a forked child drops to its

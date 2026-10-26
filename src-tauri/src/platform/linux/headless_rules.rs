@@ -35,6 +35,19 @@ pub(crate) const SYNC: &str = "/bin/sync";
 pub(crate) const XVFB: &str = "/usr/bin/Xvfb";
 pub(crate) const XAUTH: &str = "/usr/bin/xauth";
 
+/// The system unit that runs rexenv headless at boot (T4), written by the setup.
+pub(crate) const SERVICE_UNIT: &str = "rexenv-headless.service";
+pub(crate) const SERVICE_PATH: &str = "/etc/systemd/system/rexenv-headless.service";
+/// Staged beside it and renamed into place, so a crash never leaves half a unit systemd would load.
+/// A dot-file: systemd loads only names ending in a unit suffix.
+pub(crate) const SERVICE_STAGING: &str = "/etc/systemd/system/.rexenv-headless.service.new";
+/// The deb's binary — the one path the unit can name. An AppImage moves with its file, and a unit
+/// pointing at a Downloads folder would break on the next update, so the setup asks for the deb.
+pub(crate) const REXENV_BIN: &str = "/usr/bin/rexenv";
+pub(crate) const LOGINCTL: &str = "/usr/bin/loginctl";
+pub(crate) const NEEDS_DEB: &str = "the headless service runs the installed package's /usr/bin/rexenv, which \
+is not here. Install the .deb (the apt repository in docs/INSTALL.md), then re-run:\n$ sudo rexenv --headless-setup";
+
 /// The virtual screen's size. The window is never shown; the size only has to fit its minimum.
 pub(crate) const SCREEN: &str = "1280x800x24";
 /// The display numbers tried, first free one wins — 99 and up, where `xvfb-run` starts too.
@@ -126,6 +139,55 @@ pub(crate) fn sudo_refusal(stderr: &str) -> String {
     } else {
         format!("the edge's root command failed: {}", stderr.trim())
     }
+}
+
+/// `rexenv-headless.service` for `user` (uid `uid`): rexenv at boot, as that user, with no one
+/// logged in. `None` for a user name `valid_user` refuses — the name is written into the unit.
+///
+/// - `KillMode=process`: a stop or a crash-restart ends the APP only. With systemd's default
+///   (`control-group`) every service rexenv started — MySQL, PHP-FPM, Nginx, all in this unit's
+///   cgroup — would die with it, and services outliving the app is a rule of this project; the
+///   next start adopts them (`adopt_startup`). Xvfb still dies with the app (`PR_SET_PDEATHSIG`).
+/// - `XDG_RUNTIME_DIR` + `Wants=`/`After=user@<uid>.service`: rexenv installs and restarts its DNS
+///   agent as a USER unit (`systemctl --user`), which reaches the user's manager through
+///   `/run/user/<uid>`. A system service gets no such variable, and the manager runs at boot only
+///   with lingering on (`linger_argv`, written by the same setup).
+/// - `Restart=on-failure`: a clean exit — a second launch handing off to one already running —
+///   is not restarted into a loop.
+pub(crate) fn service_unit(user: &str, uid: u32) -> Option<String> {
+    if !valid_user(user) {
+        return None;
+    }
+    Some(format!(
+        "# Written by `sudo rexenv --headless-setup`: rexenv on this server, headless, as {user}.\n\
+         [Unit]\n\
+         Description=rexenv (headless, driven by rex and rex mcp)\n\
+         Wants=network-online.target user@{uid}.service\n\
+         After=network-online.target user@{uid}.service\n\
+         \n\
+         [Service]\n\
+         Type=simple\n\
+         User={user}\n\
+         WorkingDirectory=~\n\
+         Environment=XDG_RUNTIME_DIR=/run/user/{uid}\n\
+         ExecStart={REXENV_BIN} {HEADLESS_FLAG}\n\
+         Restart=on-failure\n\
+         RestartSec=5\n\
+         KillMode=process\n\
+         \n\
+         [Install]\n\
+         WantedBy=multi-user.target\n"
+    ))
+}
+
+/// The root commands the setup runs after writing the unit, in order: load it, enable it at boot,
+/// and keep `user`'s own systemd running with no login (the DNS agent's user unit lives there).
+pub(crate) fn install_commands(user: &str) -> [Vec<String>; 3] {
+    [
+        vec![SYSTEMCTL.into(), "daemon-reload".into()],
+        vec![SYSTEMCTL.into(), "enable".into(), SERVICE_UNIT.into()],
+        vec![LOGINCTL.into(), "enable-linger".into(), user.into()],
+    ]
 }
 
 /// What `sudo rexenv --headless-setup …` was asked to do: the account, and what the administrator
@@ -306,6 +368,41 @@ mod tests {
         ] {
             assert!(a(bad).is_err(), "{bad:?} must be refused before any change");
         }
+    }
+
+    #[test]
+    fn the_service_runs_rexenv_headless_as_the_user_and_never_takes_the_stack_down() {
+        let unit = service_unit("ci", 1001).expect("a valid user");
+        let line = |k: &str| unit.lines().find(|l| l.starts_with(k)).unwrap_or_else(|| panic!("no {k} in\n{unit}"));
+        assert_eq!(line("User="), "User=ci");
+        assert_eq!(line("ExecStart="), format!("ExecStart=/usr/bin/rexenv {HEADLESS_FLAG}"));
+        assert_eq!(HEADLESS_FLAG, crate::HEADLESS_FLAG, "the unit must start the flag the app reads");
+        assert_eq!(line("Restart="), "Restart=on-failure");
+        // The stack outlives the app: only the main process is killed on stop or restart.
+        assert_eq!(line("KillMode="), "KillMode=process");
+        // The DNS agent's user manager: reachable, and up before the app.
+        assert_eq!(line("Environment=XDG_RUNTIME_DIR="), "Environment=XDG_RUNTIME_DIR=/run/user/1001");
+        assert!(line("After=").contains("user@1001.service") && line("Wants=").contains("user@1001.service"));
+        assert_eq!(line("WantedBy="), "WantedBy=multi-user.target");
+        assert!(!unit.contains("User=root"));
+        for bad in ["root\nExecStartPre=/bin/sh", "a b", "", "Dev"] {
+            assert_eq!(service_unit(bad, 1001), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn the_setup_enables_the_unit_and_lingers_with_absolute_paths() {
+        let [reload, enable, linger] = install_commands("ci");
+        assert_eq!(reload, [SYSTEMCTL, "daemon-reload"]);
+        assert_eq!(enable, [SYSTEMCTL, "enable", SERVICE_UNIT]);
+        assert_eq!(linger, [LOGINCTL, "enable-linger", "ci"]);
+        assert!(SERVICE_PATH.ends_with(SERVICE_UNIT) && SERVICE_STAGING.starts_with("/etc/systemd/system/."));
+        // The setup writes the unit through the staging file and runs exactly these commands.
+        let door = include_str!("headless.rs");
+        let setup = &door[door.find("fn setup(argv: &[String])").expect("the setup")..];
+        assert!(setup.contains("rules::service_unit(&user, account.uid)"));
+        assert!(setup.contains("std::fs::rename(rules::SERVICE_STAGING, rules::SERVICE_PATH)?;"));
+        assert!(setup.contains("for argv in rules::install_commands(&user) {"));
     }
 
     #[test]

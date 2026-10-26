@@ -86,7 +86,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
   ids and the `Icon=` → theme-file rules, #887), `trust.rs`, `app_bundle_rules.rs` — mounted as
   `platform::linux_pure` in every non-Linux test build (ledger #716–#719), and `headless_rules.rs` (the
   Xvfb argv, the passwordless closed set + the sudoers rule built from it, #911) beside its runner
-  `headless.rs` (`--headless` → rexenv's own Xvfb; `--headless-setup`, which also writes D7's two consents as the user through `core/headless_consent.rs`, #920; `docs/PLAN-headless-web.md`); `parent_death_guard.rs`
+  `headless.rs` (`--headless` → rexenv's own Xvfb; `--headless-setup`, which also writes D7's two consents as the user through `core/headless_consent.rs`, #920, and the boot unit `rexenv-headless.service` + lingering, #921; `docs/PLAN-headless-web.md`); `parent_death_guard.rs`
   the pidfd tunnel guard (`--tunnel-guard`, #722); the polkit step `--privileged-step` +
   `src-tauri/linux/dev.rexenv.rexenv.policy` (#723), and the in-app update's own door —
   `src-tauri/linux/rexenv-privileged-update` under the policy's second action (#747));
