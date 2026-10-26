@@ -535,8 +535,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   "Headless on a server"). **T2 S1 built 26 Oct 2026** (D6 ruled the same day): `edge_http_port` /
   `edge_https_port` / `edge_bind` as gated settings, the manager and every runtime edge check on them
   (#914, #915); **S2 built the same day** — one `site_url` per side, WordPress/login/Bedrock/Laravel
-  carry the port, the URL-rewriting flows refuse off 443 (#916, #917); S3 (edge-kind transitions) and
-  S4 (the Settings control, Onboarding's sentence, the VM/macOS/Windows runs) open. Owner ask 26 Oct 2026: install rexenv
+  carry the port, the URL-rewriting flows refuse off 443 (#916, #917); **S3 the same day** — an
+  installed root edge stays the edge on any port (#918); S4 (the Settings control, Onboarding's
+  sentence, the VM/macOS/Windows runs) open. Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
   offered to test a build. A public bind and real site domains are later phases. Nothing built.

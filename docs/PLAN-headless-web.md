@@ -330,8 +330,10 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
     on a non-443 port is refused with a sentence, never created broken.
 
   Slices, one commit each (**S1 ✓ 26 Oct 2026**, ledger #914/#915; **S2 ✓ the same day**, #916/#917,
-  with the URL-rewriting flows REFUSED off 443 as a first-version limit — L0 + plants, no live edge
-  yet): **S1** the three settings (`edge_http_port`, `edge_https_port`,
+  with the URL-rewriting flows REFUSED off 443 as a first-version limit; **S3 ✓ the same day**, #918 —
+  most transitions already held through reload + `recover_stale_edge`; the one that did not was an
+  installed-but-stopped daemon beside a child on 8443, fixed by keeping an installed daemon the edge
+  on any port — L0 + plants, no live edge yet): **S1** the three settings (`edge_http_port`, `edge_https_port`,
   `edge_bind`) as gated keys with validating setters (range, distinct, not a port rexenv already
   uses, refused while any site exists), `Ports` and the bind filled from them at launch (before
   adoption) and at every Start all, and the runtime readers above switched to the configured port.

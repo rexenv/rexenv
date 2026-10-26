@@ -78,6 +78,13 @@ pub struct ServiceInfo {
     pub optional: bool,
 }
 
+/// Whether the edge starts as the ROOT unit (`start_edge_daemon`) rather than the user-level child:
+/// when the port needs privilege, or when a root edge is already installed — it stays the edge on
+/// any port (ledger #918, see `prepare_edge`).
+pub(crate) fn root_edge(port_needs_privilege: bool, daemon_installed: bool) -> bool {
+    port_needs_privilege || daemon_installed
+}
+
 /// A prepared Caddy-edge start the caller runs OUTSIDE the services lock (the
 /// privileged start blocks on an admin-password prompt).
 pub struct EdgePlan {
@@ -970,7 +977,16 @@ impl ServiceManager {
         }
         Ok(Some(EdgePlan {
             // The OS answers, not the Unix rule: Windows binds :443 unprivileged (ledger #611).
-            privileged: platform.privileges().port_needs_privilege(self.ports.https),
+            // And an INSTALLED root edge stays the edge whatever the port (ledger #918): the port is
+            // a setting now, and a child started on an unprivileged one beside an installed daemon
+            // would be adopted as that daemon after a relaunch — a Stop all would then stop the
+            // daemon and leave the child serving. Root binds any port, so the daemon simply takes
+            // the new one; the child edge is for a machine with no root edge at all (Windows, or a
+            // server set to 8443 before its first start).
+            privileged: root_edge(
+                platform.privileges().port_needs_privilege(self.ports.https),
+                platform.edge().is_installed(),
+            ),
             caddy_bin,
             caddyfile,
             http_port: self.ports.http,
@@ -3959,19 +3975,26 @@ mod tests {
     /// hard-coded `< 1024` sent its start down the privileged (LaunchDaemon) path it has none of.
     #[test]
     fn prepare_edge_asks_the_platform_whether_the_https_port_is_privileged() {
-        for (name, privileges, expect) in [
-            ("unix-rule", Box::new(UnixPortRule) as Box<dyn PrivilegeManager>, true),
-            ("no-privileged-ports", Box::new(NoPrivilegedPorts), false),
+        // The decision (#918): the port's privilege, or an installed root edge — which stays the edge
+        // on any port, the port being a setting now.
+        assert!(root_edge(true, false), ":443 on Unix, no daemon yet → the root unit");
+        assert!(!root_edge(false, false), "an unprivileged port with no root edge → the child edge");
+        assert!(root_edge(false, true), "an installed root edge stays the edge on :8443");
+        // …and `prepare_edge` asks it (installed, so the port gate's supervisor stays unasked here).
+        for (name, privileges, installed, https, expect) in [
+            ("unix-443-daemon", Box::new(UnixPortRule) as Box<dyn PrivilegeManager>, true, 443, true),
+            ("unix-8443-daemon", Box::new(UnixPortRule), true, 8443, true),
+            ("no-privileged-ports-daemon", Box::new(NoPrivilegedPorts), true, 443, true),
         ] {
-            let mut platform = edge_test_platform(name, true, true);
+            let mut platform = edge_test_platform(name, installed, true);
             platform.privileges = privileges;
-            let mut mgr = ServiceManager::with_ports(Ports::default());
+            let mut mgr = ServiceManager::with_ports(Ports { https, ..Ports::default() });
             mgr.set_bins_for_tests(PathBuf::from("/nonexistent/caddy"));
             let plan = mgr
                 .prepare_edge(&platform, PathBuf::from("/nonexistent/Caddyfile"))
                 .expect("prepare_edge")
                 .expect("nothing is running, so a start plan");
-            assert_eq!(plan.privileged, expect, "{name}: :443 privileged");
+            assert_eq!(plan.privileged, expect, "{name}: privileged");
         }
     }
 
