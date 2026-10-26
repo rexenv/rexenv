@@ -4413,6 +4413,10 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
   rexenv-headless`, `rex site create demo.rex --type wordpress`, then a plain `curl https://demo.rex/`
   (no `-k`, no `--resolve`) → 200 and `http://` → 308.
   ✓ 26 Oct 2026 (the 22.04 arm64 VM, fresh account `t4`, the VM's own rexenv state parked and restored).
+  ✓ 27 Oct 2026 on a real **Ubuntu 24.04.5 server** VM (`rexenv-vps`, no desktop) from a bare box by
+  INSTALL.md's steps: apt repo → `rexenv xvfb xauth` → the setup with `--enable-mcp --agent-access read`
+  → service → `demo.rex` 200 over plain `curl` → the `rex mcp` scratch loop → a reboot with no login,
+  everything back and 200.
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 

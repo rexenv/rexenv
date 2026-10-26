@@ -591,9 +591,10 @@ so the two never disagree about what is on the machine.
 ### Server (headless) — no desktop, driven by `rex` and `rex mcp`
 
 > **Built 26 Oct 2026, not yet released** (`docs/PLAN-headless-web.md` T1–T4). Run on an Ubuntu
-> 22.04 VM over SSH: on an account whose desktop setup had run, and on a FRESH account on a machine
-> with no rexenv system changes at all (the setup then made the `.rex` route, the CA's trust and the
-> root edge), plus the boot service across reboots with no one logged in.
+> 22.04 VM over SSH (an account whose desktop setup had run, and a FRESH account on a machine with no
+> rexenv system changes), and end to end on a real **Ubuntu 24.04 server** (cloud image, no desktop):
+> exactly the steps below from a bare box, a site over plain `curl` with real DNS and trust, an MCP
+> agent's scratch-site loop, and a reboot that brought everything back with no one logged in.
 
 For a server or CI box with no display — e.g. automated PR QA. rexenv runs the whole app off-screen
 (its own Xvfb) as an ordinary account, and you drive it with `rex` and an MCP agent over `rex mcp`.
