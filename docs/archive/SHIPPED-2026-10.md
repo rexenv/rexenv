@@ -2466,3 +2466,33 @@ the first and exits) — its box stayed `[ ]` under a struck-through title, tick
   (not auto-activated — activation runs the package's own hook, often what is under test); L0
   `an_added_package_is_said_to_be_inactive_with_the_command_that_activates_it`, ledger #217.
 
+
+## Reconcile of 27 Oct 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Site page: the Web server select runs out of its card, under the SSL card** (issue #8, 0.9.2 on macOS,
+  27 Oct 2026) ✓ 27 Oct 2026 — a native select is as wide as its longest option, and the list carried
+  "OpenLiteSpeed (.htaccess + LSCache)"; the 16 Oct fix (`min-w-0 max-w-full`) relied on the engine shrinking it,
+  which the reporter's WKWebView did not. The options are the short names now and the .htaccess words a note under
+  the select (ledger #924): L2 `wk-checks/serverselect.js` measures the width the select ASKS for — red on the old
+  list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
+  select). Windows (the Dell, WebView2) and Linux (the Ubuntu VM, WebKitGTK) runs ✓ the same day. Owed: SMOKE
+  "Web server select" on the reporter's Mac — macOS Tahoe 26.5.1 (their answer); this Mac is 26.7.1 and the
+  bug never reproduced on it, so only the reporter's machine (or another 26.5) can close it.
+
+- [x] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
+  (WebView2, ~945 px window, `smoke1w`), 27 Oct 2026 ✓ 27 Oct 2026 — nothing in the title block could shrink, so a
+  name with no break pushed the pill into the actions (a name with one wrapped instead). The row wraps now: the
+  title asks for 18rem and the actions go below when both cannot fit; the name is one line, cut and titled only
+  when longer than a row (ledger #925). The first fix (truncate only, d141ec78) passed WebKit at 980 and cut
+  `smoke1w` to "S" on the Dell. L2 `wk-checks/detailheader.js` at 940/980/1180, red on both earlier layouts.
+  The Dell (WebView2) and Ubuntu VM (WebKitGTK) runs ✓ the same day.
+
+- [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
+  (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says
+  `wse-dev.local`, the database says `http://localhost:10031`, and the URL pass moved only the registry's name. It now
+  reads the copy's `home`/`siteurl` first and moves that origin too (`core::wordpress::served_origin_pairs`, ledger
+  #573): L0 ×2 plant-proven, L1 `local_import_check` green with the user's sentence as its plant. Owed: PUBLISH-TESTING
+  §N18 against Local itself.
+

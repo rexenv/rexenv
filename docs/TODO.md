@@ -6,6 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 27 Oct 2026, before 0.9.4** (HEAD `b20b0e85`): 3 ticked blocks moved (Now — the Local localhost-router
+import, issue #8's Web server select, the Site header overlap). Mechanical pass only: the judgement pass ran hours
+earlier for 0.9.3 and nothing since touched an open row. Open after the pass: 37 rows.
+
 **Reconciled 27 Oct 2026, before 0.9.3** (HEAD `fb6afd95`): 1 ticked block moved (Phase 4+ —
 `scratch_add_package`'s reply, #217). The headless plan stays in flight (`docs/PLAN-headless-web.md`: Phase 1a done,
 Phase 1b and T5 open). Shapes 1–4: 0 new. Open after the pass: 37 rows.
@@ -132,30 +136,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   open decision in it. A row is open for ONE reason; say it in the first line.
 
 ## Now — actionable code/test work
-
-- [x] **Site page: the Web server select runs out of its card, under the SSL card** (issue #8, 0.9.2 on macOS,
-  27 Oct 2026) ✓ 27 Oct 2026 — a native select is as wide as its longest option, and the list carried
-  "OpenLiteSpeed (.htaccess + LSCache)"; the 16 Oct fix (`min-w-0 max-w-full`) relied on the engine shrinking it,
-  which the reporter's WKWebView did not. The options are the short names now and the .htaccess words a note under
-  the select (ledger #924): L2 `wk-checks/serverselect.js` measures the width the select ASKS for — red on the old
-  list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
-  select). Windows (the Dell, WebView2) and Linux (the Ubuntu VM, WebKitGTK) runs ✓ the same day. Owed: SMOKE
-  "Web server select" on the reporter's Mac — macOS Tahoe 26.5.1 (their answer); this Mac is 26.7.1 and the
-  bug never reproduced on it, so only the reporter's machine (or another 26.5) can close it.
-- [x] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
-  (WebView2, ~945 px window, `smoke1w`), 27 Oct 2026 ✓ 27 Oct 2026 — nothing in the title block could shrink, so a
-  name with no break pushed the pill into the actions (a name with one wrapped instead). The row wraps now: the
-  title asks for 18rem and the actions go below when both cannot fit; the name is one line, cut and titled only
-  when longer than a row (ledger #925). The first fix (truncate only, d141ec78) passed WebKit at 980 and cut
-  `smoke1w` to "S" on the Dell. L2 `wk-checks/detailheader.js` at 940/980/1180, red on both earlier layouts.
-  The Dell (WebView2) and Ubuntu VM (WebKitGTK) runs ✓ the same day.
-
-- [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
-  (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says
-  `wse-dev.local`, the database says `http://localhost:10031`, and the URL pass moved only the registry's name. It now
-  reads the copy's `home`/`siteurl` first and moves that origin too (`core::wordpress::served_origin_pairs`, ledger
-  #573): L0 ×2 plant-proven, L1 `local_import_check` green with the user's sentence as its plant. Owed: PUBLISH-TESTING
-  §N18 against Local itself.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
