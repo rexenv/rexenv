@@ -590,7 +590,8 @@ so the two never disagree about what is on the machine.
 
 ### Server (headless) — no desktop, driven by `rex` and `rex mcp`
 
-> **Built 26 Oct 2026, not yet released** (`docs/PLAN-headless-web.md` T1–T4). Run on an Ubuntu
+> **Shipped in 0.9.3, 27 Oct 2026** (`docs/PLAN-headless-web.md` T1–T4; this note said "not yet released"
+> until the 0.9.4 website sync found it). Run on an Ubuntu
 > 22.04 VM over SSH (an account whose desktop setup had run, and a FRESH account on a machine with no
 > rexenv system changes), and end to end on a real **Ubuntu 24.04 server** (cloud image, no desktop):
 > exactly the steps below from a bare box, a site over plain `curl` with real DNS and trust, an MCP
