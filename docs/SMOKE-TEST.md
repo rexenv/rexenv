@@ -872,7 +872,16 @@ the bug — the reporter's did — so this row is the real webview on each OS.
   `smoke1w.rex` switched to Apache → the confirm read `Apache (.htaccess)`, the card *Reads
   .htaccess*, then switched back to Nginx. 0.9.3 itself never overflowed there either: Windows
   has no OpenLiteSpeed option, so the longest was `Apache (.htaccess)`.
-  Open on macOS (the reporter's Mac, 0.9.2 had it) and Linux (WebKitGTK).
+  ✓ **Linux** 27 Oct 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug
+  binary (the `linux-check` image with `TAURI_CONFIG` dropping `devUrl`, run beside the installed
+  0.9.3 deb, the stack adopted): an Nginx site maximised (~1210 px) and at 980 px — select inside
+  the card with its chevron; the open list `Nginx` / `FrankenPHP` / `OpenLiteSpeed` (Linux offers
+  OpenLiteSpeed, not Apache, so the long option issue #8 was about IS in this list); `conv71l.rex`
+  switched to OpenLiteSpeed → the confirm read `OpenLiteSpeed (.htaccess + LSCache)`, the card
+  `OpenLiteSpeed` in the select and *Reads .htaccess · LSCache* under it, inside the card; then
+  back to Nginx. 0.9.3 there kept the old select inside the card too (WebKitGTK shrinks it, wrapped
+  under the value at every width).
+  Open on macOS: the reporter's Mac (0.9.2 had it).
 
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In
