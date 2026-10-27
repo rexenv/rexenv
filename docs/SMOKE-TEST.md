@@ -900,7 +900,13 @@ WebView2, so the row is the real webview on each OS.
   on one line with the pill beside them, Stop site / Open in browser / Magic Login on the line below,
   nothing overlapping; maximised (1366 px) one row as before. The d141ec78 build had cut `smoke1w`
   to "S" on the same machine an hour earlier.
-  Open on macOS and Linux.
+  ✓ **Linux** 27 Oct 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug
+  binary at 04698747 (the `linux-check` image, `devUrl` dropped, run beside the installed 0.9.3 deb):
+  at 980 px the WordPress site `conv71l` whole on one line with the pill, the three buttons on the
+  line below; maximised (1210 px) one row. `l14lx` / `live-sync` there have empty folders (no
+  wp-config, so no Magic Login): their two buttons fit beside the title and the row stays one line —
+  the wrap happens only when it must.
+  Open on macOS.
 
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In
