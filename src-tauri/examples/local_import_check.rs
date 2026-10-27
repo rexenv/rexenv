@@ -17,6 +17,8 @@
 //!      move every URL to `https://ea.rex` with the serialized length repaired,
 //!      leave wp-config byte-identical, and delete its override file. Then again
 //!      on PHP 7.4, where a constant redefinition is a Notice rather than a Warning.
+//!      Then a copy in Local's "localhost" router mode (`siteurl` on
+//!      `http://localhost:10031`, recorded as `wse-dev.local`) must move too.
 //!
 //!   C. **A multisite NETWORK moves, then connects (#573, #581).** A real
 //!      subdomain network (`multi.local` + `ea1.multi.local`, every stored URL on
@@ -219,6 +221,35 @@ async fn main() -> std::process::ExitCode {
             "left behind",
         );
     }
+    // B2. Local's "localhost" router mode: the registry says `wse-dev.local`, the
+    // database says `http://localhost:10031` (a user's import, 27 Oct 2026 — the
+    // recorded name's passes matched nothing and every Retry failed the proof).
+    let served = "http://localhost:10031";
+    let ser_served = format!("a:1:{{s:3:\"url\";s:{}:\"{served}/a.jpg\";}}", served.len() + 6);
+    sql(
+        client.path(),
+        &format!(
+            "UPDATE {COPY_DB}.wp_options SET option_value='{served}' WHERE option_name IN ('siteurl','home'); \
+             UPDATE {COPY_DB}.wp_options SET option_value='{}' WHERE option_name='rex_probe';",
+            ser_served.replace('\'', "''")
+        ),
+    )
+    .expect("make the copy look like a localhost-mode Local site");
+    let replaced = wordpress::rehome_urls_on_copy(
+        &*plat, &php8, &wp, &docroot, &scratch, PORT, COPY_DB, "wse-dev.local", "wse-dev.rex", false,
+        rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT,
+    );
+    check.is("localhost mode: the URL pass moves the served origin", matches!(replaced, Ok(n) if n > 0), &format!("{replaced:?}"));
+    for opt in ["siteurl", "home"] {
+        check.is(&format!("localhost mode: {opt} moved"), option(client.path(), opt) == "https://wse-dev.rex", &option(client.path(), opt));
+    }
+    let want = "https://wse-dev.rex/a.jpg";
+    check.is(
+        "localhost mode: the serialized option moved with its length repaired",
+        option(client.path(), "rex_probe") == format!("a:1:{{s:3:\"url\";s:{}:\"{want}\";}}", want.len()),
+        &option(client.path(), "rex_probe"),
+    );
+
     check.is(
         "the project's wp-config.php is byte-identical after both passes",
         std::fs::read_to_string(&config).unwrap() == local_text,

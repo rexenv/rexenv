@@ -1911,6 +1911,11 @@ honest footer —
   restored database name (PHP keeps the first definition; wp-config still names
   Local's socket), `--skip-plugins --skip-themes`. It runs before the import is
   recorded, and `siteurl` must re-read as `https://<new>` or the job fails (#573).
+  The copy's own `home`/`siteurl` are read first: when they name another origin than the
+  recorded name — Local's **localhost router mode** records `wse-dev.local` but serves, and
+  stores, `http://localhost:10031` — that origin's scheme passes run first (no bare pass:
+  `localhost:10031` alone could be anything). Before 27 Oct 2026 a user's import of such a
+  site failed this proof on every Retry, the passes matching nothing.
   **When the new name CONTAINS the old one** (`shop.rex` → `feature-x.shop.rex`, or a
   rename to `myshop.rex`), the bare pass runs FIRST and through a token
   (`wordpress::REHOME_TOKEN`). In the plain order it would rewrite the `https://new` the

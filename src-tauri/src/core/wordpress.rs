@@ -2840,6 +2840,41 @@ pub fn url_rehome_pairs(from: &str, to: &str) -> Vec<(String, String)> {
     out
 }
 
+/// The passes that move the origin a copy is actually SERVED under — its `home`
+/// or `siteurl`, e.g. `http://localhost:10031` — to `https://<to>`, when that
+/// origin is not the name the copy was recorded under (`from`). Run BEFORE
+/// [`url_rehome_pairs`]`(from, to)`. Pure.
+///
+/// Scheme passes only (`http://` and `https://`, plain and JSON-escaped): a bare
+/// `localhost:10031` pass would also rewrite whatever else in the database says
+/// it. Empty — leaving the post-move proof to fail honestly — when the value is
+/// not an http(s) URL, its host has a character no host has, it already names
+/// `from` or `to`, or `from` or `to` STARTS with it: a pass on `https://shop`
+/// would rewrite `https://shop.local` inside `from`'s URLs, or the
+/// `https://shop.rex` the previous pass wrote.
+pub fn served_origin_pairs(served: &str, from: &str, to: &str) -> Vec<(String, String)> {
+    let served = served.trim();
+    let lower = served.to_ascii_lowercase();
+    let Some(rest) = ["http://", "https://"].iter().find_map(|p| lower.starts_with(p).then(|| &served[p.len()..])) else {
+        return Vec::new();
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let h = host.to_ascii_lowercase();
+    if host.is_empty()
+        || !host.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'))
+        || from.to_ascii_lowercase().starts_with(&h)
+        || to.to_ascii_lowercase().starts_with(&h)
+    {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for scheme in ["http", "https"] {
+        out.push((format!("{scheme}://{host}"), format!("https://{to}")));
+        out.push((format!("{scheme}:\\/\\/{host}"), format!("https:\\/\\/{to}")));
+    }
+    out
+}
+
 /// The `--require` file that points ONE wp-cli run at rexenv's copy of a site's
 /// database (ledger #573).
 ///
@@ -2924,7 +2959,9 @@ pub fn first_unmoved_blog_url<'a>(to: &str, urls: &'a [String]) -> Option<&'a st
 /// Move rexenv's copy of a site's database onto the hostname rexenv serves it
 /// under, and prove it moved: every [`url_rehome_pairs`] pass through wp-cli's
 /// serialization-aware `search-replace --all-tables`, then `siteurl` re-read
-/// and required to be `https://<to>`. Returns the replacement count.
+/// and required to be `https://<to>`. Returns the replacement count. A single
+/// site's `home`/`siteurl` are read first and, when they name another origin
+/// than `from`, that origin moves too ([`served_origin_pairs`]).
 ///
 /// Reaches the copy ONLY through [`copy_db_override`] (0600, deleted on every
 /// exit path), with `--skip-plugins --skip-themes` so the site's own code does
@@ -2985,7 +3022,22 @@ pub fn rehome_urls_on_copy(
         }
         network_rehome_pairs(from, to, &domains).map_err(Error::Other)?
     } else {
-        url_rehome_pairs(from, to)
+        // The name the copy is SERVED under first, then the name it was recorded
+        // under: a Local site in Local's "localhost" router mode is recorded as
+        // `wse-dev.local` but its database says `http://localhost:10031`, so the
+        // recorded name's passes matched nothing and the proof below failed every
+        // Retry the same way (a user's import, 27 Oct 2026).
+        let mut pairs = Vec::new();
+        for option in ["home", "siteurl"] {
+            let mut args: Vec<&str> = vec!["option", "get", option];
+            args.extend(tail);
+            let served = last_line(&wp_cli_checked(php_bin, wp_phar, &args, None)?);
+            pairs.extend(served_origin_pairs(&served, from, to));
+        }
+        pairs.extend(url_rehome_pairs(from, to));
+        let mut seen = std::collections::HashSet::new();
+        pairs.retain(|p| seen.insert(p.clone()));
+        pairs
     };
 
     let mut total = 0u64;
@@ -3092,6 +3144,49 @@ mod copy_rehome_tests {
         for (from, to) in [("shop.rex", "feature-x.shop.rex"), ("a.b", "xa.b"), ("ea.local", "ea.rex")] {
             assert!(!apply(&url_rehome_pairs(from, to), "x https://a.b shop.rex ea.local").contains(REHOME_TOKEN));
         }
+    }
+
+    /// **A copy served under another origin than its recorded name moves too** —
+    /// Local's "localhost" router mode records `wse-dev.local` and serves
+    /// `http://localhost:10031` (a user's import, 27 Oct 2026). Plant: return
+    /// no pairs → the first assert fails.
+    #[test]
+    fn a_copy_served_on_localhost_and_a_port_moves_to_the_new_name() {
+        let text = "home=http://localhost:10031 img=http://localhost:10031/wp-content/a.jpg \
+                    j=http:\\/\\/localhost:10031\\/x link=http://wse-dev.local/p";
+        let mut p = served_origin_pairs("http://localhost:10031", "wse-dev.local", "wse-dev.rex");
+        p.extend(url_rehome_pairs("wse-dev.local", "wse-dev.rex"));
+        assert_eq!(
+            apply(&p, text),
+            "home=https://wse-dev.rex img=https://wse-dev.rex/wp-content/a.jpg \
+             j=https:\\/\\/wse-dev.rex\\/x link=https://wse-dev.rex/p"
+        );
+        // A subdirectory install keeps its path; the scheme's case does not matter.
+        let p = served_origin_pairs("HTTP://localhost:10031/wp/", "a.local", "a.rex");
+        assert_eq!(apply(&p, "http://localhost:10031/wp"), "https://a.rex/wp");
+    }
+
+    /// The served origin adds nothing when it is the recorded name, the new name,
+    /// not an http(s) URL, a prefix of either name, or carries a non-host
+    /// character — the post-move proof then fails honestly instead.
+    #[test]
+    fn a_served_origin_adds_no_pass_that_could_eat_another() {
+        for (served, from, to) in [
+            ("http://ea.local", "ea.local", "ea.rex"),
+            ("https://EA.local/", "ea.local", "ea.rex"),
+            ("https://ea.rex", "ea.local", "ea.rex"),
+            ("http://shop", "shop.local", "x.rex"),
+            ("http://shop", "a.local", "shop.rex"),
+            ("ftp://localhost:1", "a.local", "a.rex"),
+            ("localhost:10031", "a.local", "a.rex"),
+            ("http://", "a.local", "a.rex"),
+            ("http://a b", "a.local", "a.rex"),
+            ("http://a'b", "a.local", "a.rex"),
+        ] {
+            assert!(served_origin_pairs(served, from, to).is_empty(), "{served} {from} {to}");
+        }
+        // A different host that only SHARES a prefix with nothing still moves.
+        assert_eq!(served_origin_pairs("http://www.ea.local", "ea.local", "ea.rex").len(), 4);
     }
 
     #[test]

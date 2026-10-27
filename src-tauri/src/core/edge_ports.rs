@@ -271,7 +271,7 @@ mod tests {
             ("core/dbconsole_proxy.rs", 2, "the console's own host, port-less by design: the client's resolve carries the port"),
             ("core/tunnels.rs", 1, "the PUBLIC tunnel host, not the edge"),
             ("core/wporg.rs", 1, "wordpress.org"),
-            ("core/wordpress.rs", 4, "URL rehome internals and a network sub-site's `--url` — rehomes and multisite are refused off 443 (`refuse_rehome_off_443`)"),
+            ("core/wordpress.rs", 5, "URL rehome internals (the recorded and the served origin) and a network sub-site's `--url` — rehomes and multisite are refused off 443 (`refuse_rehome_off_443`)"),
             ("core/worktree.rs", 2, "a worktree copy's WP_HOME/WP_SITEURL — worktrees are refused off 443"),
             ("core/wp_login.rs", 1, "a network sub-site's login base — multisite is refused off 443"),
             ("core/live_sync/pull.rs", 2, "the log line of a pull (both hosts) — refused off 443"),

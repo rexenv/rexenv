@@ -133,6 +133,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
+  (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says
+  `wse-dev.local`, the database says `http://localhost:10031`, and the URL pass moved only the registry's name. It now
+  reads the copy's `home`/`siteurl` first and moves that origin too (`core::wordpress::served_origin_pairs`, ledger
+  #573): L0 ×2 plant-proven, L1 `local_import_check` green with the user's sentence as its plant. Owed: PUBLISH-TESTING
+  §N18 against Local itself.
+
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
   a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer

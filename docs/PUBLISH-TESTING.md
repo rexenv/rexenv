@@ -2295,6 +2295,15 @@ again from the Database tab, then exported by hand"; ledger #900):
   despite: …"*. Found and fixed on the way: the MCP `status` view never carried `overridable`
   (the GUI card reads the Tauri state directly, so the button was unaffected). The button
   itself in WebKit: `uireview.js` `card-overridable`.
+- **N18** — a Local site in Local's **localhost router mode** (Local → Preferences →
+  Advanced → Router Mode → localhost; the site then opens at `http://localhost:100NN`),
+  started, imported with "also copy databases". **Expect** the DB copies and the site opens
+  at `https://<name>.rex` — instead of the user's failure (27 Oct 2026): *"rexenv updated
+  the copy's URLs, but its siteurl still reads `http://localhost:10031` rather than
+  `https://wse-dev.rex`"*, the same on every Retry, because the pass moved only the name
+  Local's registry records (`wse-dev.local`), which that database never says. The fix reads
+  the copy's `home`/`siteurl` and moves that origin too (ledger #573). L1:
+  `local_import_check` leg B (the localhost-mode copy). Owed: this row against Local itself.
 
 ## Publish-blocking summary
 
