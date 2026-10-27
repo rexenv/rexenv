@@ -883,6 +883,16 @@ the bug — the reporter's did — so this row is the real webview on each OS.
   under the value at every width).
   Open on macOS: the reporter's Mac (0.9.2 had it).
 
+## Site header at a narrow window (27 Oct 2026)
+The name gives way, never the status pill or the buttons (ledger #925, `wk-checks/detailheader.js`).
+Found on the Dell's WebView2, so the row is the real webview on each OS.
+- [ ] At the smallest window (980px), open a site whose name has **no space or hyphen** (e.g.
+  `smoke1w`), and a **WordPress** site with a longer name. The name stays on ONE line, cut with
+  `…` when short of room; hovering it shows the whole name; the **Running** pill and **Stop site**
+  sit side by side, never on top of each other. At the default size the names are whole.
+  **Tells:** the pill over Stop site, or the name on two lines.
+  Open on macOS, Windows (the Dell, where it was found), Linux.
+
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In
   `<app-data>/config/` and `<app-data>/logs/`, `apache-<OLD-domain>.conf` and

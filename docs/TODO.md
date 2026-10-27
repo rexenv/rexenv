@@ -141,10 +141,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
   select). Windows (the Dell, WebView2) and Linux (the Ubuntu VM, WebKitGTK) runs ✓ the same day. Owed: SMOKE
   "Web server select" on the reporter's Mac — asked for its macOS version on the issue.
-- [ ] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
-  (WebView2, ~945 px window, a short site name `smoke1w`), 27 Oct 2026: the pill and the Stop-site checkbox
-  overlap; with the longer `live-sync` the title wraps and they do not. Not seen on the Ubuntu VM (WebKitGTK,
-  980 px, `conv71l`) the same day; not yet looked at in WebKit. Not issue #8.
+- [x] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
+  (WebView2, ~945 px window, `smoke1w`), 27 Oct 2026 ✓ 27 Oct 2026 — nothing in the title block could shrink, so a
+  name with no break pushed the pill into the actions (a name with one wrapped instead). The name is one line now,
+  cut with an ellipsis and titled; the pill and the actions keep their size (ledger #925): L2
+  `wk-checks/detailheader.js`, red before the fix (pill 104 px into the actions), green after. Owed: SMOKE "Site
+  header at a narrow window" on the Dell (WebView2) and the Ubuntu VM.
 
 - [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
   (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says

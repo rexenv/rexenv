@@ -457,14 +457,24 @@ function SiteHeader({
             {t.letter}
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-[11px]">
-              <span className="text-[1.1875rem] font-semibold tracking-[-.01em] text-rex-text">
+            {/* The name gives way, never the pill or the actions: one line, cut with an
+                ellipsis, the whole name in `title`. With nothing in it able to shrink, a name
+                with no break (`smoke1w`) pushed the pill on top of "Stop site" at a narrow
+                window, and a name with one wrapped onto two lines (27 Oct 2026). */}
+            <div className="flex min-w-0 items-center gap-[11px]">
+              <span
+                data-site-title
+                title={site.name}
+                className="min-w-0 truncate text-[1.1875rem] font-semibold tracking-[-.01em] text-rex-text"
+              >
                 {site.name}
               </span>
-              <StatusPill
-                status={status}
-                label={site.enabled === false ? "Stopped by you" : undefined}
-              />
+              <span data-status-pill className="flex-none">
+                <StatusPill
+                  status={status}
+                  label={site.enabled === false ? "Stopped by you" : undefined}
+                />
+              </span>
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
               <span
@@ -478,7 +488,7 @@ function SiteHeader({
             <WorktreeOfLine siteId={site.id} />
           </div>
         </div>
-        <div className="flex flex-none items-center gap-[9px]">
+        <div data-site-actions className="flex flex-none items-center gap-[9px]">
           {onToggleEnabled && (
             /* Deliberately NOT a primary button: stopping a site is a normal,
                reversible thing to do to one site, and the loud button on this

@@ -23,6 +23,7 @@ const CHECKS = [
   "openin.js",
   "phppicker.js",
   "serverselect.js",
+  "detailheader.js",
   "domains.js",
   "tldconsent.js",
   "tunnelhealth.js",

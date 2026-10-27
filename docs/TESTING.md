@@ -684,6 +684,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (27 Oct 2026): `detailheader.js`** (#925) — the Site page header at 980 for the four mock
+  sites plus two injected names, one spaced and one with no break: the status pill and the name
+  left of the actions, the name one line, a cut name titled. **What it cost:** the mock's own names
+  all contain a space, so they WRAPPED and never showed the overlap the Dell's `smoke1w` did — the
+  check injects a no-break name because the fixtures could not produce the bug. Before the fix →
+  red (the pill 104 px into the actions).
+
 - **Check (27 Oct 2026): `serverselect.js`** (#924, issue #8) — the Site page's Web server select
   inside its card at 980 and 1440, and the width a CLONE of it asks for (outside the flex row, no
   max-width) inside the card's content box. **What it cost:** the edge assertion alone passed on the
