@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ◐ 0.9.4 — DRAFTED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender green; waits on the owner's Publish
+## A) ✅ 0.9.4 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 40493270408, source `c919bcc1` (tag `v0.9.4`), every lane green first time, 16 assets, the body the tag's
 verbatim.** dmg `8824f6d0…`, `.app.tar.gz` `73af5930…`, arm64 deb `454b6de8…`, amd64 deb `13da3f64…`, aarch64
@@ -141,7 +141,14 @@ caddy and Mailpit pids KEPT**; 11/11 sites 200 (`curl.exe --ssl-no-revoke`). In 
 `smoke1w`'s header whole with the actions below, the Web server select inside its card.
 **Not run:** the headless 24.04 server (nothing headless changed); §M; the clean-Mac list; the Intel spot-run; the
 AppImages (hashed, not run); the second-browser rows.
-**Owed — the owner's:** the Publish click, then the six descriptor publishes and apt (each an approval).
+**Published 27 Oct 2026 12:44Z** by the owner → `Update cask` green (`version "0.9.4"`, sha256 `8824f6d0…`, the dmg's),
+Notify the website green; **Install scripts went red once on its `lint` job** — `Install-Module PSScriptAnalyzer`
+"failed to download" from the PowerShell Gallery, before any script was looked at — and the rerun (same run) was green
+on every job (lint, pwsh, powershell, both debs, the AppImage, macOS arm64 and Intel). A macOS dry run first (serial
+24 → 25, the archive's `73af5930…`), then the six descriptors dispatched together (runs 40506314082 … 40506371999,
+serials macOS 25, Windows 20, the four Linux 11) and apt (40507879391), each approved by the agent on the owner's go
+for this release (one approval answered HTTP 502 and had gone through anyway) → `check-app-manifest.sh` ×6 all green,
+`check-apt-repo.sh` amd64 and arm64 "rexenv 0.9.4 (the latest release)".
 
 ## A) ✅ 0.9.3 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + a 24.04 server), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
