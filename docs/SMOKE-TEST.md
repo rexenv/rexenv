@@ -881,7 +881,8 @@ the bug — the reporter's did — so this row is the real webview on each OS.
   `OpenLiteSpeed` in the select and *Reads .htaccess · LSCache* under it, inside the card; then
   back to Nginx. 0.9.3 there kept the old select inside the card too (WebKitGTK shrinks it, wrapped
   under the value at every width).
-  Open on macOS: the reporter's Mac (0.9.2 had it).
+  Open on macOS: the reporter's Mac — macOS Tahoe 26.5.1, where 0.9.2 overflowed. The dev Mac
+  (26.7.1) never showed it, so a run there does not close this row.
 
 ## Site header at a narrow window (27 Oct 2026)
 Nothing overlaps and the name stays readable: when the title and the buttons cannot share a line,

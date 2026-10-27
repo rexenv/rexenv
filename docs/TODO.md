@@ -140,7 +140,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   the select (ledger #924): L2 `wk-checks/serverselect.js` measures the width the select ASKS for — red on the old
   list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
   select). Windows (the Dell, WebView2) and Linux (the Ubuntu VM, WebKitGTK) runs ✓ the same day. Owed: SMOKE
-  "Web server select" on the reporter's Mac — asked for its macOS version on the issue.
+  "Web server select" on the reporter's Mac — macOS Tahoe 26.5.1 (their answer); this Mac is 26.7.1 and the
+  bug never reproduced on it, so only the reporter's machine (or another 26.5) can close it.
 - [x] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
   (WebView2, ~945 px window, `smoke1w`), 27 Oct 2026 ✓ 27 Oct 2026 — nothing in the title block could shrink, so a
   name with no break pushed the pill into the actions (a name with one wrapped instead). The row wraps now: the
