@@ -865,7 +865,14 @@ the bug — the reporter's did — so this row is the real webview on each OS.
   focus ring stays inside the card. Switch a site to **Apache**: the card reads
   *Reads .htaccess* under the select, and the confirm still names `Apache (.htaccess)`.
   **Tells:** the select's right edge under the SSL certificate card, or no chevron.
-  Open on macOS (the reporter's Mac, 0.9.2 had it), Windows (WebView2), Linux (WebKitGTK).
+  ✓ **Windows** 27 Oct 2026 — the Dell (Win 10 22H2, WebView2), this tree's release `rexenv.exe`
+  (cargo-xwin with `tauri/custom-protocol`, run beside the installed 0.9.3, the stack adopted): an
+  Nginx site at ~1250 and ~945 px — select inside the card, chevron showing, focus ring inside,
+  the open list `Nginx` / `FrankenPHP` / `Apache` (no OpenLiteSpeed: not offered on Windows);
+  `smoke1w.rex` switched to Apache → the confirm read `Apache (.htaccess)`, the card *Reads
+  .htaccess*, then switched back to Nginx. 0.9.3 itself never overflowed there either: Windows
+  has no OpenLiteSpeed option, so the longest was `Apache (.htaccess)`.
+  Open on macOS (the reporter's Mac, 0.9.2 had it) and Linux (WebKitGTK).
 
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In

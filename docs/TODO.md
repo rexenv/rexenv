@@ -139,7 +139,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   which the reporter's WKWebView did not. The options are the short names now and the .htaccess words a note under
   the select (ledger #924): L2 `wk-checks/serverselect.js` measures the width the select ASKS for — red on the old
   list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
-  select); owed: SMOKE "Web server select" on the reporter's Mac, WebView2 and WebKitGTK.
+  select). Windows run on the Dell (WebView2) ✓ the same day. Owed: SMOKE "Web server select" on the reporter's
+  Mac and WebKitGTK.
+- [ ] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
+  (WebView2, ~945 px window, a short site name `smoke1w`), 27 Oct 2026: the pill and the Stop-site checkbox
+  overlap; with the longer `live-sync` the title wraps and they do not. Screenshot in the session; not yet looked
+  at in WebKit. Not issue #8.
 
 - [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
   (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says
