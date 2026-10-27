@@ -448,8 +448,11 @@ function SiteHeader({
         <ChevronLeft className="h-[13px] w-[13px]" strokeWidth={2} />
         All sites
       </button>
-      <div className="flex items-start justify-between gap-[18px] pb-[18px]">
-        <div className="flex min-w-0 items-center gap-[13px]">
+      {/* The row WRAPS: the title block asks for 18rem, and when it and the actions cannot
+          share a line the actions go to the line below. Truncating alone was not enough —
+          on the Dell (~945 px) it left `smoke1w` one letter, "S" (27 Oct 2026). */}
+      <div className="flex flex-wrap items-start justify-between gap-x-[18px] gap-y-3 pb-[18px]">
+        <div className="flex min-w-0 flex-[1_1_18rem] items-center gap-[13px]">
           <div
             className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[10px] border text-[0.9375rem] font-bold"
             style={{ background: t.bg, color: t.color, borderColor: t.border }}

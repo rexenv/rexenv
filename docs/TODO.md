@@ -143,10 +143,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   "Web server select" on the reporter's Mac — asked for its macOS version on the issue.
 - [x] **Site page header: the "Running" pill sits on top of "Stop site" at a narrow window** — found on the Dell
   (WebView2, ~945 px window, `smoke1w`), 27 Oct 2026 ✓ 27 Oct 2026 — nothing in the title block could shrink, so a
-  name with no break pushed the pill into the actions (a name with one wrapped instead). The name is one line now,
-  cut with an ellipsis and titled; the pill and the actions keep their size (ledger #925): L2
-  `wk-checks/detailheader.js`, red before the fix (pill 104 px into the actions), green after. Owed: SMOKE "Site
-  header at a narrow window" on the Dell (WebView2) and the Ubuntu VM.
+  name with no break pushed the pill into the actions (a name with one wrapped instead). The row wraps now: the
+  title asks for 18rem and the actions go below when both cannot fit; the name is one line, cut and titled only
+  when longer than a row (ledger #925). The first fix (truncate only, d141ec78) passed WebKit at 980 and cut
+  `smoke1w` to "S" on the Dell. L2 `wk-checks/detailheader.js` at 940/980/1180, red on both earlier layouts.
+  Owed: SMOKE "Site header at a narrow window" on the Dell (WebView2) and the Ubuntu VM.
 
 - [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
   (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says

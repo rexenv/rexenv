@@ -684,12 +684,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
-- **Check (27 Oct 2026): `detailheader.js`** (#925) — the Site page header at 980 for the four mock
-  sites plus two injected names, one spaced and one with no break: the status pill and the name
-  left of the actions, the name one line, a cut name titled. **What it cost:** the mock's own names
-  all contain a space, so they WRAPPED and never showed the overlap the Dell's `smoke1w` did — the
-  check injects a no-break name because the fixtures could not produce the bug. Before the fix →
-  red (the pill 104 px into the actions).
+- **Check (27 Oct 2026): `detailheader.js`** (#925) — the Site page header at 940 (the Dell's width),
+  980 and 1180 for the four mock sites plus three injected names (`smoke1w`; a very long spaced one;
+  a very long no-break one): name, pill and actions never intersect, the name one line, a name of
+  ≤ 16 characters never cut, a cut name titled. **What it cost, twice:** the mock's names all
+  contain a space, so they WRAPPED and never showed the overlap the Dell's `smoke1w` did — the check
+  injects names because the fixtures could not produce the bug. Then the first version asked only
+  "no overlap, one line" at 980, and passed a fix that cut `smoke1w` to "S" on the Dell at ~945: it
+  now measures readability at the Dell's width too. Red on both earlier layouts.
 
 - **Check (27 Oct 2026): `serverselect.js`** (#924, issue #8) — the Site page's Web server select
   inside its card at 980 and 1440, and the width a CLONE of it asks for (outside the flex row, no
