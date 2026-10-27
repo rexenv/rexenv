@@ -103,6 +103,46 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ◐ 0.9.4 — DRAFTED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender green; waits on the owner's Publish
+
+**Run 40493270408, source `c919bcc1` (tag `v0.9.4`), every lane green first time, 16 assets, the body the tag's
+verbatim.** dmg `8824f6d0…`, `.app.tar.gz` `73af5930…`, arm64 deb `454b6de8…`, amd64 deb `13da3f64…`, aarch64
+AppImage `423725a9…`, amd64 AppImage `aead5d35…`, setup.exe `162ef9f4…`, zip `f89e042a…`; every asset passed
+`shasum -c` against its `.sha256`. `verify-full` green first time (windows-check and linux-check both ran).
+What 0.9.4 changes: the Local localhost-router import (#573), the Web server select (#924), the Site header (#925).
+**Defender ✅ on the Dell (Win10 22H2), signatures `1.461.215.0` → `1.461.225.0` first:** `MpCmdRun -Scan -ScanType 3`
+→ "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in each slice; the
+update key in each slice — **×2 in arm64, ×1 in x86_64** (0.9.3's dmg: ×2 in both, re-measured today); the gate is
+`> 0` and the key is present, so the count is how `strings` splits the x86_64 data, not a missing key — noted in case
+it moves again; `minos 13.0` both; codesign valid and satisfies its Designated Requirement (two cdhashes); Info.plist
+`0.9.4`. **§A0-b** on the archive: one top-level `rexenv.app/`, zero `._` members, the same per-slice counts,
+codesign valid, `0.9.4`.
+**§A ✅ on the 15.8 VM (`192.168.64.6`), from the PUBLISHED 0.9.3, stack started first (`rex start`; the root edge's
+LaunchDaemon came up ~3 min after boot):** `smoke1`, `sm763`, `l14vm`, `conv71` 200 on `PHP/8.3.36`, `php74` on
+`PHP/7.4.33`; app quit (sites still 200); the dmg's app over `/Applications`, synthetic quarantine → the Gatekeeper
+sheet ("rexenv" Not Opened, `Done` / `Move to Bin`) → Done → no app process; `xattr -rd` → `rex 0.9.4 (c919bcc) · app
+rexenv 0.9.4 (c919bcc)`, "the resolver agent is running 0.9.3 d2038d9 but this build is 0.9.4" → kickstarted, "adopted
+8"; caddy 328, mysqld, postgres, Mailpit, both 8.x fpm masters, the 7.4 fpm and nginx KEPT (23/25 pids: two 7.4
+workers recycled); the five sites 200 at +5 s and +60 s; crash reports 0 → 0. Two clicks on a Sites row brought
+Safari up with an empty window instead of the site page (the click points did not land where the screenshot said);
+the two UI fixes were not looked at on this VM — they are measured in macOS 26.7.1's WKWebView (ledger #924, #925).
+**Linux ✅ on the 22.04 arm64 VM (`192.168.65.2` this boot), from the PUBLISHED 0.9.3 deb, stack running, GUI quit
+first:** the deb's control lists the Depends and the 16-line `postinst`; `apt-get install ./…arm64.deb` 3 s →
+`dpkg-query` 0.9.4, `rexenv-edge` and `rexenv-dns-route` active; launched from GNOME's search
+(`app-gnome-rexenv-*.scope`) → `rex 0.9.4 (c919bcc)`, "adopted 7", **20/20 service pids KEPT**; `conv71l`, `gitl`,
+`l16lx`, `try.gitl` 200 on `PHP/8.3.36`; P1 a fresh `.rex` name → 127.0.0.1 on `rexenv0`; `/var/crash` empty;
+`manifest accepted (6 entries)`. (`lm.rex` and `lv.rex` answer 404 "File not found": their folders are empty on this
+VM, like `l14lx` and `live-sync` — the fixture, not the release.)
+**Windows ✅ on the Dell (Win10 22H2), over `w10.rex.bd`, from the published 0.9.3, stack running:** `setup.exe /S` →
+exit 0 in 7 s; `rexenv.exe` and Apps & Features 0.9.4, the `\rexenv\dns-agent` task Running, `uninstall.exe` present;
+relaunched through an Interactive-logon task → "adopted 9", "this is 0.9.4"; **39/39 php-cgi, FrankenPHP, nginx,
+caddy and Mailpit pids KEPT**; 11/11 sites 200 (`curl.exe --ssl-no-revoke`). In the installed app at ~945 px:
+`smoke1w`'s header whole with the actions below, the Web server select inside its card.
+**Not run:** the headless 24.04 server (nothing headless changed); §M; the clean-Mac list; the Intel spot-run; the
+AppImages (hashed, not run); the second-browser rows.
+**Owed — the owner's:** the Publish click, then the six descriptor publishes and apt (each an approval).
+
 ## A) ✅ 0.9.3 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + a 24.04 server), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 40392414104, source `d2038d96` (tag `v0.9.3`, never moved), every lane green first time, 16 assets, the
