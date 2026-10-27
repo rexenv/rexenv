@@ -147,7 +147,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   title asks for 18rem and the actions go below when both cannot fit; the name is one line, cut and titled only
   when longer than a row (ledger #925). The first fix (truncate only, d141ec78) passed WebKit at 980 and cut
   `smoke1w` to "S" on the Dell. L2 `wk-checks/detailheader.js` at 940/980/1180, red on both earlier layouts.
-  Owed: SMOKE "Site header at a narrow window" on the Dell (WebView2) and the Ubuntu VM.
+  The Dell (WebView2) run ✓ the same day. Owed: SMOKE "Site header at a narrow window" on the Ubuntu VM.
 
 - [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
   (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says

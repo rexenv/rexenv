@@ -894,7 +894,12 @@ WebView2, so the row is the real webview on each OS.
   one row, as before. Only a name longer than the whole row is cut with `…`, its hover the full name.
   **Tells:** the pill over Stop site; the name on two lines; a short name cut to a letter or two
   (the first fix did that on the Dell: `smoke1w` → "S").
-  Open on macOS, Windows (the Dell, where it was found), Linux.
+  ✓ **Windows** 27 Oct 2026 — the Dell (Win 10 22H2, WebView2), this tree's release `rexenv.exe` at
+  e2b00a41 (cargo-xwin, run beside the installed 0.9.3): at ~945 px `smoke1w` and `live-sync` whole
+  on one line with the pill beside them, Stop site / Open in browser / Magic Login on the line below,
+  nothing overlapping; maximised (1366 px) one row as before. The d141ec78 build had cut `smoke1w`
+  to "S" on the same machine an hour earlier.
+  Open on macOS and Linux.
 
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In
