@@ -103,6 +103,62 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.9.3 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + a 24.04 server), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
+
+**Run 40392414104, source `d2038d96` (tag `v0.9.3`, never moved), every lane green first time, 16 assets, the
+body the tag's verbatim.** dmg `510a4086…`, `.app.tar.gz` `fb9c296d…`, arm64 deb `bdd0d58e…`, amd64 deb `5a256285…`,
+aarch64 AppImage `a8a1f822…`, amd64 AppImage `0da8bfff…`, setup.exe `d4472f7b…`, zip `7e9e4fce…`; every asset passed
+`shasum -c` against its `.sha256` on the first download this time. `verify-full` green first time (windows-check and
+linux-check both ran, neither SKIPPED).
+**A power cut mid-gate (27 Oct, ~11:12 local):** the dev Mac rebooted, every UTM VM died, `/private/tmp` (the
+downloaded assets) was wiped. The assets were downloaded again and hashed the same. The Win11 ARM VM did not survive:
+the cut corrupted its qcow2 (8098 errors), `qemu-img check -r all` fixed the image, but the NTFS inside its
+BitLocker-encrypted C: (`-FVE-FS-`, unreadable from the Mac) stayed broken and Automatic Repair failed — deleted on
+the owner's call. The Dell is the only Windows host now. Lesson for a gate run: a Docker bind-mount of a UTM bundle
+holds deleted images open (virtiofs) until Docker quits.
+**Defender ✅ on the Dell (Win10 22H2), before the cut, signatures `1.461.214.0` → `1.461.215.0` first:**
+`MpCmdRun -Scan -ScanType 3` → "found no threats" for the `setup.exe` AND the `.zip`, exit 0.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update key ×2
+in EACH slice; `minos 13.0` both; codesign valid and satisfies its Designated Requirement (two cdhashes, one per
+slice); Info.plist `0.9.3`. **§A0-b** on the archive: one top-level `rexenv.app/`, zero `._` members, the same per-slice
+counts, codesign valid + DR, `0.9.3`.
+**§A ✅ on the 15.8 VM (now `192.168.65.3` — the address moved), from the PUBLISHED 0.9.2, stack started first
+(`smoke1`, `sm763`, `l14vm` 200 on `PHP/8.3.36`, `php74` on `PHP/7.4.33`):** app quit (sites still 200); the dmg's app
+over `/Applications`, synthetic quarantine → the Gatekeeper sheet (`Done` / `Move to Bin`) → Done → no app process;
+`xattr -rd` → `rex 0.9.3 (d2038d9) · app rexenv 0.9.3 (d2038d9)`, "the resolver agent is running 0.9.2 cab45c6 … —
+kickstarting it", "adopted 8"; both fpm masters, nginx, caddy 312 and Mailpit KEPT (no pin moved); the four sites 200
+at +5 s and +60 s; crash reports 0 → 0.
+**Linux ✅ on the 22.04 arm64 VM, from the PUBLISHED 0.9.2 deb, stack running, GUI quit first:** the deb's control
+lists the Depends and a 16-line `postinst` (the Tauri-built package — what the 24.04 run on the repack could not
+prove); `apt-get install ./…arm64.deb` 4 s → `dpkg-query` 0.9.3, `rexenv-edge` and `rexenv-dns-route` active;
+`gtk-launch` → `rex 0.9.3 (d2038d9)`, the agent kickstarted, "adopted 7", both fpm masters (2281/2288), nginx 2296,
+caddy 967 and Mailpit 2279 KEPT; `conv71l`, `gitl`, `l16lx`, `try.gitl` 200 on `PHP/8.3.36`; P1 a fresh `.rex` name →
+127.0.0.1; `/var/crash` empty; `manifest accepted (6 entries)`. (A `pgrep -f` pattern matched the ssh shell carrying
+it and showed two "new" fpm masters — the shell, not rexenv.)
+**Headless ✅ on the 24.04.5 server VM (`rexenv-vps`, no desktop), from `0.9.2+headless1`:** `apt-get install` of the
+release's arm64 deb printed the server note from its own postinst; Ubuntu 24.04's `needrestart` restarted
+`rexenv-headless.service` itself during the upgrade (pid 758 → 1546 on `/usr/bin/rexenv`), and a manual restart →
+"adopted 5", "launched headless — no window, no tray"; `demo.rex` 200 `verify=0`; the `rex mcp` scratch loop
+(create → add_package, whose reply now says NOT active → `wp_run` activate → the plugin's output on the page over a
+VERIFIED TLS connection → delete) green on 52 tools, `initialize` naming `0.9.3`.
+**Windows ✅ on the Dell (Win10 22H2), over the `w10.rex.bd` tunnel (the Dell and the Mac were on different networks,
+both `192.168.0.107`), from the published 0.9.2, stack running:** `setup.exe /S` → exit 0 in 6 s; `rexenv.exe` and
+Apps & Features 0.9.3, the `\rexenv\dns-agent` task Running, `uninstall.exe` present; relaunched through an
+Interactive-logon task in the console session → "adopted 9", "this is 0.9.3"; **every one of the 39 php-cgi, two
+FrankenPHP, two nginx, caddy and Mailpit pids KEPT**; 11/11 sites 200 (`fpw.rex`, `apw.rex` on `FrankenPHP Caddy` /
+`PHP/8.5.12`, nine on `nginx/1.30.4` with `PHP/8.3.36`, `w7check.rex` on `PHP/8.2.35`), the agent on udp 53. The probe
+needs `curl.exe --ssl-no-revoke`: Schannel fails the local CA's leaf on `CRYPT_E_NO_REVOCATION_CHECK`, which a
+browser does not.
+**Published 27 Oct 2026 06:43Z** → `Update cask` green (`version "0.9.3"`, sha256 `510a4086…`, the dmg's), Install
+scripts and Notify the website ran; `brew fetch --cask` re-downloaded it and the checksum held (`brew audit` could not
+run: this Mac's Command Line Tools are outdated — a host problem, not the cask). A macOS dry run first (serial 23 → 24,
+the archive's `fb9c296d…`), then the six descriptors dispatched together (runs 40463049634 … 40463107789, serials
+macOS 24, Windows 19, the four Linux 10) and apt (40463295764), each approved by the agent on the owner's standing go
+for this release → `check-app-manifest.sh` ×6 all green, `check-apt-repo.sh` amd64 and arm64 "rexenv 0.9.3 (the latest
+release)".
+**Not run:** §M (the in-app update 0.9.2 → 0.9.3 on each OS); the clean-Mac list; the Intel spot-run; the tunnel probe;
+the second-browser rows; the AppImages (hashed, not run); any Win11 row (the VM is gone).
+
 ## A) ✅ 0.9.2 — PUBLISHED 24 Oct 2026 — §A0, §A, the deb, the setup.exe (Dell), Defender, the six descriptors, apt and §M on all three green
 
 **Run 40095045003, source `cab45c65` (tag `v0.9.2`, moved once), every lane green, 16 assets, the body the
