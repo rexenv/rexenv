@@ -2151,7 +2151,7 @@ export async function sitesFolder(): Promise<string> {
 /** The web servers this build can create a site with — the same gate that refuses at create
  *  time, so the picker never offers what create would reject (W10). */
 export async function offeredWebServers(): Promise<WebServer[]> {
-  if (!isTauri()) return ["nginx", "frankenphp", "apache"];
+  if (!isTauri()) return ["nginx", "frankenphp", "apache", "openlitespeed"];
   return invoke<WebServer[]>("offered_web_servers");
 }
 

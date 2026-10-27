@@ -684,6 +684,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (27 Oct 2026): `serverselect.js`** (#924, issue #8) — the Site page's Web server select
+  inside its card at 980 and 1440, and the width a CLONE of it asks for (outside the flex row, no
+  max-width) inside the card's content box. **What it cost:** the edge assertion alone passed on the
+  broken build — Playwright's WebKit shrinks the select (`min-w-0` in a flex row), as did the dev
+  Mac's WKWebView, while the reporter's did not; only the asked-for width shows a fit that rests on
+  the engine. Planted (the long labels back) → red at 980.
+
 - **Probes (23 Oct 2026): `uireview.js` `updates-wp-note` / `updates-wp-unchecked` → `wpNote`** (#908,
   PLAN-unified-updates D1) — the Updates page's read-only WordPress line, from a cache the harness
   seeds for one of two WordPress sites (`?wp=1`): one line, that site, its count, the link to its

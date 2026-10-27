@@ -111,14 +111,24 @@ async function magicLoginUrl(site: Pick<Site, "id" | "domain">, url: string): Pr
 
 /** Web servers with real backends — labels only; the switch is refused in core where a
  *  server does not ship (OpenLiteSpeed on Windows). */
-/** `name` heads the Web server card; `label` is the select's option. The card is a
- *  third of the row, so the long label there wrapped and pushed the select out of
- *  the card (OpenLiteSpeed, 16 Oct 2026). */
-const SERVERS: { value: WebServer; name: string; label: string }[] = [
+/** `name` heads the Web server card AND is the select's option; `label` names the
+ *  server in the switch confirm, which has room; `note` is said under the select.
+ *  A native select is as wide as its LONGEST option, and the card is a third of the
+ *  row: the long label pushed the select out of the card (OpenLiteSpeed, 16 Oct
+ *  2026), and `max-w-full` on the select did not hold in a user's WKWebView — the
+ *  select ran under the SSL card on an Nginx site (issue #8, 27 Oct 2026). So no
+ *  option is long; the width never depends on the engine shrinking a select
+ *  (ledger #924). */
+const SERVERS: { value: WebServer; name: string; label: string; note?: string }[] = [
   { value: "nginx", name: "Nginx", label: "Nginx" },
   { value: "frankenphp", name: "FrankenPHP", label: "FrankenPHP" },
-  { value: "apache", name: "Apache", label: "Apache (.htaccess)" },
-  { value: "openlitespeed", name: "OpenLiteSpeed", label: "OpenLiteSpeed (.htaccess + LSCache)" },
+  { value: "apache", name: "Apache", label: "Apache (.htaccess)", note: "Reads .htaccess" },
+  {
+    value: "openlitespeed",
+    name: "OpenLiteSpeed",
+    label: "OpenLiteSpeed (.htaccess + LSCache)",
+    note: "Reads .htaccess · LSCache",
+  },
 ];
 
 const SELECT_CLS =
@@ -587,6 +597,7 @@ function Overview({
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
   const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.name ?? site.webServer;
+  const serverNote = SERVERS.find((s) => s.value === site.webServer)?.note;
   // The switch offers what core would ACCEPT (the New Site dialog's rule, ledger #643): a
   // server with no pin on this OS is absent, not listed-then-refused. The site's current
   // server stays selectable even when it is not offered (a blueprint or an older build set it).
@@ -671,10 +682,13 @@ function Overview({
               )}
               {offeredServers.map((s) => (
                 <option key={s.value} value={s.value}>
-                  {s.label}
+                  {s.name}
                 </option>
               ))}
             </select>
+            {serverNote && (
+              <div className="w-full text-[0.6875rem] leading-[1.5] text-rex-text-muted">{serverNote}</div>
+            )}
           </EnvMini>
           <EnvMini label="SSL certificate">
             {site.ssl ? (

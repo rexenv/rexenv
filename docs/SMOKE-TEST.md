@@ -855,6 +855,18 @@ the rows below are the real app.
   refusal naming a hardcoded version instead of the majors it compared.
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
 
+## Web server select fits its card (issue #8, 27 Oct 2026)
+The select's width is its longest option, so the options are short names (ledger #924,
+`wk-checks/serverselect.js`). Playwright's WebKit and the dev Mac's WKWebView never showed
+the bug — the reporter's did — so this row is the real webview on each OS.
+- [ ] Open an **Nginx** site's Overview at the smallest window (980px wide) and at a wide one.
+  The **Web server** select sits inside its card with its chevron showing, and lists
+  `Nginx`, `FrankenPHP`, `Apache`, `OpenLiteSpeed` (whichever this OS offers). Focus it: the
+  focus ring stays inside the card. Switch a site to **Apache**: the card reads
+  *Reads .htaccess* under the select, and the confirm still names `Apache (.htaccess)`.
+  **Tells:** the select's right edge under the SSL certificate card, or no chevron.
+  Open on macOS (the reporter's Mac, 0.9.2 had it), Windows (WebView2), Linux (WebKitGTK).
+
 ## Apache override — the per-site files go on delete AND on rename
 - [x] Create a site, switch it to **Apache**, then **rename** it. In
   `<app-data>/config/` and `<app-data>/logs/`, `apache-<OLD-domain>.conf` and

@@ -22,6 +22,7 @@ const CHECKS = [
   "zipinstall.js",
   "openin.js",
   "phppicker.js",
+  "serverselect.js",
   "domains.js",
   "tldconsent.js",
   "tunnelhealth.js",

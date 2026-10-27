@@ -133,6 +133,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **Site page: the Web server select runs out of its card, under the SSL card** (issue #8, 0.9.2 on macOS,
+  27 Oct 2026) ✓ 27 Oct 2026 — a native select is as wide as its longest option, and the list carried
+  "OpenLiteSpeed (.htaccess + LSCache)"; the 16 Oct fix (`min-w-0 max-w-full`) relied on the engine shrinking it,
+  which the reporter's WKWebView did not. The options are the short names now and the .htaccess words a note under
+  the select (ledger #924): L2 `wk-checks/serverselect.js` measures the width the select ASKS for — red on the old
+  list (317px into a 187px card at 980), green now. Not reproduced on this Mac's macOS 26 WKWebView (it shrinks the
+  select); owed: SMOKE "Web server select" on the reporter's Mac, WebView2 and WebKitGTK.
+
 - [x] **Local → rexenv: the database import fails "siteurl still reads `http://localhost:10031`" on every Retry**
   (a user's report, 27 Oct 2026) ✓ 27 Oct 2026 — the site was in Local's localhost router mode: the registry says
   `wse-dev.local`, the database says `http://localhost:10031`, and the URL pass moved only the registry's name. It now
