@@ -6,6 +6,10 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 29 Oct 2026, before 0.9.5** (HEAD `5a70d483`): 2 ticked blocks moved (Now — the slow edge reload,
+#926/#927; Phase 4+ — Redis, MariaDB and Apache on Linux, #928). One row added the same day (the web UI's sign-in
+hardening, from PR #10's security review). Open after the pass: 37 rows.
+
 **Reconciled 27 Oct 2026, before 0.9.4** (HEAD `b20b0e85`): 3 ticked blocks moved (Now — the Local localhost-router
 import, issue #8's Web server select, the Site header overlap). Mechanical pass only: the judgement pass ran hours
 earlier for 0.9.3 and nothing since touched an open row. Open after the pass: 37 rows.
@@ -137,18 +141,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [x] **A slow edge reload wedges a root edge until `kill -9`** ✓ 28 Oct 2026 — fixed: a timed-out reload is retried once with a 30 s bound (#926), an installed daemon that refused goes to its supervisor and never gets an admin `/stop` (#927), and a refused live edge is not waited on twice; L1 by `SIGSTOP` on the server VM and the macOS VM (TESTING § "A slow or wedged edge, on purpose") (found 28 Oct 2026 on the macOS 15.8 VM, 0.9.4, running
-  #918's round trip). `proxy::reload` kills the `caddy reload` CLI after 10 s (`wait_ok_within`), but a request the CLI
-  already sent keeps loading inside Caddy; `service_manager` then reads the timeout as a refusal ("reinstalling it") and
-  `proxy` sends `/stop` to the live edge. The two raced: the CLI took ~9 s to deliver its `/load` (first exec after a
-  relaunch), `/stop` arrived 1.8 s later, the new config still bound 8443/8080, and Caddy 2.11.4 panicked in
-  `caddytls.(*TLS).Stop` (`close of closed channel`). The process never exited, so launchd's KeepAlive did nothing; TLS
-  answered `tlsv1 alert internal error` for every site, the next reload hung, and SIGTERM was ignored (eternal grace
-  period) — only `kill -9` (then KeepAlive's fresh start) served again. `rex start` printed "the leftover Caddy edge
-  would not stop via its admin socket" while the daemon was in fact serving the new ports. Same code on Linux (#918's
-  Linux run took the stop + start path, so it never reloaded across a port change). Recommended fix: after a reload
-  timeout, poll the admin socket for the config to settle (or match the new Caddyfile) before treating it as refused,
-  and never `/stop` a Daemon edge mid-load — restart it through its supervisor instead. Ledger #918's note.
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
   a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer
@@ -610,23 +602,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
-- [x] **Redis, MariaDB and Apache httpd on Linux — done: run on the 22.04 VM and a 24.04 server.**
-  Asked for in GitHub issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs
-  Apache, many hosts run MariaDB). **Built and pinned 28 Oct 2026:** `rexenv/runtimes` releases
-  `redis-linux-1` (8.8.4), `mariadb-linux-1` (12.3.3 + 11.4.13), `httpd-linux-1` (2.4.69), both
-  arches, each gated there as a running server in a clean 22.04 + 24.04; the Linux arms in
-  `core/binaries.rs` (own version keys, `TarGzTree { strip: 0 }`, licences), `ships_on` open from
-  them; `linux_trees_check` green in the 22.04 linux-check container (aarch64; MariaDB at its default
-  12.3.3) through the app's own `resolve_tree` and `DbEngine` starts — a container, not the VM: no systemd, no GUI. Still owed:
-  `docs/SMOKE-TEST.md` §"Redis, MariaDB and Apache on Linux" on the VM and a 24.04 server, then the
-  ledger row's ◐ → ✓. Independent of the headless plan.
-  ✓ 28 Oct 2026 (master `75a79536`, both VMs arm64): `linux_trees_check` PASS on the 22.04 desktop VM
-  and the 24.04 server VM with MariaDB 12.3.3 AND 11.4.13; every SMOKE row of that section on the 22.04
-  VM's GUI (Redis + MariaDB started, the picker switched series both ways, New Site → MariaDB installed
-  WordPress, the site switched to Apache 2.4.69 with a plugin's `.htaccess` rule and wp-admin over
-  https, `redis-cache` Connected on 16379) and the same flows headless on the 24.04 server through
-  `rex`; ledger #928 ✅. Not run: x86_64 at L1 (runtimes gated those artifacts in clean 22.04 + 24.04).
-
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
