@@ -2008,6 +2008,9 @@ where
             Ok(json!({ "tld": tld, "removed": removed }))
         }
         "version" => Ok(to_value(&commands::system::app_info())?),
+        // The web UI's sign-in link (`rex web url`, docs/PLAN-headless-web.md T7): `null` when this
+        // launch serves no web UI. Over this owner-only socket only — the token is the credential.
+        "web.url" => Ok(json!({ "url": crate::web_server::sign_in_url() })),
         // Bring the app's window up. Two callers, and the SECOND is why this
         // exists: `rex open` (a window is one command away from a terminal, now
         // that the app has no dock icon to click), and a second rexenv launch
@@ -2803,6 +2806,12 @@ mod tests {
                 "lists every file in the log dir; the UI lists per-SITE targets instead \
                  (`log_targets`), so there is no command with this answer. Routed through \
                  `core::logs::list_files` so the log dir's shape stays defined in one place",
+            ),
+            (
+                "web.url",
+                "the web UI's sign-in link — the UI it signs into IS the web UI, so there is no \
+                 command a page could call for it; and a command would put the token one IPC \
+                 call away from any page the gate let through. Owner-only socket only (#930)",
             ),
         ];
 

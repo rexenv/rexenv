@@ -40,9 +40,11 @@ export async function webInvoke<T>(cmd: string, args?: Record<string, unknown>):
   return reply.data as T;
 }
 
-/** Headers every web request carries. T7 adds the CSRF header here, once. */
+/** Headers every web request carries: this session's CSRF value, which the server wrote into
+ *  the page it served (`web_rules::CSRF_META`) and refuses every POST without (ledger #930). */
 export function webHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return { ...extra };
+  const csrf = document.querySelector<HTMLMetaElement>('meta[name="rexenv-csrf"]')?.content ?? "";
+  return { ...extra, "x-rexenv-csrf": csrf };
 }
 
 /** The shape Tauri's `listen` hands a callback — kept so the wrappers do not change. */

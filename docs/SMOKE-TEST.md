@@ -4486,6 +4486,14 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   --path-as-is localhost:9443/../../etc/passwd` → 400.
   ◐ 28 Oct 2026 — the cloud container (no tunnel, no binaries): every row but a site actually
   created; the create reached the backend and its refusal came back as the toast.
+- [ ] **Sign-in (T7, ledger #930).** `sudo rexenv --headless-setup --enable-web` → `systemctl cat
+  rexenv-headless` shows `ExecStart=/usr/bin/rexenv --headless --web`; `ls -l
+  ~/.local/share/rexenv/config/web-token` is `-rw-------`. Through the tunnel, `http://localhost:9443/`
+  with no link → the sentence naming `rex web url`; the printed link → the app, and the address bar
+  loses the `?t=`. A second browser profile without the link → the sentence again. Another local
+  account: `curl localhost:9443/ipc/app_info -X POST` → 401. `curl -H 'Host: evil.example'` → 403.
+  ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
+  setup's unit line is L0 only (no systemd there).
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 

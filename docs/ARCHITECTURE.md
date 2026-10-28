@@ -2440,8 +2440,18 @@ first. Static files come from the embedded bundle (`AssetResolver`); because a d
 reads `dist/` from disk and filters only the root, a path is plain segments or refused.
 `index.html` gets `<meta name="rexenv-transport" content="web">`, and `src/lib/ipc/transport.ts`
 switches `invoke` to `fetch` and `listen` to the stream — components do not know. Native dialogs
-and the title bar ask `transport()` and stay window-only. **No auth in T6; T7 adds it** (ledger
-#929).
+and the title bar ask `transport()` and stay window-only (ledger #929).
+
+**One gate before any routing (T7, ledger #930).** Loopback on a server is not private — every
+local account and every process (a plugin's `wp_remote_get` included) reaches `127.0.0.1:9443`, and
+a page in the developer's own browser can aim requests at it. So `web_rules::gate` runs first on
+every request: the `Host` must name loopback (a DNS-rebinding page arrives with its own name); an
+`Origin`, wherever one is sent, must be `http://<Host>`; the token from `rex web url` (64 hex, an
+owner-only `web-token` file, printed only over the owner-only CLI socket) is traded once for an
+`HttpOnly; SameSite=Strict` session cookie; everything else needs that session; and every POST
+needs an `Origin` and the session's CSRF header, whose value only the `index.html` served to that
+session carries. Sessions are in memory — a restart signs browsers out, the same link signs them
+back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit.
 
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 

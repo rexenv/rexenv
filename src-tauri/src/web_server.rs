@@ -14,6 +14,11 @@
 //!   the web transport; an unknown path is the app's own route, so it gets `index.html` too.
 //!
 //! Started only by `--web`. Loopback only: a public bind is Phase 2 (TLS, a login).
+//!
+//! **Every request passes `web_rules::gate` before anything is routed (T7, ledger #930):** the
+//! Host is loopback, a token in the URL (`rex web url`; owner-only file) becomes an `HttpOnly;
+//! SameSite=Strict` session cookie, and every POST carries our Origin and its session's CSRF
+//! header, which the page learns from a `<meta>` in the `index.html` that session is served.
 
 use crate::web_rules::{self as rules, Route};
 use bytes::Bytes;
@@ -39,6 +44,48 @@ struct Stream {
 
 #[derive(Default)]
 struct Streams(Mutex<HashMap<String, Stream>>);
+
+/// The sign-in token and the live sessions (session id → its CSRF value). Sessions live in memory:
+/// a restart signs every browser out, and the link `rex web url` prints signs it back in.
+struct Auth {
+    token: String,
+    sessions: Mutex<HashMap<String, String>>,
+}
+
+/// The address `rex web url` prints, once the server is up.
+static SIGN_IN_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// `rex web url`'s answer: the sign-in link, or `None` when this launch serves no web UI.
+pub fn sign_in_url() -> Option<String> {
+    SIGN_IN_URL.get().cloned()
+}
+
+/// 32 random bytes as hex — a token, a session id, a CSRF value.
+fn random_hex() -> String {
+    use ring::rand::SecureRandom;
+    let mut b = [0u8; 32];
+    ring::rand::SystemRandom::new().fill(&mut b).expect("the OS random source");
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+/// The token from its owner-only file, made on first use. Kept across restarts, so a link the
+/// developer saved keeps working; delete the file to change it.
+fn load_token() -> crate::error::Result<String> {
+    let platform = crate::platform::current();
+    let path = platform.paths().config_dir()?.join(rules::TOKEN_FILE);
+    if let Ok(t) = std::fs::read_to_string(&path) {
+        let t = t.trim().to_string();
+        if t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(t);
+        }
+    }
+    let t = random_hex();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    platform.permissions().write_private(&path, t.as_bytes())?;
+    Ok(t)
+}
 
 impl Streams {
     fn drop_stream(&self, app: &AppHandle, id: &str) {
@@ -78,6 +125,14 @@ pub fn spawn_if_requested(app: AppHandle) {
         log::error!("web: not started — {e}");
         return;
     }
+    let token = match load_token() {
+        Ok(t) => t,
+        Err(e) => {
+            log::error!("web: not started — no sign-in token: {e}");
+            return;
+        }
+    };
+    let auth = Arc::new(Auth { token, sessions: Mutex::new(HashMap::new()) });
     tauri::async_runtime::spawn(async move {
         let addr = std::net::SocketAddr::from((rules::WEB_BIND, rules::WEB_PORT));
         let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -87,7 +142,8 @@ pub fn spawn_if_requested(app: AppHandle) {
                 return;
             }
         };
-        log::info!("web: serving the UI on http://{addr} (loopback only)");
+        log::info!("web: serving the UI on http://{addr} (loopback only) — `rex web url` prints its sign-in link");
+        let _ = SIGN_IN_URL.set(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, auth.token));
         let streams = Arc::new(Streams::default());
         loop {
             let (tcp, _) = match listener.accept().await {
@@ -97,11 +153,11 @@ pub fn spawn_if_requested(app: AppHandle) {
                     continue;
                 }
             };
-            let (app, streams) = (app.clone(), streams.clone());
+            let (app, streams, auth) = (app.clone(), streams.clone(), auth.clone());
             tauri::async_runtime::spawn(async move {
                 let svc = hyper::service::service_fn(move |req| {
-                    let (app, streams) = (app.clone(), streams.clone());
-                    async move { Ok::<_, Infallible>(handle(&app, &streams, req).await) }
+                    let (app, streams, auth) = (app.clone(), streams.clone(), auth.clone());
+                    async move { Ok::<_, Infallible>(handle(&app, &streams, &auth, req).await) }
                 });
                 let io = hyper_util::rt::TokioIo::new(tcp);
                 let _ = hyper::server::conn::http1::Builder::new().serve_connection(io, svc).await;
@@ -136,10 +192,34 @@ async fn read_json(req: Request<Incoming>) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-async fn handle(app: &AppHandle, streams: &Arc<Streams>, req: Request<Incoming>) -> Response<Body> {
+fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
+    req.headers().get(name).and_then(|v| v.to_str().ok())
+}
+
+async fn handle(app: &AppHandle, streams: &Arc<Streams>, auth: &Arc<Auth>, req: Request<Incoming>) -> Response<Body> {
     let names = crate::command_names();
     let method = req.method().as_str().to_string();
     let path = req.uri().path().to_string();
+    let session = header(&req, "cookie").and_then(|c| rules::cookie_value(c, rules::SESSION_COOKIE)).map(str::to_string);
+    let csrf = session.as_deref().and_then(|id| auth.sessions.lock().ok()?.get(id).cloned());
+    let token = rules::token_in_query(req.uri().query()).map(str::to_string);
+    let verdict = rules::gate(&rules::Ask {
+        method: &method,
+        host: header(&req, "host"),
+        origin: header(&req, "origin"),
+        has_token: token.is_some(),
+        session_csrf: csrf.as_deref(),
+        csrf_header: header(&req, rules::CSRF_HEADER),
+    });
+    let csrf = match verdict {
+        // A page the browser navigated to reads the sentence as text; a script's call gets JSON.
+        rules::Gate::Refuse(status, why) if method == "GET" && !path.starts_with("/events") => {
+            return full(StatusCode::from_u16(status).unwrap_or(StatusCode::FORBIDDEN), "text/plain; charset=utf-8", why.to_string());
+        }
+        rules::Gate::Refuse(status, why) => return refused(status, why),
+        rules::Gate::Exchange => return exchange(auth, token.as_deref().unwrap_or_default(), &path),
+        rules::Gate::Pass => csrf.unwrap_or_default(),
+    };
     match rules::route(&method, &path, &names) {
         Route::Ipc(cmd) => {
             let cmd = cmd.to_string();
@@ -176,19 +256,36 @@ async fn handle(app: &AppHandle, streams: &Arc<Streams>, req: Request<Incoming>)
             }
             json_reply(StatusCode::OK, json!({ "ok": true }))
         }
-        Route::Static(rel) => asset(app, rel, false),
-        Route::Index => asset(app, "index.html", true),
+        Route::Static(rel) => asset(app, rel, None),
+        Route::Index => asset(app, "index.html", Some(&csrf)),
         Route::Refused(status, why) => refused(status, why),
     }
 }
 
-fn asset(app: &AppHandle, rel: &str, index: bool) -> Response<Body> {
+/// A sign-in link: a right token starts a session and sends the browser to the same path without
+/// the token (so it leaves the address bar); a wrong one is refused.
+fn exchange(auth: &Auth, token: &str, path: &str) -> Response<Body> {
+    if !rules::same_secret(token, &auth.token) {
+        return refused(403, "that sign-in link is not this server's — run `rex web url` again");
+    }
+    let (id, csrf) = (random_hex(), random_hex());
+    if let Ok(mut s) = auth.sessions.lock() {
+        s.insert(id.clone(), csrf);
+    }
+    let mut r = full(StatusCode::SEE_OTHER, "text/plain", "");
+    r.headers_mut().insert("location", rules::after_sign_in(path).parse().expect("a plain path"));
+    r.headers_mut().insert("set-cookie", rules::session_cookie(&id).parse().expect("a cookie"));
+    r.headers_mut().insert("referrer-policy", "no-referrer".parse().expect("a header"));
+    r
+}
+
+fn asset(app: &AppHandle, rel: &str, index_for: Option<&str>) -> Response<Body> {
     let Some(a) = app.asset_resolver().get(rel.to_string()) else {
         return refused(404, "not part of rexenv's UI");
     };
-    let mut r = if index {
+    let mut r = if let Some(csrf) = index_for {
         let html = String::from_utf8_lossy(&a.bytes);
-        match rules::mark_index(&html) {
+        match rules::mark_index(&html, csrf) {
             Some(marked) => full(StatusCode::OK, "text/html; charset=utf-8", marked),
             None => return refused(500, "the bundle's index.html has no <head>"),
         }

@@ -548,7 +548,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   D2 (the macro) and D5 (9443) ruled 28 Oct 2026.** **T6 built 28 Oct 2026** (#929): `rexenv --web` on
   `127.0.0.1:9443`, `/ipc` through the main webview's own `on_message`, `/events` as SSE, one command
   list for the handler and the web; run in the cloud container only — **open in T6: the VM run through
-  an SSH tunnel with a site created (SMOKE "The web UI")**. T0 measured 26 Oct 2026 on the Ubuntu
+  an SSH tunnel with a site created (SMOKE "The web UI")**. **T7 built 28 Oct 2026** (#930): one gate
+  before any routing — loopback Host, our Origin, the `rex web url` token → an `HttpOnly;
+  SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; **open in
+  T7: the VM/tunnel run (SMOKE "Sign-in")**. T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
   would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
   `rexenv --headless` (own Xvfb, no session bus — 31 s → 1 s to `setup` — no window, no tray),

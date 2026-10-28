@@ -628,7 +628,9 @@ For a server or CI box with no display — e.g. automated PR QA. rexenv runs the
      root edge service, downloading Caddy as your account first. Each is skipped when already done.
 
    For an unattended install, type the answers as flags — typed by an administrator, they ARE the
-   consent: `sudo rexenv --headless-setup --user ci --enable-mcp --agent-access changes`. With no
+   consent: `sudo rexenv --headless-setup --user ci --enable-mcp --agent-access changes`
+   (add `--enable-web` for the web UI below; the unit is rewritten on every run, so a run without it
+   turns the web UI off, and a running service is restarted so the change applies). With no
    flags and no terminal (a script), both stay as they were (off, read). `rex config` cannot change
    either setting; re-run the setup (e.g. `--agent-access read`) to change them.
 3. Start it (or reboot): `sudo systemctl start rexenv-headless.service`. Then, as that account:
@@ -643,6 +645,20 @@ given a second edge (its Start all asks for the setup). On a server whose other 
 port needs no root edge at all. The first boot after the setup leaves the services idle until the
 first `rex` command that needs them (the login start is offline-only, and the binaries are not
 cached yet); every later boot starts them.
+
+**The web UI (built 28 Oct 2026, not yet released).** Add
+`--enable-web` to the setup and the service also runs rexenv's own UI on `127.0.0.1:9443` — the same
+screens as the app's window. It never listens on a public address. From your own machine:
+```sh
+ssh -L 9443:localhost:9443 <server>            # keep it open
+ssh <server> rex web url                       # prints http://localhost:9443/?t=…
+```
+Open that link in your browser: it signs that browser in (a session cookie; restarting rexenv signs
+it out, and the same link signs it back in). The link IS the password — anyone who has it and can
+reach the port is you; it lives in `~/.local/share/rexenv/config/web-token`, readable only by your
+account, and deleting that file makes a new one at the next start. A browser without it, a page
+from another site and a request with another `Host` are refused. Native dialogs (folder pickers)
+ask for a typed path in the browser for now.
 
 Sites are reached from the server itself (`curl https://demo.rex`) or through an SSH tunnel; a
 public address is a later phase. To undo: `sudo systemctl disable --now rexenv-headless.service`,

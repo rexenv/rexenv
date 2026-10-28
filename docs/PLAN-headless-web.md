@@ -393,7 +393,11 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   created (the container cannot download binaries). Was: The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
   with the equal-lists test. Done when the Sites screen lists and creates a site in a browser through an
   SSH tunnel, and the test fails when a command is missing from either list (plant it).
-- **T7 — auth.** The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
+- **T7 — auth.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger #930):
+  one gate (`web_rules::gate`) before any routing — loopback `Host`, our `Origin` wherever sent, the
+  token (`rex web url`; an owner-only file) traded for an `HttpOnly; SameSite=Strict` cookie, the
+  session's CSRF header (from a `<meta>` in its `index.html`) on every POST; each check plant-proven
+  alone. `--headless-setup --enable-web` writes `--web` into the boot unit. Was: The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
   row and a plant that proves the request is refused without it.
 - **T8 — the rest of the screens.** The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
