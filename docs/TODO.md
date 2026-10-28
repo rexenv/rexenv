@@ -532,8 +532,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: the 443 → 8443 → 443
-  round trip (#918 ◐), T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
+- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: the macOS 443 → 8443 →
+  443 round trip (#918 ◐; Linux's ran 28 Oct 2026), T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
   D2 and D5 unruled (Phase 1b's).** T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
   would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
@@ -561,7 +561,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   setup makes the route, the CA's trust and the root edge through the desktop's own code, run on a
   fresh account with the VM's rexenv state parked). **T2's macOS and Windows runs done 27 Oct 2026** (fresh `t2rex` accounts
   on the 15.8 VM and the Dell; #915–#917, #919 now ✅ on all three; the card seen on both). **Phase 1a
-  is complete**; open after it: the 443 → 8443 → 443 round trip on one account (#918 ◐), T5 (headless on
+  is complete**; open after it: the 443 → 8443 → 443 round trip on one account on macOS (#918 ◐ — **Linux's ran 28 Oct 2026** on the 24.04 server VM, 0.9.4: the root unit took 8443 and 443 back through `rex restart`, no child edge, adoption kept its pid; `edge_bind 127.0.0.1` moved it to loopback), T5 (headless on
   macOS/Windows, D3), and Phase 1b (the web UI, T6–T9). Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
