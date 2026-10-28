@@ -1,6 +1,7 @@
 //! Live check (LINUX ONLY): Redis, MariaDB and Apache httpd from rexenv/runtimes' Linux builds,
 //! through the app's own resolve and start paths, on a SANDBOXED app-data root.
-//! Run: `cargo run --example linux_trees_check` — on Linux (the VM, or the linux-check image).
+//! Run: `cargo run --example linux_trees_check` — on Linux (the VM, or the linux-check image);
+//! `REXENV_MARIADB_VERSION=11.4.13` runs the LTS series instead of the default.
 //!
 //! D-L8 closed on 28 Oct 2026 by pinning OUR builds (`redis-linux-1`, `mariadb-linux-1`,
 //! `httpd-linux-1`); rexenv/runtimes gated each one as a running server in a clean 22.04 and
@@ -63,7 +64,14 @@ async fn main() -> std::process::ExitCode {
 
     // ── 1–2. Resolve, layout, licences ───────────────────────────────────────────
     let redis_v = DbEngine::Redis.default_version();
-    let maria_v = DbEngine::Mariadb.default_version();
+    // `REXENV_MARIADB_VERSION=11.4.13` runs the LTS series instead of the default; it must be
+    // one the Linux pins offer.
+    let maria_v = match std::env::var("REXENV_MARIADB_VERSION") {
+        Ok(v) => *DbEngine::Mariadb.versions().iter().find(|p| **p == v).unwrap_or_else(|| {
+            panic!("REXENV_MARIADB_VERSION={v} is not a Linux MariaDB pin ({:?})", DbEngine::Mariadb.versions())
+        }),
+        Err(_) => DbEngine::Mariadb.default_version(),
+    };
     let httpd_v = binaries::httpd_version();
     println!("=== resolve_tree: redis {redis_v}, mariadb {maria_v}, httpd {httpd_v} ===");
     for (name, v) in [("redis", redis_v), ("mariadb", maria_v), ("httpd", httpd_v)] {

@@ -4494,18 +4494,27 @@ On a FRESH account (no sites — a port change is refused with any), with anothe
 ### Redis, MariaDB and Apache on Linux (28 Oct 2026 — rexenv's own builds)
 Pinned from `rexenv/runtimes` (`redis-linux-1`, `mariadb-linux-1`, `httpd-linux-1`); each artifact
 was gated there as a running server in a clean 22.04 and 24.04. These rows are the APP's half.
-- [ ] **Headless half:** `linux_trees_check` green on the 22.04 VM AND a 24.04 server (resolve
+- [x] **Headless half:** `linux_trees_check` green on the 22.04 VM AND a 24.04 server (resolve
   through `resolve_tree`, licences staged, Redis PING/SET/GET, MariaDB bootstrap + SQL + dump, httpd
-  with the generated conf: static, `.htaccess`, `/.env` 404, `.php` via FastCGI).
-- [ ] **Settings → Services:** Redis and MariaDB are offered (no Linux refusal); start each; the
-  MariaDB version picker shows **12.3.3** and **11.4.13**; switching starts the other series.
-- [ ] **New Site → Database: MariaDB** creates the site and WordPress installs on it.
-- [ ] **A site switched to Apache** serves, a plugin's `.htaccess` rule applies, wp-admin logs in
-  over `https://` (the `X-Forwarded-Proto` → `HTTPS=on` mapping).
-- [ ] **A caching plugin on Redis** (the #7 ask): an object-cache drop-in connects to `127.0.0.1:16379`.
+  with the generated conf: static, `.htaccess`, `/.env` 404, `.php` via FastCGI). Run it a second
+  time with `REXENV_MARIADB_VERSION=11.4.13` for the LTS series. — ✓ 28 Oct 2026, both VMs (arm64),
+  both MariaDB series
+- [x] **Settings → Services:** Redis and MariaDB are offered (no Linux refusal); start each; the
+  MariaDB version picker (Databases) shows **12.3.3** and **11.4.13**; switching starts the other series.
+  — ✓ 28 Oct 2026, 22.04 VM GUI: both toggled on, 12.3.3 → 11.4.13 → 12.3.3, each a new `mariadbd`
+  from its own tree
+- [x] **New Site → Database: MariaDB** creates the site and WordPress installs on it. — ✓ 28 Oct 2026,
+  22.04 VM GUI (`SELECT VERSION()` 12.3.3-MariaDB); 24.04 server via `rex site create --db mariadb`
+- [x] **A site switched to Apache** serves, a plugin's `.htaccess` rule applies, wp-admin logs in
+  over `https://` (the `X-Forwarded-Proto` → `HTTPS=on` mapping). — ✓ 28 Oct 2026, 22.04 VM GUI:
+  `server: Apache/2.4.69`, a plugin's `insert_with_markers` rule served, Magic Login → Dashboard with a
+  `wordpress_sec_` cookie and no `http://` link; the 24.04 server the same headless
+- [x] **A caching plugin on Redis** (the #7 ask): an object-cache drop-in connects to `127.0.0.1:16379`.
+  — ✓ 28 Oct 2026, both VMs: `redis-cache` with `WP_REDIS_PORT 16379`, `wp redis status` Connected
+  (Redis 8.8.4), keyspace hits after two page loads
 
 ---
-Result: ____ / all pass.  Issues found: ________________________________________
+Result: 5 / 5 pass (28 Oct 2026, arm64; x86_64 not run).  Issues found: none in these flows
 
 ### OpenLiteSpeed on Linux (4 Oct 2026)
 - [x] Run the main body's **OpenLiteSpeed override** rows on the VM through the installed deb

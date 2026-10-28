@@ -586,7 +586,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
-- [ ] **Redis, MariaDB and Apache httpd on Linux — open: the run on the 22.04 VM and a 24.04 server.**
+- [x] **Redis, MariaDB and Apache httpd on Linux — done: run on the 22.04 VM and a 24.04 server.**
   Asked for in GitHub issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs
   Apache, many hosts run MariaDB). **Built and pinned 28 Oct 2026:** `rexenv/runtimes` releases
   `redis-linux-1` (8.8.4), `mariadb-linux-1` (12.3.3 + 11.4.13), `httpd-linux-1` (2.4.69), both
@@ -596,6 +596,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   12.3.3) through the app's own `resolve_tree` and `DbEngine` starts — a container, not the VM: no systemd, no GUI. Still owed:
   `docs/SMOKE-TEST.md` §"Redis, MariaDB and Apache on Linux" on the VM and a 24.04 server, then the
   ledger row's ◐ → ✓. Independent of the headless plan.
+  ✓ 28 Oct 2026 (master `75a79536`, both VMs arm64): `linux_trees_check` PASS on the 22.04 desktop VM
+  and the 24.04 server VM with MariaDB 12.3.3 AND 11.4.13; every SMOKE row of that section on the 22.04
+  VM's GUI (Redis + MariaDB started, the picker switched series both ways, New Site → MariaDB installed
+  WordPress, the site switched to Apache 2.4.69 with a plugin's `.htaccess` rule and wp-admin over
+  https, `redis-cache` Connected on 16379) and the same flows headless on the 24.04 server through
+  `rex`; ledger #928 ✅. Not run: x86_64 at L1 (runtimes gated those artifacts in clean 22.04 + 24.04).
 
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
