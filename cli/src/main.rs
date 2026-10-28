@@ -1223,7 +1223,7 @@ fn cmd_site_list(json_output: bool) {
             s["type"].as_str().unwrap_or("?"),
             s["phpVersion"].as_str().unwrap_or("?"),
             s["webServer"].as_str().unwrap_or("?"),
-            s["dbEngine"].as_str().unwrap_or("?"),
+            list_db(s),
             list_state(s, up, stopped),
             also(s),
         );
@@ -1326,6 +1326,13 @@ fn database_label(site: &Value) -> String {
 /// Whether deleting `site` drops a database as well as files.
 fn has_database(site: &Value) -> bool {
     !(site["type"].as_str() == Some("php") && site["starterDb"] != json!(true))
+}
+
+/// `site list`'s DB column: the engine, or `none` for a site with no database.
+/// It printed the row's engine default (`mysql`) for a `--db none` site until
+/// 28 Oct 2026, after #682 had fixed the same lie in `site info`.
+fn list_db(site: &Value) -> &str {
+    if has_database(site) { site["dbEngine"].as_str().unwrap_or("?") } else { "none" }
 }
 
 /// `site create`'s value-taking flags, and the socket key each one fills. ONE
@@ -4874,9 +4881,12 @@ mod tests {
         assert!(!super::has_database(&bare));
         let seeded = json!({"type":"php","starterDb":true,"dbEngine":"mysql","dbName":"php_seed_rex"});
         assert_eq!(super::database_label(&seeded), "mysql (php_seed_rex)");
+        assert_eq!(super::list_db(&bare), "none");
+        assert_eq!(super::list_db(&seeded), "mysql");
         assert!(super::has_database(&seeded));
         let wp = json!({"type":"wordpress","dbEngine":"mariadb","dbName":"wp_x_rex"});
         assert_eq!(super::database_label(&wp), "mariadb (wp_x_rex)");
+        assert_eq!(super::list_db(&wp), "mariadb");
         assert!(super::has_database(&wp));
     }
 
