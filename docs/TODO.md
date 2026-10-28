@@ -551,7 +551,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   an SSH tunnel with a site created (SMOKE "The web UI")**. **T7 built 28 Oct 2026** (#930): one gate
   before any routing — loopback Host, our Origin, the `rex web url` token → an `HttpOnly;
   SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; **open in
-  T7: the VM/tunnel run (SMOKE "Sign-in")**. T0 measured 26 Oct 2026 on the Ubuntu
+  T7: the VM/tunnel run (SMOKE "Sign-in")**. **T8 partly built 28 Oct 2026** (#931): the web picker
+  (`browse_dir`, home and Sites only), desktop actions refuse on a headless launch, URLs open in the
+  developer's browser; **open in T8: the Database Browser over HTTP (`/db`, `/pma`) and the
+  every-route walk on the VM**. T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
   would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
   `rexenv --headless` (own Xvfb, no session bus — 31 s → 1 s to `setup` — no window, no tray),

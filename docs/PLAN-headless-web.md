@@ -399,7 +399,15 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   session's CSRF header (from a `<meta>` in its `index.html`) on every POST; each check plant-proven
   alone. `--headless-setup --enable-web` writes `--web` into the boot unit. Was: The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
   row and a plant that proves the request is refused without it.
-- **T8 — the rest of the screens.** The folder picker (`browse_dir`), `/db` and `/pma`, the mail
+- **T8 — the rest of the screens.** **Partly built 28 Oct 2026, run in the cloud container** (ledger #931):
+  `browse_dir` + `WebPathPicker` (home and Sites only, resolved before compared) behind
+  `pickFolder`/`pickSqlFile`/`pickZipFiles`; on a headless launch every desktop action refuses with
+  `NO_SCREEN` first, and over the web URLs open in the developer's browser and the server's apps are
+  not offered; the terminal and the mail viewer need nothing (they ride `/ipc` + `/events` and a
+  `srcDoc` frame). **Still open: the Database Browser over HTTP** (`/db`, `/pma` — phpMyAdmin's
+  absolute paths need an origin of its own, so likely a loopback port per console, gated by the
+  same session; until then the panel says it is not in the web UI) **and the every-route walk on the
+  VM.** Was: The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
   browser on the VM.
 - **T9 — the CA download** for viewing sites through `ssh -D`, with a sentence per OS.

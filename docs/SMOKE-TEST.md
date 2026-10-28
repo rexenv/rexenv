@@ -4495,6 +4495,16 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
   setup's unit line is L0 only (no systemd there).
 
+### The web UI's pickers and desktop actions (T8, ledger #931)
+- [ ] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
+  walks into `rexenv/Sites/`, a symlink out of home (`ln -s /etc ~/out`) answers with the sentence,
+  and **Choose this folder** fills the form. Databases → Import → the `.sql` picker shows `.sql` files
+  only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor
+  and "Show in folder" menus are absent; the Database tab says the console is not in the web UI yet.
+- [ ] On the server: `rex site open <domain>` → exit 1 with the "no screen" sentence.
+  ◐ 28 Oct 2026 — the cloud container: the folder picker end to end in Chromium, the refusals by
+  curl; not the import picker, not `rex site open`.
+
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
 On a FRESH account (no sites — a port change is refused with any), with another web server holding

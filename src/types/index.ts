@@ -2066,6 +2066,14 @@ export interface AgentAccess {
   levels: { level: AgentAccessLevel; allows: string }[];
 }
 
+/** One folder of the machine rexenv runs on, for the web UI's picker (`core::browse::DirListing`). */
+export interface DirListing {
+  path: string;
+  parent: string | null;
+  roots: string[];
+  entries: { name: string; path: string; dir: boolean }[];
+}
+
 /** The MCP card's whole state in one read, so the header and the feed it shows
  *  come from the same snapshot (mirrors `commands::mcp::McpStatus`). */
 export interface McpStatus {

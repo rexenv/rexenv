@@ -28,6 +28,7 @@ import {
 import { toast, toastBackendError } from "@/lib/toast";
 import { ABOUT_PATH, useCheckForUpdates } from "@/lib/useCheckForUpdates";
 import { Toaster } from "@/components/ui/toaster";
+import { WebPathPicker } from "@/components/common/WebPathPicker";
 import { StartupNoticeHost } from "@/components/shell/StartupNoticeHost";
 import { DialogHost } from "@/components/ui/dialog";
 
@@ -299,6 +300,7 @@ export function App() {
       {/* App-wide in-app dialogs + toasts (WKWebView lacks window.confirm/alert). */}
       <DialogHost />
       <Toaster />
+      <WebPathPicker />
       <HealthWatch />
       <StartupNoticeHost />
       <UpdateWatch />

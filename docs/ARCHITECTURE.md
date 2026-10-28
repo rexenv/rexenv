@@ -2453,6 +2453,15 @@ needs an `Origin` and the session's CSRF header, whose value only the `index.htm
 session carries. Sessions are in memory — a restart signs browsers out, the same link signs them
 back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit.
 
+**What a browser cannot do (T8, ledger #931).** The window's native file dialog would open on the
+server's invisible display, so over the web `pickFolder` / `pickSqlFile` / `pickZipFiles` open
+`WebPathPicker`, which lists the server through `browse_dir` — only under home and the Sites folder,
+the path resolved before it is compared. On a headless launch the desktop actions (open a URL or a
+browser, reveal, an editor, an external terminal) refuse with `NO_SCREEN` first; the web UI opens URLs
+in the developer's own browser and lists no server apps. The terminal (`/ipc` + its output events)
+and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser's frame needs the window's
+custom schemes, so over the web it says it is not there yet (`/db`, `/pma` are T8's open half).
+
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 
 Added to this file 21 Aug 2026, three weeks after M1 shipped. Until then the file

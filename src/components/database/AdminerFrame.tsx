@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Check, Copy, Database } from "lucide-react";
 import { OpenInBrowserSplit } from "@/components/ui/open-in";
 import { Placeholder } from "@/components/common/Placeholder";
-import { adminerSetTheme, isTauri } from "@/lib/ipc";
+import { adminerSetTheme, isTauri, transport } from "@/lib/ipc";
 import { currentTheme, subscribeTheme } from "@/lib/theme";
 
 /** Embeds the stack-served console — Adminer or phpMyAdmin (framed; its palette
@@ -49,12 +49,19 @@ export function AdminerFrame({
       live = false;
     };
   }, [theme, console]);
-  if (!isTauri()) {
+  if (transport() !== "tauri") {
+    // The frame loads through the window's own `rexdb:`/`rexpma:` schemes, which a browser does
+    // not have: over the web UI it would be an empty panel, so it says so instead
+    // (docs/PLAN-headless-web.md T8 — serving the consoles over HTTP is still open).
     return (
       <Placeholder
         icon={<Database className="h-[22px] w-[22px]" strokeWidth={1.6} />}
         label="Database browser"
-        hint="The embedded database console requires the rexenv desktop app."
+        hint={
+          isTauri()
+            ? "The embedded database console is not in the web UI yet — use the desktop app, or rex db export / import."
+            : "The embedded database console requires the rexenv desktop app."
+        }
       />
     );
   }

@@ -144,6 +144,7 @@ pub fn terminal_open_external(
     terminal_id: String,
     asset: Option<AssetRef>,
 ) -> Result<()> {
+    crate::refuse_without_a_screen()?;
     let site = {
         let conn = state
             .db

@@ -45,6 +45,7 @@ macro_rules! for_each_command {
             commands::system::reveal_path,
             commands::system::list_editors,
             commands::system::open_in_editor,
+            commands::system::browse_dir,
             commands::system::list_browsers,
             commands::system::open_in_browser,
             commands::system::dns_status,
@@ -2243,6 +2244,20 @@ pub(crate) fn is_hidden_launch() -> bool {
 /// it (`show_main_window`) — and installs no tray icon.
 pub const HEADLESS_FLAG: &str = "--headless";
 
+/// What a desktop action says on a headless launch (T8): it would open on the server's invisible
+/// display — a silent no-op the honest-UI rule forbids. The web UI opens URLs in the developer's
+/// own browser instead and hides the server's apps.
+pub const NO_SCREEN: &str = "rexenv is running headless — this server has no screen to open that on. \
+Use the web UI or `rex` instead.";
+
+/// Refuse a desktop action (reveal, editor, browser, an external terminal) on a headless launch.
+pub(crate) fn refuse_without_a_screen() -> crate::error::Result<()> {
+    if is_headless_launch() {
+        return Err(crate::error::Error::Other(NO_SCREEN.into()));
+    }
+    Ok(())
+}
+
 pub(crate) fn is_headless_launch() -> bool {
     static HEADLESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *HEADLESS.get_or_init(|| std::env::args().any(|a| a == HEADLESS_FLAG))
@@ -2932,6 +2947,27 @@ fn db_console_request<R: tauri::Runtime>(
 
 #[cfg(test)]
 mod tests {
+    /// **A desktop action on a headless launch refuses with a sentence — never opens on the
+    /// server's invisible display** (T8, ledger #931). Each one's FIRST statement is the refusal,
+    /// so nothing can run before it.
+    #[test]
+    fn every_desktop_action_refuses_on_a_headless_launch() {
+        let system = include_str!("commands/system.rs");
+        let terminal = include_str!("commands/terminal.rs");
+        for (src, sig) in [
+            (system, "pub fn open_external("),
+            (system, "pub fn open_in_browser("),
+            (system, "pub fn reveal_path("),
+            (system, "pub fn open_in_editor("),
+            (terminal, "pub fn terminal_open_external("),
+        ] {
+            let body = &src[src.find(sig).unwrap_or_else(|| panic!("{sig}"))..];
+            let body = &body[body.find("{\n").expect("its body") + 2..];
+            assert!(body.trim_start().starts_with("crate::refuse_without_a_screen()?;"), "{sig} must refuse first on a headless launch");
+        }
+        assert!(NO_SCREEN.contains("headless") && NO_SCREEN.contains("web UI"));
+    }
+
     use super::*;
     use std::path::PathBuf;
 

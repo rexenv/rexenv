@@ -375,6 +375,7 @@ pub const PREFERRED_BROWSER_KEY: &str = "preferred_browser";
 /// the link still opens, and Settings shows the picker back on "System default".
 #[tauri::command]
 pub fn open_external(state: State<'_, AppState>, target: String) -> Result<()> {
+    crate::refuse_without_a_screen()?;
     if target.starts_with("http://") || target.starts_with("https://") {
         if let Some(browser) = preferred_browser(&state) {
             match state.platform.shell().open_in_browser(&browser, &target, false) {
@@ -424,6 +425,7 @@ pub fn open_in_browser(
     url: String,
     private: bool,
 ) -> Result<()> {
+    crate::refuse_without_a_screen()?;
     state.platform.shell().open_in_browser(&browser_id, &url, private)
 }
 
@@ -431,6 +433,7 @@ pub fn open_in_browser(
 /// "Show in Finder" action on the database-export success toast.
 #[tauri::command]
 pub fn reveal_path(state: State<'_, AppState>, path: String) -> Result<()> {
+    crate::refuse_without_a_screen()?;
     state.platform.shell().reveal(&path)
 }
 
@@ -446,7 +449,28 @@ pub fn list_editors(state: State<'_, AppState>) -> Vec<crate::platform::traits::
 /// this command errors rather than silently opening Finder.
 #[tauri::command]
 pub fn open_in_editor(state: State<'_, AppState>, editor_id: String, path: String) -> Result<()> {
+    crate::refuse_without_a_screen()?;
     state.platform.shell().open_in_editor(&editor_id, &path)
+}
+
+/// The web UI's picker (docs/PLAN-headless-web.md T8): one folder of THIS machine, under the user's
+/// home or the Sites folder only (`core::browse`, ledger #931). `extensions` empty = folders only.
+#[tauri::command]
+pub fn browse_dir(
+    state: State<'_, AppState>,
+    path: Option<String>,
+    extensions: Option<Vec<String>>,
+) -> Result<crate::core::browse::DirListing> {
+    let mut roots = Vec::new();
+    if let Some(home) = directories::BaseDirs::new() {
+        roots.push(home.home_dir().to_path_buf());
+    }
+    if let Ok(conn) = state.db.lock() {
+        if let Ok(sites) = crate::core::sites::sites_dir(&conn, state.platform.as_ref()) {
+            roots.push(sites);
+        }
+    }
+    crate::core::browse::list(path.as_deref(), &roots, &extensions.unwrap_or_default())
 }
 
 // ── DNS & SSL + autostart (Settings, §11.1) ──────────────────────────────────

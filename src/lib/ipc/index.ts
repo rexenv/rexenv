@@ -11,7 +11,7 @@ import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStat
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
   LiveSyncJobState, LiveSyncPushPlan,
-  LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
+  LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree, DirListing } from "@/types";
 import { transport, webInvoke, webListen } from "./transport";
 import {
   mockAppInfo,
@@ -85,10 +85,25 @@ export function webviewNote(text: string): void {
   void invoke<void>("webview_note", { text }).catch(() => undefined);
 }
 
+/** The browser's picker over the web transport — the server's folders, through `browse_dir`
+ *  (`WebPathPicker`). Imported when used: the component imports this module. */
+async function webPick(opts: { title: string; extensions: string[]; multiple: boolean; start?: string }): Promise<string[] | null> {
+  const { requestPath } = await import("@/components/common/WebPathPicker");
+  return requestPath(opts);
+}
+
+/** One folder on the machine rexenv runs on, for the web picker: only under the home and Sites
+ *  folders (`core::browse`, ledger #931). Empty outside a backend. */
+export async function browseDir(path: string | null, extensions: string[]): Promise<DirListing> {
+  if (!isTauri()) return { path: "", parent: null, roots: [], entries: [] };
+  return invoke<DirListing>("browse_dir", { path, extensions });
+}
+
 /** Native folder picker (tauri-plugin-dialog). Returns the chosen absolute
  *  path, or null if the user cancelled. Browser dev falls back to a plain
  *  prompt (WKWebView lacks window.prompt — real browsers don't). */
 export async function pickFolder(title: string, defaultPath?: string): Promise<string | null> {
+  if (transport() === "web") return (await webPick({ title, extensions: [], multiple: false, start: defaultPath }))?.[0] ?? null;
   if (transport() !== "tauri") return window.prompt(title, defaultPath ?? "");
   const { open } = await import("@tauri-apps/plugin-dialog");
   const picked = await open({ directory: true, multiple: false, title, defaultPath });
@@ -98,6 +113,7 @@ export async function pickFolder(title: string, defaultPath?: string): Promise<s
 /** Native file picker limited to `.sql` dumps. Returns the chosen absolute
  *  path, or null if the user cancelled. */
 export async function pickSqlFile(title: string): Promise<string | null> {
+  if (transport() === "web") return (await webPick({ title, extensions: ["sql"], multiple: false }))?.[0] ?? null;
   if (transport() !== "tauri") return window.prompt(title, "");
   const { open } = await import("@tauri-apps/plugin-dialog");
   const picked = await open({
@@ -112,6 +128,7 @@ export async function pickSqlFile(title: string): Promise<string | null> {
  *  flow). Multi-select — wp-cli installs a batch in one job. Returns absolute
  *  paths, empty when the user cancelled. */
 export async function pickZipFiles(title: string): Promise<string[]> {
+  if (transport() === "web") return (await webPick({ title, extensions: ["zip"], multiple: true })) ?? [];
   if (transport() !== "tauri") {
     const typed = window.prompt(title, "");
     return typed ? [typed] : [];
@@ -1005,7 +1022,7 @@ export async function applyPhpSettings(
 /** Code editors installed on this machine, detection-ordered (first = default
  *  when no preferred_editor setting is stored). Empty outside Tauri. */
 export async function listEditors(): Promise<EditorApp[]> {
-  if (!isTauri()) return [];
+  if (!isTauri() || transport() === "web") return [];
   return invoke<EditorApp[]>("list_editors");
 }
 
@@ -1019,7 +1036,7 @@ export async function openInEditor(editorId: string, path: string): Promise<void
 /** Web browsers installed on this machine, detection-ordered, with one flagged
  *  `systemDefault` (the OS's https handler). Empty outside Tauri. */
 export async function listBrowsers(): Promise<BrowserApp[]> {
-  if (!isTauri()) return [];
+  if (!isTauri() || transport() === "web") return [];
   return invoke<BrowserApp[]>("list_browsers");
 }
 
@@ -1038,7 +1055,7 @@ export async function openInBrowser(
   url: string,
   isPrivate = false,
 ): Promise<void> {
-  if (!isTauri()) {
+  if (!isTauri() || transport() === "web") {
     window.open(url, "_blank");
     return;
   }
@@ -1050,7 +1067,8 @@ export async function openInBrowser(
  *  routing lives in the BACKEND so every call site gets it, including the next
  *  one someone adds. Falls back to `window.open` for URLs outside Tauri. */
 export async function openExternal(target: string): Promise<void> {
-  if (!isTauri()) {
+  // Over the web the developer's OWN browser opens a URL; the server has no screen (T8).
+  if (!isTauri() || (transport() === "web" && /^https?:\/\//.test(target))) {
     if (/^https?:\/\//.test(target)) window.open(target, "_blank");
     return;
   }
@@ -1067,7 +1085,7 @@ export async function revealPath(path: string): Promise<void> {
 /** Terminal emulators installed on this machine, detection-ordered. Empty
  *  outside Tauri. Same shape as {@link listEditors}. */
 export async function listTerminals(): Promise<TerminalApp[]> {
-  if (!isTauri()) return [];
+  if (!isTauri() || transport() === "web") return [];
   return invoke<TerminalApp[]>("list_terminals");
 }
 
