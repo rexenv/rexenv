@@ -46,6 +46,27 @@ pub struct LocalCa {
     pub key_path: PathBuf,
 }
 
+/// What the web UI's CA download says beside the file (docs/PLAN-headless-web.md T9): how the
+/// browser reaches the server's sites, and the cost of trusting this CA, said plainly — its key is
+/// on the server, and an unconstrained root can vouch for ANY name (ledger #932).
+pub const REMOTE_CA_NOTE: &str = "To open this server's sites from your browser, reach them through the server: \
+`ssh -D 1080 <server>`, then set your browser's SOCKS proxy to localhost:1080 with DNS sent through the proxy, \
+so .rex names resolve ON the server. Then trust this certificate on YOUR machine so https:// is accepted. \
+Know what that hands over: this certificate can vouch for any website name, and its private key lives on \
+the server — whoever controls the server could impersonate any site to a browser that trusts it. \
+Trust it only in a browser profile you keep for this server, and remove it when you are done.";
+
+/// The CA's CERTIFICATE as PEM, for the web UI's download — never the key (ledger #932).
+pub fn ca_certificate_pem(paths: &dyn Paths) -> Result<String> {
+    let path = ca_dir(paths)?.join(CA_CERT_FILE);
+    let pem = std::fs::read_to_string(&path)
+        .map_err(|e| crate::error::Error::Other(format!("rexenv's CA is not there yet ({}: {e}) — start the stack once", path.display())))?;
+    if !pem.contains("-----BEGIN CERTIFICATE-----") || pem.contains("PRIVATE KEY") {
+        return Err(crate::error::Error::Other("rexenv's CA file is not a lone certificate — not offering it".into()));
+    }
+    Ok(pem)
+}
+
 /// Directory holding CA material under app-data.
 pub fn ca_dir(paths: &dyn Paths) -> Result<PathBuf> {
     Ok(paths.app_data_dir()?.join("ca"))
@@ -510,6 +531,17 @@ pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #932 — the download is the certificate alone.
+    #[test]
+    fn the_ca_download_is_the_certificate_and_never_the_key() {
+        let src = include_str!("ssl.rs");
+        let f = &src[src.find("pub fn ca_certificate_pem(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("join(CA_CERT_FILE)") && !f.contains("CA_KEY_FILE"), "{f}");
+        assert!(f.contains("pem.contains(\"PRIVATE KEY\")"), "a key in the file must refuse the download");
+        assert!(REMOTE_CA_NOTE.contains("any website name") && REMOTE_CA_NOTE.contains("private key lives on"));
+    }
+
 
     /// #154 — **a Firefox failure never fails the trust.**
     ///

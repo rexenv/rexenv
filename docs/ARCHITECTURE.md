@@ -2462,6 +2462,12 @@ in the developer's own browser and lists no server apps. The terminal (`/ipc` + 
 and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser's frame needs the window's
 custom schemes, so over the web it says it is not there yet (`/db`, `/pma` are T8's open half).
 
+**The CA for another machine's browser (T9, ledger #932).** Settings → SSL, over the web only, offers
+the local CA's certificate (never the key) for a browser that reaches the sites through `ssh -D`,
+with `core::ssl::REMOTE_CA_NOTE` beside it — the CA is an unconstrained root whose key lives on the
+server, so trusting it hands that server every site the browser visits — and all three OSes' trust
+steps (`PlatformWords::trust_downloaded_ca`), since the browser's OS is not the server's.
+
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 
 Added to this file 21 Aug 2026, three weeks after M1 shipped. Until then the file

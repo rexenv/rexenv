@@ -11,7 +11,7 @@ import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStat
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
   LiveSyncJobState, LiveSyncPushPlan,
-  LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree, DirListing } from "@/types";
+  LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree, DirListing, CaDownload } from "@/types";
 import { transport, webInvoke, webListen } from "./transport";
 import {
   mockAppInfo,
@@ -97,6 +97,13 @@ async function webPick(opts: { title: string; extensions: string[]; multiple: bo
 export async function browseDir(path: string | null, extensions: string[]): Promise<DirListing> {
   if (!isTauri()) return { path: "", parent: null, roots: [], entries: [] };
   return invoke<DirListing>("browse_dir", { path, extensions });
+}
+
+/** The local CA's certificate for a browser on another machine, with how to trust it on each OS
+ *  and what that costs (`ca_download`, T9). */
+export async function caDownload(): Promise<CaDownload> {
+  if (!isTauri()) return { fileName: "rexenv-ca.pem", pem: "", note: "", steps: [] };
+  return invoke<CaDownload>("ca_download");
 }
 
 /** Native folder picker (tauri-plugin-dialog). Returns the chosen absolute

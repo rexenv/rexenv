@@ -4505,6 +4505,15 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   ◐ 28 Oct 2026 — the cloud container: the folder picker end to end in Chromium, the refusals by
   curl; not the import picker, not `rex site open`.
 
+### This server's CA in your browser (T9, ledger #932)
+- [ ] Over the tunnel: Settings → SSL shows "Open this server's sites in your browser" with the
+  note (it says the CA can vouch for any name) and three OS blocks; the button saves
+  `rexenv-ca.pem`, which `openssl x509 -noout -subject` reads as `rexenv Local CA` and which holds no
+  key. On a Mac, a Windows PC and a Linux desktop, follow that OS's block in a FRESH browser profile,
+  run `ssh -D 1080 <server>` with the profile's SOCKS proxy on localhost:1080 (remote DNS): a site
+  opens over https with no warning. Remove the CA after.
+  ◐ 28 Oct 2026 — the cloud container: the card and the download; no OS's steps.
+
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
 On a FRESH account (no sites — a port change is refused with any), with another web server holding

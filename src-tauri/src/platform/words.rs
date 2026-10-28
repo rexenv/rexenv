@@ -51,6 +51,10 @@ pub struct PlatformWords {
     pub host: &'static str,
     /// Where an app with no window on screen lives, as a sentence uses it ("staying in the menu bar").
     pub tray_home: &'static str,
+    /// How a developer trusts a DOWNLOADED rexenv CA on a machine of this OS — the web UI's CA
+    /// download shows all three (`commands::system::ca_download`, docs/PLAN-headless-web.md T9),
+    /// because the browser's OS is not the server's. Into the USER's store wherever the OS has one.
+    pub trust_downloaded_ca: &'static str,
     /// Where the app looked for the user's editors, browsers and terminals, as the "none detected" tooltip
     /// says it — the places [`crate::platform::AppCatalog`] actually searches on this OS.
     pub app_search: &'static str,
@@ -158,6 +162,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     elevation_note: "macOS will also ask for your password",
     host: "this Mac",
     tray_home: "menu bar",
+    trust_downloaded_ca: "Add it to your login keychain as a trusted root (macOS asks for your password):\n$ security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db ~/Downloads/rexenv-ca.pem\nSafari and Chrome use it at once; Firefox has its own store (Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import).",
     app_search: "/Applications, ~/Applications and Spotlight",
     routes_label: "file under /etc/resolver",
     home_prefix: "~",
@@ -198,6 +203,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     elevation_note: "Windows will also ask for approval",
     host: "this PC",
     tray_home: "notification area",
+    trust_downloaded_ca: "Add it to YOUR account's trusted roots — not the machine's — in a terminal (Windows asks once to confirm):\n> certutil -user -addstore Root %USERPROFILE%\\Downloads\\rexenv-ca.pem\nEdge and Chrome use it after a restart; Firefox has its own store (Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import).",
     app_search: "the installed-programs list, Program Files and %LOCALAPPDATA%",
     routes_label: "NRPT rule",
     home_prefix: "%USERPROFILE%",
@@ -252,6 +258,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     elevation_note: "the system will also ask for your password",
     host: "this computer",
     tray_home: "system tray",
+    trust_downloaded_ca: "Chrome and Chromium read your NSS database (libnss3-tools gives certutil):\n$ certutil -d sql:$HOME/.pki/nssdb -A -t C,, -n \"rexenv Local CA (server)\" -i ~/Downloads/rexenv-ca.pem\nFirefox and the snap browsers keep their own store (Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import).",
     app_search: "the commands on your PATH (apt, snap and JetBrains Toolbox installs)",
     routes_label: "route marker under /etc/rexenv/dns.d",
     home_prefix: "~",

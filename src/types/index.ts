@@ -2066,6 +2066,14 @@ export interface AgentAccess {
   levels: { level: AgentAccessLevel; allows: string }[];
 }
 
+/** The web UI's CA download (`commands::system::CaDownload`). */
+export interface CaDownload {
+  fileName: string;
+  pem: string;
+  note: string;
+  steps: { os: string; how: string }[];
+}
+
 /** One folder of the machine rexenv runs on, for the web UI's picker (`core::browse::DirListing`). */
 export interface DirListing {
   path: string;

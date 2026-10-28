@@ -453,6 +453,37 @@ pub fn open_in_editor(state: State<'_, AppState>, editor_id: String, path: Strin
     state.platform.shell().open_in_editor(&editor_id, &path)
 }
 
+/// What the web UI's CA download hands the browser (T9): the certificate, the note, and how to
+/// trust it on each of the three OSes — the browser's OS is not the server's.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaDownload {
+    pub file_name: &'static str,
+    pub pem: String,
+    pub note: &'static str,
+    pub steps: Vec<CaSteps>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaSteps {
+    pub os: &'static str,
+    pub how: &'static str,
+}
+
+/// The local CA's CERTIFICATE for a browser on another machine (`ssh -D`), with the cost said
+/// (`core::ssl::REMOTE_CA_NOTE`, ledger #932). Never the key.
+#[tauri::command]
+pub fn ca_download(state: State<'_, AppState>) -> Result<CaDownload> {
+    use crate::platform::words::{LINUX, MACOS, WINDOWS};
+    Ok(CaDownload {
+        file_name: "rexenv-ca.pem",
+        pem: crate::core::ssl::ca_certificate_pem(state.platform.paths())?,
+        note: crate::core::ssl::REMOTE_CA_NOTE,
+        steps: [MACOS, WINDOWS, LINUX].iter().map(|w| CaSteps { os: w.os_name, how: w.trust_downloaded_ca }).collect(),
+    })
+}
+
 /// The web UI's picker (docs/PLAN-headless-web.md T8): one folder of THIS machine, under the user's
 /// home or the Sites folder only (`core::browse`, ledger #931). `extensions` empty = folders only.
 #[tauri::command]

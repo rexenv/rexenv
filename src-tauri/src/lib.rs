@@ -46,6 +46,7 @@ macro_rules! for_each_command {
             commands::system::list_editors,
             commands::system::open_in_editor,
             commands::system::browse_dir,
+            commands::system::ca_download,
             commands::system::list_browsers,
             commands::system::open_in_browser,
             commands::system::dns_status,

@@ -410,7 +410,11 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   VM.** Was: The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
   browser on the VM.
-- **T9 — the CA download** for viewing sites through `ssh -D`, with a sentence per OS.
+- **T9 — the CA download** **✓ built 28 Oct 2026, run in the cloud container only** (ledger #932): Settings →
+  SSL over the web UI offers `rexenv-ca.pem` (the certificate alone) with `core::ssl::REMOTE_CA_NOTE`
+  — the `ssh -D` route and, plainly, that an unconstrained root whose key is on the server can vouch
+  for any site — and each OS's trust steps from `PlatformWords::trust_downloaded_ca`. Owed: the
+  three OSes' steps on real machines and a site through `ssh -D`. Was: the CA download for viewing sites through `ssh -D`, with a sentence per OS.
 - **Phase 2 and Phase 3 get their task lists when Phase 1 ships.**
 
 ## 7. Docs this touches when built

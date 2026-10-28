@@ -73,6 +73,7 @@ mod tests {
         ("updates_inventory", Tool("stack_status")),
         ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
         // The web UI's own surfaces (docs/PLAN-headless-web.md T8, T9).
+        ("ca_download", Never("a certificate a PERSON installs in their own browser on another machine — nothing an agent does with sites needs it, and its note is a consent the person reads")),
         ("browse_dir", Never("the web UI's folder picker — a person choosing a path in a browser; an agent names paths in its tool arguments and has `site_inspect_folder` for what is in one")),
         ("updates_check_now", Never("an interactive check is the person pressing a button, as app_update_check is (UPDATE_FLOW)")),
         ("updates_apply_all", Never("Update all ends in the app's own install (UPDATE_FLOW); the per-kind installs an agent may run are the php / stack tools' apply actions")),
