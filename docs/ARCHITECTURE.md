@@ -2451,7 +2451,15 @@ owner-only `web-token` file, printed only over the owner-only CLI socket) is tra
 `HttpOnly; SameSite=Strict` session cookie; everything else needs that session; and every POST
 needs an `Origin` and the session's CSRF header, whose value only the `index.html` served to that
 session carries. Sessions are in memory — a restart signs browsers out, the same link signs them
-back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit.
+back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit. **All three ports on both
+loopbacks, or nothing (ledger #935):** 9443, 9444 and 9445 are held on `127.0.0.1` AND `[::1]` before
+anything is served, and one that cannot be held stops the web UI — the first version skipped a busy
+console port and served the rest, and the session cookie (per host, never per port) would then go to
+whoever held it, who could fetch the CSRF value with it; `[::1]` left free was where an
+`ssh -L …:localhost:…` tunnel could land on another local user's listener. Only a host with no IPv6
+loopback at all serves `127.0.0.1` alone. A connection has 10 s to send its headers (hyper needs a
+timer for that) and at most 256 are served at once, so one local account cannot starve the process
+that supervises the stack (security review, 29 Oct 2026).
 
 **What a browser cannot do (T8, ledger #931).** The window's native file dialog would open on the
 server's invisible display, so over the web `pickFolder` / `pickSqlFile` / `pickZipFiles` open
@@ -2475,7 +2483,10 @@ server — and all three OSes' trust steps (`PlatformWords::trust_downloaded_ca`
 OS is not the server's. The file is NOT the server's CA but a copy re-issued in memory with the same
 key, subject and key identifier and a critical `nameConstraints` — `.rex`, the default TLD, every
 TLD a site answers on, and no IP address (ledger #934): every leaf still chains to it, a browser
-refuses it for any other site, and the server's own unconstrained trust is untouched.
+refuses it for any other site, and the server's own unconstrained trust is untouched. The copy is
+also limited to TLS servers (EKU `serverAuth`, and `-p ssl` in macOS's step): name constraints say
+nothing about code signing or e-mail, so without it a machine told to trust the copy as a root would
+accept a signed binary from whoever holds the server's key.
 
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 

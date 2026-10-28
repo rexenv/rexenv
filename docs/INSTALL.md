@@ -648,9 +648,14 @@ cached yet); every later boot starts them.
 
 **The web UI (built 28 Oct 2026, not yet released).** Add
 `--enable-web` to the setup and the service also runs rexenv's own UI on `127.0.0.1:9443` — the same
-screens as the app's window. It never listens on a public address. From your own machine:
+screens as the app's window. It never listens on a public address: it holds 9443, 9444 and 9445
+on both `127.0.0.1` and `::1`, and does not start at all when any of them is taken (the log names
+the holder), because a port left to someone else would receive your session cookie. **Use it on a
+server whose other accounts you trust:** the sign-in guards the web UI, not the stack — the
+databases' `root` has no password on loopback and the sites answer every local user, exactly as on
+a desktop. From your own machine:
 ```sh
-ssh -L 9443:localhost:9443 -L 9444:localhost:9444 -L 9445:localhost:9445 <server>   # keep it open
+ssh -L 9443:127.0.0.1:9443 -L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445 <server>   # keep it open
 ssh <server> rex web url                       # prints http://localhost:9443/?t=…
 ```
 Open that link in your browser: it signs that browser in (a session cookie; restarting rexenv signs

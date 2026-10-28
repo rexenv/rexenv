@@ -544,6 +544,19 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
+- [ ] **The web UI's sign-in — four hardening items owed before Phase 1b is called done** (security
+  review of PR #10, 29 Oct 2026; the review's CONFIRMED port-squat, `[::1]`, header-timeout and CA-EKU
+  findings were fixed the same day, #935/#934). Open: (1) **the cookie alone yields the CSRF value**
+  (`mark_index` writes it into `index.html` for any request carrying the session) and every
+  `http://localhost:*` server in the developer's browser receives that cookie — a hostile local dev
+  server on the LAPTOP could replay it through the tunnel; fix: serve on `rexenv.localhost` (and
+  `adminer.`/`pma.` on one port) with host-only cookies, and hand the CSRF value out once at sign-in;
+  (2) **the token never expires** and sessions have no idle/absolute limit or sign-out — `rex web url`
+  should mint a short-lived single-use code; (3) **the stack is open to every local account** on the
+  server (passwordless DB `root` on loopback, the direct Adminer vhost) — INSTALL now says the web UI
+  is for servers whose accounts you trust; a headless DB password is the real fix; (4) console uploads
+  are buffered whole (up to 256 MB a request, cloned per redirect hop) — stream them or cap concurrency.
+
 - [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
   D2 (the macro) and D5 (9443) ruled 28 Oct 2026.** **T6 built 28 Oct 2026** (#929): `rexenv --web` on
   `127.0.0.1:9443`, `/ipc` through the main webview's own `on_message`, `/events` as SSE, one command

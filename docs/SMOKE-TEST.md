@@ -4473,7 +4473,7 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
 
 ### The web UI (`rexenv --web`, `docs/PLAN-headless-web.md` T6, ledger #929)
 
-Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 9443:localhost:9443 vm`.
+Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 9443:127.0.0.1:9443 vm`.
 - [ ] `rexenv --headless --web` → the log says "web: serving the UI on http://127.0.0.1:9443";
   `ss -ltn` shows 9443 on `127.0.0.1` only. A second process on 9443 first → rexenv names it and
   does not serve.
@@ -4501,7 +4501,7 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   and **Choose this folder** fills the form. Databases → Import → the `.sql` picker shows `.sql` files
   only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor
   and "Show in folder" menus are absent.
-- [ ] **The Database Browser (ledger #933)**, with `-L 9444:localhost:9444 -L 9445:localhost:9445`
+- [ ] **The Database Browser (ledger #933)**, with `-L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445`
   added to the tunnel: Databases → Browse on MySQL shows Adminer INSIDE the panel, logged in; switch
   the console to phpMyAdmin → it shows inside too; a query runs in each; a site's Database tab opens
   its own database. Without the two extra forwards: an empty frame (no sign of the app's data).

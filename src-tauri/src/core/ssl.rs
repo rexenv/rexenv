@@ -52,8 +52,9 @@ pub struct LocalCa {
 pub const REMOTE_CA_NOTE: &str = "To open this server's sites from your browser, reach them through the server: \
 `ssh -D 1080 <server>`, then set your browser's SOCKS proxy to localhost:1080 with DNS sent through the proxy, \
 so the sites' names resolve ON the server. Then trust this certificate on YOUR machine so https:// is accepted. \
-This copy is limited to the endings listed below: a browser refuses it for any other website. Within them, \
-its private key lives on the server — whoever controls the server can vouch for any name ending in them. \
+This copy is limited to the endings listed below: a browser refuses it for any other website. It vouches for websites \
+only (never for signed code or e-mail). Within those endings, its private key lives on the server — whoever controls \
+the server can vouch for any name ending in them. \
 A site on an ending added later needs a fresh download. Remove it from your machine when you are done.";
 
 /// **The CA a browser on ANOTHER machine trusts: this CA re-issued with `nameConstraints`**
@@ -86,6 +87,11 @@ pub fn constrained_ca_pem(ca: &LocalCa, tlds: &[String]) -> Result<String> {
             GeneralSubtree::IpAddress(CidrSubnet::from_v6_prefix([0; 16], 0)),
         ],
     });
+    // Server authentication ONLY (29 Oct 2026, ledger #934): name constraints say nothing about
+    // code signing or e-mail, so without an EKU the developer's machine — told to trust this as a
+    // root — would accept a code-signing or S/MIME certificate from whoever holds the server's key.
+    // macOS, Windows and NSS all enforce a CA's EKU down the chain; every leaf is ServerAuth.
+    params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
     let cert = params.self_signed(&key).map_err(|e| Error::Other(format!("constrained ca: {e}")))?;
     Ok(cert.pem())
 }
@@ -630,6 +636,9 @@ mod tests {
         assert!(ski(&o).is_some());
         assert_ne!(o.raw_serial(), c.raw_serial());
         assert!(o.name_constraints().unwrap().is_none() && c.name_constraints().unwrap().is_some());
+        // TLS servers only: no code signing, no e-mail, no "any purpose".
+        let eku = c.extended_key_usage().unwrap().expect("the copy carries an EKU").value;
+        assert!(eku.server_auth && !eku.code_signing && !eku.email_protection && !eku.any && !eku.client_auth, "{eku:?}");
         assert_eq!(constraint_tlds(&["test".into(), "REX".into(), "bad label".into()]), ["rex", "test"]);
         assert!(!constrained.contains("PRIVATE"));
     }

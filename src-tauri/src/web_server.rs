@@ -121,9 +121,11 @@ pub fn spawn_if_requested(app: AppHandle) {
         return;
     }
     let platform = crate::platform::current();
-    if let Err(e) = crate::core::ports::ensure_free(platform.as_ref(), rules::WEB_PORT, crate::core::ports::Proto::Tcp, "rexenv web UI") {
-        log::error!("web: not started — {e}");
-        return;
+    for (port, what) in rules::web_ports() {
+        if let Err(e) = crate::core::ports::ensure_free(platform.as_ref(), port, crate::core::ports::Proto::Tcp, what) {
+            log::error!("web: not started — {e}");
+            return;
+        }
     }
     let token = match load_token() {
         Ok(t) => t,
@@ -133,67 +135,73 @@ pub fn spawn_if_requested(app: AppHandle) {
         }
     };
     let auth = Arc::new(Auth { token, sessions: Mutex::new(HashMap::new()) });
-    // The Database Browser's consoles, one origin each (T8, ledger #933) — same sessions.
-    for (console, port) in rules::console_ports() {
-        if let Err(e) = crate::core::ports::ensure_free(platform.as_ref(), port, crate::core::ports::Proto::Tcp, "rexenv web UI's database console") {
-            log::error!("web: the {} console is not served — {e}", console.label());
-            continue;
-        }
-        let (app, auth) = (app.clone(), auth.clone());
-        tauri::async_runtime::spawn(async move {
-            let addr = std::net::SocketAddr::from((rules::WEB_BIND, port));
-            let listener = match tokio::net::TcpListener::bind(addr).await {
-                Ok(l) => l,
-                Err(e) => {
-                    log::error!("web: could not bind {addr} for the {} console: {e}", console.label());
-                    return;
-                }
-            };
-            log::info!("web: the {} console on http://{addr}", console.label());
-            loop {
-                let Ok((tcp, _)) = listener.accept().await else { continue };
-                let (app, auth) = (app.clone(), auth.clone());
-                tauri::async_runtime::spawn(async move {
-                    let svc = hyper::service::service_fn(move |req| {
-                        let (app, auth) = (app.clone(), auth.clone());
-                        async move { Ok::<_, Infallible>(handle_console(&app, &auth, console, req).await) }
-                    });
-                    let io = hyper_util::rt::TokioIo::new(tcp);
-                    let _ = hyper::server::conn::http1::Builder::new().serve_connection(io, svc).await;
-                });
-            }
-        });
-    }
     tauri::async_runtime::spawn(async move {
-        let addr = std::net::SocketAddr::from((rules::WEB_BIND, rules::WEB_PORT));
-        let listener = match tokio::net::TcpListener::bind(addr).await {
-            Ok(l) => l,
-            Err(e) => {
-                log::error!("web: could not bind {addr}: {e}");
-                return;
-            }
-        };
-        log::info!("web: serving the UI on http://{addr} (loopback only) — `rex web url` prints its sign-in link");
-        let _ = SIGN_IN_URL.set(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, auth.token));
-        let streams = Arc::new(Streams::default());
-        loop {
-            let (tcp, _) = match listener.accept().await {
-                Ok(c) => c,
-                Err(e) => {
-                    log::warn!("web: accept failed: {e}");
-                    continue;
+        // **Every port, both loopbacks, or nothing (ledger #935).** A console port left to whoever
+        // binds it first receives the session cookie — a cookie is per host, never per port — and
+        // `[::1]` left free is where an `ssh -L …:localhost:…` tunnel may land first. So all of
+        // them are held before anything is served, and one that cannot be held stops the web UI.
+        let mut bound = Vec::new();
+        for (port, _) in rules::web_ports() {
+            for ip in [std::net::IpAddr::from(rules::WEB_BIND), std::net::IpAddr::from(rules::WEB_BIND_V6)] {
+                let addr = std::net::SocketAddr::new(ip, port);
+                match tokio::net::TcpListener::bind(addr).await {
+                    Ok(l) => bound.push((port, l)),
+                    Err(e) if ip.is_ipv6() && !rules::v6_bind_failure_is_fatal(e.kind()) => {
+                        log::info!("web: no IPv6 loopback here ({e}) — serving 127.0.0.1 only");
+                    }
+                    Err(e) => {
+                        log::error!("web: not started — could not hold {addr}: {e}");
+                        return;
+                    }
                 }
-            };
-            let (app, streams, auth) = (app.clone(), streams.clone(), auth.clone());
+            }
+        }
+        let limit = Arc::new(tokio::sync::Semaphore::new(rules::MAX_CONNECTIONS));
+        let streams = Arc::new(Streams::default());
+        for (port, listener) in bound {
+            let (app, auth, streams, limit) = (app.clone(), auth.clone(), streams.clone(), limit.clone());
+            let console = rules::console_ports().into_iter().find(|(_, p)| *p == port).map(|(c, _)| c);
             tauri::async_runtime::spawn(async move {
-                let svc = hyper::service::service_fn(move |req| {
-                    let (app, streams, auth) = (app.clone(), streams.clone(), auth.clone());
-                    async move { Ok::<_, Infallible>(handle(&app, &streams, &auth, req).await) }
-                });
-                let io = hyper_util::rt::TokioIo::new(tcp);
-                let _ = hyper::server::conn::http1::Builder::new().serve_connection(io, svc).await;
+                loop {
+                    let tcp = match listener.accept().await {
+                        Ok((tcp, _)) => tcp,
+                        Err(e) => {
+                            log::warn!("web: accept failed: {e}");
+                            continue;
+                        }
+                    };
+                    // Over the cap, the connection is closed unread: one local user holding
+                    // thousands open must not starve the process that supervises the stack.
+                    let Ok(permit) = limit.clone().try_acquire_owned() else { continue };
+                    let (app, auth, streams) = (app.clone(), auth.clone(), streams.clone());
+                    tauri::async_runtime::spawn(async move {
+                        let svc = hyper::service::service_fn(move |req| {
+                            let (app, auth, streams) = (app.clone(), auth.clone(), streams.clone());
+                            async move {
+                                Ok::<_, Infallible>(match console {
+                                    Some(c) => handle_console(&app, &auth, c, req).await,
+                                    None => handle(&app, &streams, &auth, req).await,
+                                })
+                            }
+                        });
+                        let io = hyper_util::rt::TokioIo::new(tcp);
+                        // hyper's header timeout does nothing without a timer.
+                        let _ = hyper::server::conn::http1::Builder::new()
+                            .timer(hyper_util::rt::TokioTimer::new())
+                            .header_read_timeout(rules::HEADER_READ_TIMEOUT)
+                            .serve_connection(io, svc)
+                            .await;
+                        drop(permit);
+                    });
+                }
             });
         }
+        log::info!(
+            "web: serving the UI on http://127.0.0.1:{} and its consoles on {} (loopback only) — `rex web url` prints its sign-in link",
+            rules::WEB_PORT,
+            rules::console_ports().iter().map(|(_, p)| p.to_string()).collect::<Vec<_>>().join(", ")
+        );
+        let _ = SIGN_IN_URL.set(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, auth.token));
     });
 }
 

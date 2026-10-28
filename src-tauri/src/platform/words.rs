@@ -162,7 +162,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     elevation_note: "macOS will also ask for your password",
     host: "this Mac",
     tray_home: "menu bar",
-    trust_downloaded_ca: "Add it to your login keychain as a trusted root (macOS asks for your password):\n$ security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db ~/Downloads/rexenv-ca.pem\nSafari and Chrome use it at once; Firefox has its own store (Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import).",
+    trust_downloaded_ca: "Add it to your login keychain as a trusted root (macOS asks for your password):\n$ security add-trusted-cert -r trustRoot -p ssl -k ~/Library/Keychains/login.keychain-db ~/Downloads/rexenv-ca.pem\nSafari and Chrome use it at once; Firefox has its own store (Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import).",
     app_search: "/Applications, ~/Applications and Spotlight",
     routes_label: "file under /etc/resolver",
     home_prefix: "~",

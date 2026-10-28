@@ -189,7 +189,7 @@ rexenv --headless [--web 127.0.0.1:9443]
 
 ### Phase 1b — the web UI on loopback, reached over SSH
 
-- The web UI binds **`127.0.0.1` only**. The developer runs `ssh -L 9443:localhost:9443 vps` and opens
+- The web UI binds **loopback only** — `127.0.0.1` AND `[::1]`, all three ports or none (29 Oct 2026, ledger #935: a port left free was a port another local user could take, and the cookie goes to every port of the host). The developer runs `ssh -L 9443:127.0.0.1:9443 vps` and opens
   `http://localhost:9443`. Browsers treat `localhost` as a secure context, so the tunnel needs no TLS.
 - **Auth even on loopback.** Loopback on a VPS is not private: every local user and every process on
   the box can reach it, a WordPress plugin's `wp_remote_get` included. The rules:

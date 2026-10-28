@@ -30,6 +30,31 @@ pub fn console_ports() -> [(crate::core::dbconsole_proxy::Console, u16); 2] {
     [(Console::Adminer, ADMINER_WEB_PORT), (Console::PhpMyAdmin, PHPMYADMIN_WEB_PORT)]
 }
 
+/// The IPv6 loopback, held on the same ports as [`WEB_BIND`] (ledger #935): left free, any local
+/// user could bind `[::1]:9443` and sit in front of a tunnel whose `localhost` resolves to it.
+pub const WEB_BIND_V6: [u16; 8] = [0, 0, 0, 0, 0, 0, 0, 1];
+
+/// Every port the web UI holds, with what it is — all or none of them (ledger #935).
+pub fn web_ports() -> [(u16, &'static str); 3] {
+    [
+        (WEB_PORT, "rexenv web UI"),
+        (ADMINER_WEB_PORT, "rexenv web UI's Adminer console"),
+        (PHPMYADMIN_WEB_PORT, "rexenv web UI's phpMyAdmin console"),
+    ]
+}
+
+/// Whether a failed `[::1]` bind stops the web UI. A host with no IPv6 loopback (disabled, or no
+/// address) cannot be squatted on it either, so that alone is not a reason to stop; anything else
+/// — the port held, a permission — is.
+pub fn v6_bind_failure_is_fatal(kind: std::io::ErrorKind) -> bool {
+    !matches!(kind, std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported)
+}
+
+/// Open connections served at once, across every web port. The SSE stream holds one per tab.
+pub const MAX_CONNECTIONS: usize = 256;
+/// How long a connection may take to send its request headers before it is closed.
+pub const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The largest console request body read — a phpMyAdmin import upload rides it.
 pub const MAX_CONSOLE_BODY: usize = 256 * 1024 * 1024;
 
@@ -606,5 +631,35 @@ mod tests {
     fn the_web_ui_binds_loopback_on_d5s_port() {
         assert_eq!(WEB_PORT, 9443);
         assert_eq!(WEB_BIND, [127, 0, 0, 1]);
+    }
+
+    /// Ledger #935 — **the web UI holds every port on both loopbacks, or serves nothing.** The
+    /// three ports are one list; a `[::1]` bind that fails because the port is HELD stops it, and
+    /// only a host with no IPv6 loopback at all is let through on 127.0.0.1 alone.
+    #[test]
+    fn the_web_ui_holds_all_its_ports_on_both_loopbacks_or_none() {
+        let ports: Vec<u16> = web_ports().iter().map(|(p, _)| *p).collect();
+        assert_eq!(ports, [WEB_PORT, ADMINER_WEB_PORT, PHPMYADMIN_WEB_PORT]);
+        for (_, p) in console_ports() {
+            assert!(ports.contains(&p), "console port {p} must be held with the rest");
+        }
+        assert_eq!(std::net::Ipv6Addr::from(WEB_BIND_V6), std::net::Ipv6Addr::LOCALHOST);
+        use std::io::ErrorKind::*;
+        for fatal in [AddrInUse, PermissionDenied, Other] {
+            assert!(v6_bind_failure_is_fatal(fatal), "{fatal:?} on [::1] must stop the web UI");
+        }
+        for tolerated in [AddrNotAvailable, Unsupported] {
+            assert!(!v6_bind_failure_is_fatal(tolerated), "{tolerated:?}: no IPv6 loopback to squat");
+        }
+        // The server binds from these lists and stops on the first failure — never `continue`.
+        let server = include_str!("web_server.rs");
+        let spawn = &server[server.find("pub fn spawn_if_requested").expect("spawn_if_requested")..];
+        let spawn = &spawn[..spawn.find("\nfn ").expect("its end")];
+        assert!(spawn.contains("rules::web_ports()") && spawn.contains("rules::WEB_BIND_V6"), "binds from the lists");
+        let held = spawn.find("could not hold {addr}: {e}\");").expect("the bind failure arm");
+        assert!(spawn[held..].trim_start_matches(|c| c != '\n').trim_start().starts_with("return;"), "a port that cannot be held stops the web UI");
+        assert!(!spawn.contains("is not served"), "no console is skipped while the rest serve");
+        assert!(spawn.contains(".header_read_timeout(rules::HEADER_READ_TIMEOUT)") && spawn.contains(".timer("), "header timeout with a timer");
+        assert!(spawn.contains("try_acquire_owned()"), "the connection cap");
     }
 }

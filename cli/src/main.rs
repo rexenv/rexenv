@@ -3584,7 +3584,7 @@ fn cmd_web(args: &[String], json_output: bool) {
         Some(url) => {
             outln!("{url}");
             outln!("  open it in your browser through a tunnel (9444/9445 are the database consoles):");
-            outln!("  ssh -L 9443:localhost:9443 -L 9444:localhost:9444 -L 9445:localhost:9445 <this server>");
+            outln!("  ssh -L 9443:127.0.0.1:9443 -L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445 <this server>");
         }
         None => {
             errln!("rex: this rexenv serves no web UI — start it with `rexenv --headless --web` (or add --web to its service)");
