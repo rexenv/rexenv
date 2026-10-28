@@ -1321,6 +1321,14 @@ cargo build --release --bin rexenv` with `dist/` already built — and `sudo ins
 "Could not connect to localhost" (the same trap as a bare `cargo xwin` build on Windows); only
 `tauri build` strips it by itself. Examples and `rex` from the same container run on the VM as-is.
 
+**A slow or wedged edge, on purpose** (28 Oct 2026, #926/#927 — macOS too): `sudo kill -STOP` the root
+caddy (`pgrep -x caddy` — `-f "caddy run"` also matches the shell running the test) and run `rex start`. A
+`SIGCONT` 15 s later is a SLOW load: the settle reload must land with the same pid. No `SIGCONT` is a WEDGE:
+the socket still accepts and nothing answers, so the supervisor must replace it — on Linux `systemctl
+restart` (no prompt, the sudoers set), on macOS the admin prompt for `kickstart -k`. On macOS, `sudo -v`
+does not carry to a later `sudo -n` over a non-tty SSH: pipe the password to every `sudo -S`, or the resume
+never comes and the run turns into the wedge case.
+
 **A power cut, on purpose** (29 Sep 2026, #740): `utmctl stop Ubuntu --kill` is a cut, not a
 shutdown. A root file written by a plain `cp` and killed 10 s later reliably comes back ZERO bytes
 (ext4 delalloc — the inode is journaled at the 5 s commit, the data is not written until ~30 s);

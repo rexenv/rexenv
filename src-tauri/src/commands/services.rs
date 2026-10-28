@@ -194,7 +194,7 @@ pub async fn start_stack(state: &AppState) -> Result<()> {
     // An edge its OS supervisor is still STARTING (minutes after a macOS boot) is coming, not
     // wedged: wait for it and adopt it, instead of a privileged reinstall that boots it out and then
     // calls it dead after 5 s (ledger #851). Only a plan that would reinstall is worth the wait.
-    if plan.as_ref().is_some_and(|p| p.privileged) && wait_for_starting_edge(state, std::time::Duration::ZERO).await {
+    if core::service_manager::plan_may_await_starting_edge(&plan) && wait_for_starting_edge(state, std::time::Duration::ZERO).await {
         plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;
     }
     // Phase 4 (UNLOCKED): the privileged edge start blocks on the admin-password
@@ -543,6 +543,7 @@ async fn auto_start_inner(state: &State<'_, AppState>) -> Result<Option<String>>
     let edge = state.platform.edge();
     let action = core::service_manager::login_edge_action(&plan);
     if core::service_manager::login_edge_waits_for_boot(&action, edge.is_installed(), edge.is_enabled())
+        && core::service_manager::plan_may_await_starting_edge(&plan)
         && wait_for_starting_edge(state, core::service_manager::LOGIN_EDGE_BOOT_WAIT).await
     {
         plan = state.services.lock().await.prepare_edge(state.platform.as_ref(), caddyfile)?;

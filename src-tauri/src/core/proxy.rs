@@ -732,30 +732,39 @@ pub fn reload(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path, force
     // reload of the same file is a no-op that answers truthfully; a real config error fails both.
     let log = platform.paths().log_dir()?.join(ADMIN_CLI_LOG);
     retry_reload(
-        || {
+        |timeout| {
             let _ = std::fs::remove_file(&log);
-            wait_ok(platform.supervisor().spawn_logged(caddy_bin, &args, &log)?, "caddy reload")
+            wait_ok_within(platform.supervisor().spawn_logged(caddy_bin, &args, &log)?, "caddy reload", timeout)
         },
         || std::fs::read_to_string(&log).unwrap_or_default(),
         std::time::Duration::from_millis(500),
     )
 }
 
-/// [`reload`]'s policy, apart from the process: one more attempt after a failure that is not a
-/// timeout (a wedged edge would only cost the caller another 10 s), and the error carries the
-/// last thing the reload said.
+/// [`reload`]'s policy, apart from the process: one more attempt after any failure, and the error
+/// carries the last thing the reload said.
+///
+/// **A timeout is not a wedge, so it is retried too — with a longer bound.** Killing the `caddy
+/// reload` CLI does not cancel a `/load` it already sent: Caddy goes on applying it. On the macOS
+/// VM (28 Oct 2026, #918's round trip) the CLI took ~9 s to deliver its request after a relaunch,
+/// the 10 s bound read that as a refusal, and the `/stop` that followed raced the load still in
+/// progress — Caddy 2.11.4 panicked in its TLS stop and the edge served nothing until `kill -9`.
+/// Caddy applies one config at a time, so a second reload of the same file waits for the first
+/// and then answers truthfully (a no-op when it landed). Only when that one times out too is the
+/// edge wedged — which costs the caller [`RELOAD_SETTLE_TIMEOUT`] more, once (ledger #926).
 fn retry_reload(
-    mut attempt: impl FnMut() -> Result<()>,
+    mut attempt: impl FnMut(std::time::Duration) -> Result<()>,
     said: impl Fn() -> String,
     pause: std::time::Duration,
 ) -> Result<()> {
-    attempt()
+    attempt(ADMIN_CLI_TIMEOUT)
         .or_else(|first| {
             if first.to_string().contains("timed out") {
-                return Err(first);
+                log::warn!("edge: {first} — waiting for the load it may have sent to settle");
+                return attempt(RELOAD_SETTLE_TIMEOUT);
             }
             std::thread::sleep(pause);
-            attempt()
+            attempt(ADMIN_CLI_TIMEOUT)
         })
         .map_err(|e| match said().lines().rev().map(str::trim).find(|l| !l.is_empty()) {
             Some(last) => crate::error::Error::Other(format!("{e}: {last}")),
@@ -778,6 +787,21 @@ pub fn stop_admin(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
     )
 }
 
+/// The stack guard for replacing a LIVE edge on our admin socket: a live-check example must refuse,
+/// because that listener is most likely the USER'S serving edge (the root daemon) — never take the
+/// fresh-start path over the shared socket. `Ok` when nothing is live, or this is the app.
+pub fn guard_live_edge(platform: &dyn Platform) -> Result<()> {
+    if !admin_alive(platform) || crate::core::stack_guard::may_control_real_stack() {
+        return Ok(());
+    }
+    Err(crate::error::Error::Other(format!(
+        "a live rexenv edge is on the admin socket and this process is not the \
+         rexenv app — refusing to stop it (stack guard). If this teardown is \
+         deliberate, set {}=1 or call stack_guard::allow_real_stack_control().",
+        crate::core::stack_guard::ALLOW_ENV
+    )))
+}
+
 /// Recover from a LEFTOVER edge before starting ours (Phase 2 §7.3).
 ///
 /// A Caddy orphaned by a prior run (commonly a **root** edge from a `:443` start)
@@ -793,17 +817,7 @@ pub fn recover_stale_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<(
     if !admin_alive(platform) {
         return Ok(());
     }
-    if !crate::core::stack_guard::may_control_real_stack() {
-        // A live listener on the admin socket is most likely the USER'S serving
-        // edge (root LaunchDaemon) — a live-check example must refuse to kill it
-        // rather than take the fresh-start path over the shared socket.
-        return Err(crate::error::Error::Other(format!(
-            "a live rexenv edge is on the admin socket and this process is not the \
-             rexenv app — refusing to stop it (stack guard). If this teardown is \
-             deliberate, set {}=1 or call stack_guard::allow_real_stack_control().",
-            crate::core::stack_guard::ALLOW_ENV
-        )));
-    }
+    guard_live_edge(platform)?;
     log::warn!(
         "rexenv: a leftover rexenv Caddy edge is live on its admin socket; \
          stopping it via the admin API so startup isn't blocked"
@@ -886,6 +900,10 @@ pub fn stop_edge(platform: &dyn Platform, caddy_bin: &Path) -> Result<()> {
 /// local unix socket return near-instantly; a wedged edge (socket accepts but
 /// never answers — the orphan-worker class) would otherwise hang forever.
 const ADMIN_CLI_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The bound for the reload that follows a timed-out one ([`retry_reload`]): long enough for a
+/// slow first load to finish, so a timeout here means a wedged edge.
+const RELOAD_SETTLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 fn wait_ok(child: Child, what: &str) -> Result<()> {
     wait_ok_within(child, what, ADMIN_CLI_TIMEOUT)
@@ -1246,24 +1264,34 @@ mod tests {
     }
 
     /// The Win11 VM's measurement (8 Oct 2026): the first reload of a CHANGED config fails with a
-    /// cut connection while the config is applied; the second answers truthfully. A timeout is not
-    /// retried; a real error fails both and quotes what Caddy said.
+    /// cut connection while the config is applied; the second answers truthfully. A real error fails
+    /// both and quotes what Caddy said. A timeout (the macOS VM, 28 Oct 2026) is retried ONCE with
+    /// the settle bound: a slow load that lands answers the second reload, a wedge fails it.
     #[test]
     fn a_reload_cut_off_by_the_admin_restart_is_retried_once() {
-        use std::cell::Cell;
+        use std::cell::{Cell, RefCell};
         use std::time::Duration;
         let err = |m: &str| -> Result<()> { Err(crate::error::Error::Other(m.into())) };
         let calls = Cell::new(0);
-        let cut_then_fine = || { calls.set(calls.get() + 1); if calls.get() == 1 { err("caddy reload failed (exit 1)") } else { Ok(()) } };
+        let cut_then_fine = |_: Duration| { calls.set(calls.get() + 1); if calls.get() == 1 { err("caddy reload failed (exit 1)") } else { Ok(()) } };
         assert!(retry_reload(cut_then_fine, String::new, Duration::ZERO).is_ok());
         assert_eq!(calls.get(), 2);
 
-        let calls = Cell::new(0);
-        let wedged = || { calls.set(calls.get() + 1); err("caddy reload timed out after 10s") };
-        assert!(retry_reload(wedged, String::new, Duration::ZERO).is_err());
-        assert_eq!(calls.get(), 1, "a timeout must not be paid twice");
+        let bounds = RefCell::new(Vec::new());
+        let slow_then_landed = |t: Duration| {
+            bounds.borrow_mut().push(t);
+            if bounds.borrow().len() == 1 { err("caddy reload timed out after 10s") } else { Ok(()) }
+        };
+        assert!(retry_reload(slow_then_landed, String::new, Duration::ZERO).is_ok(), "a slow load that landed is a reload, not a refusal");
+        assert_eq!(*bounds.borrow(), vec![ADMIN_CLI_TIMEOUT, RELOAD_SETTLE_TIMEOUT], "the second wait is the longer one");
+        assert!(RELOAD_SETTLE_TIMEOUT > ADMIN_CLI_TIMEOUT);
 
-        let bad = || err("caddy reload failed (exit 1)");
+        let calls = Cell::new(0);
+        let wedged = |_: Duration| { calls.set(calls.get() + 1); err("caddy reload timed out after 10s") };
+        assert!(retry_reload(wedged, String::new, Duration::ZERO).is_err(), "a wedge still fails");
+        assert_eq!(calls.get(), 2, "a timeout is waited out once, never more");
+
+        let bad = |_: Duration| err("caddy reload failed (exit 1)");
         let said = || "noise\nError: adapting config using caddyfile: unrecognized directive: bogus\n".to_string();
         let e = retry_reload(bad, said, Duration::ZERO).unwrap_err().to_string();
         assert!(e.ends_with("exit 1): Error: adapting config using caddyfile: unrecognized directive: bogus"), "{e}");

@@ -137,7 +137,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **A slow edge reload wedges a root edge until `kill -9`** (found 28 Oct 2026 on the macOS 15.8 VM, 0.9.4, running
+- [x] **A slow edge reload wedges a root edge until `kill -9`** ✓ 28 Oct 2026 — fixed: a timed-out reload is retried once with a 30 s bound (#926), an installed daemon that refused goes to its supervisor and never gets an admin `/stop` (#927), and a refused live edge is not waited on twice; L1 by `SIGSTOP` on the server VM and the macOS VM (TESTING § "A slow or wedged edge, on purpose") (found 28 Oct 2026 on the macOS 15.8 VM, 0.9.4, running
   #918's round trip). `proxy::reload` kills the `caddy reload` CLI after 10 s (`wait_ok_within`), but a request the CLI
   already sent keeps loading inside Caddy; `service_manager` then reads the timeout as a refusal ("reinstalling it") and
   `proxy` sends `/stop` to the live edge. The two raced: the CLI took ~9 s to deliver its `/load` (first exec after a

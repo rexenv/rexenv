@@ -484,11 +484,23 @@ Live-proven end to end by `site_stop_start_check`.
   nothing (all-or-nothing). `stop_all` then skips the admin-stop for a `Daemon` edge
   (already down); the lowered switch keeps it down across reboots until the next Start-all
   (whose `install_command` raises it — and `enable`s, for a label a pre-#773 stop disabled).
-- `recover_stale_edge()` (fallback, only when a live edge refuses the reload): probe OUR
-  socket; a live leftover rexenv edge gets `caddy stop` over it (no privilege needed),
-  polled up to 10×500ms, then a clear error if `:443` still isn't free. Ownership-gated:
-  rexenv never binds nor queries TCP `2019`, so a developer's own Caddy (e.g. Herd's) is
-  never touched (M1 invariant, `d35db62`).
+- **When a reload "refuses".** A `caddy reload` is bounded at 10 s, but a timeout is not a
+  refusal: killing the CLI does not cancel a `/load` it already sent, so `retry_reload`
+  reloads once more with a 30 s bound. Caddy applies one config at a time, so that second
+  reload answers once the first has landed. Only a second timeout means the edge is wedged
+  (#926). On 28 Oct 2026 the macOS VM's CLI took ~9 s to deliver its `/load`.
+- **A refused reload of an INSTALLED daemon goes to its supervisor.** The plan returns to
+  `start_edge_daemon` (`kickstart -k` / bootout + bootstrap, `systemctl restart`), and the
+  daemon is never sent an admin `/stop` (#927). On that same run a `/stop` raced the still-running
+  `/load` and Caddy 2.11.4 panicked in its TLS stop. The process neither served nor exited, so
+  KeepAlive never restarted it. SIGTERM waited on an eternal grace period. Only `kill -9` brought
+  the sites back.
+- `recover_stale_edge()` (fallback, only when a live edge refuses the reload and NO daemon is
+  installed): probe OUR socket; a live leftover rexenv edge gets `caddy stop` over it (no
+  privilege needed), polled up to 10×500ms, then a clear error if `:443` still isn't free.
+  Ownership-gated: rexenv never binds nor queries TCP `2019`, so a developer's own Caddy
+  (e.g. Herd's) is never touched (M1 invariant, `d35db62`). Its stack guard (`guard_live_edge`)
+  also guards the daemon branch.
 - `stop_edge()` (legacy/non-daemon path): graceful admin-API stop, then reap processes
   running OUR caddy binary path (`owned_pids(marker)`). A root remnant may survive —
   logged; it holds no ports.

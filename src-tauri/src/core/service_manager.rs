@@ -95,6 +95,17 @@ pub struct EdgePlan {
     /// start names when it looks for who holds them.
     pub http_port: u16,
     pub https_port: u16,
+    /// The edge's admin socket was LIVE and refused the reload (wedged, or a load that never
+    /// settled — ledger #926), as opposed to an edge with no live socket at all.
+    pub refused_reload: bool,
+}
+
+/// Whether a prepared plan is worth waiting on a STARTING edge for (#851, #743): a privileged plan
+/// for an edge whose socket was dead. A live edge that refused the reload is answering, not
+/// starting — the wait returns at once and `prepare_edge` runs again, paying the reload's bounds a
+/// second time (40 s twice on the server VM, 28 Oct 2026, before the supervisor restart).
+pub fn plan_may_await_starting_edge(plan: &Option<EdgePlan>) -> bool {
+    plan.as_ref().is_some_and(|p| p.privileged && !p.refused_reload)
 }
 
 /// What an UNATTENDED start may do with a prepared edge plan — LOGIN-SAFETY
@@ -961,18 +972,29 @@ impl ServiceManager {
             }
             self.caddy = CaddyHandle::Stopped;
         }
-        // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
-        // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
-        // default :2019 admin is never touched (task 2.4 / M1).
-        proxy::recover_stale_edge(platform, &caddy_bin)?;
         // If OUR KeepAlive daemon is installed, it (or a wedged instance of it) is what
         // holds :443 — and its admin socket may be unreachable (e.g. root-owned again
         // after a reload) so the adopt-reload above couldn't take it. Do NOT treat :443
         // as a foreign conflict: return the plan so `start_edge_daemon` REINSTALLS —
-        // its `bootout` stops that edge and frees :443 before the fresh bootstrap
-        // rebinds (and deploys the current launcher, healing the socket handoff). Only
-        // when NO daemon is installed is a :443 holder a genuine foreign conflict.
-        if !platform.edge().is_installed() {
+        // its `bootout` (or `kickstart -k` / `systemctl restart`) stops that edge and frees
+        // :443 before the fresh start rebinds (and deploys the current launcher, healing
+        // the socket handoff). Only when NO daemon is installed is a :443 holder a genuine
+        // foreign conflict.
+        //
+        // **An installed daemon is never sent an admin `/stop` here — its supervisor replaces
+        // it.** A reload that timed out may still be loading, and `/stop` racing that load
+        // panicked Caddy 2.11.4 (`close of closed channel` in its TLS stop): the process neither
+        // served nor exited, so KeepAlive never restarted it, and SIGTERM waited on an eternal
+        // grace period — only `kill -9` brought the sites back (the macOS VM, 28 Oct 2026). The
+        // stop also bought nothing: KeepAlive relaunches a stopped daemon, and the plan below
+        // restarts it anyway. The stack guard still holds for a live-check example (ledger #927).
+        if platform.edge().is_installed() {
+            proxy::guard_live_edge(platform)?;
+        } else {
+            // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
+            // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
+            // default :2019 admin is never touched (task 2.4 / M1).
+            proxy::recover_stale_edge(platform, &caddy_bin)?;
             ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
         }
         Ok(Some(EdgePlan {
@@ -991,6 +1013,8 @@ impl ServiceManager {
             caddyfile,
             http_port: self.ports.http,
             https_port: self.ports.https,
+            // Live here means the reload above was tried and refused: a reloaded edge returned.
+            refused_reload: alive,
         }))
     }
 
@@ -3450,13 +3474,13 @@ mod tests {
     fn login_edge_action_never_runs_a_privileged_plan() {
         assert!(matches!(login_edge_action(&None), LoginEdgeAction::AlreadyServing));
         let privileged =
-            EdgePlan { privileged: true, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 80, https_port: 443 };
+            EdgePlan { privileged: true, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 80, https_port: 443, refused_reload: false };
         assert!(matches!(
             login_edge_action(&Some(privileged)),
             LoginEdgeAction::SkipNeedsPrompt
         ));
         let high_port =
-            EdgePlan { privileged: false, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 8080, https_port: 8443 };
+            EdgePlan { privileged: false, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 8080, https_port: 8443, refused_reload: false };
         assert!(matches!(
             login_edge_action(&Some(high_port)),
             LoginEdgeAction::StartUnprivileged
@@ -3935,6 +3959,38 @@ mod tests {
         let cmd = include_str!("../commands/services.rs");
         let f = &cmd[cmd.find("pub async fn stop_services(").expect("stop_services")..];
         assert!(f[..f.find("\n}\n").unwrap()].contains("edge_daemon_needs_stop("), "Stop all must ask the fact, not only the handle");
+    }
+
+    /// A live edge that refused the reload is not waited on as a starting one (#927's L1: 83 s, two
+    /// rounds of the reload's bounds); a dead one with a privileged plan still is (#851).
+    #[test]
+    fn a_refused_live_edge_is_not_waited_on_as_a_starting_one() {
+        let plan = |privileged, refused_reload| {
+            Some(EdgePlan { privileged, caddy_bin: "/x".into(), caddyfile: "/y".into(), http_port: 80, https_port: 443, refused_reload })
+        };
+        assert!(plan_may_await_starting_edge(&plan(true, false)), "a dead socket + a reinstall plan: maybe still starting");
+        assert!(!plan_may_await_starting_edge(&plan(true, true)), "a live socket that refused: answering, not starting");
+        assert!(!plan_may_await_starting_edge(&plan(false, false)), "an unprivileged start needs no wait");
+        assert!(!plan_may_await_starting_edge(&None));
+        let cmd = include_str!("../commands/services.rs");
+        assert_eq!(cmd.matches("plan_may_await_starting_edge(&plan)").count(), 2, "Start all and the login start both ask");
+    }
+
+    /// TEXT — an installed daemon that refused a reload is replaced by its SUPERVISOR, never sent an
+    /// admin `/stop`: `prepare_edge` reaches `recover_stale_edge` (the admin stop) only on the
+    /// no-daemon branch (the macOS VM's wedge, 28 Oct 2026). A live socket is needed for behaviour;
+    /// the VM run is the L1.
+    #[test]
+    fn prepare_edge_never_admin_stops_an_installed_daemon() {
+        let src = include_str!("service_manager.rs");
+        let f = &src[src.find("    pub fn prepare_edge(").expect("prepare_edge")..];
+        let f = &f[..f.find("\n    }\n").expect("its end")];
+        let branch = f.find("if platform.edge().is_installed() {\n            proxy::guard_live_edge(platform)?;\n        } else {")
+            .expect("the daemon branch guards and does not stop");
+        let stop = f.find("proxy::recover_stale_edge(").expect("the no-daemon branch still clears a leftover");
+        assert!(stop > branch, "the admin stop must sit inside the no-daemon branch");
+        assert_eq!(f.matches("proxy::recover_stale_edge(").count(), 1, "one admin stop, on the no-daemon branch only");
+        assert!(!f.contains("stop_admin("), "prepare_edge must not stop the edge through its admin API");
     }
 
     /// #806 — TEXT: `prepare_edge` never returns "nothing to start" before it has pushed the
