@@ -1198,6 +1198,10 @@ fn cmd_site_list(json_output: bool) {
             .max(min)
     };
     let (dw, nw) = (col("domain", 6), col("name", 4));
+    // SERVER and DB are measured too: fixed 10/7 let `openlitespeed` and
+    // `postgres` push every later column of their row out of line.
+    let (tw, sw) = (col("type", 4), col("webServer", 6));
+    let bw = sites.iter().map(|s| list_db(s).len()).max().unwrap_or(2).max(2);
     // The extra names a site answers on (v42), after the columns every site
     // has — `find_site` accepts them and the error it prints sends people
     // here, so a list that hid them sent people to a dead end.
@@ -1208,7 +1212,7 @@ fn cmd_site_list(json_output: bool) {
             .map(|list| list.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
             .unwrap_or_default()
     };
-    outln!("{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
+    outln!("{:<dw$}  {:<nw$}  {:<tw$}  {:<5}  {:<sw$}  {:<bw$}  {:<10}  ALSO", "DOMAIN", "NAME", "TYPE", "PHP", "SERVER", "DB", "STATE");
     for s in sites {
         let domain = s["domain"].as_str().unwrap_or("?");
         let (up, stopped) = serving
@@ -1217,7 +1221,7 @@ fn cmd_site_list(json_output: bool) {
             .map(|(_, up, stopped)| (*up, *stopped))
             .unwrap_or((false, false));
         outln!(
-            "{:<dw$}  {:<nw$}  {:<9}  {:<5}  {:<10}  {:<7}  {:<10}  {}",
+            "{:<dw$}  {:<nw$}  {:<tw$}  {:<5}  {:<sw$}  {:<bw$}  {:<10}  {}",
             domain,
             s["name"].as_str().unwrap_or("?"),
             s["type"].as_str().unwrap_or("?"),
