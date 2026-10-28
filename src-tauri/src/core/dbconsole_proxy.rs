@@ -48,7 +48,7 @@ impl Console {
         }
     }
 
-    fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Console::Adminer => "adminer",
             Console::PhpMyAdmin => "phpmyadmin",
@@ -129,7 +129,10 @@ fn client(console: Console, edge_https_port: u16) -> &'static reqwest::Client {
 /// widens nothing: this copy is served from an origin only rexenv's own scheme
 /// handler answers, so no browser can load it, whatever it says about framing
 /// (the same argument as `adminer::PROXY_FRAME_ANCESTORS`). The DIRECT https
-/// vhost keeps its `DENY` (ledger #865, #869).
+/// vhost keeps its `DENY` (ledger #865, #869). Since the web UI (T8, ledger #933)
+/// a browser CAN load this copy — from a console's loopback port, behind the
+/// session gate — so there the replacement for the dropped header is the CSP's
+/// `frame-ancestors`, set to the app's own page alone (`web_rules::console_csp`).
 const STRIPPED_RESPONSE_HEADERS: &[&str] = &[
     "set-cookie",
     "content-length",

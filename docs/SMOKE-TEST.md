@@ -4471,6 +4471,60 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
   → service → `demo.rex` 200 over plain `curl` → the `rex mcp` scratch loop → a reboot with no login,
   everything back and 200.
 
+### The web UI (`rexenv --web`, `docs/PLAN-headless-web.md` T6, ledger #929)
+
+Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 9443:localhost:9443 vm`.
+- [ ] `rexenv --headless --web` → the log says "web: serving the UI on http://127.0.0.1:9443";
+  `ss -ltn` shows 9443 on `127.0.0.1` only. A second process on 9443 first → rexenv names it and
+  does not serve.
+- [ ] In the tunnelled browser, `http://localhost:9443/`: the app renders with the server's real
+  sites (not the mock list); DevTools' Network tab shows `POST /ipc/…` and one `/events` stream.
+- [ ] Sites → New site → Blank PHP → Create: the site is created and appears in the list; its
+  provision progress moves live (an event over the stream); `rex site list` on the server shows it.
+  Delete it from the browser; it is gone from `rex site list`.
+- [ ] `curl -X POST localhost:9443/ipc/plugin:dialog%7Copen` → `no such command`; `curl
+  --path-as-is localhost:9443/../../etc/passwd` → 400.
+  ◐ 28 Oct 2026 — the cloud container (no tunnel, no binaries): every row but a site actually
+  created; the create reached the backend and its refusal came back as the toast.
+- [ ] **Sign-in (T7, ledger #930).** `sudo rexenv --headless-setup --enable-web` → `systemctl cat
+  rexenv-headless` shows `ExecStart=/usr/bin/rexenv --headless --web`; `ls -l
+  ~/.local/share/rexenv/config/web-token` is `-rw-------`. Through the tunnel, `http://localhost:9443/`
+  with no link → the sentence naming `rex web url`; the printed link → the app, and the address bar
+  loses the `?t=`. A second browser profile without the link → the sentence again. Another local
+  account: `curl localhost:9443/ipc/app_info -X POST` → 401. `curl -H 'Host: evil.example'` → 403.
+  ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
+  setup's unit line is L0 only (no systemd there).
+
+### The web UI's pickers and desktop actions (T8, ledger #931)
+- [ ] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
+  walks into `rexenv/Sites/`, a symlink out of home (`ln -s /etc ~/out`) answers with the sentence,
+  and **Choose this folder** fills the form. Databases → Import → the `.sql` picker shows `.sql` files
+  only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor
+  and "Show in folder" menus are absent.
+- [ ] **The Database Browser (ledger #933)**, with `-L 9444:localhost:9444 -L 9445:localhost:9445`
+  added to the tunnel: Databases → Browse on MySQL shows Adminer INSIDE the panel, logged in; switch
+  the console to phpMyAdmin → it shows inside too; a query runs in each; a site's Database tab opens
+  its own database. Without the two extra forwards: an empty frame (no sign of the app's data).
+  `curl -X POST localhost:9444/` from the server with no cookie → 401.
+  ◐ 28 Oct 2026 — the cloud container with a FAKE console upstream on :443 (no binaries there): the
+  gate's refusals, the login POST through the jar, the CSP, and a foreign localhost page refused by
+  `frame-ancestors` in Chromium; not a real Adminer or phpMyAdmin.
+- [ ] On the server: `rex site open <domain>` → exit 1 with the "no screen" sentence.
+  ◐ 28 Oct 2026 — the cloud container: the folder picker end to end in Chromium, the refusals by
+  curl; not the import picker, not `rex site open`.
+
+### This server's CA in your browser (T9, ledger #932)
+- [ ] Over the tunnel: Settings → SSL shows "Open this server's sites in your browser" with the
+  note (it says the CA can vouch for any name) and three OS blocks; the button saves
+  `rexenv-ca.pem`, which `openssl x509 -noout -subject -ext nameConstraints` reads as `rexenv Local
+  CA` with `Permitted: DNS:rex` (+ the server's other endings, as the card lists) and which holds no
+  key. In the trusting browser, a site of the server opens over https, and a certificate the same key
+  signs for another name (`openssl x509 -req -CA … -CAkey …` on the server, served by any https test
+  server) is REFUSED — the constraint at work in that browser (#934). On a Mac, a Windows PC and a Linux desktop, follow that OS's block in a FRESH browser profile,
+  run `ssh -D 1080 <server>` with the profile's SOCKS proxy on localhost:1080 (remote DNS): a site
+  opens over https with no warning. Remove the CA after.
+  ◐ 28 Oct 2026 — the cloud container: the card and the download; no OS's steps.
+
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
 On a FRESH account (no sites — a port change is refused with any), with another web server holding

@@ -2066,6 +2066,24 @@ export interface AgentAccess {
   levels: { level: AgentAccessLevel; allows: string }[];
 }
 
+/** The web UI's CA download (`commands::system::CaDownload`). */
+export interface CaDownload {
+  fileName: string;
+  pem: string;
+  /** The endings this copy may vouch for — its name constraints (ledger #934). */
+  tlds: string[];
+  note: string;
+  steps: { os: string; how: string }[];
+}
+
+/** One folder of the machine rexenv runs on, for the web UI's picker (`core::browse::DirListing`). */
+export interface DirListing {
+  path: string;
+  parent: string | null;
+  roots: string[];
+  entries: { name: string; path: string; dir: boolean }[];
+}
+
 /** The MCP card's whole state in one read, so the header and the feed it shows
  *  come from the same snapshot (mirrors `commands::mcp::McpStatus`). */
 export interface McpStatus {

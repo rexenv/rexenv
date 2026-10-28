@@ -13,6 +13,7 @@ pub mod update_hub;
 pub mod apache;
 pub mod openlitespeed;
 pub mod binaries;
+pub mod browse;
 pub mod blueprints;
 pub mod cli;
 pub mod confedit;

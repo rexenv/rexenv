@@ -22,6 +22,8 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { RexLogo } from "@/components/common/RexLogo";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
+import { RemoteCaCard } from "@/components/settings/RemoteCaCard";
+import { transport } from "@/lib/ipc";
 import { AppPicker, type AppChoice } from "@/components/ui/app-picker";
 import { useBrowsers } from "@/lib/useBrowser";
 import {
@@ -1121,6 +1123,7 @@ function DnsSslSetting() {
       </div>
       <BorrowedResolverCard />
       <FirefoxTrustCard />
+      {transport() === "web" && <RemoteCaCard />}
       {msg && <Notice>{msg}</Notice>}
     </>
   );

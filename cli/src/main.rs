@@ -380,6 +380,7 @@ COMMANDS:
                 Default TLD for new sites; --repair puts back the OS resolver
                 file for a TLD your sites answer on (what `doctor` names)
   version       App + CLI versions (needs the app; -v/--version works without)
+  web url       The web UI's sign-in link (a `rexenv --web` instance; open it through an SSH tunnel)
   mcp           MCP stdio bridge for an AI agent's client — used in the client's
                 config, not run by hand (e.g. `claude mcp add rexenv -- rex mcp`)
   completions zsh|bash    Print a shell completion script (eval or install it)
@@ -1040,6 +1041,7 @@ fn main() {
         Some("tunnel") => cmd_tunnel(&words[1..], json_output),
         Some("tld") => cmd_tld(&words[1..], json_output),
         Some("version") => cmd_version(json_output),
+        Some("web") => cmd_web(&words[1..], json_output),
         Some("completions") => cmd_completions(words.get(1).map(String::as_str)),
         Some("blueprints") => {
             let data = request("blueprint.list", Value::Null);
@@ -2723,7 +2725,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
 /// zsh:  rex completions zsh  > ~/.zfunc/_rex   (with ~/.zfunc in $fpath)
 /// bash: rex completions bash > /usr/local/etc/bash_completion.d/rex
 fn cmd_completions(shell: Option<&str>) {
-    const TOP: &str = "status start stop restart site wp repo worktree php db service logs doctor mail tunnel tld blueprints config version completions help";
+    const TOP: &str = "status start stop restart site wp repo worktree php db service logs doctor mail tunnel tld blueprints config version web completions help";
     const SITE: &str = "list create delete info open login logs php xdebug server restart start stop domains rename domain move relink retry env cert";
     const DB: &str = "export import reset versions console browse";
     const PHP: &str = "list default install uninstall settings";
@@ -2743,6 +2745,7 @@ fn cmd_completions(shell: Option<&str>) {
                 service) compadd start stop restart ;;\n\
                 mail) compadd list open mark-read clear ;;\n\
                 tunnel) compadd list start stop ;;\n\
+                web) compadd url ;;\n\
                 completions) compadd zsh bash ;;\n\
                 repo) compadd tools ;;\n\
                 esac ;;\n\
@@ -2761,6 +2764,7 @@ fn cmd_completions(shell: Option<&str>) {
                 service) COMPREPLY=($(compgen -W \"start stop restart\" -- \"$cur\")) ;;\n\
                 mail) COMPREPLY=($(compgen -W \"list open mark-read clear\" -- \"$cur\")) ;;\n\
                 tunnel) COMPREPLY=($(compgen -W \"list start stop\" -- \"$cur\")) ;;\n\
+                web) COMPREPLY=($(compgen -W \"url\" -- \"$cur\")) ;;\n\
                 completions) COMPREPLY=($(compgen -W \"zsh bash\" -- \"$cur\")) ;;\n\
                 repo) COMPREPLY=($(compgen -W \"tools\" -- \"$cur\")) ;;\n\
                 esac ;;\n\
@@ -3564,6 +3568,29 @@ fn cmd_tld(words: &[String], json_output: bool) {
         return print_json(&data);
     }
     outln!(".{}", data["tld"].as_str().unwrap_or("?"));
+}
+
+/// `rex web url`: the sign-in link of a `rexenv --web` instance (docs/PLAN-headless-web.md T7). The
+/// token in it is the web UI's whole credential — this verb is how its owner reads it, over the
+/// owner-only socket, and it is printed nowhere else.
+fn cmd_web(args: &[String], json_output: bool) {
+    if args.first().map(String::as_str) != Some("url") {
+        errln!("usage: rex web url");
+        exit(2);
+    }
+    let data = request("web.url", Value::Null);
+    match data["url"].as_str() {
+        Some(url) if json_output => print_json(&json!({ "url": url })),
+        Some(url) => {
+            outln!("{url}");
+            outln!("  open it in your browser through a tunnel (9444/9445 are the database consoles):");
+            outln!("  ssh -L 9443:localhost:9443 -L 9444:localhost:9444 -L 9445:localhost:9445 <this server>");
+        }
+        None => {
+            errln!("rex: this rexenv serves no web UI — start it with `rexenv --headless --web` (or add --web to its service)");
+            exit(1)
+        }
+    }
 }
 
 fn cmd_version(json_output: bool) {

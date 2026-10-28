@@ -154,10 +154,11 @@ pub(crate) fn sudo_refusal(stderr: &str) -> String {
 ///   with lingering on (`linger_argv`, written by the same setup).
 /// - `Restart=on-failure`: a clean exit — a second launch handing off to one already running —
 ///   is not restarted into a loop.
-pub(crate) fn service_unit(user: &str, uid: u32) -> Option<String> {
+pub(crate) fn service_unit(user: &str, uid: u32, web: bool) -> Option<String> {
     if !valid_user(user) {
         return None;
     }
+    let web = if web { format!(" {}", crate::web_rules::WEB_FLAG) } else { String::new() };
     Some(format!(
         "# Written by `sudo rexenv --headless-setup`: rexenv on this server, headless, as {user}.\n\
          [Unit]\n\
@@ -170,7 +171,7 @@ pub(crate) fn service_unit(user: &str, uid: u32) -> Option<String> {
          User={user}\n\
          WorkingDirectory=~\n\
          Environment=XDG_RUNTIME_DIR=/run/user/{uid}\n\
-         ExecStart={REXENV_BIN} {HEADLESS_FLAG}\n\
+         ExecStart={REXENV_BIN} {HEADLESS_FLAG}{web}\n\
          Restart=on-failure\n\
          RestartSec=5\n\
          KillMode=process\n\
@@ -197,13 +198,19 @@ pub(crate) fn install_commands(user: &str) -> [Vec<String>; 3] {
 pub(crate) struct SetupArgs {
     pub user: Option<String>,
     pub consent: Consent,
+    /// `--enable-web`: the boot service also serves the web UI (`--web`, T7). The unit is
+    /// rewritten on every run, so a run without it turns the web UI off — said in the setup's output.
+    pub web: bool,
 }
+
+/// `--enable-web` (T7): the boot service runs `rexenv --headless --web`.
+pub(crate) const ENABLE_WEB_FLAG: &str = "--enable-web";
 
 /// Every argument the setup takes. Anything else is refused BEFORE any change — a mistyped
 /// `--enable-mpc` must not read as "no consent given" and quietly leave the endpoint off, nor a
 /// misplaced level as some other flag's value.
 pub(crate) fn parse_setup_args(argv: &[String]) -> std::result::Result<SetupArgs, String> {
-    const USAGE: &str = "the setup takes --user <name>, --enable-mcp and --agent-access <read|changes|full>";
+    const USAGE: &str = "the setup takes --user <name>, --enable-mcp, --agent-access <read|changes|full> and --enable-web";
     let mut out = SetupArgs::default();
     let mut it = argv.iter().skip(1);
     while let Some(a) = it.next() {
@@ -213,6 +220,11 @@ pub(crate) fn parse_setup_args(argv: &[String]) -> std::result::Result<SetupArgs
                 let v = it.next().ok_or_else(|| format!("--user needs a name — {USAGE}"))?;
                 if out.user.replace(v.clone()).is_some() {
                     return Err("--user given twice".into());
+                }
+            }
+            ENABLE_WEB_FLAG => {
+                if std::mem::replace(&mut out.web, true) {
+                    return Err(format!("{ENABLE_WEB_FLAG} given twice"));
                 }
             }
             ENABLE_MCP_FLAG => {
@@ -431,7 +443,7 @@ mod tests {
 
     #[test]
     fn the_service_runs_rexenv_headless_as_the_user_and_never_takes_the_stack_down() {
-        let unit = service_unit("ci", 1001).expect("a valid user");
+        let unit = service_unit("ci", 1001, false).expect("a valid user");
         let line = |k: &str| unit.lines().find(|l| l.starts_with(k)).unwrap_or_else(|| panic!("no {k} in\n{unit}"));
         assert_eq!(line("User="), "User=ci");
         assert_eq!(line("ExecStart="), format!("ExecStart=/usr/bin/rexenv {HEADLESS_FLAG}"));
@@ -445,7 +457,13 @@ mod tests {
         assert_eq!(line("WantedBy="), "WantedBy=multi-user.target");
         assert!(!unit.contains("User=root"));
         for bad in ["root\nExecStartPre=/bin/sh", "a b", "", "Dev"] {
-            assert_eq!(service_unit(bad, 1001), None, "{bad:?}");
+            assert_eq!(service_unit(bad, 1001, false), None, "{bad:?}");
+        }
+        // `--enable-web` adds the web UI's flag and nothing else.
+        let web = service_unit("ci", 1001, true).unwrap();
+        assert!(web.contains(&format!("ExecStart=/usr/bin/rexenv {HEADLESS_FLAG} {}\n", crate::web_rules::WEB_FLAG)));
+        assert_eq!(web.replace(&format!(" {}", crate::web_rules::WEB_FLAG), ""), unit);
+        {
         }
     }
 
@@ -459,7 +477,7 @@ mod tests {
         // The setup writes the unit through the staging file and runs exactly these commands.
         let door = include_str!("headless.rs");
         let setup = &door[door.find("fn setup(argv: &[String])").expect("the setup")..];
-        assert!(setup.contains("rules::service_unit(&user, account.uid)"));
+        assert!(setup.contains("rules::service_unit(&user, account.uid, args.web)"));
         assert!(setup.contains("std::fs::rename(rules::SERVICE_STAGING, rules::SERVICE_PATH)?;"));
         assert!(setup.contains("for argv in rules::install_commands(&user) {"));
     }

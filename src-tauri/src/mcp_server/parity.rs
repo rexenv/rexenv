@@ -72,6 +72,9 @@ mod tests {
         //    the app's skip already is.
         ("updates_inventory", Tool("stack_status")),
         ("updates_skip", Never("setting an offer aside is the person's dial, as app_update_skip is (UPDATE_FLOW)")),
+        // The web UI's own surfaces (docs/PLAN-headless-web.md T8, T9).
+        ("ca_download", Never("a certificate a PERSON installs in their own browser on another machine — nothing an agent does with sites needs it, and its note is a consent the person reads")),
+        ("browse_dir", Never("the web UI's folder picker — a person choosing a path in a browser; an agent names paths in its tool arguments and has `site_inspect_folder` for what is in one")),
         ("updates_check_now", Never("an interactive check is the person pressing a button, as app_update_check is (UPDATE_FLOW)")),
         ("updates_apply_all", Never("Update all ends in the app's own install (UPDATE_FLOW); the per-kind installs an agent may run are the php / stack tools' apply actions")),
         ("updates_apply_all_state", Never("the run is the person's page to watch; stack_status shows the inventory it leaves behind")),
@@ -212,22 +215,10 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    /// The app's whole IPC surface, read the way `copy_scan` reads it.
+    /// The app's whole IPC surface, from the one list `copy_scan` reads too.
     fn registered_commands() -> BTreeSet<String> {
-        let lib = std::fs::read_to_string(root().join("src/lib.rs")).expect("lib.rs");
-        let handler = lib
-            .split("tauri::generate_handler![")
-            .nth(1)
-            .and_then(|b| b.split("])").next())
-            .expect("the invoke_handler list");
-        handler
-            .lines()
-            .filter_map(|line| {
-                let t = line.trim().trim_end_matches(',');
-                t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()).map(str::to_string)
-            })
-            .filter(|n| !n.is_empty() && !n.contains(' '))
-            .collect()
+        // The ONE list (`lib.rs` `for_each_command!`, D2) — derived, not parsed.
+        crate::command_names().into_iter().map(String::from).collect()
     }
 
     /// Every `commands::<module>::<name>` the MCP server's source names — as a

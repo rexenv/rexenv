@@ -2423,6 +2423,60 @@ words (the browser shell's mock and two dev review pages excepted).
   to the user's manager otherwise (ledger #921). A running service is restarted when the setup
   changed a consent, since the endpoint's setting is read at launch.
 
+## 8.2b The web UI — the window's IPC over HTTP (`web_server.rs`, `web_rules.rs`, T6)
+
+`rexenv --web` (any OS; on a server with `--headless`) serves the SAME frontend bundle on
+`127.0.0.1:9443` (D5), for a browser that reaches it through `ssh -L`. It is not a second backend
+and not a second dispatcher: `POST /ipc/<cmd>` is handed to the hidden main webview's own
+`on_message` with the app's invoke key and the webview's own URL, so the command runs through the
+same `generate_handler!`, the same ACL and the same `State` as the window's `invoke` — on the main
+thread, as the window's calls do. The names it accepts are the ONE list (`lib.rs`
+`for_each_command!`, owner ruling D2) that the handler is generated from; a plugin command
+(`plugin:dialog|open`) is refused by name. Events are server-sent: a browser `listen(name)` posts
+to `/events/listen`, which takes a Tauri `listen_any` on exactly that name for that stream, and a
+stream's end (a failed keepalive) takes them all off — so dynamic names (`db-import://state/<id>`)
+need no list. `listen_any` PANICS on a name outside `[A-Za-z0-9-/:_]`, so the name is checked
+first. Static files come from the embedded bundle (`AssetResolver`); because a dev build's resolver
+reads `dist/` from disk and filters only the root, a path is plain segments or refused.
+`index.html` gets `<meta name="rexenv-transport" content="web">`, and `src/lib/ipc/transport.ts`
+switches `invoke` to `fetch` and `listen` to the stream — components do not know. Native dialogs
+and the title bar ask `transport()` and stay window-only (ledger #929).
+
+**One gate before any routing (T7, ledger #930).** Loopback on a server is not private — every
+local account and every process (a plugin's `wp_remote_get` included) reaches `127.0.0.1:9443`, and
+a page in the developer's own browser can aim requests at it. So `web_rules::gate` runs first on
+every request: the `Host` must name loopback (a DNS-rebinding page arrives with its own name); an
+`Origin`, wherever one is sent, must be `http://<Host>`; the token from `rex web url` (64 hex, an
+owner-only `web-token` file, printed only over the owner-only CLI socket) is traded once for an
+`HttpOnly; SameSite=Strict` session cookie; everything else needs that session; and every POST
+needs an `Origin` and the session's CSRF header, whose value only the `index.html` served to that
+session carries. Sessions are in memory — a restart signs browsers out, the same link signs them
+back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit.
+
+**What a browser cannot do (T8, ledger #931).** The window's native file dialog would open on the
+server's invisible display, so over the web `pickFolder` / `pickSqlFile` / `pickZipFiles` open
+`WebPathPicker`, which lists the server through `browse_dir` — only under home and the Sites folder,
+the path resolved before it is compared. On a headless launch the desktop actions (open a URL or a
+browser, reveal, an editor, an external terminal) refuse with `NO_SCREEN` first; the web UI opens URLs
+in the developer's own browser and lists no server apps. The terminal (`/ipc` + its output events)
+and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser gets a loopback port per
+console (ledger #933): Adminer `127.0.0.1:9444`, phpMyAdmin `9445`, each its own origin for the reason
+the window gives each its own scheme (phpMyAdmin's absolute paths; one cookie jar per console). They
+take no token: the app's session cookie reaches them (cookies are per host, not per port), a POST
+must carry the console's own Origin (a form in the frame cannot add the CSRF header), and the
+response's `frame-ancestors` names the app's page alone — the replacement for the `X-Frame-Options`
+the proxy strips, now that a browser CAN load this copy. The forward is the window's own
+`dbconsole_proxy::forward`. The page learns the ports from `<meta name="rexenv-consoles">`.
+
+**The CA for another machine's browser (T9, ledger #932).** Settings → SSL, over the web only, offers
+the local CA's certificate (never the key) for a browser that reaches the sites through `ssh -D`,
+with `core::ssl::REMOTE_CA_NOTE` beside it — the CA is an unconstrained root whose key lives on the
+server — and all three OSes' trust steps (`PlatformWords::trust_downloaded_ca`), since the browser's
+OS is not the server's. The file is NOT the server's CA but a copy re-issued in memory with the same
+key, subject and key identifier and a critical `nameConstraints` — `.rex`, the default TLD, every
+TLD a site answers on, and no IP address (ledger #934): every leaf still chains to it, a browser
+refuses it for any other site, and the server's own unconstrained trust is untouched.
+
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 
 Added to this file 21 Aug 2026, three weeks after M1 shipped. Until then the file

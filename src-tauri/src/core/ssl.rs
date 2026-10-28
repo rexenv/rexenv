@@ -46,6 +46,63 @@ pub struct LocalCa {
     pub key_path: PathBuf,
 }
 
+/// What the web UI's CA download says beside the file (docs/PLAN-headless-web.md T9): how the
+/// browser reaches the server's sites, and what trusting this copy hands over, said plainly — it
+/// is limited to the TLDs listed beside it (ledger #934), but its key is on the server (#932).
+pub const REMOTE_CA_NOTE: &str = "To open this server's sites from your browser, reach them through the server: \
+`ssh -D 1080 <server>`, then set your browser's SOCKS proxy to localhost:1080 with DNS sent through the proxy, \
+so the sites' names resolve ON the server. Then trust this certificate on YOUR machine so https:// is accepted. \
+This copy is limited to the endings listed below: a browser refuses it for any other website. Within them, \
+its private key lives on the server — whoever controls the server can vouch for any name ending in them. \
+A site on an ending added later needs a fresh download. Remove it from your machine when you are done.";
+
+/// **The CA a browser on ANOTHER machine trusts: this CA re-issued with `nameConstraints`**
+/// (ledger #934). Same key, same subject, same subject key identifier — so every leaf the CA has
+/// ever signed chains to it, with no re-trust and no re-issue here — but it may vouch only for
+/// names under `tlds` (`.rex` always, the default TLD, every TLD a site answers on) and for NO IP
+/// address. The unconstrained original stays what THIS machine trusts; only the download is
+/// narrowed. A new random serial: one issuer and serial naming two different certificates is an
+/// error to NSS the day both meet. Built at download time, so it names today's TLDs — a TLD added
+/// later needs a fresh download, and the card says which TLDs it covers.
+pub fn constrained_ca_pem(ca: &LocalCa, tlds: &[String]) -> Result<String> {
+    use rcgen::{CidrSubnet, GeneralSubtree, NameConstraints};
+    let tlds = constraint_tlds(tlds);
+    if tlds.is_empty() {
+        return Err(Error::Other("no TLD to constrain rexenv's CA to".into()));
+    }
+    let mut params = CertificateParams::from_ca_cert_pem(&ca.cert_pem).map_err(|e| Error::Other(format!("load ca cert: {e}")))?;
+    let key = KeyPair::from_pem(&ca.key_pem).map_err(|e| Error::Other(format!("load ca key: {e}")))?;
+    // Random, not `None`: rcgen derives an absent serial from the public key, which would give
+    // the copy the ORIGINAL's serial (seen in the test) — the very collision this avoids.
+    let mut serial = [0u8; 16];
+    ring::rand::SecureRandom::fill(&ring::rand::SystemRandom::new(), &mut serial)
+        .map_err(|_| Error::Other("no randomness for the constrained CA's serial".into()))?;
+    serial[0] &= 0x7f; // a positive INTEGER
+    params.serial_number = Some(rcgen::SerialNumber::from_slice(&serial));
+    params.name_constraints = Some(NameConstraints {
+        permitted_subtrees: tlds.into_iter().map(GeneralSubtree::DnsName).collect(),
+        excluded_subtrees: vec![
+            GeneralSubtree::IpAddress(CidrSubnet::from_v4_prefix([0; 4], 0)),
+            GeneralSubtree::IpAddress(CidrSubnet::from_v6_prefix([0; 16], 0)),
+        ],
+    });
+    let cert = params.self_signed(&key).map_err(|e| Error::Other(format!("constrained ca: {e}")))?;
+    Ok(cert.pem())
+}
+
+/// The TLDs a constrained CA names: `rex` always (the backbone, and the consoles' own hosts),
+/// then each given one — lowercased, a valid single label, once.
+pub fn constraint_tlds(tlds: &[String]) -> Vec<String> {
+    let mut out = vec!["rex".to_string()];
+    for t in tlds {
+        let t = t.trim().trim_start_matches('.').to_ascii_lowercase();
+        if crate::core::tld::is_valid_label(&t) && !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    out
+}
+
 /// Directory holding CA material under app-data.
 pub fn ca_dir(paths: &dyn Paths) -> Result<PathBuf> {
     Ok(paths.app_data_dir()?.join("ca"))
@@ -510,6 +567,88 @@ pub fn untrust_ca(platform: &dyn Platform, ca: &LocalCa) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    /// Ledger #934 — checked with the verifier rustls uses (`rustls-webpki`), which enforces name
+    /// constraints as a browser does: the constrained CA accepts a leaf it signed for a `.rex`
+    /// name, refuses one the SAME key signed for a real domain, while the unconstrained original
+    /// accepts both — so the constraint, not anything else, is what refuses.
+    #[test]
+    fn the_downloaded_ca_vouches_only_for_its_tlds_and_still_chains_every_leaf() {
+        use rustls_pki_types::{CertificateDer, ServerName, UnixTime};
+        let (cert_pem, key_pem) = generate_ca().unwrap();
+        let ca = LocalCa { cert_pem, key_pem, cert_path: PathBuf::new(), key_path: PathBuf::new() };
+        let constrained = constrained_ca_pem(&ca, &["test".into(), "REX".into(), "bad label".into()]).unwrap();
+        let der = |pem: &str| CertificateDer::from(x509_parser::pem::parse_x509_pem(pem.as_bytes()).unwrap().1.contents);
+        let verify = |anchor_pem: &str, leaf_pem: &str, name: &str| -> std::result::Result<(), String> {
+            let anchor_der = der(anchor_pem);
+            let anchors = [webpki::anchor_from_trusted_cert(&anchor_der).map_err(|e| e.to_string())?];
+            let leaf_der = der(leaf_pem);
+            let leaf = webpki::EndEntityCert::try_from(&leaf_der).map_err(|e| e.to_string())?;
+            leaf.verify_for_usage(webpki::ALL_VERIFICATION_ALGS, &anchors, &[], UnixTime::now(), webpki::KeyUsage::server_auth(), None, None)
+                .map_err(|e| format!("{e:?}"))?;
+            leaf.verify_is_valid_for_subject_name(&ServerName::try_from(name.to_string()).unwrap()).map_err(|e| format!("{e:?}"))
+        };
+        let (shop, _) = generate_site_cert(&ca, "shop.rex").unwrap();
+        let (other_tld, _) = generate_site_cert(&ca, "blog.test").unwrap();
+        let (bank, _) = generate_site_cert(&ca, "bank.example.com").unwrap();
+        assert_eq!(verify(&constrained, &shop, "shop.rex"), Ok(()));
+        assert_eq!(verify(&constrained, &shop, "a.shop.rex"), Ok(()), "the wildcard SAN");
+        assert_eq!(verify(&constrained, &other_tld, "blog.test"), Ok(()));
+        let refused = verify(&constrained, &bank, "bank.example.com").unwrap_err();
+        assert!(refused.contains("NameConstraint"), "{refused}");
+        // No IP address either: a leaf the same key signed for one is refused.
+        let ip_leaf = {
+            let ca_key = KeyPair::from_pem(&ca.key_pem).unwrap();
+            let issuer = CertificateParams::from_ca_cert_pem(&ca.cert_pem).unwrap().self_signed(&ca_key).unwrap();
+            let mut p = CertificateParams::new(Vec::new()).unwrap();
+            p.subject_alt_names = vec![rcgen::SanType::IpAddress("10.0.0.1".parse().unwrap())];
+            p.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+            let (nb, na) = leaf_validity_window();
+            p.not_before = nb;
+            p.not_after = na;
+            p.signed_by(&KeyPair::generate().unwrap(), &issuer, &ca_key).unwrap().pem()
+        };
+        let ip_refused = verify(&constrained, &ip_leaf, "10.0.0.1").unwrap_err();
+        assert!(ip_refused.contains("NameConstraint"), "{ip_refused}");
+        assert_eq!(verify(&ca.cert_pem, &ip_leaf, "10.0.0.1"), Ok(()));
+        // The original vouches for anything — which is what the constraint takes away.
+        assert_eq!(verify(&ca.cert_pem, &bank, "bank.example.com"), Ok(()));
+        // Same subject and key identifier, a different serial; the original is untouched.
+        // The SUBJECT's bytes and the key identifier, compared raw — a leaf's issuer and AKI must
+        // match them exactly for a browser to build the chain.
+        let (od, cd) = (der(&ca.cert_pem), der(&constrained));
+        let (_, o) = x509_parser::parse_x509_certificate(&od).unwrap();
+        let (_, c) = x509_parser::parse_x509_certificate(&cd).unwrap();
+        assert_eq!(o.subject().as_raw(), c.subject().as_raw());
+        assert_eq!(o.public_key().raw, c.public_key().raw);
+        let ski = |x: &x509_parser::certificate::X509Certificate| {
+            x.iter_extensions().find_map(|e| match e.parsed_extension() {
+                x509_parser::extensions::ParsedExtension::SubjectKeyIdentifier(k) => Some(k.0.to_vec()),
+                _ => None,
+            })
+        };
+        assert_eq!(ski(&o), ski(&c));
+        assert!(ski(&o).is_some());
+        assert_ne!(o.raw_serial(), c.raw_serial());
+        assert!(o.name_constraints().unwrap().is_none() && c.name_constraints().unwrap().is_some());
+        assert_eq!(constraint_tlds(&["test".into(), "REX".into(), "bad label".into()]), ["rex", "test"]);
+        assert!(!constrained.contains("PRIVATE"));
+    }
+
+    /// Ledger #932 — the download is a certificate alone, built from the CA in memory; the key
+    /// file is never read for it, and the command offers nothing else.
+    #[test]
+    fn the_ca_download_is_the_certificate_and_never_the_key() {
+        let src = include_str!("ssl.rs");
+        let f = &src[src.find("pub fn constrained_ca_pem(").unwrap()..];
+        let f = &f[..f.find("\n}\n").unwrap()];
+        assert!(f.contains("Ok(cert.pem())") && !f.contains("serialize_pem") && !f.contains("CA_KEY_FILE"), "{f}");
+        let cmd = include_str!("../commands/system.rs");
+        let c = &cmd[cmd.find("pub fn ca_download(").unwrap()..];
+        let c = &c[..c.find("\n}\n").unwrap()];
+        assert!(c.contains("pem: crate::core::ssl::constrained_ca_pem(&state.ca, &tlds)?,") && !c.contains("key_pem"), "{c}");
+        assert!(REMOTE_CA_NOTE.contains("limited to the endings") && REMOTE_CA_NOTE.contains("private key lives on"));
+    }
+
 
     /// #154 — **a Firefox failure never fails the trust.**
     ///

@@ -228,7 +228,7 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
     if !Path::new(rules::REXENV_BIN).is_file() {
         return Err(Error::Other(rules::NEEDS_DEB.into()));
     }
-    let unit = rules::service_unit(&user, account.uid)
+    let unit = rules::service_unit(&user, account.uid, args.web)
         .ok_or_else(|| Error::Other(format!("{user:?} is not a user name rexenv will write into a unit")))?;
     // Typed consent wins; with none, ask — and with no terminal to ask in, change neither.
     // SAFETY: a plain syscall on fd 0.
@@ -266,6 +266,11 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
         "✓ {} starts rexenv headless as {user} at every boot, with no one logged in (lingering on for {user}).",
         rules::SERVICE_PATH
     ));
+    said.push(if args.web {
+        "✓ web UI: on — 127.0.0.1:9443 only; `rex web url` (as that account) prints its sign-in link.".to_string()
+    } else {
+        format!("web UI: off (re-run with {} to serve it on 127.0.0.1:9443).", rules::ENABLE_WEB_FLAG)
+    });
     // A fresh server's first-run root steps, which a headless instance can never make itself
     // (#911): the same scripts the desktop's onboarding runs, made here for the account (#923).
     said.extend(prepare_as_user(&account)?.into_iter().map(|l| format!("✓ {l}")));
@@ -274,10 +279,11 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
     } else {
         said.extend(write_as_user(&account, &consent)?.into_iter().map(|l| format!("✓ {l}")));
     }
-    // A running service reads the endpoint's setting at launch: restart it so the consent applies.
+    // A running service read the endpoint's setting and its own command line at launch, and the
+    // unit was just rewritten (`--enable-web` on or off): restart it so both apply.
     // `KillMode=process` — only the app restarts; the stack it started keeps running and is adopted.
     let active = crate::platform::command(rules::SYSTEMCTL).args(["is-active", "--quiet", rules::SERVICE_UNIT]).status()?.success();
-    if active && !consent.is_empty() {
+    if active {
         run_root(&[rules::SYSTEMCTL.into(), "restart".into(), rules::SERVICE_UNIT.into()])?;
         said.push("✓ restarted rexenv-headless.service so the settings apply.".into());
     } else if !active {

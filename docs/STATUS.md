@@ -52,12 +52,12 @@ App version **0.9.4** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 ### Phase 4+ (next era) — 3
 
 - `TODO.md:547` Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row bel…
-- `TODO.md:584` Headless mode on macOS and Windows
-- `TODO.md:606` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:595` Headless mode on macOS and Windows
+- `TODO.md:617` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 766 · ◐ 140 · 🔨 5 · 🚫 17** of 928 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 766 · ◐ 146 · 🔨 5 · 🚫 17** of 934 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 
@@ -76,6 +76,6 @@ App version **0.9.4** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
   SQLite schema version              v45
   commands/wordpress.rs commands     65
   commands/repo.rs commands          26
-  src/lib/ipc/index.ts exports       302
-  rex commands (cli_server arms)     110
+  src/lib/ipc/index.ts exports       304
+  rex commands (cli_server arms)     111
 ```

@@ -803,7 +803,9 @@ mod tests {
     #[test]
     fn an_engine_is_available_where_its_pins_are() {
         for e in DbEngine::ALL {
-            let by_pins = e.versions().iter().any(|v| binaries::ships_on(e.key(), v, "macos"));
+            // macOS's OWN list: on a Linux host `versions()` is Linux's (MariaDB 12.3/11.4, rexenv's
+            // builds since 28 Oct 2026), which no macOS pin carries — the bar went red there.
+            let by_pins = e.versions_on("macos").iter().any(|v| binaries::ships_on(e.key(), v, "macos"));
             assert!(by_pins, "{} has no macOS pin", e.key());
             assert!(e.available_on("macos"), "{} must be available on macOS", e.key());
         }

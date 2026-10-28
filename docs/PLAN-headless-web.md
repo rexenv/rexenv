@@ -145,7 +145,7 @@ rexenv --headless [--web 127.0.0.1:9443]
   │    GET  /            → the built frontend (dist/), same bundle as the desktop app
   │    POST /ipc/<cmd>   → the same commands::* fns the webview invokes
   │    WS   /events      → every backend emit, pushed
-  │    GET  /db/…, /pma/… → the rexdb:/rexpma: handlers over HTTP
+  │    :9444 / :9445     → the rexdb:/rexpma: handlers over HTTP, one origin each (T8, #933)
   └─ started by the OS service manager at boot (systemd on Linux — D3 for the other two)
 ```
 
@@ -248,7 +248,11 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
     the CLI, the MCP and the web server all hold. This is the cleanest, but it touches 17 command
     files and both servers.
 - **D2 — dispatch generation:** a macro that emits both `generate_handler!` and the web table from
-  one list (recommended), vs. a build-time check over hand-written arms.
+  one list (recommended), vs. a build-time check over hand-written arms. **Ruled 28 Oct 2026: the
+  macro.** Built in T6 as `lib.rs` `for_each_command!` → `app_invoke_handler` (the desktop's
+  `generate_handler!`) and `COMMAND_PATHS` / `command_names()` (the web's table). What the web does
+  with a name is not a second dispatcher: it hands the request to the main webview's own
+  `on_message`, so the ACL, `State` and argument decoding are the window's.
 - **D3 — the other two OSes.** The three-OS rule applies. Recommended: Linux first, because that is
   the VPS, with macOS (LaunchDaemon) and Windows (service / boot-time task) filled in the same change
   as `Error::Unported` plus a sentence in `platform/words.rs`, and a TODO row each. The web transport
@@ -274,7 +278,7 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
   `systemctl enable` / `restart` / `disable --now`, three fixed argv in a sudoers drop-in, with every
   other privileged step refused, naming the setup (T1, ledger #911). The consent half (MCP, agent access)
   is T3's.
-- **D5 — the web UI's port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
+- **D5 — the web UI's port.** **Ruled 28 Oct 2026: `9443`** (`web_rules::WEB_PORT`, `docs/PORTS.md`). It goes into `docs/PORTS.md` and is port-gated through
   `core/ports::ensure_free` like every other service.
 
 ## 6. Tasks
@@ -376,15 +380,48 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
   Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
 - **T5 — the other OSes per D3.**
-- **T6 — web transport.** The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
+- **T6 — web transport.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger
+  #929): `rexenv --web` serves the embedded bundle on `127.0.0.1:9443` (`web_server.rs`, rules in
+  `web_rules.rs`); `POST /ipc/<cmd>` goes through `Webview::on_message` on the hidden main webview,
+  only for a name on the one list; `GET /events` is server-sent events (not a WebSocket — the push
+  is one-way, and SSE needs no second crate) where a browser `listen(name)` takes a Tauri
+  `listen_any` on that name for its stream; the frontend picks the transport from a `<meta>` the
+  server injects (`src/lib/ipc/transport.ts`). In the container a headless instance served the
+  Sites screen to Chromium with real data, the New site form's create reached the backend and its
+  refusal came back as the toast, and an event crossed the stream. **No auth until T7** — the
+  branch carries both before it ships. Not done: the SSH-tunnel run on the VM and a site actually
+  created (the container cannot download binaries). Was: The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
   with the equal-lists test. Done when the Sites screen lists and creates a site in a browser through an
   SSH tunnel, and the test fails when a command is missing from either list (plant it).
-- **T7 — auth.** The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
+- **T7 — auth.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger #930):
+  one gate (`web_rules::gate`) before any routing — loopback `Host`, our `Origin` wherever sent, the
+  token (`rex web url`; an owner-only file) traded for an `HttpOnly; SameSite=Strict` cookie, the
+  session's CSRF header (from a `<meta>` in its `index.html`) on every POST; each check plant-proven
+  alone. `--headless-setup --enable-web` writes `--web` into the boot unit. Was: The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
   row and a plant that proves the request is refused without it.
-- **T8 — the rest of the screens.** The folder picker (`browse_dir`), `/db` and `/pma`, the mail
+- **T8 — the rest of the screens.** **Partly built 28 Oct 2026, run in the cloud container** (ledger #931):
+  `browse_dir` + `WebPathPicker` (home and Sites only, resolved before compared) behind
+  `pickFolder`/`pickSqlFile`/`pickZipFiles`; on a headless launch every desktop action refuses with
+  `NO_SCREEN` first, and over the web URLs open in the developer's browser and the server's apps are
+  not offered; the terminal and the mail viewer need nothing (they ride `/ipc` + `/events` and a
+  `srcDoc` frame). **The Database Browser ✓ the same day** (owner ruling 28 Oct 2026: a port per
+  console, ledger #933): Adminer on `127.0.0.1:9444`, phpMyAdmin on `9445` — an origin each, because
+  phpMyAdmin's absolute paths cannot live under a path of the app's origin and two consoles must not
+  share a jar — gated by the app's session (cookies are per host, not per port) and the console's
+  own Origin on a POST, forwarded through the window's own `dbconsole_proxy::forward`, framed only by
+  the app's page (`frame-ancestors`). The plan's `/db`, `/pma` paths are not used. **Still open: the
+  every-route walk on the VM, with a real Adminer and phpMyAdmin.** Was: The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
   browser on the VM.
-- **T9 — the CA download** for viewing sites through `ssh -D`, with a sentence per OS.
+- **T9 — the CA download** **✓ built 28 Oct 2026, run in the cloud container only** (ledger #932): Settings →
+  SSL over the web UI offers `rexenv-ca.pem` (the certificate alone) with `core::ssl::REMOTE_CA_NOTE`
+  — the `ssh -D` route and, plainly, that an unconstrained root whose key is on the server can vouch
+  for any site — and each OS's trust steps from `PlatformWords::trust_downloaded_ca`. **Name-constrained
+  the same day** (owner ask, ledger #934): the download is this CA re-issued with the same key,
+  subject and key identifier plus a critical `nameConstraints` — `.rex`, the default TLD and every
+  TLD a site answers on, and no IP address — so a browser refuses it for any other site, while every
+  existing leaf still chains and the server's own trust is untouched. Owed: the
+  three OSes' steps on real machines and a site through `ssh -D`. Was: the CA download for viewing sites through `ssh -D`, with a sentence per OS.
 - **Phase 2 and Phase 3 get their task lists when Phase 1 ships.**
 
 ## 7. Docs this touches when built
