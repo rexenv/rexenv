@@ -536,6 +536,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
+- [ ] **The web UI still shows desktop actions** (found 29 Oct 2026, the 24.04 VM through a tunnel): the
+  Sites row's folder icon, "Open in editor", and the `revealPath` buttons in toasts (WordPressManager,
+  RepoPanel, LiveTab, SiteDetail) render over the web transport and answer with `NO_SCREEN` when
+  pressed. Honest, but an action that can only fail should not be offered: hide them when
+  `transport() === "web"` (or make the wrappers' callers ask one `canReveal()`), all call sites at once.
+
 - [ ] **The web UI's sign-in — four hardening items owed before Phase 1b is called done** (security
   review of PR #10, 29 Oct 2026; the review's CONFIRMED port-squat, `[::1]`, header-timeout and CA-EKU
   findings were fixed the same day, #935/#934). Open: (1) **the cookie alone yields the CSRF value**
@@ -552,14 +558,15 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 - [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
   D2 (the macro) and D5 (9443) ruled 28 Oct 2026.** **T6 built 28 Oct 2026** (#929): `rexenv --web` on
   `127.0.0.1:9443`, `/ipc` through the main webview's own `on_message`, `/events` as SSE, one command
-  list for the handler and the web; run in the cloud container only — **open in T6: the VM run through
-  an SSH tunnel with a site created (SMOKE "The web UI")**. **T7 built 28 Oct 2026** (#930): one gate
+  list for the handler and the web; run in the cloud container only — T6's VM run through an SSH tunnel
+  with a site created and deleted done 29 Oct 2026 (SMOKE "The web UI"). **T7 built 28 Oct 2026** (#930): one gate
   before any routing — loopback Host, our Origin, the `rex web url` token → an `HttpOnly;
-  SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; **open in
-  T7: the VM/tunnel run (SMOKE "Sign-in")**. **T8 partly built 28 Oct 2026** (#931): the web picker
+  SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; T7's VM/tunnel run done 29 Oct 2026, with the
+  port/`[::1]`/timeout hardening (#935) and four items still owed (the sign-in hardening row above). **T8 partly built 28 Oct 2026** (#931): the web picker
   (`browse_dir`, home and Sites only), desktop actions refuse on a headless launch, URLs open in the
   developer's browser; the Database Browser on a loopback port per console (9444 Adminer, 9445
-  phpMyAdmin, #933); **open in T8: the every-route walk on the VM with real consoles**. **T9 built 28 Oct 2026** (#932): the CA certificate download with
+  phpMyAdmin, #933); real Adminer and phpMyAdmin run through
+  the tunnel 29 Oct 2026; **open in T8: the every-route walk on the VM, and hiding the desktop actions (its row above)**. **T9 built 28 Oct 2026** (#932): the CA certificate download with
   the cost said and each OS's trust steps, name-constrained to the sites' endings (#934); **open in T9: the steps on real macOS/Windows/Linux
   machines and a site through `ssh -D`**. T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that

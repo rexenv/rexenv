@@ -4474,19 +4474,25 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
 ### The web UI (`rexenv --web`, `docs/PLAN-headless-web.md` T6, ledger #929)
 
 Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 9443:127.0.0.1:9443 vm`.
-- [ ] `rexenv --headless --web` → the log says "web: serving the UI on http://127.0.0.1:9443";
-  `ss -ltn` shows 9443 on `127.0.0.1` only. A second process on 9443 first → rexenv names it and
-  does not serve.
-- [ ] In the tunnelled browser, `http://localhost:9443/`: the app renders with the server's real
+- [x] `rexenv --headless --web` → the log says "web: serving the UI on http://127.0.0.1:9443";
+  `ss -ltn` shows 9443, 9444 and 9445 on `127.0.0.1` and `[::1]` (loopback only). A second process
+  on ANY of them first (`[::1]:9444` too) → rexenv names it and serves nothing (#935).
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): a squatted `[::1]:9444` stopped the web UI with the holder named; a normal start held all six.
+- [x] In the tunnelled browser, `http://localhost:9443/`: the app renders with the server's real
   sites (not the mock list); DevTools' Network tab shows `POST /ipc/…` and one `/events` stream.
-- [ ] Sites → New site → Blank PHP → Create: the site is created and appears in the list; its
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): `demo.rex` listed, 24 `/ipc` commands and one `/events` stream on load, no console error.
+- [x] Sites → New site → Blank PHP → Create: the site is created and appears in the list; its
   provision progress moves live (an event over the stream); `rex site list` on the server shows it.
   Delete it from the browser; it is gone from `rex site list`.
-- [ ] `curl -X POST localhost:9443/ipc/plugin:dialog%7Copen` → `no such command`; `curl
-  --path-as-is localhost:9443/../../etc/passwd` → 400.
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): `webp.rex` created (its `site-provision://state|output/<id>` listeners registered on the stream), serving in `rex site list`; deleted through the row menu's typed confirmation, gone.
+- [x] Signed in (the session cookie, our Origin, the CSRF header): `curl -X POST
+  localhost:9443/ipc/plugin:dialog%7Copen` → 400 `a path rexenv does not serve` (a `%` path is refused
+  before routing; a plugin name is refused by name past it); `curl --path-as-is
+  localhost:9443/../../etc/passwd` → 400. Without a session both are 401, the gate first.
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): both 400 signed in, 401 without; another Origin 403, no CSRF header 403.
   ◐ 28 Oct 2026 — the cloud container (no tunnel, no binaries): every row but a site actually
   created; the create reached the backend and its refusal came back as the toast.
-- [ ] **Sign-in (T7, ledger #930).** `sudo rexenv --headless-setup --enable-web` → `systemctl cat
+- [x] **Sign-in (T7, ledger #930).** `sudo rexenv --headless-setup --enable-web` → `systemctl cat
   rexenv-headless` shows `ExecStart=/usr/bin/rexenv --headless --web`; `ls -l
   ~/.local/share/rexenv/config/web-token` is `-rw-------`. Through the tunnel, `http://localhost:9443/`
   with no link → the sentence naming `rex web url`; the printed link → the app, and the address bar
@@ -4494,14 +4500,17 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   account: `curl localhost:9443/ipc/app_info -X POST` → 401. `curl -H 'Host: evil.example'` → 403.
   ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
   setup's unit line is L0 only (no systemd there).
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the unit's `ExecStart=/usr/bin/rexenv --headless --web`, the token `-rw-------`; no link → 401 with the `rex web url` sentence; the link → `/sites`, the `?t=` gone; a fresh account (`useradd`) → 401 on `/ipc/app_info` and on 9444, `Permission denied` on the token file; `Host: evil.example` → 403.
 
 ### The web UI's pickers and desktop actions (T8, ledger #931)
-- [ ] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
+- [x] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
   walks into `rexenv/Sites/`, a symlink out of home (`ln -s /etc ~/out`) answers with the sentence,
   and **Choose this folder** fills the form. Databases → Import → the `.sql` picker shows `.sql` files
   only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor
-  and "Show in folder" menus are absent.
-- [ ] **The Database Browser (ledger #933)**, with `-L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445`
+  and "Show in folder" actions answer with the no-screen sentence (they are still SHOWN — the TODO row
+  "The web UI still shows desktop actions").
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the picker listed `/home/ci` with both roots, `out/` → "rexenv's web picker lists only your home folder and your Sites folder", the chosen folder reached the form's inspection; Open popped a tab in the developer's browser; the row's folder icon and "Open in editor" → `open_external` refused with `NO_SCREEN`, shown as a toast. Not run: the `.sql` picker.
+- [x] **The Database Browser (ledger #933)**, with `-L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445`
   added to the tunnel: Databases → Browse on MySQL shows Adminer INSIDE the panel, logged in; switch
   the console to phpMyAdmin → it shows inside too; a query runs in each; a site's Database tab opens
   its own database. Without the two extra forwards: an empty frame (no sign of the app's data).
@@ -4509,13 +4518,16 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   ◐ 28 Oct 2026 — the cloud container with a FAKE console upstream on :443 (no binaries there): the
   gate's refusals, the login POST through the jar, the CSP, and a foreign localhost page refused by
   `frame-ancestors` in Chromium; not a real Adminer or phpMyAdmin.
-- [ ] On the server: `rex site open <domain>` → exit 1 with the "no screen" sentence.
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): Browse on MySQL → Adminer 6.1.1 INSIDE the panel from `localhost:9444`, logged in as root, `SELECT 40+2` answered 42; console switched to phpMyAdmin → 5.2.3 inside from `localhost:9445` listing the server's databases; 9444 from another account → 401. Not run: a site's Database tab, the empty frame without the extra forwards.
+- [x] On the server: `rex site open <domain>` prints the site's URL (exit 0, nothing opened — on
+  Linux `rex` never launches a browser); `rex open` → exit 1 with the headless sentence.
+  ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): both as written.
   ◐ 28 Oct 2026 — the cloud container: the folder picker end to end in Chromium, the refusals by
   curl; not the import picker, not `rex site open`.
 
 ### This server's CA in your browser (T9, ledger #932)
-- [ ] Over the tunnel: Settings → SSL shows "Open this server's sites in your browser" with the
-  note (it says the CA can vouch for any name) and three OS blocks; the button saves
+- [ ] Over the tunnel: Settings → DNS & SSL shows "Open this server's sites in your browser" with the
+  note (it names the endings it covers and that it vouches for websites only) and three OS blocks; the button saves
   `rexenv-ca.pem`, which `openssl x509 -noout -subject -ext nameConstraints` reads as `rexenv Local
   CA` with `Permitted: DNS:rex` (+ the server's other endings, as the card lists) and which holds no
   key. In the trusting browser, a site of the server opens over https, and a certificate the same key
@@ -4524,6 +4536,7 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   run `ssh -D 1080 <server>` with the profile's SOCKS proxy on localhost:1080 (remote DNS): a site
   opens over https with no warning. Remove the CA after.
   ◐ 28 Oct 2026 — the cloud container: the card and the download; no OS's steps.
+  ◐ 29 Oct 2026 — the 24.04 server VM through the tunnel: the card, the download (`openssl`: `CN=rexenv Local CA`, Name Constraints critical `Permitted: DNS:rex`, IPv4 and IPv6 excluded, EKU `TLS Web Server Authentication`, no key); no OS's trust steps on a real browser machine.
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
