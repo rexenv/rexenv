@@ -646,7 +646,7 @@ port needs no root edge at all. The first boot after the setup leaves the servic
 first `rex` command that needs them (the login start is offline-only, and the binaries are not
 cached yet); every later boot starts them.
 
-**The web UI (built 28 Oct 2026, not yet released).** Add
+**The web UI (since 0.9.5).** Add
 `--enable-web` to the setup and the service also runs rexenv's own UI on `127.0.0.1:9443` — the same
 screens as the app's window. It never listens on a public address: it holds 9443, 9444 and 9445
 on both `127.0.0.1` and `::1`, and does not start at all when any of them is taken (the log names
