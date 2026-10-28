@@ -15,6 +15,24 @@ pub const WEB_PORT: u16 = 9443;
 /// The ONE bind the web UI takes in Phase 1b. A public bind is Phase 2 and needs TLS and a login.
 pub const WEB_BIND: [u8; 4] = [127, 0, 0, 1];
 
+/// The Database Browser's consoles over the web (T8): ONE loopback port each, because each needs
+/// an origin of its own — phpMyAdmin's pages use absolute paths (`/index.php`, `/js/…`), so it
+/// cannot live under a path of the app's origin, and two consoles must never share a cookie jar
+/// (the same reason the window gives each its own `rexdb:` / `rexpma:` scheme, ledger #870).
+/// Gated by the app's session — a cookie is per host, not per port, so the one sign-in covers
+/// them (ledger #933). Port-gated like 9443; a tunnel forwards all three.
+pub const ADMINER_WEB_PORT: u16 = 9444;
+pub const PHPMYADMIN_WEB_PORT: u16 = 9445;
+
+/// Each console with its web port.
+pub fn console_ports() -> [(crate::core::dbconsole_proxy::Console, u16); 2] {
+    use crate::core::dbconsole_proxy::Console;
+    [(Console::Adminer, ADMINER_WEB_PORT), (Console::PhpMyAdmin, PHPMYADMIN_WEB_PORT)]
+}
+
+/// The largest console request body read — a phpMyAdmin import upload rides it.
+pub const MAX_CONSOLE_BODY: usize = 256 * 1024 * 1024;
+
 /// The largest `/ipc` body read. Commands carry paths and form values, never file contents.
 pub const MAX_IPC_BODY: usize = 4 * 1024 * 1024;
 
@@ -26,7 +44,8 @@ pub const TRANSPORT_META: &str = r#"<meta name="rexenv-transport" content="web" 
 /// The page's policy in a browser. The desktop's (tauri.conf.json) minus the IPC and custom-scheme
 /// origins a browser does not have; `frame-ancestors 'none'` because nothing should frame the UI.
 pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
-img-src 'self' data: https://*.w.org; font-src 'self' data:; connect-src 'self'; frame-src 'self'; \
+img-src 'self' data: https://*.w.org; font-src 'self' data:; connect-src 'self'; \
+frame-src 'self' http://localhost:9444 http://127.0.0.1:9444 http://localhost:9445 http://127.0.0.1:9445; \
 object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 // ── Auth (T7) ────────────────────────────────────────────────────────────────────────────────
@@ -162,6 +181,50 @@ pub fn gate(a: &Ask) -> Gate {
     Gate::Pass
 }
 
+/// **The consoles' gate** (ledger #933): the app's gate minus what a console cannot do — its pages
+/// are third-party PHP whose forms cannot add our CSRF header, and nobody signs in on a console
+/// port. So: a loopback `Host`; an `Origin`, wherever said, is the console's OWN; a live session
+/// (the app's cookie, sent because cookies are per host); and a non-GET must say its `Origin` —
+/// a form inside the console frame always does, a page of another port or site gets 403.
+pub fn console_gate(a: &Ask) -> Gate {
+    if !host_ok(a.host) {
+        return Gate::Refuse(403, "rexenv's web UI answers only to localhost");
+    }
+    if a.origin.is_some_and(|o| !origin_ok(Some(o), a.host.unwrap_or_default())) {
+        return Gate::Refuse(403, "a request from another site");
+    }
+    if a.session_csrf.is_none() {
+        return Gate::Refuse(401, NO_SESSION);
+    }
+    if a.method != "GET" && a.method != "HEAD" && a.origin.is_none() {
+        return Gate::Refuse(403, "a request that does not say where it came from");
+    }
+    Gate::Pass
+}
+
+/// The app's origin as seen from a console request's `Host`: the same name on [`WEB_PORT`]. The
+/// only page allowed to frame a console (`frame-ancestors`), so no other page can.
+pub fn app_origin_for(console_host: &str) -> String {
+    let name = match console_host.strip_prefix('[') {
+        Some(rest) => format!("[{}]", rest.split(']').next().unwrap_or_default()),
+        None => console_host.split(':').next().unwrap_or_default().to_string(),
+    };
+    format!("http://{name}:{WEB_PORT}")
+}
+
+/// A console's CSP with `frame-ancestors` set to the app's origin alone (every other directive —
+/// the script nonce above all — verbatim; one added when the console sent none).
+pub fn console_csp(csp: &str, app_origin: &str) -> String {
+    let mut out: Vec<String> = csp
+        .split(';')
+        .map(str::trim)
+        .filter(|d| !d.is_empty() && !d.to_ascii_lowercase().starts_with("frame-ancestors"))
+        .map(str::to_string)
+        .collect();
+    out.push(format!("frame-ancestors {app_origin}"));
+    out.join("; ")
+}
+
 /// What one request is.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Route<'a> {
@@ -227,6 +290,13 @@ pub fn static_path(rel: &str) -> Option<&str> {
     ok.then_some(rel)
 }
 
+/// Where the page frames each console: `<meta name="rexenv-consoles" content="adminer=9444,phpmyadmin=9445">`
+/// — the ports written once, here; the frontend builds `http://<its hostname>:<port>` from it.
+pub fn consoles_meta() -> String {
+    let pairs: Vec<String> = console_ports().iter().map(|(c, p)| format!("{}={p}", c.label())).collect();
+    format!(r#"<meta name="rexenv-consoles" content="{}" />"#, pairs.join(","))
+}
+
 /// `index.html` with the transport marker and this session's CSRF value, placed first in
 /// `<head>` so both exist before any module runs. `None` when the document has no `<head>` (not
 /// ours) or the value is not plain hex (it is written into an attribute).
@@ -236,8 +306,9 @@ pub fn mark_index(html: &str, csrf: &str) -> Option<String> {
     }
     let at = html.find("<head>")? + "<head>".len();
     Some(format!(
-        "{}\n    {TRANSPORT_META}\n    <meta name=\"{CSRF_META}\" content=\"{csrf}\" />{}",
+        "{}\n    {TRANSPORT_META}\n    <meta name=\"{CSRF_META}\" content=\"{csrf}\" />\n    {}{}",
         &html[..at],
+        consoles_meta(),
         &html[at..]
     ))
 }
@@ -481,6 +552,54 @@ mod tests {
         assert!(handle.find("rules::gate(&").expect("the gate") < handle.find("rules::route(").expect("the router"), "the gate must come first");
         let ts = include_str!("../../src/lib/ipc/transport.ts");
         assert!(ts.contains(r#"meta[name="rexenv-csrf"]"#) && ts.contains(r#""x-rexenv-csrf""#));
+    }
+
+    /// Ledger #933.
+    #[test]
+    fn a_console_needs_the_session_and_its_own_origin_but_no_csrf_header() {
+        let mut a = ask("POST", Some("localhost:9444"), Some("http://localhost:9444"));
+        a.csrf_header = None;
+        assert_eq!(console_gate(&a), Gate::Pass, "a form in the frame cannot add our header");
+        a.origin = Some("http://localhost:9443");
+        assert!(matches!(console_gate(&a), Gate::Refuse(403, _)), "the app page is not the console");
+        a.origin = Some("http://localhost:9445");
+        assert!(matches!(console_gate(&a), Gate::Refuse(403, _)), "one console is not the other");
+        a.origin = None;
+        assert!(matches!(console_gate(&a), Gate::Refuse(403, _)));
+        let mut g = ask("GET", Some("localhost:9444"), None);
+        g.session_csrf = None;
+        assert_eq!(console_gate(&g), Gate::Refuse(401, NO_SESSION));
+        g.has_token = true;
+        assert_eq!(console_gate(&g), Gate::Refuse(401, NO_SESSION), "no sign-in on a console port");
+        assert!(matches!(console_gate(&ask("GET", Some("evil.example:9444"), None)), Gate::Refuse(403, _)));
+    }
+
+    #[test]
+    fn only_the_app_page_may_frame_a_console() {
+        assert_eq!(app_origin_for("localhost:9444"), "http://localhost:9443");
+        assert_eq!(app_origin_for("127.0.0.1:9445"), "http://127.0.0.1:9443");
+        assert_eq!(app_origin_for("[::1]:9444"), "http://[::1]:9443");
+        let csp = console_csp("default-src 'self'; script-src 'nonce-abc'; frame-ancestors rexdb://localhost", "http://localhost:9443");
+        assert_eq!(csp, "default-src 'self'; script-src 'nonce-abc'; frame-ancestors http://localhost:9443");
+        assert_eq!(console_csp("", "http://localhost:9443"), "frame-ancestors http://localhost:9443");
+        // The page's own policy lets it frame exactly the console ports, and the page learns them.
+        for (_, port) in console_ports() {
+            for host in ["localhost", "127.0.0.1"] {
+                assert!(CSP.contains(&format!("http://{host}:{port}")), "{host}:{port}");
+            }
+        }
+        // Not `[::1]`: Chromium rejects an IPv6 literal as a CSP source ("invalid source", seen in
+        // the container run) — over `[::1]` the app works and the consoles do not frame.
+        assert!(!CSP.contains("[::1]"));
+        {
+        }
+        assert_eq!(consoles_meta(), r#"<meta name="rexenv-consoles" content="adminer=9444,phpmyadmin=9445" />"#);
+        let ts = include_str!("../../src/lib/dbconsole.ts");
+        assert!(ts.contains(r#"meta[name="rexenv-consoles"]"#));
+        // The server gates console requests with the console gate, before forwarding.
+        let server = include_str!("web_server.rs");
+        let h = &server[server.find("async fn handle_console(").expect("the console handler")..];
+        assert!(h.find("rules::console_gate(&").unwrap() < h.find("dbconsole_proxy::forward(").unwrap());
     }
 
     #[test]

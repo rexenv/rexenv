@@ -2459,8 +2459,14 @@ server's invisible display, so over the web `pickFolder` / `pickSqlFile` / `pick
 the path resolved before it is compared. On a headless launch the desktop actions (open a URL or a
 browser, reveal, an editor, an external terminal) refuse with `NO_SCREEN` first; the web UI opens URLs
 in the developer's own browser and lists no server apps. The terminal (`/ipc` + its output events)
-and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser's frame needs the window's
-custom schemes, so over the web it says it is not there yet (`/db`, `/pma` are T8's open half).
+and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser gets a loopback port per
+console (ledger #933): Adminer `127.0.0.1:9444`, phpMyAdmin `9445`, each its own origin for the reason
+the window gives each its own scheme (phpMyAdmin's absolute paths; one cookie jar per console). They
+take no token: the app's session cookie reaches them (cookies are per host, not per port), a POST
+must carry the console's own Origin (a form in the frame cannot add the CSRF header), and the
+response's `frame-ancestors` names the app's page alone — the replacement for the `X-Frame-Options`
+the proxy strips, now that a browser CAN load this copy. The forward is the window's own
+`dbconsole_proxy::forward`. The page learns the ports from `<meta name="rexenv-consoles">`.
 
 **The CA for another machine's browser (T9, ledger #932).** Settings → SSL, over the web only, offers
 the local CA's certificate (never the key) for a browser that reaches the sites through `ssh -D`,

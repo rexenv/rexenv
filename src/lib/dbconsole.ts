@@ -6,7 +6,7 @@
  * driver for it — whatever the setting says.
  */
 import { useQuery } from "@tanstack/react-query";
-import { dbConsoleStatus } from "@/lib/ipc";
+import { dbConsoleStatus, transport } from "@/lib/ipc";
 import { adminerFrameSrc, adminerUrl } from "@/lib/adminer";
 import { phpmyadminFrameSrc, phpmyadminUrl } from "@/lib/phpmyadmin";
 import type { DbConsole, DbConsoleStatus, PlatformWords } from "@/types";
@@ -45,8 +45,24 @@ export function consoleFrameSrc(
   words: Pick<PlatformWords, "dbBrowserOrigin" | "phpmyadminOrigin">,
   db?: string,
 ): string {
+  const origins = transport() === "web" ? webConsoleOrigins() : null;
   if (consoleFor(engine, setting) === "phpmyadmin" && engine !== "postgres") {
-    return phpmyadminFrameSrc({ engine, db }, words.phpmyadminOrigin);
+    return phpmyadminFrameSrc({ engine, db }, origins?.phpmyadmin ?? words.phpmyadminOrigin);
   }
-  return adminerFrameSrc({ engine, db }, words.dbBrowserOrigin);
+  return adminerFrameSrc({ engine, db }, origins?.adminer ?? words.dbBrowserOrigin);
+}
+
+/** Over the web UI each console is its own loopback port on THIS page's host (`web_rules::
+ *  console_ports`, ledger #933) — read from the `<meta name="rexenv-consoles">` the server wrote, so
+ *  the ports live in Rust once. */
+function webConsoleOrigins(): Partial<Record<DbConsole, string>> {
+  const content = document.querySelector<HTMLMetaElement>('meta[name="rexenv-consoles"]')?.content ?? "";
+  const out: Partial<Record<DbConsole, string>> = {};
+  for (const pair of content.split(",")) {
+    const [name, port] = pair.split("=");
+    if ((name === "adminer" || name === "phpmyadmin") && /^\d+$/.test(port ?? "")) {
+      out[name] = `${window.location.protocol}//${window.location.hostname}:${port}`;
+    }
+  }
+  return out;
 }

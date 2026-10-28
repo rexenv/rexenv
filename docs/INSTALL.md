@@ -650,15 +650,18 @@ cached yet); every later boot starts them.
 `--enable-web` to the setup and the service also runs rexenv's own UI on `127.0.0.1:9443` — the same
 screens as the app's window. It never listens on a public address. From your own machine:
 ```sh
-ssh -L 9443:localhost:9443 <server>            # keep it open
+ssh -L 9443:localhost:9443 -L 9444:localhost:9444 -L 9445:localhost:9445 <server>   # keep it open
 ssh <server> rex web url                       # prints http://localhost:9443/?t=…
 ```
 Open that link in your browser: it signs that browser in (a session cookie; restarting rexenv signs
 it out, and the same link signs it back in). The link IS the password — anyone who has it and can
 reach the port is you; it lives in `~/.local/share/rexenv/config/web-token`, readable only by your
 account, and deleting that file makes a new one at the next start. A browser without it, a page
-from another site and a request with another `Host` are refused. Native dialogs (folder pickers)
-ask for a typed path in the browser for now.
+from another site and a request with another `Host` are refused. Folder and file pickers list the
+SERVER's folders (your home and Sites folder only). The Database Browser's two consoles answer on
+9444 (Adminer) and 9445 (phpMyAdmin) — forward them too, with the same numbers, or the Databases
+panel shows an empty frame; the same sign-in covers them. Open, editor and "show in folder" actions
+open in your browser or are not offered: the server has no screen.
 
 Sites are reached from the server itself (`curl https://demo.rex`) or through an SSH tunnel; a
 public address is a later phase. To undo: `sudo systemctl disable --now rexenv-headless.service`,

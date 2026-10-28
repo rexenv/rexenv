@@ -553,8 +553,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; **open in
   T7: the VM/tunnel run (SMOKE "Sign-in")**. **T8 partly built 28 Oct 2026** (#931): the web picker
   (`browse_dir`, home and Sites only), desktop actions refuse on a headless launch, URLs open in the
-  developer's browser; **open in T8: the Database Browser over HTTP (`/db`, `/pma`) and the
-  every-route walk on the VM**. **T9 built 28 Oct 2026** (#932): the CA certificate download with
+  developer's browser; the Database Browser on a loopback port per console (9444 Adminer, 9445
+  phpMyAdmin, #933); **open in T8: the every-route walk on the VM with real consoles**. **T9 built 28 Oct 2026** (#932): the CA certificate download with
   the cost said and each OS's trust steps; **open in T9: the steps on real macOS/Windows/Linux
   machines and a site through `ssh -D`**. T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that

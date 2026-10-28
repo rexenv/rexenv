@@ -133,6 +133,37 @@ pub fn spawn_if_requested(app: AppHandle) {
         }
     };
     let auth = Arc::new(Auth { token, sessions: Mutex::new(HashMap::new()) });
+    // The Database Browser's consoles, one origin each (T8, ledger #933) — same sessions.
+    for (console, port) in rules::console_ports() {
+        if let Err(e) = crate::core::ports::ensure_free(platform.as_ref(), port, crate::core::ports::Proto::Tcp, "rexenv web UI's database console") {
+            log::error!("web: the {} console is not served — {e}", console.label());
+            continue;
+        }
+        let (app, auth) = (app.clone(), auth.clone());
+        tauri::async_runtime::spawn(async move {
+            let addr = std::net::SocketAddr::from((rules::WEB_BIND, port));
+            let listener = match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    log::error!("web: could not bind {addr} for the {} console: {e}", console.label());
+                    return;
+                }
+            };
+            log::info!("web: the {} console on http://{addr}", console.label());
+            loop {
+                let Ok((tcp, _)) = listener.accept().await else { continue };
+                let (app, auth) = (app.clone(), auth.clone());
+                tauri::async_runtime::spawn(async move {
+                    let svc = hyper::service::service_fn(move |req| {
+                        let (app, auth) = (app.clone(), auth.clone());
+                        async move { Ok::<_, Infallible>(handle_console(&app, &auth, console, req).await) }
+                    });
+                    let io = hyper_util::rt::TokioIo::new(tcp);
+                    let _ = hyper::server::conn::http1::Builder::new().serve_connection(io, svc).await;
+                });
+            }
+        });
+    }
     tauri::async_runtime::spawn(async move {
         let addr = std::net::SocketAddr::from((rules::WEB_BIND, rules::WEB_PORT));
         let listener = match tokio::net::TcpListener::bind(addr).await {
@@ -194,6 +225,64 @@ async fn read_json(req: Request<Incoming>) -> Option<Value> {
 
 fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
     req.headers().get(name).and_then(|v| v.to_str().ok())
+}
+
+/// One request to a console port: the console gate, then the window's own console proxy
+/// (`dbconsole_proxy::forward`: the Rust-side cookie jar, the redirects followed), and its CSP's
+/// `frame-ancestors` set to the app's origin alone.
+async fn handle_console(app: &AppHandle, auth: &Arc<Auth>, console: crate::core::dbconsole_proxy::Console, req: Request<Incoming>) -> Response<Body> {
+    let method = req.method().as_str().to_string();
+    let host = header(&req, "host").unwrap_or_default().to_string();
+    let session = header(&req, "cookie").and_then(|c| rules::cookie_value(c, rules::SESSION_COOKIE)).map(str::to_string);
+    let csrf = session.as_deref().and_then(|id| auth.sessions.lock().ok()?.get(id).cloned());
+    let verdict = rules::console_gate(&rules::Ask {
+        method: &method,
+        host: Some(&host).filter(|h| !h.is_empty()).map(|h| h.as_str()),
+        origin: header(&req, "origin"),
+        has_token: false,
+        session_csrf: csrf.as_deref(),
+        csrf_header: None,
+    });
+    if let rules::Gate::Refuse(status, why) = verdict {
+        return full(StatusCode::from_u16(status).unwrap_or(StatusCode::FORBIDDEN), "text/plain; charset=utf-8", why.to_string());
+    }
+    let path_and_query = req.uri().path_and_query().map(|pq| pq.as_str().to_string()).unwrap_or_else(|| "/".into());
+    let content_type = header(&req, "content-type").map(str::to_string);
+    let body = match http_body_util::Limited::new(req.into_body(), rules::MAX_CONSOLE_BODY).collect().await {
+        Ok(b) => b.to_bytes().to_vec(),
+        Err(_) => return full(StatusCode::PAYLOAD_TOO_LARGE, "text/plain; charset=utf-8", "that upload is larger than the web UI takes (256 MB)"),
+    };
+    // The edge's port as the user set it (`core::edge_ports`); no guess before the state exists.
+    let Some(state) = app.try_state::<crate::state::app::AppState>() else {
+        return full(StatusCode::SERVICE_UNAVAILABLE, "text/plain; charset=utf-8", "rexenv is still starting — retry in a moment");
+    };
+    let edge_https_port = crate::commands::services::edge_ports(state.inner()).https;
+    match crate::core::dbconsole_proxy::forward(console, edge_https_port, &method, &path_and_query, content_type.as_deref(), body).await {
+        Ok(r) => {
+            let app_origin = rules::app_origin_for(&host);
+            let mut out = Response::new(Full::new(Bytes::from(r.body)).boxed());
+            *out.status_mut() = StatusCode::from_u16(r.status).unwrap_or(StatusCode::BAD_GATEWAY);
+            let mut had_csp = false;
+            for (name, value) in r.headers {
+                let value = if name == "content-security-policy" {
+                    had_csp = true;
+                    rules::console_csp(&value, &app_origin)
+                } else {
+                    value
+                };
+                if let (Ok(n), Ok(v)) = (hyper::header::HeaderName::from_bytes(name.as_bytes()), value.parse()) {
+                    out.headers_mut().append(n, v);
+                }
+            }
+            if !had_csp {
+                if let Ok(v) = rules::console_csp("", &app_origin).parse() {
+                    out.headers_mut().insert("content-security-policy", v);
+                }
+            }
+            out
+        }
+        Err(e) => full(StatusCode::BAD_GATEWAY, "text/plain; charset=utf-8", format!("rexenv db proxy: {e}")),
+    }
 }
 
 async fn handle(app: &AppHandle, streams: &Arc<Streams>, auth: &Arc<Auth>, req: Request<Incoming>) -> Response<Body> {

@@ -145,7 +145,7 @@ rexenv --headless [--web 127.0.0.1:9443]
   │    GET  /            → the built frontend (dist/), same bundle as the desktop app
   │    POST /ipc/<cmd>   → the same commands::* fns the webview invokes
   │    WS   /events      → every backend emit, pushed
-  │    GET  /db/…, /pma/… → the rexdb:/rexpma: handlers over HTTP
+  │    :9444 / :9445     → the rexdb:/rexpma: handlers over HTTP, one origin each (T8, #933)
   └─ started by the OS service manager at boot (systemd on Linux — D3 for the other two)
 ```
 
@@ -404,10 +404,13 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   `pickFolder`/`pickSqlFile`/`pickZipFiles`; on a headless launch every desktop action refuses with
   `NO_SCREEN` first, and over the web URLs open in the developer's browser and the server's apps are
   not offered; the terminal and the mail viewer need nothing (they ride `/ipc` + `/events` and a
-  `srcDoc` frame). **Still open: the Database Browser over HTTP** (`/db`, `/pma` — phpMyAdmin's
-  absolute paths need an origin of its own, so likely a loopback port per console, gated by the
-  same session; until then the panel says it is not in the web UI) **and the every-route walk on the
-  VM.** Was: The folder picker (`browse_dir`), `/db` and `/pma`, the mail
+  `srcDoc` frame). **The Database Browser ✓ the same day** (owner ruling 28 Oct 2026: a port per
+  console, ledger #933): Adminer on `127.0.0.1:9444`, phpMyAdmin on `9445` — an origin each, because
+  phpMyAdmin's absolute paths cannot live under a path of the app's origin and two consoles must not
+  share a jar — gated by the app's session (cookies are per host, not per port) and the console's
+  own Origin on a POST, forwarded through the window's own `dbconsole_proxy::forward`, framed only by
+  the app's page (`frame-ancestors`). The plan's `/db`, `/pma` paths are not used. **Still open: the
+  every-route walk on the VM, with a real Adminer and phpMyAdmin.** Was: The folder picker (`browse_dir`), `/db` and `/pma`, the mail
   viewer, and the desktop-only capabilities. Done when every route in `src/routes/` is walked in a
   browser on the VM.
 - **T9 — the CA download** **✓ built 28 Oct 2026, run in the cloud container only** (ledger #932): Settings →

@@ -29,6 +29,7 @@ below, then the Windows and Linux artifact tables). Ports are common except wher
 | Adminer | no port — internal vhost `adminer.rexenv.rex` via shared nginx | — | `core/adminer.rs` |
 | cloudflared | outbound-only, no inbound port | — | `core/tunnels.rs` |
 | Web UI (`rexenv --web`) | **9443** on `127.0.0.1` only — owner ruling D5, 28 Oct 2026; port-gated like every service; a public bind is Phase 2 | TCP | `web_rules.rs` `WEB_PORT`, `WEB_BIND` |
+| Web UI database consoles | **9444** (Adminer), **9445** (phpMyAdmin) on `127.0.0.1` only — an origin each, behind the web UI's session (owner ruling 28 Oct 2026, ledger #933); port-gated | TCP | `web_rules.rs` `ADMINER_WEB_PORT`, `PHPMYADMIN_WEB_PORT` |
 
 - Canonical startup-order registry: `core/ports.rs` `default_ports()`.
 - Every start is gated by `core/ports::ensure_free` — probe rules: privileged TCP (<1024)
