@@ -137,6 +137,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **A slow edge reload wedges a root edge until `kill -9`** (found 28 Oct 2026 on the macOS 15.8 VM, 0.9.4, running
+  #918's round trip). `proxy::reload` kills the `caddy reload` CLI after 10 s (`wait_ok_within`), but a request the CLI
+  already sent keeps loading inside Caddy; `service_manager` then reads the timeout as a refusal ("reinstalling it") and
+  `proxy` sends `/stop` to the live edge. The two raced: the CLI took ~9 s to deliver its `/load` (first exec after a
+  relaunch), `/stop` arrived 1.8 s later, the new config still bound 8443/8080, and Caddy 2.11.4 panicked in
+  `caddytls.(*TLS).Stop` (`close of closed channel`). The process never exited, so launchd's KeepAlive did nothing; TLS
+  answered `tlsv1 alert internal error` for every site, the next reload hung, and SIGTERM was ignored (eternal grace
+  period) — only `kill -9` (then KeepAlive's fresh start) served again. `rex start` printed "the leftover Caddy edge
+  would not stop via its admin socket" while the daemon was in fact serving the new ports. Same code on Linux (#918's
+  Linux run took the stop + start path, so it never reloaded across a port change). Recommended fix: after a reload
+  timeout, poll the admin socket for the config to settle (or match the new Caddyfile) before treating it as refused,
+  and never `/stop` a Daemon edge mid-load — restart it through its supervisor instead. Ledger #918's note.
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
   a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer
@@ -532,8 +544,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: the macOS 443 → 8443 →
-  443 round trip (#918 ◐; Linux's ran 28 Oct 2026), T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
+- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
   D2 and D5 unruled (Phase 1b's).** T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
   would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
@@ -561,7 +572,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   setup makes the route, the CA's trust and the root edge through the desktop's own code, run on a
   fresh account with the VM's rexenv state parked). **T2's macOS and Windows runs done 27 Oct 2026** (fresh `t2rex` accounts
   on the 15.8 VM and the Dell; #915–#917, #919 now ✅ on all three; the card seen on both). **Phase 1a
-  is complete**; open after it: the 443 → 8443 → 443 round trip on one account on macOS (#918 ◐ — **Linux's ran 28 Oct 2026** on the 24.04 server VM, 0.9.4: the root unit took 8443 and 443 back through `rex restart`, no child edge, adoption kept its pid; `edge_bind 127.0.0.1` moved it to loopback), T5 (headless on
+  is complete**; open after it: ~~the 443 → 8443 → 443 round trip on one account~~ (#918 ✅ — **run on Linux and macOS 28 Oct 2026**; macOS's found the reload wedge row in § Now. Linux's on the 24.04 server VM, 0.9.4: the root unit took 8443 and 443 back through `rex restart`, no child edge, adoption kept its pid; `edge_bind 127.0.0.1` moved it to loopback), T5 (headless on
   macOS/Windows, D3), and Phase 1b (the web UI, T6–T9). Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
   trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
   only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
