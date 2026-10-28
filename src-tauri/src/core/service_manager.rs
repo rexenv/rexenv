@@ -1617,17 +1617,15 @@ impl ServiceManager {
     }
 
     /// Resolve the Apache tree once (mirrors `ensure_frankenphp_bin`): the merged bottle
-    /// bundle on macOS, Apache Lounge's zip tree on Windows — the layout's shape decides
-    /// (`apache::Layout`, docs/archive/PLAN-windows-servers.md D4).
+    /// bundle on macOS, Apache Lounge's zip tree on Windows, our own build's tree on Linux —
+    /// `binaries::resolve_tree` lets the shape decide (`apache::Layout`,
+    /// docs/archive/PLAN-windows-servers.md D4).
     async fn ensure_httpd_dir(&mut self, platform: &dyn Platform) -> Result<PathBuf> {
         if let Some(p) = &self.httpd_dir {
             return Ok(p.clone());
         }
         let version = binaries::httpd_version();
-        let p = match binaries::shape_of("httpd") {
-            binaries::Shape::Bundle => binaries::resolve_bundle(platform, "httpd", version).await?,
-            _ => binaries::resolve_dir(platform, "httpd", version).await?,
-        };
+        let p = binaries::resolve_tree(platform, "httpd", version).await?;
         self.httpd_dir = Some(p.clone());
         Ok(p)
     }

@@ -3265,14 +3265,15 @@ mod tests {
             assert!(offered_web_servers_on(os).contains(&WebServer::Nginx), "nginx ships on {os}");
         }
         // Per OS, what the pins say (docs/archive/PLAN-windows-servers.md): Windows offers Apache and
-        // FrankenPHP since their pins landed (24 Oct 2026) and never OpenLiteSpeed; Linux has
-        // no Apache pin yet. Offered-then-refused is what this guards against.
+        // FrankenPHP since their pins landed (24 Oct 2026) and never OpenLiteSpeed; Linux offers
+        // Apache since its own build was pinned (28 Oct 2026, ledger #928). Offered-then-refused
+        // is what this guards against.
         let windows = offered_web_servers_on("windows");
         for s in [WebServer::Apache, WebServer::Frankenphp] {
             assert!(windows.contains(&s), "{s:?} has a Windows pin and must be offered");
         }
         assert!(!windows.contains(&WebServer::Openlitespeed), "OpenLiteSpeed has no Windows build");
-        assert!(!offered_web_servers_on("linux").contains(&WebServer::Apache), "no Linux Apache pin yet");
+        assert_eq!(offered_web_servers_on("linux").len(), 4, "all four ship on Linux since Apache's pin");
         assert_eq!(offered_web_servers_on("macos").len(), 4, "all four ship on macOS");
 
         let dialog = crate::core::copy_scan::strip_ts_comments(include_str!(
@@ -3291,9 +3292,9 @@ mod tests {
     }
 
     /// Ledger #642 — **the web-server gate reads the pins, per OS.** Nginx ships everywhere;
-    /// FrankenPHP on all three; Apache on macOS (the bottle) and Windows (Apache Lounge's
-    /// build, mirrored — docs/archive/PLAN-windows-servers.md D1, under its own version key) and not
-    /// yet on Linux.
+    /// FrankenPHP on all three; Apache on all three, each under its own version key: the
+    /// bottle on macOS, Apache Lounge's build mirrored on Windows
+    /// (docs/archive/PLAN-windows-servers.md D1), rexenv's own build on Linux (ledger #928).
     ///
     /// Asked for BOTH os values from either host. The bar only `cargo check`s for Windows, so
     /// a gate reading `std::env::consts::OS` alone would have a half that cannot fail on the
@@ -3305,14 +3306,8 @@ mod tests {
         }
         for server in [WebServer::Nginx, WebServer::Frankenphp, WebServer::Apache] {
             assert!(ensure_server_available_on(server, "windows").is_ok(), "{server:?} on Windows");
+            assert!(ensure_server_available_on(server, "linux").is_ok(), "{server:?} on Linux");
         }
-        // Linux: no Apache pin yet — the refusal is the platform's sentence, which names the
-        // servers Linux DOES offer and says "yet".
-        let e = ensure_server_available_on(WebServer::Apache, "linux")
-            .expect_err("no Linux Apache pin")
-            .to_string();
-        assert_eq!(e, crate::platform::words::for_os("linux").apache_unavailable);
-        assert!(e.contains("Apache") && e.contains("yet") && e.contains("OpenLiteSpeed"), "{e}");
         // OpenLiteSpeed (ledger #774): rexenv's own build for macOS and Linux, and NO Windows
         // build anywhere — so the Windows refusal is the permanent sentence, never "yet".
         for os in ["macos", "linux"] {
@@ -6198,7 +6193,7 @@ mod tests {
         let e = check_switch_on(&conn, &site.id, WebServer::Openlitespeed, "windows")
             .expect_err("OpenLiteSpeed has no Windows build");
         assert_eq!(e.to_string(), crate::platform::words::for_os("windows").openlitespeed_unavailable);
-        assert!(check_switch_on(&conn, &site.id, WebServer::Apache, "linux").is_err());
+        assert!(check_switch_on(&conn, &site.id, WebServer::Apache, "linux").is_ok(), "Apache ships on Linux (ledger #928)");
         assert!(check_switch_on(&conn, &site.id, WebServer::Nginx, "windows").is_ok());
     }
 

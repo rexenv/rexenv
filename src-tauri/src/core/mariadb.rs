@@ -1,9 +1,10 @@
 //! core::mariadb — MariaDB service (shipped from the "Deferred services" plan;
 //! evidence in docs/archive/SHIPPED-2026-07.md).
 //!
-//! One shared MariaDB server on a loopback port, from a bottle bundle
-//! (`core::binaries::resolve_bundle("mariadb", …)` — server/client/dump +
-//! relinked openssl@3 + pcre2 dylibs). MariaDB has no `--initialize-insecure`
+//! One shared MariaDB server on a loopback port, from `core::binaries::resolve_tree("mariadb", …)`:
+//! on macOS a bottle bundle (server/client/dump + relinked openssl@3 + pcre2 dylibs), on
+//! Linux our own build of the same tree with everything but glibc static (`rexenv/runtimes`
+//! `mariadb-linux-1`). MariaDB has no `--initialize-insecure`
 //! (that's MySQL) and its `mariadb-install-db` is a shell script full of baked
 //! Homebrew paths, so [`initialize`] drives `mariadbd --bootstrap` DIRECTLY:
 //! the same SQL files the script feeds, over stdin, with

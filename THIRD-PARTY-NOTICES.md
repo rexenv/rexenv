@@ -24,8 +24,8 @@ cloudflared from their GitHub releases. **One exception since 24 Oct 2026: Apach
 Windows is MIRRORED by rexenv** (the section below) — Apache Lounge's build, re-hosted on
 `rexenv/runtimes` because Apache Lounge keeps only its current build; rexenv is that mirror's
 distributor and ships the ASF's LICENSE and NOTICE beside it. The other "rexenv's own build"
-sections below describe **macOS artifacts** (OpenLiteSpeed's, macOS and Linux) — none of them is
-downloaded on Windows. Versions, sources and digests: `docs/PORTS.md`, Windows table.
+sections below describe **macOS artifacts** (OpenLiteSpeed's, macOS and Linux; Redis, MariaDB
+and httpd's, Linux only) — none of them is downloaded on Windows. Versions, sources and digests: `docs/PORTS.md`, Windows table.
 The Windows app binary links a different Rust graph (the `windows-*` and `webview2-com*`
 families in place of `objc2`) and has its own table below, read by the SAME walk as the macOS
 one — two graphs built by two rules is how this file drifted before.
@@ -256,6 +256,30 @@ its Chromium-derived parts (MIT, BSD-3), ls-qpack and ls-hpack (MIT), brotli (MI
 libbcrypt (CC0), udns (LGPL-2.1, statically linked; its source is on the release), PCRE2
 (BSD-3), zlib, expat (MIT). The same refusal as nginx's applies: no pinned licence archive,
 no resolve.
+
+## Redis 8.8.4, MariaDB 12.3.3 / 11.4.13, Apache httpd 2.4.69 for Linux — rexenv's own builds (downloaded at runtime, distributed BY US)
+
+Built and hosted since 28 Oct 2026 for Linux x86_64 and aarch64 (rexenv/rexenv#7): on macOS
+these three are Homebrew bottles, which rexenv does not distribute, but Homebrew's Linux bottles
+are x86_64-only, so on Linux rexenv builds them from upstream source and is their distributor.
+Nothing here is downloaded on macOS or Windows.
+
+| | |
+|---|---|
+| Artifacts | `redis-8.8.4-linux-<arch>.tar.gz` · `mariadb-{12.3.3,11.4.13}-linux-<arch>.tar.gz` · `httpd-2.4.69-linux-<arch>.tar.gz` |
+| Built by | `rexenv/runtimes` (public), `scripts/build-{redis,mariadb,httpd}.sh` via `scripts/linux-build.sh`, GitHub Actions, in ubuntu:22.04 |
+| Source | the upstream release tarballs, each checked against its project's published digest, and every library linked in — all mirrored as assets in the same release with the build scripts (`<name>-<version>-rexenv-build.tar.gz`): the corresponding source the AGPL and GPL require |
+| Release | `redis-linux-1`, `mariadb-linux-1`, `httpd-linux-1` — immutable, never re-uploaded |
+| Pinned in | `core/binaries.rs` (`REDIS_8_8_4_*`, `MARIADB_12_3_3_*`, `MARIADB_11_4_13_*`, `HTTPD_2_4_69_LINUX_*` / `_LICENSES_LINUX_*`) |
+| Licence | **Redis**: RSALv2 / SSPLv1 / **AGPLv3** (redistributed under the AGPLv3) · **MariaDB**: **GPL-2.0** · **httpd**: **Apache-2.0** + NOTICE. rexenv itself stays Apache-2.0: each server is a separate program the app downloads and runs, never linked into it |
+
+Everything compiled into each binary travels with it in `licenses-<name>-<version>-linux-<arch>.tar.gz`:
+for Redis, its pre-8.0 BSD-3 terms and the vendored jemalloc, hiredis, lua, linenoise,
+hdr_histogram, fpconv, tre and xxhash; for MariaDB, its THIRDPARTY notices, Connector/C
+(LGPL-2.1), OpenSSL 3.6.5 (Apache-2.0), zlib, PCRE2 (BSD-3), libfmt (MIT), readline (GPL-2.0),
+ncurses' libtinfo (X11) and the GCC runtime (GPL-3.0 with the runtime library exception); for
+httpd, apr and apr-util (Apache-2.0), PCRE2 (BSD-3) and expat (MIT). The same refusal as nginx's
+applies: no pinned licence archive, no resolve.
 
 ## PHP 8.0-8.5 — rexenv's own builds (downloaded at runtime, distributed BY US)
 

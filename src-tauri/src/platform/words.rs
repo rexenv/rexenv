@@ -259,7 +259,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     imports_other_tools: false,
     window_controls_in_content: false,
     pool_kind: "php-fpm pool",
-    bundled_tools: "nginx, PHP, MySQL, PostgreSQL, Mailpit, Adminer & cloudflared",
+    bundled_tools: "nginx, PHP, MySQL, MariaDB, PostgreSQL, Redis, Mailpit, Adminer & cloudflared",
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
     phpmyadmin_origin: "rexpma://localhost",
@@ -269,7 +269,9 @@ pub const LINUX: PlatformWords = PlatformWords {
     update_reprompt: "",
     searching_browsers: "Chrome and Firefox",
     openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx or FrankenPHP.",
-    apache_unavailable: "Apache is not part of rexenv on Linux yet — choose Nginx, FrankenPHP or OpenLiteSpeed.",
+    // Unreachable since 28 Oct 2026 (Apache ships on Linux — rexenv's own build); kept, like
+    // macOS's, for a build that ever lacks it. It said "yet" while Linux had no pin.
+    apache_unavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
     loader_failures: &[],
 };
 

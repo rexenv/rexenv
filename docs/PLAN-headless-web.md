@@ -76,8 +76,9 @@ on the public internet. It is ONE developer's rexenv, running on a machine they 
   socket (a unix socket on Linux, `LocalIpc`). `scratch_create_site`/`scratch_delete_site` live in
   `mcp_server/scratch.rs` with no OS branch. Both compile for Linux, but no Linux run and no Linux doc of
   either was found. That is a missing proof, not a missing feature.
-- **The Linux catalog has no Redis, MariaDB or Apache httpd** (`docs/PORTS.md` §Linux, D-L8 of
-  `docs/PLAN-linux-port.md`). `ships_on` refuses them on Linux.
+- **The Linux catalog has had Redis, MariaDB and Apache httpd since 28 Oct 2026** — rexenv's own
+  builds (`docs/PORTS.md` §Linux; D-L8 of `docs/PLAN-linux-port.md` closed for them). Until then
+  `ships_on` refused them on Linux, which is what this line said when it was written.
 - **The edge is loopback-scoped by design.** It runs auto-HTTPS off, with leaves from the local CA,
   and `.rex` resolves only on the machine itself. So a site on the VPS is reachable from the
   developer's own browser only through a tunnel, a proxy, or a real domain (§4 Phase 3).
@@ -211,10 +212,9 @@ rexenv --headless [--web 127.0.0.1:9443]
 
 ### Not in this plan — Redis, MariaDB and Apache on Linux (issue #7 ask 5)
 
-These are catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of
-`docs/PLAN-linux-port.md`: a build or a relinked bottle per arch, pinned and checksum-locked, with
-`ships_on` opened once a Linux run passes. They are tracked as their own row in `docs/TODO.md`. Headless
-mode does not depend on them, and they do not depend on headless mode.
+Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PLAN-linux-port.md` —
+**pinned on 28 Oct 2026** (rexenv's own builds, both arches). Their Linux run is tracked in their own
+`docs/TODO.md` row. Headless mode does not depend on them, and they do not depend on headless mode.
 
 ### Phase 2 — the web UI on a public address
 

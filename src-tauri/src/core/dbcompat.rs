@@ -364,7 +364,7 @@ fn cross_vendor(vendor: Vendor, version: &Version, target: &Target) -> Verdict {
 fn newer_target_available(target: &Target) -> Option<&'static str> {
     let engine = match target.vendor {
         Vendor::Mysql => crate::core::binaries::pins().mysql_versions,
-        Vendor::Mariadb => crate::core::binaries::pins().mariadb_versions,
+        Vendor::Mariadb => crate::core::binaries::mariadb_versions_on(std::env::consts::OS),
     };
     engine
         .iter()

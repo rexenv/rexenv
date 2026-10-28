@@ -652,8 +652,11 @@ public address is a later phase. To undo: `sudo systemctl disable --now rexenv-h
 
 ### Not in Linux v1
 
-Redis, MariaDB, Apache, Xdebug (Homebrew's Linux bottles are x86_64-only and unrelinked).
-PHP 7.4 IS available — rexenv's own static build, as on macOS.
+Xdebug (Homebrew's Linux bottles are x86_64-only and unrelinked). PHP 7.4 IS available —
+rexenv's own static build, as on macOS — and so, since 28 Oct 2026, are **Redis, MariaDB and
+Apache**: rexenv's own Linux builds, both arches, downloaded on first use like everything else.
+They run newer patches than the Mac's (Redis 8.8.4, MariaDB 12.3.3 / 11.4.13, Apache 2.4.69),
+and Linux's Redis has no TLS (it listens on loopback only).
 
 ### Uninstalling — do the in-app step FIRST
 

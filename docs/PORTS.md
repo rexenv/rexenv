@@ -120,10 +120,13 @@ upstream here publishes aarch64 — D-L5 of `docs/PLAN-linux-port.md`). Every ar
 streamed through sha256/sha512 on the Mac on 24 Sep 2026 and re-hashed by `manifest_sweep_check`
 on 25 Sep (which caught three truncated first-pass streams — cloudflared both archs, PHP 8.0.30
 x86_64 — since corrected against two more full downloads each); the "Digest" column says whether
-a publisher's own digest confirmed it. **PHP 7.4 on Linux is rexenv's own build** (`php-7.4.33-7`, see the PHP row above). Not in Linux v1, resolving to nothing there: Redis, MariaDB,
-Apache httpd, Xdebug (Homebrew Linux bottles are x86_64-only and would need a `patchelf`
-relink rexenv has not written — D-L8). No target-specific images inside: these are native
-builds for each arch.
+a publisher's own digest confirmed it. **PHP 7.4 on Linux is rexenv's own build** (`php-7.4.33-7`, see the PHP row above). **Redis,
+MariaDB and Apache httpd are rexenv's own builds too since 28 Oct 2026** (the last three rows,
+D-L8 closed for them): Homebrew's Linux bottles are x86_64-only, so `rexenv/runtimes` builds
+them from upstream source — and at each project's current security patch, which is why their
+versions are NOT the macOS rows' (`binaries::{redis,mariadb}_versions_on`, `httpd_version_on`
+— one name, a key per OS, as httpd already had for Windows). Still not on Linux, resolving to
+nothing there: Xdebug. No target-specific images inside: these are native builds for each arch.
 
 | Binary | Source | Archive → published as | Digest |
 |---|---|---|---|
@@ -135,6 +138,9 @@ builds for each arch.
 | FrankenPHP 1.13.3 | GitHub release `frankenphp-linux-{x86_64,aarch64}` | `Raw` → `frankenphp` | SHA-256 of our download |
 | OpenLiteSpeed 1.9.3 | OURS — `rexenv/runtimes` `openlitespeed-1.9.3-1`, `openlitespeed-1.9.3-linux-{x86_64,aarch64}.tar.gz`, built on Ubuntu 22.04 (glibc floor 2.35, highest symbol used 2.34; `NEEDED` = glibc + `libcrypt.so.1`, libstdc++/libgcc/libaio/libatomic static) — the SAME recipe and patches as macOS, not upstream's tarball | `TarGzTree` → `openlitespeed` | SHA-256 from the release's `SHA256SUMS`, matched by the app's own verified resolve |
 | Mailpit 1.30.3 | GitHub release `mailpit-linux-{amd64,arm64}.tar.gz` | `TarGz` → `mailpit` | SHA-256 of our download |
+| Redis **8.8.4** (macOS: 8.8.0) | OURS — `rexenv/runtimes` `redis-linux-1`, `redis-8.8.4-linux-{x86_64,aarch64}.tar.gz` + `licenses-redis-8.8.4-linux-<arch>.tar.gz`, built in ubuntu:22.04 (glibc floor 2.35, highest symbol 2.34; `NEEDED` = libc + libm). jemalloc; **no TLS** (`BUILD_TLS=no`: loopback only, rexenv passes no `--tls-*`, so `--tls-port` fails here where the macOS bundle has OpenSSL); no Redis 8 modules, like the bottle. 8.8.4 because 8.8.1–8.8.4 are all SECURITY releases. AGPLv3 redistribution: source + build scripts on the release | `TarGzTree { strip: 0 }` → `bin/redis-server`, `bin/redis-cli` | SHA-256, the release's `SHA256SUMS` (= GitHub's asset digest) |
+| MariaDB **12.3.3** (default) · **11.4.13** LTS (macOS: 12.3.2 · 11.4.12) | OURS — `rexenv/runtimes` `mariadb-linux-1` (both versions, one release), `mariadb-<v>-linux-{x86_64,aarch64}.tar.gz` + `licenses-mariadb-<v>-linux-<arch>.tar.gz`. Server, client, dump, bootstrap SQL, errmsg, charsets ONLY — the bottle bundle's set. `NEEDED` = glibc + `libcrypt.so.1`; everything else static: OpenSSL **3.6.5** (server AND clients — Connector/C has no TLS-off mode and wants GnuTLS beside the source tree's wolfSSL), zlib, PCRE2 10.47, libfmt, readline over libtinfo, libstdc++/libgcc; no libaio/liburing. GPL-2.0: source on the release | `TarGzTree { strip: 0 }` → `bin/mariadbd` (+ `share/mysql/…` as macOS) | SHA-256, the release's `SHA256SUMS` |
+| Apache httpd **2.4.69** (macOS: 2.4.68; Windows' version) | OURS — `rexenv/runtimes` `httpd-linux-1`, `httpd-2.4.69-linux-{x86_64,aarch64}.tar.gz` + `licenses-httpd-2.4.69-linux-<arch>.tar.gz`. EXACTLY the ten modules the conf loads (the build refuses an eleventh — `--enable-proxy` alone builds 24), the bottle's layout (`lib/httpd/modules/`, `.bottle/etc/httpd/mime.types`, so `apache::Layout` needs no Linux arm); apr 1.7.6 + apr-util 1.6.5 in `lib/` behind `RUNPATH $ORIGIN/../lib`, PCRE2 + expat static; no mod_ssl/http2/brotli | `TarGzTree { strip: 0 }` → `bin/httpd` | SHA-256, the release's `SHA256SUMS` |
 | cloudflared 2026.6.1 | GitHub release `cloudflared-linux-{amd64,arm64}` | `Raw` → `cloudflared` | SHA-256 of our download |
 | WP-CLI · Composer · Adminer · phpMyAdmin · BooDark | as above — OS-agnostic | unchanged | unchanged |
 

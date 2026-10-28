@@ -97,7 +97,7 @@ fn unpack(bytes: &[u8], spec: &binaries::BinarySpec, dest: &Path) -> Option<Path
             std::fs::write(&out, bytes).ok()?;
             Some(out)
         }
-        Archive::TarGz | Archive::TarGzTree => {
+        Archive::TarGz | Archive::TarGzTree { .. } => {
             let gz = flate2::read::GzDecoder::new(bytes);
             let mut ar = tar::Archive::new(gz);
             for entry in ar.entries().ok()? {

@@ -1,9 +1,10 @@
 //! core::redis — Redis service (shipped from the "Deferred services" plan;
 //! evidence in docs/archive/SHIPPED-2026-07.md).
 //!
-//! One shared Redis server on a loopback port, from the FIRST bottle bundle
-//! (`core::binaries::resolve_bundle("redis", …)` — redis + relinked openssl@3
-//! dylibs). No init step (Redis creates its dump files on demand); config is
+//! One shared Redis server on a loopback port, from `core::binaries::resolve_tree("redis", …)`:
+//! on macOS the FIRST bottle bundle (redis + relinked openssl@3 dylibs), on Linux our own
+//! glibc build (`rexenv/runtimes` `redis-linux-1`, 8.8.4, built WITHOUT TLS — loopback only,
+//! and no `--tls-*` argument is ever passed here). No init step (Redis creates its dump files on demand); config is
 //! passed entirely as command-line arguments, so there is no conf file to
 //! template or quote. The data dir lives under app-data like the other engines.
 

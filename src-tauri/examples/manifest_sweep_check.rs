@@ -165,12 +165,21 @@ async fn main() -> ExitCode {
         for v in binaries::pins().postgres_versions {
             push_single(&mut targets, "linux", "postgres", v, arch);
         }
+        // Our own Linux trees (D-L8 closed, 28 Oct 2026): Linux's OWN version keys, never the
+        // macOS bottle pins — those have no Linux arm, and `push_single` would panic on them.
+        for v in binaries::redis_versions_on("linux") {
+            push_single(&mut targets, "linux", "redis", v, arch);
+        }
+        for v in binaries::mariadb_versions_on("linux") {
+            push_single(&mut targets, "linux", "mariadb", v, arch);
+        }
+        push_single(&mut targets, "linux", "httpd", binaries::httpd_version_on("linux"), arch);
     }
     // The count floor is the drift alarm for the LIST itself: pins only ever
     // grow, so a shrink means an enumeration line was lost, not a pin.
     checks.is(
-        &format!("enumeration floor ({} targets ≥ 130)", targets.len()),
-        targets.len() >= 130,
+        &format!("enumeration floor ({} targets ≥ 138)", targets.len()),
+        targets.len() >= 138,
         "the sweep's list shrank — an enumeration line was lost",
     );
 

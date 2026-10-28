@@ -4487,8 +4487,22 @@ On a FRESH account (no sites — a port change is refused with any), with anothe
   ✓ 26 Oct 2026 (the 22.04 arm64 VM, a fresh `t2` account in headless mode) — all three.
 
 ### Not in Linux v1 (D-L8, refused in core with an honest message)
-- **Redis, MariaDB, Apache, Xdebug** — as Windows v1: not offered, and a refusal that names the OS.
-  ✓ 24 Sep 2026 (VM) for Apache and MariaDB in New Site (P5 above).
+- **Xdebug** — as Windows v1: not offered, and a refusal that names the OS. (Redis, MariaDB and
+  Apache left this list on 28 Oct 2026 — the section below. The 24 Sep 2026 VM refusal for
+  Apache and MariaDB in New Site, P5 above, is what that change retired.)
+
+### Redis, MariaDB and Apache on Linux (28 Oct 2026 — rexenv's own builds)
+Pinned from `rexenv/runtimes` (`redis-linux-1`, `mariadb-linux-1`, `httpd-linux-1`); each artifact
+was gated there as a running server in a clean 22.04 and 24.04. These rows are the APP's half.
+- [ ] **Headless half:** `linux_trees_check` green on the 22.04 VM AND a 24.04 server (resolve
+  through `resolve_tree`, licences staged, Redis PING/SET/GET, MariaDB bootstrap + SQL + dump, httpd
+  with the generated conf: static, `.htaccess`, `/.env` 404, `.php` via FastCGI).
+- [ ] **Settings → Services:** Redis and MariaDB are offered (no Linux refusal); start each; the
+  MariaDB version picker shows **12.3.3** and **11.4.13**; switching starts the other series.
+- [ ] **New Site → Database: MariaDB** creates the site and WordPress installs on it.
+- [ ] **A site switched to Apache** serves, a plugin's `.htaccess` rule applies, wp-admin logs in
+  over `https://` (the `X-Forwarded-Proto` → `HTTPS=on` mapping).
+- [ ] **A caching plugin on Redis** (the #7 ask): an object-cache drop-in connects to `127.0.0.1:16379`.
 
 ---
 Result: ____ / all pass.  Issues found: ________________________________________

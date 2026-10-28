@@ -586,11 +586,16 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
   `docs/PLAN-headless-web.md` T5.
-- [ ] **Redis, MariaDB and Apache httpd on Linux.** Not in Linux v1 (D-L8 of
-  `docs/PLAN-linux-port.md`; `ships_on` refuses them; `docs/PORTS.md` §Linux). Asked for in GitHub
-  issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs Apache, many hosts run
-  MariaDB). Each needs a per-arch build or relinked bottle in `rexenv/runtimes`, a pin with checksums,
-  and a Linux run before `ships_on` opens. Independent of the headless plan.
+- [ ] **Redis, MariaDB and Apache httpd on Linux — open: the run on the 22.04 VM and a 24.04 server.**
+  Asked for in GitHub issue rexenv/rexenv#7 (ask 5: a caching plugin needs Redis, `.htaccess` needs
+  Apache, many hosts run MariaDB). **Built and pinned 28 Oct 2026:** `rexenv/runtimes` releases
+  `redis-linux-1` (8.8.4), `mariadb-linux-1` (12.3.3 + 11.4.13), `httpd-linux-1` (2.4.69), both
+  arches, each gated there as a running server in a clean 22.04 + 24.04; the Linux arms in
+  `core/binaries.rs` (own version keys, `TarGzTree { strip: 0 }`, licences), `ships_on` open from
+  them; `linux_trees_check` green in the 22.04 linux-check container (aarch64; MariaDB at its default
+  12.3.3) through the app's own `resolve_tree` and `DbEngine` starts — a container, not the VM: no systemd, no GUI. Still owed:
+  `docs/SMOKE-TEST.md` §"Redis, MariaDB and Apache on Linux" on the VM and a 24.04 server, then the
+  ledger row's ◐ → ✓. Independent of the headless plan.
 
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item

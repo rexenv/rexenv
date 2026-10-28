@@ -338,10 +338,50 @@ pub fn standard_pins() -> PinSet {
 /// download plan and the adoption all ask here, never `pins().httpd` directly
 /// (docs/archive/PLAN-windows-servers.md T2).
 pub fn httpd_version_on(os: &str) -> &'static str {
-    if os == "windows" {
-        HTTPD_WINDOWS_VERSION
+    match os {
+        "windows" => HTTPD_WINDOWS_VERSION,
+        "linux" => HTTPD_LINUX_VERSION,
+        _ => pins().httpd,
+    }
+}
+
+/// The Redis versions `os` offers, default first: Linux reads its own build's key
+/// (`REDIS_LINUX_VERSIONS`), every other OS the tier's bottle pins. Like
+/// [`httpd_version_on`], the one place the keys meet — `DbEngine` asks here, never
+/// `pins().redis_versions` directly, or a Linux host would ask for a bottle version that has
+/// no Linux arm and be refused by `ships_on`.
+pub fn redis_versions_on(os: &str) -> &'static [&'static str] {
+    if os == "linux" {
+        REDIS_LINUX_VERSIONS
     } else {
-        pins().httpd
+        pins().redis_versions
+    }
+}
+
+/// The DEFAULT Redis version `os` runs (see [`redis_versions_on`]).
+pub fn redis_version_on(os: &str) -> &'static str {
+    if os == "linux" {
+        REDIS_LINUX_VERSION
+    } else {
+        pins().redis
+    }
+}
+
+/// The MariaDB versions `os` offers, default first (see [`redis_versions_on`]).
+pub fn mariadb_versions_on(os: &str) -> &'static [&'static str] {
+    if os == "linux" {
+        MARIADB_LINUX_VERSIONS
+    } else {
+        pins().mariadb_versions
+    }
+}
+
+/// The DEFAULT MariaDB version `os` runs (see [`redis_versions_on`]).
+pub fn mariadb_version_on(os: &str) -> &'static str {
+    if os == "linux" {
+        MARIADB_LINUX_VERSION
+    } else {
+        pins().mariadb
     }
 }
 
@@ -625,9 +665,12 @@ pub enum Archive {
     TarGz,
     /// the download is the binary itself.
     Raw,
-    /// gzip-compressed tar of a full directory tree; extracted whole (the
-    /// single top-level dir is stripped). Used for MySQL (bin/lib/share).
-    TarGzTree,
+    /// gzip-compressed tar of a full directory tree, extracted whole after dropping `strip`
+    /// leading path components — the `ZipTree` rule, for the same reason: tarballs disagree
+    /// about a top directory. MySQL and PostgreSQL have one (`strip: 1`); rexenv's own Linux
+    /// Redis/MariaDB/httpd put `bin/` and `share/` at the archive root (`strip: 0`), and a
+    /// one-component strip there would land `share/mysql/charsets` at `mysql/charsets`.
+    TarGzTree { strip: usize },
     /// xz-compressed tar of a full directory tree, extracted whole like `TarGzTree`.
     /// Oracle publishes its generic Linux MySQL only as `.tar.xz`. Decoded through
     /// `platform::xz_decoder`, which only the Linux build carries (docs/PLAN-linux-port.md L2).
@@ -966,6 +1009,54 @@ const HTTPD_WINDOWS_VERSION: &str = "2.4.69";
 pub(crate) const HTTPD_WINDOWS_TAG: &str = "httpd-windows-2";
 const HTTPD_2_4_69_WIN_AMD64_SHA256: &str = "9f1f93cab9a0c6dc5e628aa640784bb30347f93fcd01b46a4c0d6b5ba76bf4e2";
 const HTTPD_2_4_69_LICENSES_WINDOWS_SHA256: &str = "5f3b6ced6911e7803efeaa4f72d207a46cfb4a1114043079278bf47dc5961a89";
+
+// ── Redis, MariaDB and Apache httpd on Linux — OUR builds (D-L8 closed, rexenv/rexenv#7) ──
+// Homebrew's Linux bottles are x86_64-only, so these three had no Linux arm until
+// `rexenv/runtimes` built them from upstream source (`scripts/build-{redis,mariadb,httpd}.sh`,
+// 28 Oct 2026): built in ubuntu:22.04 (glibc 2.35, the Linux floor), every non-glibc library
+// static or bundled via `$ORIGIN`, each GATED as a running server in a clean 22.04 AND 24.04
+// with no packages and no network. The archives put the layout this file's readers expect at
+// their ROOT (`bin/redis-server`; `bin/mariadbd` + `share/mysql/…`; `bin/httpd`,
+// `lib/httpd/modules/`, `.bottle/etc/httpd/mime.types`), hence `TarGzTree { strip: 0 }`.
+//
+// The VERSIONS differ from macOS's, deliberately: a build is ours, so it took each project's
+// current security patch (Redis 8.8.4 — four SECURITY releases past the bottle's 8.8.0; httpd
+// 2.4.69 — Windows' version, ~20 CVEs past 2.4.68; MariaDB 12.3.3/11.4.13), while macOS stays
+// on the bottles Homebrew has. So, like httpd on Windows, each is its own catalog key, and the
+// `*_on(os)` functions below say which an OS reads — never `pins().redis` on a path that can
+// run on Linux (ledger #928). Releases are immutable; a rebuild is the next tag and new digests here.
+const REDIS_LINUX_VERSION: &str = "8.8.4";
+const REDIS_LINUX_VERSIONS: &[&str] = &["8.8.4"];
+const REDIS_LINUX_TAG: &str = "redis-linux-1";
+const REDIS_8_8_4_LINUX_AARCH64_SHA256: &str = "210a39842bab1fb6a36573ae3312fc44cf779dd7b83f27335b1676d098bccadd";
+const REDIS_8_8_4_LINUX_X86_64_SHA256: &str = "fd06eeff42afd0f70b73f5a545fd7e530ed276a9dde0c24e365cefeb8052c054";
+/// Redis 8 is RSALv2/SSPLv1/AGPLv3; redistributed under the AGPLv3, so the source tarball and
+/// the build scripts ride the same release.
+const REDIS_8_8_4_LICENSES_LINUX_AARCH64_SHA256: &str = "28a90cd5c52890361146ef14b87879ddebf48b1691f844fdb1f46349b018255e";
+const REDIS_8_8_4_LICENSES_LINUX_X86_64_SHA256: &str = "524e4b1c2c3ec7a218d7bc93e335acb3fb89d1df8961f6d0c7e6ff91b1cdbf14";
+/// Default first, like `MARIADB_VERSIONS`.
+const MARIADB_LINUX_VERSION: &str = "12.3.3";
+const MARIADB_LINUX_VERSIONS: &[&str] = &["12.3.3", "11.4.13"];
+const MARIADB_LINUX_TAG: &str = "mariadb-linux-1";
+const MARIADB_12_3_3_LINUX_AARCH64_SHA256: &str = "53225bc3194afafcef32e9d7ec49d2a8760a2fcf1962733cd8bba47beb2efe87";
+const MARIADB_12_3_3_LINUX_X86_64_SHA256: &str = "80a9db203f7f3b0bc832f2406131d24349c5b306a1494f1dda43c0b07f94a914";
+const MARIADB_11_4_13_LINUX_AARCH64_SHA256: &str = "470f8a7eab033e4977de6419277076217cc1ce3802114b9718c6ceb432e818dd";
+const MARIADB_11_4_13_LINUX_X86_64_SHA256: &str = "eaf2e201ffb0182f7b795b7b3e483642142c1ccefbecb8b9dfd4233a913505ff";
+/// GPL-2.0 server + the static OpenSSL 3.6.5, zlib, PCRE2, libfmt, readline, libtinfo and GCC
+/// runtime texts; the corresponding source is on the release.
+const MARIADB_12_3_3_LICENSES_LINUX_AARCH64_SHA256: &str = "8e51b6eca42f16d7ee64936c744b5eb9fbad098690f2f6936ef3c55303ffc2ee";
+const MARIADB_12_3_3_LICENSES_LINUX_X86_64_SHA256: &str = "0d0983a948c592abb050b47b079dd093fa07498e59dd7867bec61b0355fd2a08";
+const MARIADB_11_4_13_LICENSES_LINUX_AARCH64_SHA256: &str = "d2f7bad3a9a0b97019ffc231d04c5773b3fc6258e46815552d1ece3f343da92f";
+const MARIADB_11_4_13_LICENSES_LINUX_X86_64_SHA256: &str = "e1333a1b5a529e8a3b5de96639808f6aee7ca980767d112e6503b14ecb22a5bb";
+/// The same version as Windows (`HTTPD_WINDOWS_VERSION`), a different key: one is Apache
+/// Lounge's zip, this is our build.
+const HTTPD_LINUX_VERSION: &str = "2.4.69";
+const HTTPD_LINUX_TAG: &str = "httpd-linux-1";
+const HTTPD_2_4_69_LINUX_AARCH64_SHA256: &str = "1f8126f0cce64593931c6bfbe26c3125395c483adf5e0dd437e8b8fed1619581";
+const HTTPD_2_4_69_LINUX_X86_64_SHA256: &str = "8685d20e8f2b26500d87ebcdc8eb22dcf4b3ec77d5954538d1a490b2192a3d05";
+/// Apache-2.0 LICENSE + NOTICE, plus apr, apr-util, PCRE2 and expat.
+const HTTPD_2_4_69_LICENSES_LINUX_AARCH64_SHA256: &str = "280669439742fe1276f52ae6b01be5164ec6642b17d9d2f711659e175546547c";
+const HTTPD_2_4_69_LICENSES_LINUX_X86_64_SHA256: &str = "66917b52a7f6abde9090579eed6354f3a7d94eeea7d34560ae1cbaf75e867381";
 
 // PostgreSQL portable build SHA-256 (theseus-rs/postgresql-binaries — the project
 // PUBLISHES these `.sha256` files; cross-checked against a fresh download). A
@@ -1739,6 +1830,17 @@ fn pick(arch: Arch, arm: &str, amd: &str) -> String {
     .to_string()
 }
 
+/// One of our Linux Redis/MariaDB/httpd trees: `<name>-<version>-linux-<arch>.tar.gz` on the
+/// release `tag`, unpacked with nothing stripped (the layout is at the archive root).
+fn linux_tree(tag: &str, name: &str, version: &str, arch: Arch, arm: &str, amd: &str, member: &'static str) -> BinarySpec {
+    BinarySpec {
+        url: format!("{RUNTIMES_RELEASE_BASE}/{tag}/{name}-{version}-linux-{}.tar.gz", php_arch(arch)),
+        checksum: Checksum::Sha256(pick(arch, arm, amd)),
+        archive: Archive::TarGzTree { strip: 0 },
+        member,
+    }
+}
+
 /// Where every artifact rexenv BUILDS is published: releases in the public
 /// `rexenv/runtimes` repo.
 ///
@@ -2491,6 +2593,28 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             };
             (arm, amd, format!("licenses-openlitespeed-{version}-{os}-{}.tar.gz", php_arch(arch)))
         }
+        // Our Linux Redis/MariaDB/httpd: one licences tarball per (version, arch), told from
+        // the Windows httpd of the same version by the artifact's URL, never by the host.
+        ("redis", "8.8.4") if url.contains("-linux-") => (
+            REDIS_8_8_4_LICENSES_LINUX_AARCH64_SHA256,
+            REDIS_8_8_4_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-redis-{version}-linux-{}.tar.gz", php_arch(arch)),
+        ),
+        ("mariadb", "12.3.3") if url.contains("-linux-") => (
+            MARIADB_12_3_3_LICENSES_LINUX_AARCH64_SHA256,
+            MARIADB_12_3_3_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-mariadb-{version}-linux-{}.tar.gz", php_arch(arch)),
+        ),
+        ("mariadb", "11.4.13") if url.contains("-linux-") => (
+            MARIADB_11_4_13_LICENSES_LINUX_AARCH64_SHA256,
+            MARIADB_11_4_13_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-mariadb-{version}-linux-{}.tar.gz", php_arch(arch)),
+        ),
+        ("httpd", "2.4.69") if url.contains("-linux-") => (
+            HTTPD_2_4_69_LICENSES_LINUX_AARCH64_SHA256,
+            HTTPD_2_4_69_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-httpd-{version}-linux-{}.tar.gz", php_arch(arch)),
+        ),
         // Apache Lounge's Windows httpd, mirrored: one artifact for every `Arch` (x64), so one
         // licences tarball and one digest, whichever arch asks.
         ("httpd", "2.4.69") => (
@@ -2556,7 +2680,7 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
                 return Ok(Some(BinarySpec {
                     url: a.url,
                     checksum: Checksum::Sha256(a.sha256),
-                    archive: Archive::TarGzTree,
+                    archive: Archive::TarGzTree { strip: 1 },
                     member: LICENSES_DIR,
                 }));
             }
@@ -2566,7 +2690,7 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
     Ok(Some(BinarySpec {
         url: sibling_url(url, &file).ok_or_else(missing)?,
         checksum: Checksum::Sha256(hex.to_string()),
-        archive: Archive::TarGzTree,
+        archive: Archive::TarGzTree { strip: 1 },
         member: LICENSES_DIR,
     }))
 }
@@ -2843,9 +2967,28 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
                 (_, Arch::Arm64) => OPENLITESPEED_1_9_3_LINUX_AARCH64_SHA256,
                 (_, Arch::X86_64) => OPENLITESPEED_1_9_3_LINUX_X86_64_SHA256,
             }.to_string()),
-            archive: Archive::TarGzTree,
+            archive: Archive::TarGzTree { strip: 1 },
             member: "openlitespeed",
         }),
+        // Our own Linux builds (the consts' header): the archive root IS the tree rexenv reads,
+        // so nothing is stripped. On macOS the same names are bottle BUNDLES (`bundle_manifest`),
+        // and `shape_of_on` sends each OS to its own table.
+        ("redis", "linux", "8.8.4") => Some(linux_tree(
+            REDIS_LINUX_TAG, "redis", version, arch,
+            REDIS_8_8_4_LINUX_AARCH64_SHA256, REDIS_8_8_4_LINUX_X86_64_SHA256, "bin/redis-server",
+        )),
+        ("mariadb", "linux", "12.3.3") => Some(linux_tree(
+            MARIADB_LINUX_TAG, "mariadb", version, arch,
+            MARIADB_12_3_3_LINUX_AARCH64_SHA256, MARIADB_12_3_3_LINUX_X86_64_SHA256, "bin/mariadbd",
+        )),
+        ("mariadb", "linux", "11.4.13") => Some(linux_tree(
+            MARIADB_LINUX_TAG, "mariadb", version, arch,
+            MARIADB_11_4_13_LINUX_AARCH64_SHA256, MARIADB_11_4_13_LINUX_X86_64_SHA256, "bin/mariadbd",
+        )),
+        ("httpd", "linux", "2.4.69") => Some(linux_tree(
+            HTTPD_LINUX_TAG, "httpd", version, arch,
+            HTTPD_2_4_69_LINUX_AARCH64_SHA256, HTTPD_2_4_69_LINUX_X86_64_SHA256, "bin/httpd",
+        )),
         ("mysql", "macos", v) if mysql_sha256(v, arch).is_some() => Some(BinarySpec {
             // Direct CDN URL (the dev.mysql.com/get redirector 403s non-curl clients).
             url: format!(
@@ -2855,7 +2998,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
                 build = mysql_macos_build(v),
             ),
             checksum: Checksum::Sha256(mysql_sha256(v, arch).unwrap().to_string()),
-            archive: Archive::TarGzTree,
+            archive: Archive::TarGzTree { strip: 1 },
             member: "bin/mysqld", // primary binary within the extracted tree
         }),
         ("postgres", "macos", v) if postgres_sha256(v, arch).is_some() => Some(BinarySpec {
@@ -2865,7 +3008,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
                 postgres_arch(arch)
             ),
             checksum: Checksum::Sha256(postgres_sha256(v, arch).unwrap().to_string()),
-            archive: Archive::TarGzTree,
+            archive: Archive::TarGzTree { strip: 1 },
             member: "bin/postgres", // primary binary within the extracted tree
         }),
         ("frankenphp", "macos", "1.13.3") => Some(BinarySpec {
@@ -2971,7 +3114,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
                 "https://github.com/theseus-rs/postgresql-binaries/releases/download/{v}/postgresql-{v}-x86_64-pc-windows-msvc.tar.gz"
             ),
             checksum: Checksum::Sha256(hex.to_string()),
-            archive: Archive::TarGzTree,
+            archive: Archive::TarGzTree { strip: 1 },
             member: "bin/postgres.exe",
         }),
         ("mailpit", "windows", "1.30.3") => Some(BinarySpec {
@@ -3057,7 +3200,7 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
                 linux_arch(arch)
             ),
             checksum: Checksum::Sha256(hex.to_string()),
-            archive: Archive::TarGzTree,
+            archive: Archive::TarGzTree { strip: 1 },
             member: "bin/postgres",
         }),
         ("frankenphp", "linux", "1.13.3") => Some(BinarySpec {
@@ -3434,6 +3577,19 @@ pub async fn resolve_bundle(platform: &dyn Platform, name: &str, version: &str) 
     Ok(dir)
 }
 
+/// Resolve a service TREE — Redis, MariaDB, httpd — through whichever resolver its shape on
+/// THIS host needs: a merged bottle bundle on macOS, a plain tree on Linux (our builds) and on
+/// Windows (Apache Lounge's zip). The callers that need the tree's directory ask here, so a
+/// `resolve_bundle` hard-coded at a call site cannot send a Linux host looking for a bottle
+/// that has no Linux arm (it did, for MariaDB and Redis, until their Linux builds existed;
+/// ledger #928).
+pub async fn resolve_tree(platform: &dyn Platform, name: &str, version: &str) -> Result<PathBuf> {
+    match shape_of(name) {
+        Shape::Bundle => resolve_bundle(platform, name, version).await,
+        _ => resolve_dir(platform, name, version).await,
+    }
+}
+
 /// A bundle assembled from bytes rexenv itself hosts is REFUSED, loudly.
 ///
 /// Every bundle today is Homebrew bottles from `ghcr.io` — somebody else's
@@ -3522,6 +3678,8 @@ pub fn shape_of_on(name: &str, os: &str) -> Shape {
         // Apache Lounge's zip and upstream's FrankenPHP zip are trees on Windows; on
         // macOS httpd is a merged bottle bundle and FrankenPHP one static binary.
         "httpd" | "frankenphp" if os == "windows" => Shape::Dir,
+        // On Linux all three are our own `TarGzTree` builds; on macOS, merged bottle bundles.
+        "redis" | "mariadb" | "httpd" if os == "linux" => Shape::Dir,
         "redis" | "mariadb" | "httpd" => Shape::Bundle,
         n if n.starts_with("xdebug-") => Shape::Bundle,
         "wp-cli" | "adminer" | "composer" => Shape::File,
@@ -3936,7 +4094,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
             php_arch(arch)
         ))
     })?;
-    if matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. }) {
+    if matches!(spec.archive, Archive::TarGzTree { .. } | Archive::TarXzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is a directory distribution — use resolve_dir"
         )));
@@ -3985,7 +4143,7 @@ pub async fn resolve(platform: &dyn Platform, name: &str, version: &str) -> Resu
                 extract_zip_member(&archive, spec.member, &staged_bin)?;
                 std::fs::remove_file(&archive)?;
             }
-            Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. } => unreachable!("trees returned above"),
+            Archive::TarGzTree { .. } | Archive::TarXzTree | Archive::ZipTree { .. } => unreachable!("trees returned above"),
         }
         platform.permissions().set_executable(&staged_bin)?;
         platform.binaries().prepare_binary(&staged_bin)?;
@@ -4112,7 +4270,7 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         }
     }
 
-    if !matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree | Archive::ZipTree { .. }) {
+    if !matches!(spec.archive, Archive::TarGzTree { .. } | Archive::TarXzTree | Archive::ZipTree { .. }) {
         return Err(Error::Other(format!(
             "{name} is not a directory distribution — use resolve"
         )));
@@ -4132,8 +4290,8 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
     let staging = staging_path(&bin_dir, name, version);
     let staged: Result<()> = staged_or_cleaned(&staging, async {
         std::fs::create_dir_all(&staging)?;
-        // A tar tree strips its one top-level dir; a zip tree strips what its
-        // manifest arm says (a PHP zip is flat, an nginx zip is not).
+        // Each tree strips what its manifest arm says: MySQL's tarball has a top dir, rexenv's
+        // own Linux Redis/MariaDB/httpd do not; a PHP zip is flat, an nginx zip is not.
         let archive = match spec.archive {
             Archive::ZipTree { .. } => staging.join(".archive.zip"),
             Archive::TarXzTree => staging.join(".archive.tar.xz"),
@@ -4144,6 +4302,7 @@ async fn resolve_dir_tree(platform: &dyn Platform, name: &str, version: &str) ->
         match spec.archive {
             Archive::ZipTree { strip } => extract_zip_tree(&archive, &staging, strip)?,
             Archive::TarXzTree => extract_tar_xz_tree(open_buffered(&archive)?, &staging)?,
+            Archive::TarGzTree { strip } => extract_tar_gz_tree_filtered(open_buffered(&archive)?, &staging, strip, None)?,
             _ => extract_tar_gz_tree(open_buffered(&archive)?, &staging)?,
         }
         // Drop the archive BEFORE publishing so the cached tree doesn't carry a
@@ -5485,8 +5644,8 @@ mod tests {
             assert_eq!(
                 manifest(n, MYSQL_VERSION, "macos", Arch::Arm64)
                     .map(|s| s.archive)
-                    .unwrap_or(Archive::TarGzTree),
-                Archive::TarGzTree
+                    .unwrap_or(Archive::TarGzTree { strip: 1 }),
+                Archive::TarGzTree { strip: 1 }
             );
         }
         // Named per OS, like the loop below: `httpd` is a bottle bundle on macOS and a
@@ -6581,7 +6740,7 @@ mod tests {
                         spec.url
                     );
                     assert_eq!(checksum_hex(&lic.checksum).len(), 64, "real digest, not a stub");
-                    assert_eq!(lic.archive, Archive::TarGzTree, "a tree of texts, not one file");
+                    assert_eq!(lic.archive, Archive::TarGzTree { strip: 1 }, "a tree of texts, not one file");
                     // Both arches pinned, and pinned SEPARATELY — the archives
                     // carry the same file list but are distinct artifacts, and a
                     // copy-paste that pointed both at one digest would fail the
@@ -7484,7 +7643,7 @@ mod tests {
     fn manifest_pins_mysql_as_tree() {
         let arm = manifest("mysql", MYSQL_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("mysql-8.4.6-macos15-arm64.tar.gz"));
-        assert_eq!(arm.archive, Archive::TarGzTree);
+        assert_eq!(arm.archive, Archive::TarGzTree { strip: 1 });
         assert_eq!(arm.member, "bin/mysqld");
         let amd = manifest("mysql", MYSQL_VERSION, "macos", Arch::X86_64).unwrap();
         assert!(amd.url.ends_with("mysql-8.4.6-macos15-x86_64.tar.gz"));
@@ -7540,7 +7699,7 @@ mod tests {
     fn manifest_pins_postgres_as_tree() {
         let arm = manifest("postgres", POSTGRES_VERSION, "macos", Arch::Arm64).unwrap();
         assert!(arm.url.ends_with("postgresql-18.6.0-aarch64-apple-darwin.tar.gz"));
-        assert_eq!(arm.archive, Archive::TarGzTree);
+        assert_eq!(arm.archive, Archive::TarGzTree { strip: 1 });
         assert_eq!(arm.member, "bin/postgres");
         assert!(matches!(arm.checksum, Checksum::Sha256(_)));
         let amd = manifest("postgres", POSTGRES_VERSION, "macos", Arch::X86_64).unwrap();
@@ -7739,7 +7898,7 @@ mod tests {
             ("mailpit", MAILPIT_VERSION, "mailpit-windows-amd64.zip", Archive::Zip, "mailpit.exe"),
             ("cloudflared", CLOUDFLARED_VERSION, "cloudflared-windows-amd64.exe", Archive::Raw, "cloudflared.exe"),
             ("mysql", MYSQL_VERSION, "archives/mysql-8.4/mysql-8.4.6-winx64.zip", Archive::ZipTree { strip: 1 }, "bin/mysqld.exe"),
-            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-pc-windows-msvc.tar.gz", Archive::TarGzTree, "bin/postgres.exe"),
+            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-pc-windows-msvc.tar.gz", Archive::TarGzTree { strip: 1 }, "bin/postgres.exe"),
             ("php", PHP_VERSION, "archives/php-8.3.36-nts-Win32-vs16-x64.zip", Archive::ZipTree { strip: 0 }, "php.exe"),
         ];
         for (name, version, tail, archive, member) in cases {
@@ -7878,7 +8037,7 @@ mod tests {
             ("cloudflared", CLOUDFLARED_VERSION),
         ] {
             let spec = manifest(name, version, "windows", Arch::X86_64).unwrap();
-            let tree = matches!(spec.archive, Archive::TarGzTree | Archive::ZipTree { .. });
+            let tree = matches!(spec.archive, Archive::TarGzTree { .. } | Archive::ZipTree { .. });
             assert_eq!(
                 shape_of_on(name, "windows") == Shape::Dir,
                 tree,
@@ -7898,10 +8057,14 @@ mod tests {
             ("php-fpm", PHP_VERSION, "php-8.3.36-fpm-linux-x86_64.tar.gz", "php-8.3.36-fpm-linux-aarch64.tar.gz", Archive::TarGz, "php-fpm"),
             ("nginx", NGINX_VERSION, "nginx-binaries/nginx-1.30.4-x86_64-linux", "nginx-binaries/nginx-1.30.4-aarch64-linux", Archive::Raw, "nginx"),
             ("mysql", MYSQL_VERSION, "mysql-8.4.6-linux-glibc2.28-x86_64.tar.xz", "mysql-8.4.6-linux-glibc2.28-aarch64.tar.xz", Archive::TarXzTree, "bin/mysqld"),
-            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-unknown-linux-gnu.tar.gz", "postgresql-18.6.0-aarch64-unknown-linux-gnu.tar.gz", Archive::TarGzTree, "bin/postgres"),
+            ("postgres", POSTGRES_VERSION, "postgresql-18.6.0-x86_64-unknown-linux-gnu.tar.gz", "postgresql-18.6.0-aarch64-unknown-linux-gnu.tar.gz", Archive::TarGzTree { strip: 1 }, "bin/postgres"),
             ("frankenphp", FRANKENPHP_VERSION, "frankenphp-linux-x86_64", "frankenphp-linux-aarch64", Archive::Raw, "frankenphp"),
             ("mailpit", MAILPIT_VERSION, "mailpit-linux-amd64.tar.gz", "mailpit-linux-arm64.tar.gz", Archive::TarGz, "mailpit"),
             ("cloudflared", CLOUDFLARED_VERSION, "cloudflared-linux-amd64", "cloudflared-linux-arm64", Archive::Raw, "cloudflared"),
+            ("redis", REDIS_LINUX_VERSION, "redis-linux-1/redis-8.8.4-linux-x86_64.tar.gz", "redis-linux-1/redis-8.8.4-linux-aarch64.tar.gz", Archive::TarGzTree { strip: 0 }, "bin/redis-server"),
+            ("mariadb", "12.3.3", "mariadb-linux-1/mariadb-12.3.3-linux-x86_64.tar.gz", "mariadb-linux-1/mariadb-12.3.3-linux-aarch64.tar.gz", Archive::TarGzTree { strip: 0 }, "bin/mariadbd"),
+            ("mariadb", "11.4.13", "mariadb-linux-1/mariadb-11.4.13-linux-x86_64.tar.gz", "mariadb-linux-1/mariadb-11.4.13-linux-aarch64.tar.gz", Archive::TarGzTree { strip: 0 }, "bin/mariadbd"),
+            ("httpd", HTTPD_LINUX_VERSION, "httpd-linux-1/httpd-2.4.69-linux-x86_64.tar.gz", "httpd-linux-1/httpd-2.4.69-linux-aarch64.tar.gz", Archive::TarGzTree { strip: 0 }, "bin/httpd"),
         ];
         for (name, version, amd_tail, arm_tail, archive, member) in cases {
             let amd = manifest(name, version, "linux", Arch::X86_64).unwrap_or_else(|| panic!("{name} {version}: no Linux x86_64 arm"));
@@ -7955,10 +8118,37 @@ mod tests {
         for (name, version) in default_stack(BinaryTier::Standard) {
             assert!(manifest(name, version, "linux", Arch::X86_64).is_some(), "{name} {version}");
         }
-        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
-            assert!(bundle_manifest(name, version, "linux", Arch::X86_64).is_none(), "{name}");
-            assert!(!ships_on(name, version, "linux"), "{name} must not ship on Linux v1 (D-L8)");
+        // D-L8 closed (28 Oct 2026, rexenv/rexenv#7): Redis, MariaDB and httpd ship on Linux as
+        // OUR builds — every version Linux offers resolves, as a TREE (never a bottle bundle,
+        // which has no Linux arm), with its own licences; the macOS bottle versions still
+        // resolve to nothing there, so a path that read `pins()` instead of `*_on("linux")`
+        // would be refused rather than half-work.
+        let linux_offers: Vec<(&str, &str)> = redis_versions_on("linux").iter().map(|v| ("redis", *v))
+            .chain(mariadb_versions_on("linux").iter().map(|v| ("mariadb", *v)))
+            .chain([("httpd", httpd_version_on("linux"))])
+            .collect();
+        assert_eq!(linux_offers.len(), 4, "redis 8.8.4, mariadb 12.3.3 + 11.4.13, httpd 2.4.69");
+        for (name, version) in &linux_offers {
+            assert!(ships_on(name, version, "linux"), "{name} {version} must ship on Linux");
+            assert!(bundle_manifest(name, version, "linux", Arch::X86_64).is_none(), "{name}: a tree, not a bundle");
+            for arch in [Arch::Arm64, Arch::X86_64] {
+                let spec = manifest(name, version, "linux", arch).unwrap();
+                assert_eq!(spec.archive, Archive::TarGzTree { strip: 0 }, "{name}: the layout is at the archive root");
+                let lic = licenses_spec(&spec.url, name, version, arch).unwrap().expect("we distribute it, so we owe its licences");
+                assert!(lic.url.ends_with(&format!("/licenses-{name}-{version}-linux-{}.tar.gz", php_arch(arch))), "{}", lic.url);
+                assert_eq!(sibling_url(&spec.url, "x"), sibling_url(&lic.url, "x"), "{name}: licences from the same release");
+            }
+            assert_eq!(shape_of_on(name, "linux"), Shape::Dir, "{name}");
         }
+        assert_eq!(redis_version_on("linux"), redis_versions_on("linux")[0]);
+        assert_eq!(mariadb_version_on("linux"), mariadb_versions_on("linux")[0]);
+        for (name, version) in [("redis", REDIS_VERSION), ("mariadb", MARIADB_VERSION), ("httpd", HTTPD_VERSION)] {
+            assert!(!ships_on(name, version, "linux"), "{name} {version}: a bottle version has no Linux arm");
+        }
+        // And the other OSes still read their own keys.
+        assert_eq!(redis_versions_on("macos"), pins().redis_versions);
+        assert_eq!(mariadb_version_on("macos"), pins().mariadb);
+        assert_eq!(httpd_version_on("macos"), pins().httpd);
         // Shapes: php and nginx are single static files on Linux, as on macOS.
         for n in ["php", "nginx", "caddy"] {
             assert_eq!(shape_of_on(n, "linux"), Shape::Single, "{n}");
@@ -7966,7 +8156,7 @@ mod tests {
         assert_eq!(exe_name("caddy", "linux"), "caddy");
         for (name, version) in [("mysql", MYSQL_VERSION), ("postgres", POSTGRES_VERSION)] {
             let spec = manifest(name, version, "linux", Arch::X86_64).unwrap();
-            assert!(matches!(spec.archive, Archive::TarGzTree | Archive::TarXzTree), "{name} is a tree");
+            assert!(matches!(spec.archive, Archive::TarGzTree { .. } | Archive::TarXzTree), "{name} is a tree");
             assert_eq!(shape_of_on(name, "linux"), Shape::Dir);
         }
     }

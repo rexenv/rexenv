@@ -137,24 +137,35 @@ impl DbEngine {
         }
     }
 
-    /// The DEFAULT pinned version of the engine (what a fresh install runs).
+    /// The DEFAULT pinned version of the engine (what a fresh install runs) on THIS host.
     pub fn default_version(&self) -> &'static str {
+        self.default_version_on(std::env::consts::OS)
+    }
+
+    /// [`Self::default_version`] for a NAMED os. MariaDB and Redis read a key per OS: Linux runs
+    /// rexenv's own builds at newer patches than the macOS bottles (ledger #928).
+    pub fn default_version_on(&self, os: &str) -> &'static str {
         match self {
             DbEngine::Mysql => binaries::pins().mysql,
-            DbEngine::Mariadb => binaries::pins().mariadb,
+            DbEngine::Mariadb => binaries::mariadb_version_on(os),
             DbEngine::Postgres => binaries::pins().postgres,
-            DbEngine::Redis => binaries::pins().redis,
+            DbEngine::Redis => binaries::redis_version_on(os),
         }
     }
 
-    /// All versions the engine can run (per-engine version switch), default
+    /// All versions the engine can run on THIS host (per-engine version switch), default
     /// first. A one-entry set means the UI hides the picker.
     pub fn versions(&self) -> &'static [&'static str] {
+        self.versions_on(std::env::consts::OS)
+    }
+
+    /// [`Self::versions`] for a NAMED os (see [`Self::default_version_on`]).
+    pub fn versions_on(&self, os: &str) -> &'static [&'static str] {
         match self {
             DbEngine::Mysql => binaries::pins().mysql_versions,
-            DbEngine::Mariadb => binaries::pins().mariadb_versions,
+            DbEngine::Mariadb => binaries::mariadb_versions_on(os),
             DbEngine::Postgres => binaries::pins().postgres_versions,
-            DbEngine::Redis => binaries::pins().redis_versions,
+            DbEngine::Redis => binaries::redis_versions_on(os),
         }
     }
 
@@ -248,7 +259,9 @@ impl DbEngine {
     /// A guard whose interesting half cannot fail on the machine that runs it is not a guard —
     /// so both answers are asked of the pins from either host (W10, ledger #642).
     pub fn available_on(&self, os: &str) -> bool {
-        self.versions().iter().any(|v| binaries::ships_on(self.key(), v, os))
+        // `versions_on(os)`, not the host's list: asked from a Mac, the host's MariaDB pins are
+        // bottle versions with no Linux arm, and Linux read "not shipped" for an engine it ships.
+        self.versions_on(os).iter().any(|v| binaries::ships_on(self.key(), v, os))
     }
 
     /// Why this engine is not offered on THIS host when the reason is the host's
@@ -343,7 +356,7 @@ impl DbEngine {
                 ))
             }
             DbEngine::Mariadb => {
-                let base = binaries::resolve_bundle(platform, "mariadb", version).await?;
+                let base = binaries::resolve_tree(platform, "mariadb", version).await?;
                 Ok((
                     SqlClient { path: mariadb::mariadb_client_bin(&base), engine: *self },
                     mariadb::mariadb_dump_bin(&base),
@@ -419,13 +432,13 @@ impl DbEngine {
                 postgres::start(platform, &basedir, &datadir, self.port())
             }
             DbEngine::Mariadb => {
-                let basedir = binaries::resolve_bundle(platform, "mariadb", version).await?;
+                let basedir = binaries::resolve_tree(platform, "mariadb", version).await?;
                 let socket = mariadb::socket_path(platform)?;
                 mariadb::initialize(platform, &basedir, &datadir)?;
                 mariadb::start(platform, &basedir, &datadir, self.port(), &socket).map(Proc::from)
             }
             DbEngine::Redis => {
-                let basedir = binaries::resolve_bundle(platform, "redis", version).await?;
+                let basedir = binaries::resolve_tree(platform, "redis", version).await?;
                 redis::start(platform, &basedir, &datadir, self.port()).map(Proc::from)
             }
         }
