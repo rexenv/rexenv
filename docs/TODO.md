@@ -532,9 +532,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **Headless rexenv on a VPS — open: Phase 1a's T2–T5 (configurable edge ports + bind address,
-  `rex mcp` + scratch sites on Linux with D7's setup-time consent, systemd + the rest of the setup, the
-  D3 tail) and Phase 1b (T6–T9: the web UI); D2, D4–D6 unruled.** T0 measured 26 Oct 2026 on the Ubuntu
+- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: the 443 → 8443 → 443
+  round trip (#918 ◐), T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
+  D2 and D5 unruled (Phase 1b's).** T0 measured 26 Oct 2026 on the Ubuntu
   VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
   would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
   `rexenv --headless` (own Xvfb, no session bus — 31 s → 1 s to `setup` — no window, no tray),
@@ -568,7 +568,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   to do them. Owner ask 26 Oct 2026: install rexenv
   on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
-  offered to test a build. A public bind and real site domains are later phases. Nothing built.
+  offered to test a build. A public bind and real site domains are later phases.
   Plan: `docs/PLAN-headless-web.md`.
 - [ ] **Headless mode on macOS and Windows** — `--headless` and `--headless-setup` refuse there with a
   sentence (owner ruling D3, 26 Oct 2026: Linux first; `platform::prepare_headless`). macOS would need a
