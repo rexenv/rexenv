@@ -102,6 +102,11 @@ tauri = { version = "2.11.3", features = ["test"] }
 # artifacts; same versions/features as [dependencies], so nothing new compiles.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 sha2 = "0.10"
+# The constrained CA download's test (`core::ssl`, ledger #934) verifies real chains with the
+# verifier rustls uses: name constraints enforced, the way a browser enforces them. Both crates
+# are ALREADY in the graph through reqwest's rustls (`ring` included); nothing new compiles.
+rustls-webpki = { version = "0.103", features = ["ring"] }
+rustls-pki-types = "1"
 
 # webview_dialogs_check builds a REAL WKWebView + a wry-shaped stub delegate to
 # prove the panel installation mechanics (ledger #166 leg B). Same versions as

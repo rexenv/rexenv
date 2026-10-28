@@ -102,7 +102,7 @@ export async function browseDir(path: string | null, extensions: string[]): Prom
 /** The local CA's certificate for a browser on another machine, with how to trust it on each OS
  *  and what that costs (`ca_download`, T9). */
 export async function caDownload(): Promise<CaDownload> {
-  if (!isTauri()) return { fileName: "rexenv-ca.pem", pem: "", note: "", steps: [] };
+  if (!isTauri()) return { fileName: "rexenv-ca.pem", pem: "", tlds: [], note: "", steps: [] };
   return invoke<CaDownload>("ca_download");
 }
 

@@ -26,6 +26,7 @@ export function RemoteCaCard() {
         <div className="flex-1">
           <div className="text-[0.84375rem] font-medium text-rex-text">Open this server&apos;s sites in your browser</div>
           <p className="mt-1 text-[0.75rem] leading-[1.55] text-rex-text-muted">{data.note}</p>
+          <div className="mt-1.5 font-mono text-[0.75rem] text-rex-text">{data.tlds.map((t) => `.${t}`).join("  ")}</div>
         </div>
         <Button size="sm" onClick={save} disabled={!data.pem}>
           <Download className="h-3.5 w-3.5" /> {data.fileName}

@@ -2070,6 +2070,8 @@ export interface AgentAccess {
 export interface CaDownload {
   fileName: string;
   pem: string;
+  /** The endings this copy may vouch for — its name constraints (ledger #934). */
+  tlds: string[];
   note: string;
   steps: { os: string; how: string }[];
 }

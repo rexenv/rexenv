@@ -460,6 +460,8 @@ pub fn open_in_editor(state: State<'_, AppState>, editor_id: String, path: Strin
 pub struct CaDownload {
     pub file_name: &'static str,
     pub pem: String,
+    /// The TLDs this copy may vouch for (its `nameConstraints`, ledger #934).
+    pub tlds: Vec<String>,
     pub note: &'static str,
     pub steps: Vec<CaSteps>,
 }
@@ -471,14 +473,26 @@ pub struct CaSteps {
     pub how: &'static str,
 }
 
-/// The local CA's CERTIFICATE for a browser on another machine (`ssh -D`), with the cost said
-/// (`core::ssl::REMOTE_CA_NOTE`, ledger #932). Never the key.
+/// The local CA for a browser on another machine (`ssh -D`), with the cost said
+/// (`core::ssl::REMOTE_CA_NOTE`, ledger #932): the NAME-CONSTRAINED copy, limited to `.rex`, the
+/// default TLD and every TLD a site answers on (`core::ssl::constrained_ca_pem`, ledger #934).
+/// Never the key.
 #[tauri::command]
 pub fn ca_download(state: State<'_, AppState>) -> Result<CaDownload> {
     use crate::platform::words::{LINUX, MACOS, WINDOWS};
+    let mut tlds = {
+        let conn = state.db.lock().map_err(|_| crate::error::Error::Other("database lock poisoned".into()))?;
+        let mut t = crate::core::dns::tlds_in_use(&conn);
+        if let Ok(d) = crate::core::sites::default_tld(&conn) {
+            t.push(d);
+        }
+        t
+    };
+    tlds = crate::core::ssl::constraint_tlds(&tlds);
     Ok(CaDownload {
         file_name: "rexenv-ca.pem",
-        pem: crate::core::ssl::ca_certificate_pem(state.platform.paths())?,
+        pem: crate::core::ssl::constrained_ca_pem(&state.ca, &tlds)?,
+        tlds,
         note: crate::core::ssl::REMOTE_CA_NOTE,
         steps: [MACOS, WINDOWS, LINUX].iter().map(|w| CaSteps { os: w.os_name, how: w.trust_downloaded_ca }).collect(),
     })

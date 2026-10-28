@@ -4516,8 +4516,11 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
 ### This server's CA in your browser (T9, ledger #932)
 - [ ] Over the tunnel: Settings → SSL shows "Open this server's sites in your browser" with the
   note (it says the CA can vouch for any name) and three OS blocks; the button saves
-  `rexenv-ca.pem`, which `openssl x509 -noout -subject` reads as `rexenv Local CA` and which holds no
-  key. On a Mac, a Windows PC and a Linux desktop, follow that OS's block in a FRESH browser profile,
+  `rexenv-ca.pem`, which `openssl x509 -noout -subject -ext nameConstraints` reads as `rexenv Local
+  CA` with `Permitted: DNS:rex` (+ the server's other endings, as the card lists) and which holds no
+  key. In the trusting browser, a site of the server opens over https, and a certificate the same key
+  signs for another name (`openssl x509 -req -CA … -CAkey …` on the server, served by any https test
+  server) is REFUSED — the constraint at work in that browser (#934). On a Mac, a Windows PC and a Linux desktop, follow that OS's block in a FRESH browser profile,
   run `ssh -D 1080 <server>` with the profile's SOCKS proxy on localhost:1080 (remote DNS): a site
   opens over https with no warning. Remove the CA after.
   ◐ 28 Oct 2026 — the cloud container: the card and the download; no OS's steps.

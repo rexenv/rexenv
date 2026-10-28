@@ -416,7 +416,11 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
 - **T9 — the CA download** **✓ built 28 Oct 2026, run in the cloud container only** (ledger #932): Settings →
   SSL over the web UI offers `rexenv-ca.pem` (the certificate alone) with `core::ssl::REMOTE_CA_NOTE`
   — the `ssh -D` route and, plainly, that an unconstrained root whose key is on the server can vouch
-  for any site — and each OS's trust steps from `PlatformWords::trust_downloaded_ca`. Owed: the
+  for any site — and each OS's trust steps from `PlatformWords::trust_downloaded_ca`. **Name-constrained
+  the same day** (owner ask, ledger #934): the download is this CA re-issued with the same key,
+  subject and key identifier plus a critical `nameConstraints` — `.rex`, the default TLD and every
+  TLD a site answers on, and no IP address — so a browser refuses it for any other site, while every
+  existing leaf still chains and the server's own trust is untouched. Owed: the
   three OSes' steps on real machines and a site through `ssh -D`. Was: the CA download for viewing sites through `ssh -D`, with a sentence per OS.
 - **Phase 2 and Phase 3 get their task lists when Phase 1 ships.**
 
