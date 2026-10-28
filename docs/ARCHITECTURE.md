@@ -2423,6 +2423,26 @@ words (the browser shell's mock and two dev review pages excepted).
   to the user's manager otherwise (ledger #921). A running service is restarted when the setup
   changed a consent, since the endpoint's setting is read at launch.
 
+## 8.2b The web UI — the window's IPC over HTTP (`web_server.rs`, `web_rules.rs`, T6)
+
+`rexenv --web` (any OS; on a server with `--headless`) serves the SAME frontend bundle on
+`127.0.0.1:9443` (D5), for a browser that reaches it through `ssh -L`. It is not a second backend
+and not a second dispatcher: `POST /ipc/<cmd>` is handed to the hidden main webview's own
+`on_message` with the app's invoke key and the webview's own URL, so the command runs through the
+same `generate_handler!`, the same ACL and the same `State` as the window's `invoke` — on the main
+thread, as the window's calls do. The names it accepts are the ONE list (`lib.rs`
+`for_each_command!`, owner ruling D2) that the handler is generated from; a plugin command
+(`plugin:dialog|open`) is refused by name. Events are server-sent: a browser `listen(name)` posts
+to `/events/listen`, which takes a Tauri `listen_any` on exactly that name for that stream, and a
+stream's end (a failed keepalive) takes them all off — so dynamic names (`db-import://state/<id>`)
+need no list. `listen_any` PANICS on a name outside `[A-Za-z0-9-/:_]`, so the name is checked
+first. Static files come from the embedded bundle (`AssetResolver`); because a dev build's resolver
+reads `dist/` from disk and filters only the root, a path is plain segments or refused.
+`index.html` gets `<meta name="rexenv-transport" content="web">`, and `src/lib/ipc/transport.ts`
+switches `invoke` to `fetch` and `listen` to the stream — components do not know. Native dialogs
+and the title bar ask `transport()` and stay window-only. **No auth in T6; T7 adds it** (ledger
+#929).
+
 ## 8.3 MCP server — a second socket, and the one that EXECUTES (`src-tauri/src/mcp_server.rs`, `mcp_server/`)
 
 Added to this file 21 Aug 2026, three weeks after M1 shipped. Until then the file

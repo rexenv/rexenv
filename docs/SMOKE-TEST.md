@@ -4471,6 +4471,22 @@ and on an account WITHOUT a blanket `NOPASSWD: ALL` — cloud images grant one
   → service → `demo.rex` 200 over plain `curl` → the `rex mcp` scratch loop → a reboot with no login,
   everything back and 200.
 
+### The web UI (`rexenv --web`, `docs/PLAN-headless-web.md` T6, ledger #929)
+
+Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 9443:localhost:9443 vm`.
+- [ ] `rexenv --headless --web` → the log says "web: serving the UI on http://127.0.0.1:9443";
+  `ss -ltn` shows 9443 on `127.0.0.1` only. A second process on 9443 first → rexenv names it and
+  does not serve.
+- [ ] In the tunnelled browser, `http://localhost:9443/`: the app renders with the server's real
+  sites (not the mock list); DevTools' Network tab shows `POST /ipc/…` and one `/events` stream.
+- [ ] Sites → New site → Blank PHP → Create: the site is created and appears in the list; its
+  provision progress moves live (an event over the stream); `rex site list` on the server shows it.
+  Delete it from the browser; it is gone from `rex site list`.
+- [ ] `curl -X POST localhost:9443/ipc/plugin:dialog%7Copen` → `no such command`; `curl
+  --path-as-is localhost:9443/../../etc/passwd` → 400.
+  ◐ 28 Oct 2026 — the cloud container (no tunnel, no binaries): every row but a site actually
+  created; the create reached the backend and its refusal came back as the toast.
+
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 
 On a FRESH account (no sites — a port change is refused with any), with another web server holding

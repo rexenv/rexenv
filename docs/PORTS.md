@@ -28,6 +28,7 @@ below, then the Windows and Linux artifact tables). Ports are common except wher
 | Mailpit HTTP API | **18025** | TCP | `core/mail.rs` `MAILPIT_HTTP_PORT` |
 | Adminer | no port — internal vhost `adminer.rexenv.rex` via shared nginx | — | `core/adminer.rs` |
 | cloudflared | outbound-only, no inbound port | — | `core/tunnels.rs` |
+| Web UI (`rexenv --web`) | **9443** on `127.0.0.1` only — owner ruling D5, 28 Oct 2026; port-gated like every service; a public bind is Phase 2 | TCP | `web_rules.rs` `WEB_PORT`, `WEB_BIND` |
 
 - Canonical startup-order registry: `core/ports.rs` `default_ports()`.
 - Every start is gated by `core/ports::ensure_free` — probe rules: privileged TCP (<1024)

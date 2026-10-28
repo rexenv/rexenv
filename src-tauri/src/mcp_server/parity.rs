@@ -212,22 +212,10 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
     }
 
-    /// The app's whole IPC surface, read the way `copy_scan` reads it.
+    /// The app's whole IPC surface, from the one list `copy_scan` reads too.
     fn registered_commands() -> BTreeSet<String> {
-        let lib = std::fs::read_to_string(root().join("src/lib.rs")).expect("lib.rs");
-        let handler = lib
-            .split("tauri::generate_handler![")
-            .nth(1)
-            .and_then(|b| b.split("])").next())
-            .expect("the invoke_handler list");
-        handler
-            .lines()
-            .filter_map(|line| {
-                let t = line.trim().trim_end_matches(',');
-                t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()).map(str::to_string)
-            })
-            .filter(|n| !n.is_empty() && !n.contains(' '))
-            .collect()
+        // The ONE list (`lib.rs` `for_each_command!`, D2) — derived, not parsed.
+        crate::command_names().into_iter().map(String::from).collect()
     }
 
     /// Every `commands::<module>::<name>` the MCP server's source names — as a

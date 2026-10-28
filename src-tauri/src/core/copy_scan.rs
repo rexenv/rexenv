@@ -302,23 +302,8 @@ const LINK = "https://example.test/a//b";
     #[test]
     fn every_registered_command_is_reachable_from_a_caller() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let lib = std::fs::read_to_string(root.join("src/lib.rs")).expect("lib.rs");
-        let handler = lib
-            .split("tauri::generate_handler![")
-            .nth(1)
-            .and_then(|b| b.split("])").next())
-            .expect("the invoke_handler list");
-
-        // `commands::<module>::<name>,` — the only form the list uses.
-        let mut registered: Vec<String> = Vec::new();
-        for line in handler.lines() {
-            let t = line.trim().trim_end_matches(',');
-            if let Some(name) = t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()) {
-                if !name.is_empty() && !name.contains(' ') {
-                    registered.push(name.to_string());
-                }
-            }
-        }
+        // The ONE list (`lib.rs` `for_each_command!`, D2) — derived, not parsed.
+        let registered: Vec<String> = crate::command_names().into_iter().map(String::from).collect();
         assert!(
             registered.len() > 150,
             "only {} commands parsed from the handler — the scan is broken",
@@ -2117,20 +2102,7 @@ const LINK = "https://example.test/a//b";
     #[test]
     fn every_ipc_tally_key_a_probe_reads_is_a_key_the_app_can_produce() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        let lib = std::fs::read_to_string(root.join("src/lib.rs")).expect("lib.rs");
-        let handler = lib
-            .split("tauri::generate_handler![")
-            .nth(1)
-            .and_then(|b| b.split("])").next())
-            .expect("the invoke_handler list");
-        let registered: Vec<String> = handler
-            .lines()
-            .filter_map(|l| {
-                let t = l.trim().trim_end_matches(',');
-                t.strip_prefix("commands::").and_then(|r| r.rsplit("::").next()).map(str::to_string)
-            })
-            .filter(|n| !n.is_empty() && !n.contains(' '))
-            .collect();
+        let registered: Vec<String> = crate::command_names().into_iter().map(String::from).collect();
         assert!(registered.len() > 150, "only {} commands parsed — the scan is broken", registered.len());
 
         // The suffixes the tally invents, taken from the source that invents

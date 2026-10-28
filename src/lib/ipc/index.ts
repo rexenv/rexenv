@@ -12,6 +12,7 @@ import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStat
   LiveSyncOptions,
   LiveSyncJobState, LiveSyncPushPlan,
   LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree } from "@/types";
+import { transport, webInvoke, webListen } from "./transport";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -38,21 +39,35 @@ import {
   mockSitesServing,
 } from "@/lib/mock";
 
+/** Whether a REAL backend answers: the app's window (Tauri) or `rexenv --web`'s server. False
+ *  only for a page with neither (vite dev, the review routes), which falls back to the mocks.
+ *  Something only the window has — a native dialog, the title bar — asks `transport()`. */
 export function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return transport() !== "none";
 }
 
-/** Lazily import the Tauri API so a browser-only dev build doesn't crash. */
+export { transport } from "./transport";
+
+/** Lazily import the Tauri API so a browser-only dev build doesn't crash. Over the web transport
+ *  the same command goes to `POST /ipc/<cmd>` (`transport.ts`). */
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import("@tauri-apps/api/core");
   inFlight.set(cmd, (inFlight.get(cmd) ?? 0) + 1);
   try {
+    if (transport() === "web") return await webInvoke<T>(cmd, args);
+    const { invoke } = await import("@tauri-apps/api/core");
     return await invoke<T>(cmd, args);
   } finally {
     const n = (inFlight.get(cmd) ?? 1) - 1;
     if (n > 0) inFlight.set(cmd, n);
     else inFlight.delete(cmd);
   }
+}
+
+/** `listen` for this page's transport: Tauri's in the window, the SSE stream's over the web.
+ *  Both hand the callback `{ event, id, payload }`. */
+async function eventApi(): Promise<{ listen: typeof webListen }> {
+  if (transport() === "web") return { listen: webListen };
+  return (await import("@tauri-apps/api/event")) as unknown as { listen: typeof webListen };
 }
 
 /** Every command this webview has sent and not yet heard back from, by name. */
@@ -74,7 +89,7 @@ export function webviewNote(text: string): void {
  *  path, or null if the user cancelled. Browser dev falls back to a plain
  *  prompt (WKWebView lacks window.prompt — real browsers don't). */
 export async function pickFolder(title: string, defaultPath?: string): Promise<string | null> {
-  if (!isTauri()) return window.prompt(title, defaultPath ?? "");
+  if (transport() !== "tauri") return window.prompt(title, defaultPath ?? "");
   const { open } = await import("@tauri-apps/plugin-dialog");
   const picked = await open({ directory: true, multiple: false, title, defaultPath });
   return typeof picked === "string" ? picked : null;
@@ -83,7 +98,7 @@ export async function pickFolder(title: string, defaultPath?: string): Promise<s
 /** Native file picker limited to `.sql` dumps. Returns the chosen absolute
  *  path, or null if the user cancelled. */
 export async function pickSqlFile(title: string): Promise<string | null> {
-  if (!isTauri()) return window.prompt(title, "");
+  if (transport() !== "tauri") return window.prompt(title, "");
   const { open } = await import("@tauri-apps/plugin-dialog");
   const picked = await open({
     multiple: false,
@@ -97,7 +112,7 @@ export async function pickSqlFile(title: string): Promise<string | null> {
  *  flow). Multi-select — wp-cli installs a batch in one job. Returns absolute
  *  paths, empty when the user cancelled. */
 export async function pickZipFiles(title: string): Promise<string[]> {
-  if (!isTauri()) {
+  if (transport() !== "tauri") {
     const typed = window.prompt(title, "");
     return typed ? [typed] : [];
   }
@@ -278,7 +293,7 @@ export async function onValetImportRow(
   cb: (row: ImportOutcome) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<ImportOutcome>("valet-import://row", (e) => cb(e.payload));
 }
 
@@ -289,7 +304,7 @@ export async function onValetImportProgress(
   cb: (p: ImportProgress) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<ImportProgress>("valet-import://progress", (e) => cb(e.payload));
 }
 
@@ -336,7 +351,7 @@ export async function onDbImportState(
   cb: (s: DbImportJobState) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<DbImportJobState>(`db-import://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -619,7 +634,7 @@ export async function liveSyncActive(siteId: string): Promise<LiveSyncJobState |
 
 export async function onLiveSyncState(id: string, cb: (s: LiveSyncJobState) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<LiveSyncJobState>(`live-sync://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -713,7 +728,7 @@ export async function onSiteProvisionState(
   cb: (state: SiteProvisionState) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<SiteProvisionState>(`site-provision://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -722,7 +737,7 @@ export async function onSiteProvisionOutput(
   cb: (line: string) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>(`site-provision://output/${id}`, (e) => cb(e.payload));
 }
 
@@ -778,7 +793,7 @@ export async function scratchPackages(): Promise<ScratchPackage[]> {
  *  the durable record; dismissing the banner loses nothing. */
 export async function onScratchReaped(cb: (summary: string) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>("scratch-reaped", (e) => cb(e.payload));
 }
 
@@ -845,7 +860,7 @@ export async function appUpdateRestart(): Promise<void> {
  *  do nothing. */
 export async function onCheckUpdatesMenu(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen("menu://check-updates", () => cb());
 }
 
@@ -857,7 +872,7 @@ export async function onCheckUpdatesMenu(cb: () => void): Promise<() => void> {
  *  from the event. Returns an unlisten function. No-op outside Tauri. */
 export async function onAppUpdate(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen("app-update", () => cb());
 }
 
@@ -902,7 +917,7 @@ export async function updatesApplyAllState(): Promise<UpdateRun | null> {
  *  function. No-op outside Tauri. */
 export async function onUpdatesChanged(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen("updates-changed", () => cb());
 }
 
@@ -1117,7 +1132,7 @@ export async function onTerminalOutput(
   cb: (bytes: Uint8Array) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<number[]>(`terminal://output/${id}`, (e) => cb(new Uint8Array(e.payload)));
 }
 
@@ -1144,7 +1159,7 @@ export async function onServiceHealth(
   cb: (events: HealthEvent[]) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<HealthEvent[]>("service-health", (e) => cb(e.payload));
 }
 
@@ -1156,7 +1171,7 @@ export async function onServiceHealth(
  *  function. No-op outside Tauri. */
 export async function onAboutMenu(cb: () => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen("menu://about", () => cb());
 }
 
@@ -1165,7 +1180,7 @@ export async function onAboutMenu(cb: () => void): Promise<() => void> {
  *  the time this fires. Returns an unlisten function. No-op outside Tauri. */
 export async function onTrayRoute(cb: (path: string) => void): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>("tray://route", (e) => cb(e.payload));
 }
 
@@ -1182,7 +1197,7 @@ export async function onDownloadProgress(
   cb: (snapshot: DownloadsSnapshot) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<DownloadsSnapshot>("download-progress", (e) => cb(e.payload));
 }
 
@@ -1533,7 +1548,7 @@ export async function onWpUpdate(
   cb: (p: WpUpdateProgress) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<WpUpdateProgress>(`wp-update://${channel}/${siteId}`, (e) => cb(e.payload));
 }
 
@@ -2370,7 +2385,7 @@ export async function onRepoJobState(
   cb: (state: RepoJobState) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<RepoJobState>(`repo-job://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -2380,7 +2395,7 @@ export async function onRepoJobOutput(
   cb: (line: string) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>(`repo-job://output/${id}`, (e) => cb(e.payload));
 }
 
@@ -2431,7 +2446,7 @@ export async function onWpInstallState(
   cb: (state: WpInstallState) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<WpInstallState>(`wp-install://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -2440,7 +2455,7 @@ export async function onWpInstallOutput(
   cb: (line: string) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>(`wp-install://output/${id}`, (e) => cb(e.payload));
 }
 
@@ -2609,7 +2624,7 @@ export async function onRepoWatchState(
   cb: (state: RepoWatchState) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<RepoWatchState>(`repo-watch://state/${id}`, (e) => cb(e.payload));
 }
 
@@ -2619,7 +2634,7 @@ export async function onRepoWatchOutput(
   cb: (line: string) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<string>(`repo-watch://output/${id}`, (e) => cb(e.payload));
 }
 
@@ -2628,7 +2643,7 @@ export async function onRepoWatchGlobal(
   cb: (watchers: RepoWatchState[]) => void,
 ): Promise<() => void> {
   if (!isTauri()) return () => {};
-  const { listen } = await import("@tauri-apps/api/event");
+  const { listen } = await eventApi();
   return listen<RepoWatchState[]>("repo-watch-global", (e) => cb(e.payload));
 }
 

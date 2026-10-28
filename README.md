@@ -192,9 +192,11 @@ rexenv/
     │                           #   invariant first; tiers in scripts/live-checks.sh
     └── src/
         ├── main.rs             # binary entry (calls lib::run)
-        ├── lib.rs              # Tauri builder; registers all commands
+        ├── lib.rs              # Tauri builder; registers all commands (`for_each_command!`, the ONE list)
         ├── cli_server.rs       # `rex` socket server — dispatches to the SAME
         │                       #   commands::* fns the UI calls (one code path)
+        ├── web_server.rs       # `rexenv --web`: the UI + the window's own IPC over HTTP, 127.0.0.1:9443
+        ├── web_rules.rs        #   its pure rules (routes, paths, events)
         ├── error.rs            # shared error type (serializes for the UI)
         ├── crash.rs            # panic hook — crash.log (+ a message box on Windows release)
         ├── test_support.rs     # test-only OS fixtures (symlink, mode, exit status) — kept

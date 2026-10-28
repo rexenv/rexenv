@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { MouseEvent } from "react";
+import { transport } from "@/lib/ipc/transport";
 
 /**
  * Elements inside a drag region that must keep receiving clicks instead of
@@ -17,6 +18,9 @@ const INTERACTIVE_SELECTOR =
  */
 export function onTitleBarMouseDown(e: MouseEvent<HTMLElement>) {
   if (e.button !== 0) return;
+  // A browser page (`rexenv --web`, vite dev) has no native window to drag — and
+  // `getCurrentWindow` throws there.
+  if (transport() !== "tauri") return;
   if ((e.target as Element).closest(INTERACTIVE_SELECTOR)) return;
   e.preventDefault();
   const win = getCurrentWindow();

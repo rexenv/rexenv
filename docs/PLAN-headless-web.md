@@ -248,7 +248,11 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
     the CLI, the MCP and the web server all hold. This is the cleanest, but it touches 17 command
     files and both servers.
 - **D2 — dispatch generation:** a macro that emits both `generate_handler!` and the web table from
-  one list (recommended), vs. a build-time check over hand-written arms.
+  one list (recommended), vs. a build-time check over hand-written arms. **Ruled 28 Oct 2026: the
+  macro.** Built in T6 as `lib.rs` `for_each_command!` → `app_invoke_handler` (the desktop's
+  `generate_handler!`) and `COMMAND_PATHS` / `command_names()` (the web's table). What the web does
+  with a name is not a second dispatcher: it hands the request to the main webview's own
+  `on_message`, so the ACL, `State` and argument decoding are the window's.
 - **D3 — the other two OSes.** The three-OS rule applies. Recommended: Linux first, because that is
   the VPS, with macOS (LaunchDaemon) and Windows (service / boot-time task) filled in the same change
   as `Error::Unported` plus a sentence in `platform/words.rs`, and a TODO row each. The web transport
@@ -274,7 +278,7 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
   `systemctl enable` / `restart` / `disable --now`, three fixed argv in a sudoers drop-in, with every
   other privileged step refused, naming the setup (T1, ledger #911). The consent half (MCP, agent access)
   is T3's.
-- **D5 — the web UI's port.** `9443` is a proposal. It goes into `docs/PORTS.md` and is port-gated through
+- **D5 — the web UI's port.** **Ruled 28 Oct 2026: `9443`** (`web_rules::WEB_PORT`, `docs/PORTS.md`). It goes into `docs/PORTS.md` and is port-gated through
   `core/ports::ensure_free` like every other service.
 
 ## 6. Tasks
@@ -376,7 +380,17 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
   Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
 - **T5 — the other OSes per D3.**
-- **T6 — web transport.** The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
+- **T6 — web transport.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger
+  #929): `rexenv --web` serves the embedded bundle on `127.0.0.1:9443` (`web_server.rs`, rules in
+  `web_rules.rs`); `POST /ipc/<cmd>` goes through `Webview::on_message` on the hidden main webview,
+  only for a name on the one list; `GET /events` is server-sent events (not a WebSocket — the push
+  is one-way, and SSE needs no second crate) where a browser `listen(name)` takes a Tauri
+  `listen_any` on that name for its stream; the frontend picks the transport from a `<meta>` the
+  server injects (`src/lib/ipc/transport.ts`). In the container a headless instance served the
+  Sites screen to Chromium with real data, the New site form's create reached the backend and its
+  refusal came back as the toast, and an event crossed the stream. **No auth until T7** — the
+  branch carries both before it ships. Not done: the SSH-tunnel run on the VM and a site actually
+  created (the container cannot download binaries). Was: The `invoke`/`listen` switch, `/ipc` + `/events`, and the generated dispatch
   with the equal-lists test. Done when the Sites screen lists and creates a site in a browser through an
   SSH tunnel, and the test fails when a command is missing from either list (plant it).
 - **T7 — auth.** The token, cookie, CSRF header, and `Host`/`Origin` checks. Each check gets a ledger
