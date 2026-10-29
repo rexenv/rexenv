@@ -141,6 +141,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [x] **macOS: a login-launched rexenv's self-update stopped MySQL, MariaDB, Nginx and Mailpit** ✓ 29 Oct 2026 —
+  launchd SIGTERMs a LaunchAgent's process group when the app exits; services + relauncher now get their own group,
+  the login plist `AbandonProcessGroup` (ledger #936, L0 + 3 plants; SMOKE row owed live).
+
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
   a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer

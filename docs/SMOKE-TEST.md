@@ -3099,6 +3099,12 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   Start all once" health toast. Put the binary back afterwards. A warm-cache reboot is
   the control: everything comes up with no prompt because the boot daemon already
   serves the edge. **Open: no run recorded.**
+- [ ] **A login-launched rexenv's quit or update keeps the stack** (ledger #936): turn on "Start
+  rexenv at login", log out and in (the app is now the launchd job `dev.rexenv.rexenv`), let it
+  start the stack, then update in-app (or quit from the tray). Every service is still running
+  (`ps -o pid,pgid` — no mysqld/nginx/mailpit in the app's pgid), `relaunch.log` records the parent's
+  exit and the reopen, and the next launch adopts every service. Before the fix the 0.9.2 → 0.9.4
+  update stopped MySQL, MariaDB, Nginx and Mailpit and the app did not reopen. **Open: no run recorded.**
 - [ ] **DNS outlives the app** (ledger #46): quit rexenv →
   `dig foo.rex @127.0.0.1 -p 15353 +short` still answers `127.0.0.1`; sites keep
   resolving indefinitely (not just while caches last). **◐ the agent was seen answering

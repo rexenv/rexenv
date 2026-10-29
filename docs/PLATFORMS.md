@@ -194,6 +194,13 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   as "sh — Item from unidentified developer" (15.8 VM, 30 Sep 2026); `AssociatedBundleIdentifiers`
   attributes the job to the app only when both carry one Team ID, which an ad-hoc signature does
   not. A job that must wait or wrap runs a script named after the app, in app data (#764).
+- **A launchd job's process group dies with the job.** When a LaunchAgent's main process exits,
+  launchd SIGTERMs every process left in its process group unless the plist sets
+  `AbandonProcessGroup` (measured 29 Oct 2026). The login item IS such a job, so a service spawned
+  into the app's group died at every quit and self-update of a login-launched rexenv (0.9.2 → 0.9.4
+  took MySQL, MariaDB, Nginx, Mailpit and the relauncher). Services and the relauncher start in their
+  own group AND the plist sets the key (#936) — the key alone is not enough, launchd keeps the job
+  definition it loaded at login. An `open`/Finder launch is not affected. Linux's twin is `KillMode`.
 - **Legacy tiers**: 13 and 14 resolve older pins (`PinSet::for_tier`); a feature that needs a
   newer binary says so in the tier's words (`needs_newer_os`).
 - Mechanism detail: `docs/ARCHITECTURE.md` (written against macOS), `docs/INSTALL.md` § macOS.

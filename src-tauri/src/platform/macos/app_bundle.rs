@@ -403,8 +403,13 @@ impl AppBundle for MacosAppBundle {
         })?;
         // Detached and silent, and NOT reaped: unlike the tunnel guard this
         // helper is meant to outlive us by design — we are about to exit, and
-        // launchd reaps it.
+        // launchd reaps it. In its OWN process group: a login-launched rexenv is a
+        // launchd job, and launchd SIGTERMs the job's group when we exit — the
+        // 0.9.4 relauncher died 17 ms after it started that way (29 Oct 2026), and
+        // the app never reopened (ledger #936).
+        use std::os::unix::process::CommandExt;
         std::process::Command::new(exe)
+            .process_group(0)
             .arg(crate::core::app_update::RELAUNCH_FLAG)
             .arg(me.to_string())
             .arg(start)

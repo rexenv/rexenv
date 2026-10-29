@@ -458,11 +458,20 @@ impl ProcessSupervisor for MacosSupervisor {
             .append(true)
             .open(log_path)?;
         let err = out.try_clone()?;
+        use std::os::unix::process::CommandExt;
         Ok(std::process::Command::new(program)
             .args(args)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdout(out)
             .stderr(err)
+            // Its OWN process group, never the app's. When rexenv runs as a launchd job — the
+            // login item — launchd SIGTERMs the job's whole process group the moment the app
+            // exits, so a service left in ours dies with every quit and every self-update: the
+            // 0.9.2 → 0.9.4 update on the dev Mac (29 Oct 2026) took MySQL, MariaDB, Nginx and
+            // Mailpit down while PHP-FPM (which setsid()s itself) and the root edge lived on.
+            // The plist's `AbandonProcessGroup` covers the job a NEW login loads; this covers a
+            // login instance whose job launchd loaded from an older plist (ledger #936).
+            .process_group(0)
             .spawn()?)
     }
     fn stop(&self, pid: u32) -> Result<()> {
@@ -1001,6 +1010,13 @@ impl MacosAutostart {
     /// window when first-run setup is incomplete, because a silent tray on a
     /// machine that cannot resolve `.rex` is an app that looks broken and hides
     /// the fix.
+    ///
+    /// **`AbandonProcessGroup` is "services outlive the app" for a launchd job.**
+    /// Without it launchd SIGTERMs every process left in the app's process group
+    /// when the app exits — measured 29 Oct 2026 with a throwaway job (child
+    /// killed; with the key, alive), and met as a self-update that stopped MySQL,
+    /// MariaDB, Nginx, Mailpit AND the relauncher, so the app never reopened.
+    /// Linux's headless unit keeps the same promise with `KillMode=process` (#921).
     fn plist_contents(program: &Path) -> String {
         format!(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
@@ -1019,6 +1035,8 @@ impl MacosAutostart {
              \t<true/>\n\
              \t<key>ProcessType</key>\n\
              \t<string>Interactive</string>\n\
+             \t<key>AbandonProcessGroup</key>\n\
+             \t<true/>\n\
              </dict>\n\
              </plist>\n",
             program = program.display(),
@@ -3510,6 +3528,8 @@ mod tests {
         // Runs at GUI login. One contiguous match — split asserts would pass
         // a plist that sets RunAtLoad to <false/> yet has a <true/> elsewhere.
         assert!(plist.contains("<key>RunAtLoad</key>\n\t<true/>"));
+        // launchd must not SIGTERM our process group when the app exits (ledger #936).
+        assert!(plist.contains("<key>AbandonProcessGroup</key>\n\t<true/>"));
         // Lives in the per-user LaunchAgents dir (no root).
         assert!(MacosAutostart::plist_path()
             .unwrap()
@@ -3698,6 +3718,29 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("rexenv-log-ok"));
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Ledger #936 — **a service never shares the app's process group**, so launchd's
+    /// end-of-job SIGTERM to that group (a login-launched rexenv quitting or updating)
+    /// cannot reach it. Behaviour: a real spawn, its pgid read back from the kernel. And
+    /// (TEXT) the relauncher, which died that way on 29 Oct 2026, leaves the group too.
+    #[test]
+    fn a_service_and_the_relauncher_never_share_the_apps_process_group() {
+        let path = std::env::temp_dir().join(format!("rexenv-pgid-test-{}.log", std::process::id()));
+        let mut child = MacosSupervisor
+            .spawn_logged(Path::new("/bin/sleep"), &["5".to_string()], &path)
+            .unwrap();
+        // SAFETY: getpgid takes a pid by value and touches no memory of ours.
+        let (theirs, ours) = unsafe { (libc::getpgid(child.id() as libc::pid_t), libc::getpgid(0)) };
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(theirs, child.id() as libc::pid_t, "the service leads its own group");
+        assert_ne!(theirs, ours, "the service is not in the app's group");
+        let src = crate::core::copy_scan::production_source(include_str!("app_bundle.rs"));
+        let at = src.find("fn spawn_relauncher(").expect("the relauncher spawn");
+        let body = &src[at..at + src[at..].find("\n    }\n").expect("the fn's end")];
+        assert!(body.contains(".process_group(0)"), "the relauncher leaves the app's group");
     }
 
     #[test]

@@ -782,6 +782,10 @@ Live-proven end to end by `site_stop_start_check`.
   (`owned_listeners(port, marker)`, lowest pid = master). The root edge is invisible to
   unprivileged lsof → adopted iff OUR admin unix socket answers. If anything was adopted,
   cached nginx/caddy binary paths are wired strictly offline (existence-checked, no download).
+  **On macOS** (#936, 29 Oct 2026) "outlives" needs its own process group: a login-launched
+  rexenv is a launchd job, and launchd SIGTERMs the job's process group when the app exits — a
+  self-update took MySQL, MariaDB, Nginx and Mailpit down that way. Every service and the
+  relauncher start with `process_group(0)`, and the login plist sets `AbandonProcessGroup`.
   **On Windows** (#600, 13 Sep 2026) "outlives" needs a flag, not just a missing kill: a
   service is spawned with `CREATE_BREAKAWAY_FROM_JOB`, because a launcher inside a
   kill-on-close job — an SSH session measurably is one, a terminal or IDE can be — takes
