@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ◐ 0.9.5 — DRAFTED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender green; waits on the owner's Publish
+## A) ✅ 0.9.5 — PUBLISHED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 40812888060, source `7edade0e` (tag `v0.9.5`), every lane green first time, 16 assets, the body the tag's
 verbatim.** dmg `074c5ea7…`, `.app.tar.gz` `58420e1c…`, arm64 deb `7a6234c9…`, amd64 deb `fd53dd3f…`, aarch64
@@ -146,7 +146,11 @@ cookie 401; the unit restored after.
 nothing — exit code empty in 1 s; a fresh copy over the tunnel, same hash, is the run above.)
 **Not run:** §M; the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
 second-browser rows; the web UI's GUI on macOS/Windows.
-**Owed — the owner's:** the Publish click, then the six descriptor publishes and apt (each an approval).
+**Published by the owner 29 Oct 2026 07:05 UTC.** The tap's Update cask, Install scripts and Notify the website
+runs green; the cask reads `0.9.5` with the dmg's `074c5ea7…`; `brew audit --cask --online` clean. The six
+descriptors: dry runs first (macOS: serial 25 → 26, sha `58420e1c…` = §A's), then the six publishes, each approved;
+`check-app-manifest.sh` all green for macOS, `--windows` and the four `--linux` kinds (deb aarch64: serial 12 names
+0.9.5). apt: `Publish apt repository` run 40834629875 → `check-apt-repo.sh` good signature, amd64 and arm64 0.9.5.
 
 ## A) ✅ 0.9.4 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
