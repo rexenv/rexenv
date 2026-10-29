@@ -103,6 +103,51 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ◐ 0.9.5 — DRAFTED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender green; waits on the owner's Publish
+
+**Run 40812888060, source `7edade0e` (tag `v0.9.5`), every lane green first time, 16 assets, the body the tag's
+verbatim.** dmg `074c5ea7…`, `.app.tar.gz` `58420e1c…`, arm64 deb `7a6234c9…`, amd64 deb `fd53dd3f…`, aarch64
+AppImage `206ad681…`, amd64 AppImage `293d5e5e…`, setup.exe `83d88aca…`, zip `b9935a54…`; every asset passed
+`shasum -c` against its `.sha256`. `verify-full` green first time (windows-check and linux-check both ran).
+What 0.9.5 changes: Redis/MariaDB/Apache on Linux (#928), the web UI (Phase 1b, #929–#935), the slow-reload edge
+fix (#926, #927), `rex site list`'s DB column and widths.
+**Defender ✅ on the Dell (Win10 22H2), signatures `1.463.12.0` → `1.463.16.0` first:** `MpCmdRun -Scan -ScanType 3`
+→ "found no threats" for the `setup.exe` AND the `.zip`, exit 0; no detection logged that day.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in each slice; the
+update key ×2 in EACH slice (0.9.4's x86_64 said ×1 — back to 2); `minos 13.0` both; `codesign --verify --deep
+--strict` valid; Info.plist `0.9.5`. **§A0-b** on the archive: one top-level `rexenv.app/`, zero `._` members, the
+same per-slice counts, codesign valid, `0.9.5`.
+**§A ✅ on the 15.8 VM (`192.168.64.6`), from the PUBLISHED 0.9.4, stack started first (`rex start`):** `conv71`,
+`gitp`, `wtp`, `l14vm`, `sm763`, `php74`, `smoke-pg`, `smoke1` 200 (`smoke-lv` 503, stopped as before); app quit (sites
+still 200, the DNS agent kept); the dmg's app over `/Applications`, synthetic quarantine → the Gatekeeper sheet
+("rexenv" Not Opened, `Done` / `Move to Bin`) → Done (System Events, the button by name) → no app process;
+`xattr -rd` → `rex 0.9.5 (7edade0) · app rexenv 0.9.5 (7edade0)`, "the resolver agent is running 0.9.4 c919bcc but this
+build is 0.9.5" → kickstarted, "adopted 8"; every master KEPT — caddy, mysqld, postgres, Mailpit, nginx, the 7.4
+and both 8.x fpm masters (15/19 pids: four pool workers recycled); the sites as before at +0 s and +60 s; crash
+reports 2 → 2.
+**Linux ✅ on the 22.04 arm64 VM, from the PUBLISHED 0.9.4 deb, stack running, GUI quit first:** the deb's
+Depends; `apt-get install ./…arm64.deb` 4 s → `dpkg-query` 0.9.5, `dpkg -V` clean, `rexenv-edge` and
+`rexenv-dns-route` active; launched from GNOME's search (`app-gnome-rexenv-*.scope`) → `rex 0.9.5 (7edade0)`,
+"adopted 7", **21/21 service pids KEPT**; every site's code as before (`conv71l`, `l16lx`, `try.gitl`, `gitl` 200; the
+rest 403/404 before AND after — empty fixture folders); P1 a fresh `.rex` name → 127.0.0.1; `/var/crash` empty;
+`manifest accepted (6 entries)`; `rex service start redis` from the deb's catalog. **The 0.9.4 install there was
+first REINSTALLED:** `/usr/bin/rex{,env}` were 0 bytes — a `utmctl stop` (hard power-off) right after a binary
+restore the day before, not the release.
+**Linux headless ✅ on the 24.04 server VM (`rexenv-vps`), from the 0.9.4 deb (reinstalled for the same reason),
+`rexenv-headless.service` running:** `apt-get install ./…arm64.deb` 3 s (the post-install note printed), service
+restart → `rex 0.9.5`, "adopted 5", **8/8 pids KEPT**, `demo.rex` 200; `--headless-setup --enable-web` → the unit's
+`--web`, six listeners (9443–9445 on `127.0.0.1` and `[::1]`), sign-in 303 → index 200 with the transport meta, no
+cookie 401; the unit restored after.
+**Windows ✅ on the Dell (Win10 22H2), over `w10.rex.bd`, from the published 0.9.4, app launched on the desktop
+(Interactive task) and `rex start`:** `setup.exe /S` → exit 0 in 6 s; `rexenv.exe` and Apps & Features 0.9.5, the
+`\rexenv\dns-agent` task Running, `uninstall.exe` present; relaunched through an Interactive task → "adopted 9",
+"this is 0.9.5"; **40/40 php-cgi, FrankenPHP, nginx, caddy and Mailpit pids KEPT**; 11/11 sites 200 at +0 s and +60 s
+(`curl.exe --ssl-no-revoke`). (A first copy of the setup.exe stayed locked by a broken LAN `scp` session and ran
+nothing — exit code empty in 1 s; a fresh copy over the tunnel, same hash, is the run above.)
+**Not run:** §M; the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
+second-browser rows; the web UI's GUI on macOS/Windows.
+**Owed — the owner's:** the Publish click, then the six descriptor publishes and apt (each an approval).
+
 ## A) ✅ 0.9.4 — PUBLISHED 27 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 40493270408, source `c919bcc1` (tag `v0.9.4`), every lane green first time, 16 assets, the body the tag's
