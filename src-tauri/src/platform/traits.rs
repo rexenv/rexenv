@@ -1068,6 +1068,16 @@ pub trait EdgeSupervisor: Send + Sync {
     /// user-writable download cache (re-execing a user-writable file as root is an
     /// LPE). Install copies our caddy here and locks it `root:wheel`.
     fn daemon_binary_path(&self) -> PathBuf;
+    /// Where the supervised edge's start output goes, given the app's own log folder.
+    /// Default: `caddy-start.log` in that folder (Linux: the unit's `StandardOutput=append:`,
+    /// which never creates a missing folder — systemd fails the unit `209/STDOUT` instead;
+    /// Windows: no root supervisor). macOS answers a ROOT-owned path outside the user's tree:
+    /// launchd creates a missing `StandardOutPath` parent as root, so with the old answer a
+    /// moved or deleted app-data folder came back with a root-owned `logs/` the app could not
+    /// write (the 15.8 VM, 18 Oct 2026 — the next start died on `mkdir …/ca: Permission denied`).
+    fn start_log_path(&self, user_log_dir: &Path) -> PathBuf {
+        user_log_dir.join("caddy-start.log")
+    }
     /// Contents of the supervisor definition (macOS plist): keep-alive while the ON switch
     /// exists — which also starts it at boot — running `wrapper`, with start diagnostics to
     /// `start_log`.

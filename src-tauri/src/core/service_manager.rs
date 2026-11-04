@@ -2814,9 +2814,14 @@ impl ServiceManager {
                         self.ports.https
                     )
                 } else {
+                    let start_log = platform
+                        .paths()
+                        .log_dir()
+                        .map(|d| platform.edge().start_log_path(&d).display().to_string())
+                        .unwrap_or_else(|_| "caddy-start.log".into());
                     format!(
                         "its KeepAlive daemon is not bringing it back — port {} may be \
-                         blocked, or it is crash-looping (check logs/caddy-start.log)",
+                         blocked, or it is crash-looping (check {start_log})",
                         self.ports.https
                     )
                 };

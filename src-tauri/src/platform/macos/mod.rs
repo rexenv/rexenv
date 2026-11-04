@@ -1429,6 +1429,15 @@ const EDGE_ROOT_DIR: &str = "/Library/Application Support/dev.rexenv.rexenv";
 /// again by itself; `kickstart -k` → restarted; the item's generation unchanged throughout.
 const EDGE_ENABLED_FLAG: &str = "/Library/Application Support/dev.rexenv.rexenv/edge-enabled";
 
+/// Where the root edge daemon's `StandardOutPath`/`StandardErrorPath` point: a root-owned folder
+/// OUTSIDE the user's app data. Until 4 Nov 2026 they pointed at `<app data>/logs/caddy-start.log`,
+/// and launchd recreates a missing parent of those paths AS ROOT: on the 15.8 VM (18 Oct 2026),
+/// moving `~/Library/Application Support/dev.rexenv.rexenv` aside with the edge live brought the
+/// folder back with a root-owned `logs/` within a second, and the next app start died on
+/// `mkdir …/ca: Permission denied` until it was chowned by hand. It also ends root appending into
+/// a file in a folder the user owns. `/Library/Logs` is where Console.app looks for it.
+const EDGE_LOG_DIR: &str = "/Library/Logs/rexenv";
+
 impl MacosEdgeDaemon {
     fn flag_path(&self) -> PathBuf {
         PathBuf::from(EDGE_ENABLED_FLAG)
@@ -1436,6 +1445,11 @@ impl MacosEdgeDaemon {
 }
 
 impl EdgeSupervisor for MacosEdgeDaemon {
+    /// Root-owned, outside the user's tree — [`EDGE_LOG_DIR`] says why.
+    fn start_log_path(&self, _user_log_dir: &Path) -> PathBuf {
+        PathBuf::from(EDGE_LOG_DIR).join("caddy-start.log")
+    }
+
     /// The root LaunchDaemon plist (system domain → lives under `/Library`).
     fn plist_path(&self) -> PathBuf {
         PathBuf::from("/Library/LaunchDaemons").join(format!("{EDGE_DAEMON_LABEL}.plist"))
@@ -1621,7 +1635,8 @@ impl EdgeSupervisor for MacosEdgeDaemon {
         let wrapper = self.wrapper_path();
         let plist = self.plist_path();
         format!(
-            "if cmp -s {src} {bin} && cmp -s {sw} {wrapper} && cmp -s {sp} {plist} && \
+            "mkdir -p {logdir} ; \
+             if cmp -s {src} {bin} && cmp -s {sw} {wrapper} && cmp -s {sp} {plist} && \
              launchctl print system/{label} >/dev/null 2>&1 ; then \
              touch {flag} ; launchctl enable system/{label} 2>/dev/null ; launchctl kickstart -k system/{label} ; \
              else \
@@ -1636,6 +1651,7 @@ impl EdgeSupervisor for MacosEdgeDaemon {
              launchctl bootstrap system {plist} || {{ sleep 1 ; launchctl bootstrap system {plist} ; }} ; }} ; \
              fi",
             bindir = sh_quote(&PathBuf::from(EDGE_ROOT_DIR).join("bin")),
+            logdir = sh_quote(Path::new(EDGE_LOG_DIR)),
             src = sh_quote(src_caddy),
             bin = sh_quote(&bin),
             sw = sh_quote(staged_wrapper),
@@ -3223,6 +3239,25 @@ mod tests {
         assert!(pos("write_durable(&plist") < pos("launchctl(&[\"load\", \"-w\"]"), "plist before the load");
     }
 
+    /// The root daemon's output never points into the user's app data: launchd recreates a
+    /// missing parent of `StandardOutPath` as root, and a moved app-data folder came back with a
+    /// root-owned `logs/` (the 15.8 VM, 18 Oct 2026). The install makes the folder, and core
+    /// takes the path from the platform rather than joining its own.
+    #[test]
+    fn the_edge_daemon_logs_outside_the_users_tree() {
+        let ed = MacosEdgeDaemon;
+        let user_logs = Path::new("/Users/dev/Library/Application Support/dev.rexenv.rexenv/logs");
+        let log = ed.start_log_path(user_logs);
+        assert!(log.starts_with(EDGE_LOG_DIR) && !log.starts_with("/Users"), "{}", log.display());
+        let plist = ed.plist_contents(&ed.wrapper_path(), &log);
+        assert!(!plist.contains("/Users/"), "the plist names a path in the user's tree:\n{plist}");
+        let cmd = ed.install_command(Path::new("/c"), Path::new("/w"), Path::new("/p"));
+        assert!(cmd.starts_with(&format!("mkdir -p {} ;", sh_quote(Path::new(EDGE_LOG_DIR)))), "{cmd}");
+        let core = crate::core::copy_scan::production_source(include_str!("../../core/proxy.rs"));
+        assert!(core.contains("edge.start_log_path(&log_dir)"), "core joins its own start-log path again");
+        assert!(!core.contains("log_dir.join(\"caddy-start.log\")"), "core joins its own start-log path again");
+    }
+
     #[test]
     fn edge_daemon_keeps_alive_and_uses_root_owned_binary() {
         // KeepAlive on the ON switch's PathState = the whole point: relaunch on ANY death and
@@ -3305,8 +3340,12 @@ mod tests {
         let src = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/bin/caddy");
         let sw = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/config/edge-daemon/edge-launch.sh");
         let sp = Path::new("/Users/me/Library/Application Support/dev.rexenv.rexenv/config/edge-daemon/edge.plist");
-        let cmd = ed.install_command(src, sw, sp);
         let q = super::sh_quote;
+        // The log folder first (#938), on both paths; then the gate.
+        let full = ed.install_command(src, sw, sp);
+        let cmd = full
+            .strip_prefix(&format!("mkdir -p {} ; ", q(Path::new(EDGE_LOG_DIR))))
+            .unwrap_or_else(|| panic!("the install no longer begins by making the log folder:\n{full}"));
         let cond = format!(
             "if cmp -s {} {} && cmp -s {} {} && cmp -s {} {} && launchctl print system/{EDGE_DAEMON_LABEL} >/dev/null 2>&1 ; then",
             q(src), q(&ed.daemon_binary_path()), q(sw), q(&ed.wrapper_path()), q(sp), q(&ed.plist_path())

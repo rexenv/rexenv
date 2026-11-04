@@ -611,7 +611,9 @@ pub fn edge_install_script(platform: &dyn Platform, src_caddy: &Path, caddyfile:
     // then failed the unit with `209/STDOUT` before caddy ran (the headless setup's first install,
     // the VM, 26 Oct 2026).
     std::fs::create_dir_all(&log_dir)?;
-    let start_log = log_dir.join("caddy-start.log");
+    // The PLATFORM says where: macOS keeps the root daemon's output out of the user's tree
+    // (`EdgeSupervisor::start_log_path` says why).
+    let start_log = edge.start_log_path(&log_dir);
 
     // Always (re)install: stage the launcher + plist unprivileged, then the ONE
     // privileged cp+bootstrap. This is idempotent AND self-healing — a first install,
@@ -661,11 +663,15 @@ fn edge_never_came_up(platform: &dyn Platform, http_port: u16, https_port: u16) 
             )));
         }
     }
-    Err(crate::error::Error::Other(
+    let start_log = platform
+        .paths()
+        .log_dir()
+        .map(|d| platform.edge().start_log_path(&d).display().to_string())
+        .unwrap_or_else(|_| "caddy-start.log".into());
+    Err(crate::error::Error::Other(format!(
         "the Caddy edge daemon was installed but its admin socket never came up — \
-         check logs/caddy-start.log."
-            .to_string(),
-    ))
+         check {start_log}."
+    )))
 }
 
 /// Whether every `(source, installed)` pair holds the same bytes — `false` when either side is

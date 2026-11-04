@@ -167,6 +167,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   answered 224 s after the spawn on the 15.8 VM (10 Oct 2026, read from `log show`). launchd prints
   a `pid` the whole time. Judge a supervised service by its socket AND the age of that pid — a
   young silent one is starting, not dead (#851).
+- **launchd creates a missing `StandardOutPath` parent AS ROOT.** A root daemon whose log points
+  into the user's tree turns a moved or deleted app-data folder into a root-owned `logs/` the app
+  cannot write (the 15.8 VM, 18 Oct 2026). The edge daemon logs to `/Library/Logs/rexenv/` since
+  4 Nov 2026 (`EdgeSupervisor::start_log_path`, #938); a root daemon never names a user path.
 - **CA trust is a USER op into the login keychain.** The System keychain is unreachable from
   a detached-root osascript.
 - **TLS leaves ≤ 398 days** — Safari/WebKit rejects longer leaves even with the CA trusted

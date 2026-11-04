@@ -318,7 +318,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
 
-- [ ] **macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes**
+- [x] **macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes** ✓ 4 Nov
+  2026 — the daemon logs to `/Library/Logs/rexenv/caddy-start.log` (`EdgeSupervisor::start_log_path`; the install
+  makes the folder; every "check the start log" sentence names the platform's path), ledger #938, L0 + 2 plants.
+  Linux needs nothing (systemd fails `209/STDOUT` rather than creating the folder); Windows runs no root daemon.
+  Owed: SMOKE "Moving the app data aside with the edge live…" on the 15.8 VM.
   (found 18 Oct 2026 running 0.9.0's §M on the 15.8 VM). With the edge LaunchDaemon live, renaming
   `~/Library/Application Support/dev.rexenv.rexenv` aside made launchd recreate `…/dev.rexenv.rexenv/logs`
   root-owned within a second — the daemon plist's `StandardOutPath`/`StandardErrorPath` point into the
