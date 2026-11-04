@@ -248,7 +248,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
-- [ ] **Windows: two per-OS answers still read off macOS builds** — `php::pdo_pgsql_supported` →
+- [x] **Windows: two per-OS answers still read off macOS builds** ✓ 4 Nov 2026 — both now ask the platform's pool
+  model: a php-cgi group answers `pdo_pgsql` from the extensions it loads (Windows: every minor) and curl's resolver
+  `None` (unmeasured), ledger #939, L0 + 2 plants. Owed on the Dell (offline that day): `php -m` on 7.4/8.0, a 7.4
+  PostgreSQL site, `curl_version()["ares"]` per minor. Was: `php::pdo_pgsql_supported` →
   `binaries::php_has_pdo_pgsql` is keyed on the macOS self-hosted tag (so Windows refuses PostgreSQL
   on 7.4/8.0 although `platform/windows/mod.rs` enables `pdo_pgsql`), and `wp_dns::resolver_for(minor)`
   carries macOS measurements with no OS. Xdebug and the update catalogs are already per-OS. Split

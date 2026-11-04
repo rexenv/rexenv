@@ -43,8 +43,25 @@ use rusqlite::Connection;
 ///
 /// A driver that claims to exist and then hangs is the worst of the three
 /// possible states: "no driver" would have failed instantly and named itself.
+///
+/// **Asked of THIS platform's PHP build, not of macOS's.** Until 4 Nov 2026 this read
+/// `binaries::php_has_pdo_pgsql` on every OS — a judgement of rexenv/runtimes' builds, keyed on
+/// their release tags — so Windows refused PostgreSQL for 7.4 and 8.0 although its PHP is
+/// php.net's official zip and its php-cgi group loads `pdo_pgsql` on every minor (the group's
+/// preflight refuses any startup warning, and `windows_php_cli_check` started every pinned minor
+/// with that list). A platform whose pool model names the extensions it loads answers from that
+/// list; the php-fpm platforms (macOS, Linux) run our builds and keep the per-patch judgement.
 pub fn pdo_pgsql_supported(patch: &str) -> bool {
-    binaries::php_has_pdo_pgsql(patch)
+    pdo_pgsql_supported_on(&crate::platform::current().supervisor().php_pool_model(), patch)
+}
+
+/// [`pdo_pgsql_supported`] for a given pool model — pure, so a test states each platform's answer
+/// on any host.
+pub fn pdo_pgsql_supported_on(model: &crate::platform::traits::PoolModel, patch: &str) -> bool {
+    match model {
+        crate::platform::traits::PoolModel::CgiGroup(g) => g.extensions.contains(&"pdo_pgsql"),
+        crate::platform::traits::PoolModel::Fpm => binaries::php_has_pdo_pgsql(patch),
+    }
 }
 
 /// The oldest PHP minor rexenv can currently run with a PostgreSQL driver — for
@@ -54,9 +71,14 @@ pub fn pdo_pgsql_supported(patch: &str) -> bool {
 /// connection is available, and from the pins otherwise, so it names something
 /// the user can actually select.
 pub fn oldest_pdo_pgsql_minor() -> String {
+    oldest_pdo_pgsql_minor_on(&crate::platform::current().supervisor().php_pool_model())
+}
+
+/// [`oldest_pdo_pgsql_minor`] for a given pool model.
+pub fn oldest_pdo_pgsql_minor_on(model: &crate::platform::traits::PoolModel) -> String {
     binaries::pins().php_versions
         .iter()
-        .filter(|v| pdo_pgsql_supported(v))
+        .filter(|v| pdo_pgsql_supported_on(model, v))
         .map(|v| minor_of(v))
         .min_by_key(|m| {
             let mut it = m.split('.');
@@ -1574,6 +1596,10 @@ mod tests {
     fn pdo_pgsql_is_answered_per_patch_because_rexenv_runs_patches_it_did_not_build() {
         // The versions rexenv builds itself (release php-8x-1, 8.0.30 since php-8x-11) have
         // the driver.
+        // The php-fpm platforms (macOS, Linux) run rexenv/runtimes' builds: asked per patch.
+        let fpm = crate::platform::traits::PoolModel::Fpm;
+        let pdo_pgsql_supported = |v: &str| pdo_pgsql_supported_on(&fpm, v);
+        let oldest_pdo_pgsql_minor = || oldest_pdo_pgsql_minor_on(&fpm);
         for yes in ["8.0.30", "8.1.34", "8.2.35", "8.3.36", "8.4.27", "8.5.12"] {
             assert!(pdo_pgsql_supported(yes), "{yes} is one of ours");
         }
@@ -1602,6 +1628,34 @@ mod tests {
                 .all(|v| minor_of(v) >= oldest),
             "nothing supported is older than the minor we name"
         );
+    }
+
+    /// A platform whose PHP is a php-cgi group answers from the extensions the group loads —
+    /// Windows' official zips, `pdo_pgsql` on every minor — never from rexenv/runtimes' tags
+    /// (Windows refused PostgreSQL on 7.4/8.0 that way until 4 Nov 2026).
+    #[test]
+    fn a_cgi_group_answers_pdo_pgsql_from_the_extensions_it_loads() {
+        use crate::platform::traits::{CgiGroup, PoolModel};
+        let with = PoolModel::CgiGroup(CgiGroup { extensions: &["pdo_pgsql"], zend_extensions: &[], per_version: &[] });
+        let without = PoolModel::CgiGroup(CgiGroup { extensions: &["pdo_mysql"], zend_extensions: &[], per_version: &[] });
+        for v in ["7.4.33", "8.0.30", "8.3.37"] {
+            assert!(pdo_pgsql_supported_on(&with, v), "{v}: the group loads pdo_pgsql");
+            assert!(!pdo_pgsql_supported_on(&without, v), "{v}: the group does not load it");
+        }
+        let oldest_pin = binaries::pins()
+            .php_versions
+            .iter()
+            .min_by_key(|v| {
+                let mut it = v.split('.');
+                (it.next().unwrap_or_default().parse::<u32>().unwrap_or(0), it.next().unwrap_or_default().parse::<u32>().unwrap_or(0))
+            })
+            .expect("a pin");
+        assert_eq!(oldest_pdo_pgsql_minor_on(&with), minor_of(oldest_pin), "every pinned minor has the driver in such a group");
+        // And the Windows platform's own group is one that loads it — read off the real model.
+        let windows_list = include_str!("../platform/windows/mod.rs");
+        let group = &windows_list[windows_list.find("fn php_pool_model").expect("Windows' pool model")..];
+        let group = &group[..group.find("per_version").expect("its extension list")];
+        assert!(group.contains("\"pdo_pgsql\""), "Windows' php-cgi group no longer loads pdo_pgsql");
     }
 
     use crate::state::db;

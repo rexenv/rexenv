@@ -101,7 +101,9 @@ browser ──HTTPS──▶ Caddy edge :443 (TLS terminate, local-CA cert per d
                 WordPress → the site's DB ENGINE: MySQL :13306 or MariaDB :13307
                 (PostgreSQL :15432 backs Laravel / Blank PHP sites on PHP 8.1+ —
                 WordPress never (`wpdb` speaks MySQL alone), and not on 7.4/8.0,
-                whose builds have no working `pdo_pgsql`; both refused in core
+                whose builds have no working `pdo_pgsql` on macOS/Linux — Windows'
+                php.net zips load it on every minor, so the answer is asked of the
+                platform's pool model (`php::pdo_pgsql_supported_on`, #939); both refused in core
                 and the New-site dialog renders those refusals rather than
                 restating them, ledger #543/#545/#549;
                 per-site `sites.db_engine`, chosen at create, immutable after —

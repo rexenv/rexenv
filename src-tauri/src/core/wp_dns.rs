@@ -75,7 +75,21 @@ pub enum CurlResolver {
 /// [`tests::every_pinned_php_has_a_measured_curl_resolver`] makes that
 /// unreachable, so a new minor forces the measurement at the moment somebody is
 /// looking at the build anyway.
+///
+/// **The table describes rexenv/runtimes' builds — the php-fpm platforms (macOS, Linux).**
+/// [`resolver_for_on`] answers per pool model: a php-cgi group (Windows) runs php.net's official
+/// zips, which nobody has measured, so it answers `None` rather than borrowing these rows (until
+/// 4 Nov 2026 every OS read them). Owed: `curl_version()["ares"]` on the Dell for each pinned
+/// minor, then a Windows arm.
 pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
+    resolver_for_on(&crate::platform::current().supervisor().php_pool_model(), minor)
+}
+
+/// [`resolver_for`] for a given pool model — pure, so a test states each platform's answer.
+pub fn resolver_for_on(model: &crate::platform::traits::PoolModel, minor: &str) -> Option<CurlResolver> {
+    if matches!(model, crate::platform::traits::PoolModel::CgiGroup(_)) {
+        return None;
+    }
     match minor {
         // OURS (rexenv/runtimes), curl 8.21.0, no c-ares linked at all.
         "7.4" => Some(CurlResolver::Threaded),
@@ -381,6 +395,14 @@ mod tests {
     /// is already holding the build.
     #[test]
     fn every_pinned_php_has_a_measured_curl_resolver() {
+        // Our builds — the php-fpm platforms. Stated per model so the test holds on any host.
+        let fpm = crate::platform::traits::PoolModel::Fpm;
+        let resolver_for = |m: &str| resolver_for_on(&fpm, m);
+        // php.net's Windows builds were never measured: no borrowed answer.
+        let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
+            extensions: &["curl"], zend_extensions: &[], per_version: &[],
+        });
+        assert_eq!(resolver_for_on(&group, "8.3"), None, "a php-cgi group borrowed rexenv/runtimes' measurement");
         let mut ares = 0;
         let mut threaded = 0;
         for v in crate::core::binaries::pins().php_versions {
