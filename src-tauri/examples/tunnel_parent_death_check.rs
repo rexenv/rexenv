@@ -4,8 +4,10 @@
 //!   cargo run --example tunnel_parent_death_check      (sandbox tier)
 //!
 //! Not the same "guard" as `tunnel_guard_check.rs`, which pins this harness's own
-//! reaper. This one exercises production code: `platform/macos/parent_death_guard.rs`,
-//! re-executed through the app binary's `--tunnel-guard` mode.
+//! reaper. This one exercises production code: `platform/macos/parent_death_guard.rs`
+//! (kqueue) or `platform/linux/parent_death_guard.rs` (pidfd), re-executed through the app
+//! binary's `--tunnel-guard` mode. Linux joined 4 Nov 2026 (the Ubuntu VM): the legs are
+//! plain unix processes, so only the guard's source path differs.
 //!
 //! # What only a live run can show
 //!
@@ -45,7 +47,7 @@
 // Skipped on this host: `main` is a stub here, so every item below it is unreachable on
 // purpose. Silence the dead-code / unused-import reds that fact produces under
 // `clippy -D warnings` on the other OS (W12) -- and only there.
-#![cfg_attr(not(target_os = "macos"), allow(dead_code, unused_imports))]
+#![cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code, unused_imports))]
 
 mod common;
 
@@ -75,19 +77,46 @@ fn alive(child: &mut Owned) -> bool {
 /// stand-in `sleep 300`, a stand-in tunnel, or a real guard process behind.
 /// The `common::Reaped` fixture is for services on a fixture PORT; these
 /// stand-ins listen on nothing, so the invariant is carried locally.
+///
+/// **The whole process GROUP goes, not just the pid.** Every child here is spawned as
+/// the leader of its own group ([`own_group`]): the stand-in `cloudflared` is a shell
+/// script whose `sleep` is ITS child, and killing the script alone orphaned that
+/// `sleep 300` to init — eight per run, found on the Ubuntu VM (4 Nov 2026) when the
+/// example first ran on Linux. It had leaked the same way on macOS all along.
 struct Owned(Child);
 
 impl Drop for Owned {
     fn drop(&mut self) {
+        kill_group(self.0.id());
         let _ = self.0.kill();
         let _ = self.0.wait();
     }
+}
+
+/// Make `cmd`'s child the leader of a new process group, so [`kill_group`] reaches
+/// everything it starts.
+#[cfg(unix)]
+fn own_group(cmd: &mut Command) -> &mut Command {
+    use std::os::unix::process::CommandExt;
+    cmd.process_group(0)
+}
+
+/// Windows runs only the skip stub; this exists so the helpers still compile there.
+#[cfg(not(unix))]
+fn own_group(cmd: &mut Command) -> &mut Command {
+    cmd
+}
+
+/// SIGKILL the process group `pgid` leads — a stand-in and whatever it spawned.
+fn kill_group(pgid: u32) {
+    let _ = Command::new("kill").args(["-9", "--", &format!("-{pgid}")]).stderr(Stdio::null()).status();
 }
 
 /// Kill one of our children and WAIT for it, so it leaves no zombie behind to
 /// confuse the next probe. Explicit where a leg needs the kill NOW ("the user
 /// stops sharing"); the drop guard covers every other exit.
 fn reap(child: &mut Owned) {
+    kill_group(child.0.id());
     let _ = child.0.kill();
     let _ = child.0.wait();
 }
@@ -100,7 +129,7 @@ fn sigkill(pid: u32) {
 
 /// A stand-in rexenv: something to SIGKILL.
 fn stand_in_parent() -> Owned {
-    Owned(Command::new("/bin/sh")
+    Owned(own_group(&mut Command::new("/bin/sh"))
         .args(["-c", "sleep 300"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -112,7 +141,7 @@ fn stand_in_parent() -> Owned {
 /// carry the app-data marker, the program name, and the host-header pair — a
 /// process that merely sleeps is not the thing under test.
 fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Owned {
-    Owned(Command::new(script)
+    Owned(own_group(&mut Command::new(script))
         .args([
             "tunnel",
             "--no-autoupdate",
@@ -129,7 +158,7 @@ fn stand_in_tunnel(script: &PathBuf, marker: &str, domain: &str) -> Owned {
         .expect("spawn stand-in tunnel"))
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn main() {
     let plat = rexenv_lib::platform::current();
     let marker = plat
@@ -175,7 +204,12 @@ fn main() {
     // binary predates the code it is supposed to be running.
     let mtime = |p: &std::path::Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let newest_source = ["platform/macos/parent_death_guard.rs", "core/tunnels.rs"]
+    let guard_source = if cfg!(target_os = "linux") {
+        "platform/linux/parent_death_guard.rs"
+    } else {
+        "platform/macos/parent_death_guard.rs"
+    };
+    let newest_source = [guard_source, "core/tunnels.rs"]
         .iter()
         .filter_map(|f| mtime(&src.join(f)))
         .max();
@@ -195,7 +229,7 @@ fn main() {
     let mut failures: Vec<String> = Vec::new();
     let guard_with_start = |parent: u32, child: u32, domain: &str, start: &str| -> Owned {
         Owned(
-            Command::new(&exe)
+            own_group(&mut Command::new(&exe))
                 .args(["--tunnel-guard", &parent.to_string(), &child.to_string(), domain, start])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -324,10 +358,9 @@ fn main() {
     }
 }
 
-/// The tunnel guard is macOS's (`platform::run_tunnel_guard`, kqueue) and so is the
-/// start-time token it pins the parent with — skipped elsewhere until a Windows
-/// guard exists.
-#[cfg(not(target_os = "macos"))]
+/// Windows has no guard process (`guard_child_against_our_death` keeps the trait's
+/// unsupported default there), so there is nothing here for it to run.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn main() {
-    eprintln!("tunnel_parent_death_check: skipped — macOS-only (tunnel guard)");
+    eprintln!("tunnel_parent_death_check: skipped — the guard process is macOS's and Linux's");
 }

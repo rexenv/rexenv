@@ -4206,8 +4206,13 @@ rexenv0 <name>` and read `Current Scopes:`.
 - [x] ✓ 24 Sep 2026 (VM, an owner-approved public test tunnel): **the tunnel guard (ledger
       #722)** — `guard.rex` shared, cloudflared and `rexenv --tunnel-guard …` beside it; `kill -9`
       the app → both gone within 6 s.
-- [ ] The guard's normal-stop leg: stop the share from the app → the guard exits at once, no
-      stray process. **Open: owed since 24 Sep** (and `tunnel_parent_death_check` has no Linux tier entry).
+- [x] The guard's normal-stop leg: stop the share from the app → the guard exits at once, no
+      stray process. ✓ **4 Nov 2026 (VM, 0.9.5 deb, an owner-approved public test tunnel):** a
+      fixture `tguard.rex` shared → cloudflared 2713 + `rexenv --tunnel-guard 1969 2713 tguard.rex …`,
+      the public URL 200; `rex tunnel stop` (the same `stop_tunnel` command the app's button
+      calls) returned in 127 ms and both pids were gone at 130 ms; no zombie, no stray process,
+      `tunnel list` empty, the URL 530, `rexenv.log` has the SHARING and stopped-sharing lines.
+      `tunnel_parent_death_check` now has its Linux tier and ran ALL PASS there.
 
 - [x] **Start rexenv at login is ONE toggle** (29 Sep 2026, ledger #739; the words name the
       system tray and `~/.config/autostart`): Stop all, turn it on, reboot into the autologin →

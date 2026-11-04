@@ -223,7 +223,7 @@ tunnel_delete_order_check      network macos
 tunnel_exposure_check          network macos
 tunnel_guard_check             sandbox macos
 tunnel_muplugin_check          sandbox all
-tunnel_parent_death_check      sandbox macos
+tunnel_parent_death_check      sandbox macos,linux
 tunnel_sweep                   sandbox macos
 valet_import_check             sandbox macos
 valet_scan_check               sandbox macos

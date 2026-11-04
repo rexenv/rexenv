@@ -265,7 +265,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [ ] **Windows: WebView2's `downloadBootstrapper` on a PC without WebView2** — never run: every test
   machine already has WebView2. Open: that the per-user installer fetches it without an admin
   prompt. Also open from SMOKE § Windows: a run with Smart App Control ON.
-- [ ] **Linux: the tunnel guard's normal-stop leg** — SMOKE § Linux's last unticked row; never run, and
+- [x] **Linux: the tunnel guard's normal-stop leg** ✓ 4 Nov 2026 — run on the 22.04 VM (0.9.5 deb, owner-approved
+  public tunnel): `rex tunnel stop` → cloudflared and the guard both gone in 130 ms, nothing left; and
+  `tunnel_parent_death_check` joined the Linux tier (`macos,linux`) — ALL PASS on the VM, a plant (the guard's
+  `stop_child` removed) red on legs 1 and 4. Its stand-ins leaked `sleep 300` orphans on both OSes; fixed with a
+  process group per stand-in (TESTING). Was: SMOKE § Linux's last unticked row; never run, and
   `tunnel_parent_death_check` has no Linux tier in `scripts/live-checks.sh`. Split out of the Linux launch
   row 9 Oct 2026.
 - [ ] **A public tunnel for `mstest.rex` was running that this session never started**

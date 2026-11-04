@@ -358,6 +358,13 @@ it can:
   so its two `initdb`s and its CREATE/DROP DATABASE landed in the REAL
   `<app_data>/postgres/{17,16}/data` on the production port — the exact shape
   `examples/common/mod.rs`'s invariant forbids; it runs in `common::sandbox` now.
+  **The drop guard still leaked, and Linux is where it showed (4 Nov 2026).** The example
+  joined the Linux tier (`macos,linux`, the pidfd guard): on the Ubuntu VM it went ALL PASS
+  and left eight `sleep 300` orphans under init per run. The stand-in `cloudflared` is a
+  shell script whose `sleep` is ITS child; killing the script orphaned it — on macOS too,
+  all along, unseen because nobody counted. Each stand-in now leads its own process group
+  and the drop kills the group: 0 orphans on both OSes. Count what a fixture leaves behind,
+  not just what it asserts.
   **`site_stop_start_check` (sandbox tier, 4 Sep 2026) is the layer aimed at what a
   BROWSER gets.** L0 proves the two halves of stopping one site separately — a stopped
   site gets a STOPPED nginx block in place of a serving one, and its edge route renders a
