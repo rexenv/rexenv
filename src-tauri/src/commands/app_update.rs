@@ -133,8 +133,23 @@ pub struct ApplyOutcome {
 /// stop it — through the same confirm the quit gate raises, not through a second
 /// check here — and the consent sentence says plainly that terminals and running
 /// jobs close with it.
+///
+/// **Every failure writes a `rexenv.log` line**, whichever door it left by. Until 4 Nov
+/// 2026 a refused apply only went back to the caller: 0.9.2's §M on the 22.04 VM (an ssh
+/// session, no polkit agent) downloaded 15.9 MB, the Updates row went back to "Install
+/// rexenv 0.9.2", and there was no log line and no toast in a screenshot 90 s later. A
+/// toast is gone in seconds, so the log is the one place a reader can find an apply that
+/// did nothing. The wrapper is the ONE exit, so no `?` inside `apply_once` can skip it.
 #[tauri::command]
 pub async fn app_update_apply(state: State<'_, AppState>) -> Result<ApplyOutcome> {
+    let out = apply_once(state).await;
+    if let Err(e) = &out {
+        log::warn!("app update: the install did not happen — {e}");
+    }
+    out
+}
+
+async fn apply_once(state: State<'_, AppState>) -> Result<ApplyOutcome> {
     let _claim = crate::commands::php::InFlight::claim("app")?;
     let platform = crate::platform::current();
 

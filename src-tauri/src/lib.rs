@@ -3403,6 +3403,27 @@ mod tests {
         );
     }
 
+    /// A refused in-app update must leave a `rexenv.log` line (0.9.2's §M on the
+    /// 22.04 VM: pkexec refused, the row reset, no trace anywhere). The command is a
+    /// wrapper whose only job is that line, and the real work is reachable through it
+    /// alone — a second caller of `apply_once` would be a door with no log.
+    #[test]
+    fn a_failed_app_update_apply_always_writes_a_log_line() {
+        let cmd = crate::core::copy_scan::production_source(include_str!(
+            "commands/app_update.rs"
+        ));
+        let from = cmd.find("pub async fn app_update_apply").expect("the apply");
+        let body_end = cmd[from..].find("\n}\n").expect("the apply's closing brace") + from;
+        let body = &cmd[from..body_end];
+        assert!(body.contains("apply_once(state)"), "the command must delegate to apply_once");
+        assert!(
+            body.contains("if let Err(e) = &out") && body.contains("log::warn!"),
+            "app_update_apply no longer logs its failure — a refused install leaves no trace"
+        );
+        let callers = cmd.matches("apply_once(").count();
+        assert_eq!(callers, 2, "apply_once must be defined once and called only by the command");
+    }
+
     /// **An update is applied only from a GUI click.**
     ///
     /// Self-update replaces the process that enforces the agent-access dial and
