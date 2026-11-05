@@ -449,6 +449,8 @@ first:
   **5 Nov 2026 — five more clean runs on the dev Mac, stack stopped** (`rex stop`, then `rex start` after; 16–19 s
   each, every one `ALL GOOD`, no fixture mysqld left): eleven consecutive passes since the leftover docroots went.
   The capture never fired. Tried on the Dell first, it never reached WordPress — see the next row.
+  **6 Nov 2026 — on Windows too:** after the resolve fix, `wp_plugins_check` `ALL GOOD` on the Dell (bulk-deactivate →
+  Inactive, then delete). Twelve consecutive passes across two OSes; the capture never fired.
 
 - [x] **22 live-check examples are tagged `all` in `scripts/live-checks.sh` but cannot run on Windows** (found
   5 Nov 2026 on the Dell): each does `binaries::resolve(&*plat, "php", ...)` and unwraps it, and Windows' php is a
@@ -488,7 +490,7 @@ first:
   Dell the check built without the rule failed both 8.5.12 rows and with it passes every minor 7.4–8.5 (ledger
   #601, #603). Not run: an 8.5 site served end to end on Windows.
 
-- [ ] **Two of the 22 Windows-capable examples have no Dell verdict yet (five failed at first)** (5 Nov 2026, after the row above):
+- [x] **All 22 Windows-capable examples pass on the Dell (five failed at first)** (5 Nov 2026, after the row above):
   (1) ✓ `adminer_deeplink_check` — **not a Windows bug, and not a product bug:** Adminer 6.2's login form carries
   a hidden CSRF `token`, and the check posted the auth fields without it (true of the Adminer it was written
   against), so Adminer answered its login page again — 403, no message. The Dell had 6.2.0 from a binary update.
@@ -518,9 +520,11 @@ first:
   `repo_run_all_check` (tagged `all`, not one of the 22): it did overflow Windows' 1 MB main thread on the
   Dell, then failed its gpg-signed fixture commit, then its composer step on the same global plugin — now on
   `common::main_on_big_stack`, signing off, its own `COMPOSER_HOME`: Dell `ALL PASS`; `git_site_clone_check`
-  (also `all`, also signing) `PASS`. Two guards keep the classes shut (ledger #941). Left: (4) and (5) need a
-  Dell whose wordpress.org link finishes a 37 MB download inside ten minutes; and `laravel_postgres_check` left
-  one `postgres` process behind on the Dell after a PASS (the adopted postmaster's reap — not looked at).
+  (also `all`, also signing) `PASS`. Two guards keep the classes shut (ledger #941). ✓ (4) and (5) passed once the
+  Dell's wordpress.org link was fast again (6 Nov 2026, ~2 min each): `wp_plugins_check` and `wp_themes_check`
+  `ALL GOOD` — no code change was needed. **22 of 22 now pass on Windows.** Not looked at:
+  `laravel_postgres_check` left one `postgres` process behind on the Dell after a PASS (the adopted
+  postmaster's reap).
 ## Release gates (human, scripted — see the docs named)
 
 **This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s
