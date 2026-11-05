@@ -53,7 +53,12 @@ async fn main() {
     std::fs::create_dir_all(&scratch).unwrap();
     let mut failures: Vec<String> = Vec::new();
 
-    let env = plat.shell().login_shell_env().expect("login_shell_env");
+    let mut env = plat.shell().login_shell_env().expect("login_shell_env");
+    // Composer's GLOBAL config is the machine's, not the fixture's: the Dell's global PHPCS
+    // installer plugin, never allowed in allow-plugins, made every Composer leg here fail
+    // before it installed anything (6 Nov 2026). The fixture gets its own empty home.
+    env.retain(|(k, _)| !k.eq_ignore_ascii_case("COMPOSER_HOME"));
+    env.push(("COMPOSER_HOME".into(), scratch.join("composer-home").display().to_string()));
     let sup = plat.supervisor();
 
     // Tools: user's node/npm; OUR php (site PHP stand-in: pinned 8.3) + the
@@ -215,7 +220,9 @@ async fn main() {
     if devtools::find_optional(&env, "bun").is_none() {
         let err = devtools::resolve_package_manager(&env, "bun").unwrap_err().to_string();
         println!("F: missing bun maps to: {}", err.lines().last().unwrap_or(""));
-        if !err.contains("brew install") {
+        // The PLATFORM's install line (`PlatformWords::bun_install`), never one OS's literal:
+        // asserting "brew install" failed this row on the Dell, which answers with winget.
+        if !err.contains(rexenv_lib::platform::words::current().bun_install) {
             failures.push(format!("F: bun error unmapped: {err}"));
         }
     }

@@ -1624,3 +1624,25 @@ pub fn symlink(src: impl AsRef<std::path::Path>, dst: impl AsRef<std::path::Path
         Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "symlink fixtures are unix-only"))
     }
 }
+
+/// Run an example's async body on a thread with an 8 MB stack, not on `main`'s.
+///
+/// Windows gives the main thread 1 MB, and `#[tokio::main]` polls the whole future there;
+/// `cli_server::handle_request`'s dispatch future overflowed it on the Dell twice
+/// (`cli_wp_install_check`, `repo_run_all_check`, 5–6 Nov 2026: "thread 'main' has overflowed
+/// its stack") — an abort, which skips every Drop and so every fixture's cleanup. macOS and
+/// Linux give `main` 8 MB, so neither ever showed it. A panic in the body exits 101, as a
+/// panic on `main` would.
+pub fn main_on_big_stack<F, Fut>(body: F) -> Fut::Output
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future,
+    Fut::Output: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime").block_on(body()))
+        .expect("spawn the check's thread")
+        .join()
+        .unwrap_or_else(|_| std::process::exit(101))
+}

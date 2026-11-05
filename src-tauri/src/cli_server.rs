@@ -2511,6 +2511,33 @@ mod cli_isolation {
 
 #[cfg(test)]
 mod tests {
+    /// No live-check example drives `cli_server` from `#[tokio::main]`: the dispatch future
+    /// overflows Windows' 1 MB main thread — `cli_wp_install_check` and `repo_run_all_check`
+    /// aborted on the Dell (5–6 Nov 2026) while every Mac run passed, since macOS gives `main`
+    /// 8 MB. Such an example runs its body through `common::main_on_big_stack`.
+    #[test]
+    fn no_example_drives_cli_server_on_the_main_thread() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut bad = Vec::new();
+        let mut driving = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("examples dir") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("example source");
+            if !src.contains("cli_server::") {
+                continue;
+            }
+            driving += 1;
+            if src.contains("#[tokio::main]") || !src.contains("main_on_big_stack") {
+                bad.push(path.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        }
+        assert!(driving >= 2, "found only {driving} examples driving cli_server: is the scan reading them?");
+        assert!(bad.is_empty(), "run the body through common::main_on_big_stack: {bad:?}");
+    }
+
     use super::*;
 
     /// Ledger #631 — **one exchange, whatever the transport**: `serve_connection` over an in-memory pipe (no

@@ -56,6 +56,9 @@ mod common;
 /// works whatever the developer's global config says.
 fn git_in(dir: &Path, args: &[&str]) {
     let out = Command::new("git")
+        // The machine's git config is not the fixture's: the Dell signs every commit with
+        // gpg, which times out with no agent over SSH (6 Nov 2026).
+        .args(["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .current_dir(dir)
         .env("GIT_AUTHOR_NAME", "rexenv checks")

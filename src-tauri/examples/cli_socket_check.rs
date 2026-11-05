@@ -37,8 +37,16 @@ fn ask(path: &std::path::Path, line: &str) -> Value {
 }
 
 #[cfg(unix)]
-#[tokio::main]
-async fn main() {
+/// On an 8 MB thread (`common::main_on_big_stack`): `cli_server` dispatch futures overflow
+/// Windows' 1 MB main thread (the Dell, 5–6 Nov 2026).
+fn main() {
+    common::main_on_big_stack(run)
+}
+
+mod common;
+
+#[cfg(unix)]
+async fn run() {
     let platform = rexenv_lib::platform::current();
     let conn = rexenv_lib::state::db::open_for_platform(platform.paths()).expect("open app db");
     // Do what LAUNCH does one line later: rehydrate the verified update catalog

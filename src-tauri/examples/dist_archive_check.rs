@@ -83,7 +83,7 @@ fn fixture() -> Fixture {
     for args in [
         vec!["init", "-q"],
         vec!["add", "-A"],
-        vec!["-c", "user.email=a@b.c", "-c", "user.name=probe", "commit", "-qm", "init"],
+        vec!["-c", "user.email=a@b.c", "-c", "user.name=probe", "-c", "commit.gpgsign=false", "commit", "-qm", "init"],
     ] {
         let ok = Command::new("git")
             .args(&args)

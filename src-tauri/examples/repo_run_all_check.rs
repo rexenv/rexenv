@@ -22,11 +22,15 @@ use serde_json::{json, Value};
 use std::path::Path;
 use tauri::Manager;
 
+mod common;
+
 fn git_in(dir: &Path, args: &[&str]) {
     let st = std::process::Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.email=fx@rexenv.test", "-c", "user.name=fx"])
+        // The machine's git config is not the fixture's: the Dell signs every commit with
+        // gpg, which times out with no agent over SSH (6 Nov 2026).
+        .args(["-c", "user.email=fx@rexenv.test", "-c", "user.name=fx", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .output()
         .expect("git");
@@ -61,8 +65,22 @@ fn step_status(job: &Value, key: &str) -> String {
         .to_string()
 }
 
-#[tokio::main]
-async fn main() {
+/// On an 8 MB thread (`common::main_on_big_stack`): this drives `cli_server` dispatch, whose
+/// future overflowed Windows' 1 MB main thread on the Dell (6 Nov 2026).
+fn main() {
+    // Composer's GLOBAL config is the machine's, not the fixture's: the Dell's global PHPCS
+    // installer plugin (never allowed in allow-plugins) failed every composer step here
+    // (6 Nov 2026). The in-process dispatch builds its env from this process's, so the
+    // fixture's own home goes in here — before any thread exists, the one safe moment to
+    // change the environment (`windows-handle-sweep-race`).
+    let home = std::env::temp_dir().join(format!("rexenv-runall-composer-{}", std::process::id()));
+    // SAFETY: single-threaded — nothing else is running yet.
+    unsafe { std::env::set_var("COMPOSER_HOME", &home) };
+    common::main_on_big_stack(run);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+async fn run() {
     let platform = rexenv_lib::platform::current();
     let conn = rexenv_lib::state::db::open_for_platform(platform.paths()).expect("open app db");
     // Do what LAUNCH does one line later: rehydrate the verified update catalog

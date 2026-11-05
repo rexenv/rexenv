@@ -18,19 +18,11 @@ use tauri::Manager;
 
 mod common;
 
-/// The body runs on a thread with an 8 MB stack, not on `main`'s: Windows gives the main
-/// thread 1 MB, and `#[tokio::main]` polls the whole future there, so `cli_server`'s
-/// dispatch future overflowed it on the Dell (5 Nov 2026, "thread 'main' has overflowed its
-/// stack") — an abort, which skips every Drop and left the example's mysqld running on the
-/// real port for the next check to trip over. macOS's main thread is 8 MB, so the Mac never
-/// saw it.
+/// On an 8 MB thread (`common::main_on_big_stack`): `cli_server`'s dispatch future overflowed
+/// Windows' 1 MB main thread on the Dell (5 Nov 2026), and the abort left this example's
+/// mysqld running on the real port for the next check to trip over.
 fn main() {
-    std::thread::Builder::new()
-        .stack_size(8 * 1024 * 1024)
-        .spawn(|| tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime").block_on(run()))
-        .expect("spawn the check's thread")
-        .join()
-        .unwrap_or_else(|_| std::process::exit(101));
+    common::main_on_big_stack(run)
 }
 
 async fn run() {

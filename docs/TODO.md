@@ -488,7 +488,7 @@ first:
   Dell the check built without the rule failed both 8.5.12 rows and with it passes every minor 7.4–8.5 (ledger
   #601, #603). Not run: an 8.5 site served end to end on Windows.
 
-- [ ] **Four of the 22 Windows-capable examples still fail on the Dell (five found)** (5 Nov 2026, after the row above):
+- [ ] **Two of the 22 Windows-capable examples have no Dell verdict yet (five failed at first)** (5 Nov 2026, after the row above):
   (1) ✓ `adminer_deeplink_check` — **not a Windows bug, and not a product bug:** Adminer 6.2's login form carries
   a hidden CSRF `token`, and the check posted the auth fields without it (true of the Adminer it was written
   against), so Adminer answered its login page again — 403, no message. The Dell had 6.2.0 from a binary update.
@@ -496,16 +496,31 @@ first:
   `wp_options` listed. The app's auto-submit script submits the page's real form, token included, so the deep
   link itself worked throughout. The check now sends the token when the form has one (as
   `adminer_proxy_check` already did) and prints Adminer's own message on a failure: Dell `ALL GOOD`, auth POST
-  302, `wp_*` tables listed (5 Nov 2026); (2) `laravel_postgres_check`
-  — PostgreSQL in its sandbox refused connections on :15432 after `initdb` reported ok, and Composer could not
-  resolve `repo.packagist.org` (curl error 6) though `Resolve-DnsName` answered the same minute; (3)
-  `repo_install_check` — A's `composer install` failed with an EMPTY message, and F's bun row needs bun, which
-  the Dell does not have; (4) `wp_plugins_check` never reached its checks: `wp core download` of `latest.zip`
+  302, `wp_*` tables listed (5 Nov 2026); (2) ✓ `laravel_postgres_check` — two fixture faults, neither the
+  product's: it spawned `postgres.exe` itself, which refuses to run under an administrator token (every SSH
+  session on the Dell) — the product starts it through `pg_ctl`'s restricted token (`postgres::start`), which
+  the check now calls; and it gave Composer an environment of `COMPOSER_HOME` ALONE, and `spawn_streamed` clears
+  the rest, so a Windows child with no `SystemRoot` could not resolve `repo.packagist.org` — it now passes the
+  login environment the product passes. Dell: `laravel on postgres: all green` (all seven minors load
+  pdo_pgsql, PDO connects, `create-project` + `artisan migrate` on PostgreSQL) (6 Nov 2026); (3) ✓
+  `repo_install_check` — the Dell's GLOBAL Composer config carries the PHPCS installer plugin
+  (`dealerdirect/phpcodesniffer-composer-installer`), never allowed in allow-plugins, so Composer refused every
+  install — and the user-facing message was the last three lines of Composer's wrapped box plus its `install
+  [--prefer-source] …` usage line, the plugin's name cut off. **The message was the product bug** (a common WP
+  developer setup): `map_composer_error` now names the plugin, says whether it is the user's global or the
+  repo's, and gives the one `composer [global] config allow-plugins.<name> true` command; and `last_lines` no
+  longer counts usage synopses or blank box padding (ledger #942). The check now gets its own `COMPOSER_HOME`,
+  and its bun row asserts the platform's install line (`PlatformWords::bun_install`) instead of macOS's `brew
+  install`: Dell `ALL PASS` (6 Nov 2026); (4) `wp_plugins_check` never reached its checks: `wp core download` of `latest.zip`
   timed out at 600 s with 36.9 of 37.2 MB received, twice — the Dell's link to wordpress.org, not the code (the
   same download passed inside other checks); (5) `wp_themes_check` has no verdict — one run refused (the leaked
-  mysqld on :13306), the next was cut off when the SSH session dropped mid-run, its log empty. Also seen: `repo_run_all_check`
-  (tagged `all`, not one of the 22) drives `cli_server` on `#[tokio::main]`'s main thread like
-  `cli_wp_install_check` did — the same 1 MB-stack risk, not run.
+  mysqld on :13306), the next was cut off when the SSH session dropped mid-run, its log empty. ✓ Also
+  `repo_run_all_check` (tagged `all`, not one of the 22): it did overflow Windows' 1 MB main thread on the
+  Dell, then failed its gpg-signed fixture commit, then its composer step on the same global plugin — now on
+  `common::main_on_big_stack`, signing off, its own `COMPOSER_HOME`: Dell `ALL PASS`; `git_site_clone_check`
+  (also `all`, also signing) `PASS`. Two guards keep the classes shut (ledger #941). Left: (4) and (5) need a
+  Dell whose wordpress.org link finishes a 37 MB download inside ten minutes; and `laravel_postgres_check` left
+  one `postgres` process behind on the Dell after a PASS (the adopted postmaster's reap — not looked at).
 ## Release gates (human, scripted — see the docs named)
 
 **This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s

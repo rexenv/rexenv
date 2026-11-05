@@ -18,7 +18,9 @@ fn git_in(dir: &Path, args: &[&str]) {
     let st = std::process::Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.email=fx@rexenv.test", "-c", "user.name=fx"])
+        // The machine's git config is not the fixture's: the Dell signs every commit with
+        // gpg, which times out with no agent over SSH (6 Nov 2026).
+        .args(["-c", "user.email=fx@rexenv.test", "-c", "user.name=fx", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"])
         .args(args)
         .output()
         .expect("git");
@@ -33,8 +35,15 @@ fn plugin_fixture(dir: &Path) {
     git_in(dir, &["commit", "-qm", "init"]);
 }
 
-#[tokio::main]
-async fn main() {
+/// On an 8 MB thread (`common::main_on_big_stack`): `cli_server` dispatch futures overflow
+/// Windows' 1 MB main thread (the Dell, 5–6 Nov 2026).
+fn main() {
+    common::main_on_big_stack(run)
+}
+
+mod common;
+
+async fn run() {
     let platform = rexenv_lib::platform::current();
     let conn = rexenv_lib::state::db::open_for_platform(platform.paths()).expect("open app db");
     // Do what LAUNCH does one line later: rehydrate the verified update catalog

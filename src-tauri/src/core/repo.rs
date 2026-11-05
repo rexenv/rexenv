@@ -2515,6 +2515,26 @@ pub fn map_composer_error(tail: &[String]) -> Error {
             line.trim()
         ));
     }
+    // A Composer plugin the user's allow-plugins config has not ruled on — Composer stops
+    // before installing anything. Common on a WordPress developer's machine: a GLOBAL PHPCS
+    // setup (`dealerdirect/phpcodesniffer-composer-installer`) made every rexenv Composer step
+    // on the Dell fail, and the message was the last three lines of Composer's box — wrapped
+    // mid-word, the plugin's name cut off, ending in the `install [--prefer-source] …` usage
+    // line (6 Nov 2026). It is the USER's Composer config, so the sentence says so and gives
+    // the one command that settles it.
+    if let Some((plugin, global)) = blocked_composer_plugin(tail) {
+        let (whose, cmd) = if global {
+            ("your GLOBAL Composer packages", format!("composer global config allow-plugins.{plugin} true"))
+        } else {
+            ("this repository's packages", format!("composer config allow-plugins.{plugin} true"))
+        };
+        return Error::Other(format!(
+            "Composer stopped before installing anything: {plugin}, from {whose}, is a Composer \
+             plugin that your allow-plugins setting has not allowed or refused, and Composer will \
+             not run it until it has. Decide once in a terminal — `{cmd}` (or `false` to skip it) \
+             — then retry."
+        ));
+    }
     // Lines about the PHP VERSION only: Composer's extension refusal reads "requires PHP
     // extension ext-imap * but it is missing", and matching "requires php" on that sent a user
     // to switch PHP versions for a missing extension (found by #802's test, 8 Oct 2026).
@@ -2614,6 +2634,20 @@ pub fn map_composer_error(tail: &[String]) -> Error {
     Error::Other(format!("composer install failed:\n{}", last_lines(tail, 3)))
 }
 
+/// `(plugin, installed_globally)` from Composer's allow-plugins refusal — "`<vendor/name>
+/// (installed globally) contains a Composer plugin which is blocked by your allow-plugins
+/// config`". The name is the line's first word, before Composer's box wraps anything.
+fn blocked_composer_plugin(tail: &[String]) -> Option<(String, bool)> {
+    tail.iter().find_map(|line| {
+        let line = line.trim();
+        if !line.contains("contains a Composer plugin") {
+            return None;
+        }
+        let name = line.split_whitespace().next()?;
+        name.contains('/').then(|| (name.to_string(), line.contains("(installed globally)")))
+    })
+}
+
 /// `(script, event)` from composer's `Script <script> handling the <event> event returned with
 /// error code <n>` line, the last one in `tail`.
 fn failed_composer_script(tail: &[String]) -> Option<(String, String)> {
@@ -2665,8 +2699,24 @@ pub fn map_node_error(tail: &[String]) -> Error {
 }
 
 fn last_lines(tail: &[String], n: usize) -> String {
-    let lines: Vec<&str> = tail.iter().rev().take(n).map(|s| s.as_str()).collect();
+    // Composer ends a failure with the command's usage synopsis (`install [--prefer-source]
+    // [--prefer-dist] …`, one 600-character line) and pads its error box with blank lines;
+    // counted as "lines", they pushed the actual error out of the three a user is shown.
+    let lines: Vec<&str> = tail
+        .iter()
+        .map(|s| s.as_str())
+        .filter(|l| !l.trim().is_empty() && !is_usage_synopsis(l))
+        .rev()
+        .take(n)
+        .collect();
     lines.into_iter().rev().collect::<Vec<_>>().join("\n")
+}
+
+/// A CLI's usage synopsis line: a command word, then its `[--option …]` list.
+fn is_usage_synopsis(line: &str) -> bool {
+    let line = line.trim_start();
+    line.split_once(" [")
+        .is_some_and(|(cmd, rest)| !cmd.is_empty() && !cmd.contains(' ') && rest.starts_with('-') && line.matches(" [").count() >= 3)
 }
 
 #[cfg(test)]
@@ -3704,6 +3754,74 @@ mod tests {
         // Unknown failures keep the tail.
         let raw = map_node_error(&["ERR_PNPM_SOMETHING went sideways".into()]);
         assert!(raw.to_string().contains("went sideways"), "{raw}");
+    }
+
+    /// Every live-check example that makes a git commit for its fixture turns commit signing
+    /// off: the machine's git config is not the fixture's, and the Dell signs every commit with
+    /// gpg — which timed out over SSH and failed six examples there before any check ran
+    /// (5–6 Nov 2026). A guard, because the bad line passes on every machine without signing.
+    #[test]
+    fn every_example_that_commits_a_fixture_turns_signing_off() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut bad = Vec::new();
+        let mut committing = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("examples dir") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("example source");
+            if !src.contains("\"commit\"") {
+                continue;
+            }
+            committing += 1;
+            if !src.contains("commit.gpgsign=false") {
+                bad.push(path.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        }
+        assert!(committing >= 5, "found only {committing} committing examples: is the scan reading them?");
+        assert!(bad.is_empty(), "pass `-c commit.gpgsign=false` to the fixture's git: {bad:?}");
+    }
+
+    /// The Dell's own output (6 Nov 2026): a GLOBAL PHPCS installer plugin the allow-plugins
+    /// config never ruled on. The user is told which plugin, that it is theirs, and the
+    /// command — never the box's last three wrapped lines and Composer's usage synopsis.
+    #[test]
+    fn a_blocked_composer_plugin_is_named_with_the_command_that_settles_it() {
+        let tail: Vec<String> = [
+            "In PluginManager.php line 821:",
+            "",
+            "  dealerdirect/phpcodesniffer-composer-installer (installed globally) contains a Composer plugin",
+            "   which is blocked by your allow-plugins config. You may add it to the list if you consider it",
+            "  safe.",
+            "  You can run \"composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-com",
+            "  poser-installer [true|false]\" to enable it (true) or disable it explicitly and suppress this e",
+            "  xception (false)",
+            "  See https://getcomposer.org/allow-plugins",
+            "",
+            "install [--prefer-source] [--prefer-dist] [--prefer-install PREFER-INSTALL] [--dry-run] [--download-only] [--] [<packages>...]",
+        ]
+        .map(String::from)
+        .to_vec();
+        let msg = map_composer_error(&tail).to_string();
+        assert!(msg.contains("dealerdirect/phpcodesniffer-composer-installer"), "the plugin is named: {msg}");
+        assert!(msg.contains("GLOBAL"), "and whose it is: {msg}");
+        assert!(
+            msg.contains("composer global config allow-plugins.dealerdirect/phpcodesniffer-composer-installer true"),
+            "and the command, unwrapped: {msg}"
+        );
+        assert!(!msg.contains("--prefer-source"), "never Composer's usage synopsis: {msg}");
+
+        // A project's own plugin: the project-level command.
+        let local = map_composer_error(&["  acme/installer contains a Composer plugin which is blocked by your allow-plugins config.".into()]).to_string();
+        assert!(local.contains("composer config allow-plugins.acme/installer true") && !local.contains("GLOBAL"), "{local}");
+
+        // Any unmapped failure: the usage synopsis and the box's blank padding never use up
+        // the lines a user is shown.
+        let other = map_composer_error(&tail[..0].iter().cloned().chain(
+            ["  Something new went wrong", "  on two lines", "", "install [--prefer-source] [--prefer-dist] [--dry-run] [--] [<packages>...]"].map(String::from),
+        ).collect::<Vec<_>>()).to_string();
+        assert!(other.contains("Something new went wrong") && other.contains("on two lines") && !other.contains("--prefer-source"), "{other}");
     }
 
     #[test]

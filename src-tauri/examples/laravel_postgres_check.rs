@@ -105,28 +105,23 @@ async fn main() {
         .await
         .expect("postgres tree");
     rexenv_lib::core::postgres::initialize(&*plat, &basedir, &datadir).expect("initdb");
-    let child = plat
-        .supervisor()
-        .spawn_logged(
-            &rexenv_lib::core::postgres::postgres_bin(&basedir),
-            &[
-                "-D".to_string(),
-                datadir.display().to_string(),
-                "-p".to_string(),
-                port.to_string(),
-                "-c".to_string(),
-                "listen_addresses=127.0.0.1".to_string(),
-                "-c".to_string(),
-                "unix_socket_directories=".to_string(),
-                // The whole reason this example can be run in seconds: the
-                // stall it measures ends at the server's auth timeout.
-                "-c".to_string(),
-                "authentication_timeout=5".to_string(),
-            ],
-            &plat.paths().log_dir().expect("log dir").join("postgres-stdout.log"),
-        )
-        .expect("start postgres");
-    let mut server = common::Reaped::new(child, port, "postgres");
+    // The whole reason this example can be run in seconds: the stall it measures ends
+    // at the server's auth timeout — written into the throwaway cluster's own config.
+    {
+        use std::io::Write;
+        let mut conf = std::fs::OpenOptions::new()
+            .append(true)
+            .open(datadir.join("postgresql.conf"))
+            .expect("the cluster's postgresql.conf");
+        writeln!(conf, "\nauthentication_timeout = 5").expect("write authentication_timeout");
+    }
+    // Started the way the product starts it (`postgres::start`), never by spawning
+    // `postgres.exe` here: on Windows under an administrator token — every SSH session on
+    // the Dell — `postgres.exe` refuses to run at all, and only `pg_ctl`'s restricted-token
+    // path starts it. The bare spawn left this check's cluster dead on the Dell (5 Nov
+    // 2026, "listening on :15432 = false").
+    let proc = rexenv_lib::core::postgres::start(&*plat, &basedir, &datadir, port).expect("start postgres");
+    let mut server = common::Reaped::from_proc(proc, port, "postgres");
     for _ in 0..60 {
         if engine.running() {
             break;
@@ -268,7 +263,14 @@ async fn main() {
         let mut line = |l: &str| println!("    {l}");
         // Composer needs a HOME to put its cache in; the sandbox platform gives
         // this example everything else, but composer reads the environment.
-        let env = vec![(
+        // The login environment the product hands every repo step, plus COMPOSER_HOME — never
+        // COMPOSER_HOME ALONE: `spawn_streamed` clears the environment, and a Windows child
+        // with no `SystemRoot` cannot resolve a hostname. This check's Composer failed
+        // "Could not resolve host: repo.packagist.org" on the Dell every time (5 Nov 2026)
+        // while Composer run from a shell reached it.
+        let mut env = plat.shell().login_shell_env().expect("login_shell_env");
+        env.retain(|(k, _)| !k.eq_ignore_ascii_case("COMPOSER_HOME"));
+        env.push((
             "COMPOSER_HOME".to_string(),
             plat.paths()
                 .app_data_dir()
@@ -276,7 +278,7 @@ async fn main() {
                 .join("composer-home")
                 .display()
                 .to_string(),
-        )];
+        ));
         let created = laravel::create_project(
             plat.supervisor(),
             php_bin,
