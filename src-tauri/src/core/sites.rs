@@ -188,6 +188,17 @@ fn ensure_engine_supports(
     engine: SiteDbEngine,
     php_patch: &str,
 ) -> Result<()> {
+    ensure_engine_supports_on(&crate::platform::current().supervisor().php_pool_model(), site_type, engine, php_patch)
+}
+
+/// [`ensure_engine_supports`] for a given pool model — pure, so a test states each platform's
+/// answer on any host (Windows CI failed the host-bound test from 16013d9f on, 4 Nov 2026).
+fn ensure_engine_supports_on(
+    model: &crate::platform::traits::PoolModel,
+    site_type: SiteType,
+    engine: SiteDbEngine,
+    php_patch: &str,
+) -> Result<()> {
     if engine != SiteDbEngine::Postgres {
         return Ok(());
     }
@@ -213,13 +224,13 @@ fn ensure_engine_supports(
     // (the update manifest offers upstream's newer ones), and asking per minor
     // said "8.3 is fine" about a machine running 8.3.32 — the site was created
     // and `artisan migrate` then spun at 100% CPU for minutes (ledger #550).
-    if !crate::core::php::pdo_pgsql_supported(php_patch) {
+    if !crate::core::php::pdo_pgsql_supported_on(model, php_patch) {
         return Err(Error::Other(format!(
             "PHP {php_patch} cannot reach PostgreSQL — a PostgreSQL site talks to its \
              database through PDO, and that build has no working `pdo_pgsql` (it advertises \
              the driver and then hangs; measured against PostgreSQL 16, 17 and 18). Use PHP \
              {} or newer for this site, or MySQL/MariaDB on this one.",
-            crate::core::php::oldest_pdo_pgsql_minor()
+            crate::core::php::oldest_pdo_pgsql_minor_on(model)
         )));
     }
     Ok(())
@@ -3347,6 +3358,20 @@ mod tests {
             key_path: std::path::PathBuf::from("/dev/null"),
         };
         for (site_type, php) in [(SiteType::Wordpress, "8.4"), (SiteType::Php, "7.4"), (SiteType::Laravel, "7.4")] {
+            // Only the shapes THIS platform refuses: on Windows the group loads `pdo_pgsql` on
+            // every minor (#939), so a Laravel or Blank-PHP site on 7.4 + PostgreSQL is
+            // allowed there and went on to the certificate step — red on Windows CI from
+            // 16013d9f on. WordPress on PostgreSQL is refused everywhere, so every platform
+            // keeps at least that row.
+            let patch = crate::core::binaries::pins()
+                .php_versions
+                .iter()
+                .find(|v| crate::core::php::minor_of(v) == php)
+                .expect("a pinned patch for the minor")
+                .to_string();
+            if site_type != SiteType::Wordpress && crate::core::php::pdo_pgsql_supported(&patch) {
+                continue;
+            }
             let domain = format!("refused-{}.rex", site_type.as_db());
             let new = NewSite {
                 name: domain.clone(),
@@ -3374,6 +3399,11 @@ mod tests {
     fn postgres_is_refused_at_the_insert_chokepoint_for_two_different_reasons() {
         // Not in the dialog: `rex site create --db postgres` and the MCP
         // create_site tool both parse the engine out of a string and land here.
+        // The php-fpm platforms' answer, stated by model so it holds on every host — the
+        // host-bound form went red on Windows CI, where the group loads `pdo_pgsql` on every
+        // minor; that platform's answer is the last block.
+        let fpm = crate::platform::traits::PoolModel::Fpm;
+        let ensure_engine_supports = |t, e, v: &str| ensure_engine_supports_on(&fpm, t, e, v);
         let err = ensure_engine_supports(SiteType::Wordpress, SiteDbEngine::Postgres, "8.4.23")
             .expect_err("WordPress on PostgreSQL must be refused");
         let msg = err.to_string();
@@ -3385,7 +3415,7 @@ mod tests {
         );
         // …and it holds on a PHP that CAN reach PostgreSQL — the WordPress
         // refusal must not be quietly resting on the runtime one.
-        assert!(crate::core::php::pdo_pgsql_supported("8.4.27"));
+        assert!(crate::core::php::pdo_pgsql_supported_on(&fpm, "8.4.27"));
 
         // The second refusal has a different subject: the PHP MINOR, not the
         // site type. Both types are allowed on a runtime with the driver and
@@ -3407,7 +3437,7 @@ mod tests {
                     .to_string();
                 assert!(m.contains("PDO"), "the refusal must name the reason: {m}");
                 assert!(
-                    m.contains(&crate::core::php::oldest_pdo_pgsql_minor()),
+                    m.contains(&crate::core::php::oldest_pdo_pgsql_minor_on(&fpm)),
                     "and the version that works: {m}"
                 );
                 assert!(m.contains(bad), "and the build the site is on: {m}");
@@ -3427,6 +3457,20 @@ mod tests {
                 assert!(ensure_engine_supports(t, e, v).is_ok(), "{t:?} + {e:?} on {v}");
             }
         }
+
+        // A php-cgi group that loads `pdo_pgsql` (Windows, #939): the runtime refusal never
+        // fires, on any patch; WordPress's own refusal still does.
+        let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
+            extensions: &["pdo_pgsql"],
+            zend_extensions: &[],
+            per_version: &[],
+        });
+        for t in [SiteType::Laravel, SiteType::Php] {
+            for v in ["7.4.33", "8.0.31", "8.3.33"] {
+                assert!(ensure_engine_supports_on(&group, t, SiteDbEngine::Postgres, v).is_ok(), "{t:?} on {v}, group");
+            }
+        }
+        assert!(ensure_engine_supports_on(&group, SiteType::Wordpress, SiteDbEngine::Postgres, "8.4.23").is_err());
     }
 
     const WP_PHASES: &[&str] =

@@ -486,10 +486,22 @@ fn postgres_sites_on(conn: &Connection, minor: &str) -> Vec<String> {
 /// restate — an update offer that REMOVES a capability looks exactly like one
 /// that does not.
 pub fn update_cost(current: &str, updatable: Option<&str>, pg_sites: &[String]) -> Option<String> {
+    update_cost_on(&crate::platform::current().supervisor().php_pool_model(), current, updatable, pg_sites)
+}
+
+/// [`update_cost`] for a given pool model — pure, so a test states each platform's answer on
+/// any host. The host-bound form failed three tests on Windows CI from 16013d9f on: there the
+/// group loads `pdo_pgsql` on every minor, so no update costs anything (4 Nov 2026).
+pub fn update_cost_on(
+    model: &crate::platform::traits::PoolModel,
+    current: &str,
+    updatable: Option<&str>,
+    pg_sites: &[String],
+) -> Option<String> {
     let target = updatable?;
     // Only a move FROM a build with the driver TO one without it costs anything.
     // The reverse (upstream → ours) is a gain, and neither-has-it is no change.
-    if !pdo_pgsql_supported(current) || pdo_pgsql_supported(target) {
+    if !pdo_pgsql_supported_on(model, current) || pdo_pgsql_supported_on(model, target) {
         return None;
     }
     Some(match pg_sites {
@@ -1572,6 +1584,10 @@ mod tests {
         // The case: a minor rexenv builds (8.3.36, driver) with upstream's next
         // patch on offer (8.3.37, no driver). That is the ONLY direction that
         // costs anything.
+        // The php-fpm platforms' answer (rexenv/runtimes' builds, asked per patch); the
+        // Windows group's is at the end. Stated per model so it holds on every host.
+        let fpm = crate::platform::traits::PoolModel::Fpm;
+        let update_cost = |c: &str, u: Option<&str>, s: &[String]| update_cost_on(&fpm, c, u, s);
         let none: [String; 0] = [];
         let cost = update_cost("8.3.36", Some("8.3.37"), &none).expect("a cost");
         assert!(cost.contains("8.3.37") && cost.contains("PostgreSQL"), "{cost}");
@@ -1605,6 +1621,15 @@ mod tests {
         // versions: 8.1.34 is ours, so an offer of it from an upstream patch is
         // the shape a future release creates.
         assert_eq!(update_cost("8.1.33", Some("8.1.34"), &none), None, "a gain is not a cost");
+
+        // A php-cgi group that loads `pdo_pgsql` (Windows: php.net's zips carry it on every
+        // minor) loses nothing to any update.
+        let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
+            extensions: &["pdo_pgsql"],
+            zend_extensions: &[],
+            per_version: &[],
+        });
+        assert_eq!(update_cost_on(&group, "8.3.36", Some("8.3.37"), &none), None, "the group never loses the driver");
     }
 
     #[test]

@@ -346,6 +346,16 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   from a `/IT` task, not the elevated ssh token) → 8 × exit 0, 6–17 s each — 0 of 13 on the Dell in all. The only
   host that ever failed (the Win11 ARM VM) was deleted 27 Oct; this stays open until a second Windows host runs it.
 
+- [x] **The `verify (Windows)` CI job was red on every push since 16013d9f (4 Nov 2026)** ✓ 6 Nov 2026 — found
+  when the owner noticed the push action failing. Three lib tests (`an_update_that_removes_postgresql_says_so_and_names_the_sites`,
+  `postgres_is_refused_at_the_insert_chokepoint_for_two_different_reasons`,
+  `a_site_refused_for_its_shape_leaves_no_folder_behind`) asked the HOST's pool model for the pdo_pgsql answer
+  while asserting the php-fpm platforms' — and #939 made the Windows group answer "yes" on every minor, so on
+  the Windows runner nothing was refused ("a cost" / "PostgreSQL needs PDO" panics, and the third reached the
+  certificate step). Not a product bug: the product's Windows answer is the measured one. Fix: `update_cost_on` /
+  `ensure_engine_supports_on` take the model, the tests state the php-fpm answer through `PoolModel::Fpm` and the
+  group's answer explicitly, and the provision test keeps only the shapes the running platform refuses. The
+  Mac's `verify.sh` could not catch it: `windows-check` compiles Windows, it does not run its tests.
 - [x] **Windows: PHP 7.4/8.0/8.1 failed their checksum on every fresh install since 25 Oct** ✓ 5 Nov 2026 — found
   creating a 7.4 site on the Dell (`checksum mismatch for …/php-builder-windows/releases/download/php7.4/…`).
   shivammathur rebuilt all three backport zips IN PLACE on 25 Oct (no backport commit after 19 Oct), the case
