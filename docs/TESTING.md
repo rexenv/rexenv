@@ -1925,8 +1925,8 @@ bloating the fast path:
   10 s" threshold assumed a count a 10 s look cannot make — and legitimate load already passed it.
   `windows_cgi_breaker_check` (#605) is the proof built on those numbers: it ticks
   `PhpFpmPools::trip_spinning` every 10 s, as the watchdog does, through legitimate load and a
-  worker-killing script (no trip, still answering) and then a spin (stopped, reason quoted, no
-  php-cgi left).
+  worker-killing script (no trip, still answering) and then a spin (stopped on the SECOND tick —
+  two consecutive spinning windows, `php_cgi::SPIN_WINDOWS` — reason quoted, no php-cgi left).
   `windows_wp_site_check` (#606) is W4's "Done when": the core create path for a one-click WordPress
   site, as `wp_create_serve` walks it on macOS minus the edge and DNS — MySQL, Mailpit, the php-cgi
   group, `sites::provision`, `install_for_site`, `rebuild_configs`, nginx — then requests shaped as

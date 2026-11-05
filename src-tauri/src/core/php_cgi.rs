@@ -298,6 +298,39 @@ pub fn spinning(cpu_ms: u64, window: std::time::Duration) -> bool {
     window >= SPIN_MIN_WINDOW && cpu_ms as f64 >= window.as_millis() as f64 * SPIN_CPU_SHARE
 }
 
+/// How many CONSECUTIVE spinning windows stop a group (owner ruling 5 Nov 2026). A start's
+/// burst — the parent spawning its workers — ends inside one window; a spin does not. Why two:
+/// on the Win11 ARM VM (x64 php-cgi emulated) the breaker stopped the 8.2 and 8.3 groups
+/// within ~25 s of 0.9.1's swap, one window read as a spin, while the Dell (native x64, 5 Nov
+/// 2026) never came near it: 39 group starts, the worst 5-s window 2.8% of a core. A real spin
+/// is still stopped, one watchdog tick (10 s) later.
+pub const SPIN_WINDOWS: u8 = 2;
+
+/// What one breaker read decides for a group already `hot` windows into a spin.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SpinVerdict {
+    /// The window is shorter than [`SPIN_MIN_WINDOW`]: judge nothing, keep the baseline.
+    Open,
+    /// A full window was judged: start the next one, the group now this many windows hot
+    /// (0 = it did not spin, so one calm window clears an earlier hot one).
+    Next(u8),
+    /// The last [`SPIN_WINDOWS`] windows all spun: stop the group.
+    Trip,
+}
+
+/// The breaker's decision for `cpu_ms` of parent CPU over `window`, `hot` windows in.
+pub fn judge(hot: u8, cpu_ms: u64, window: std::time::Duration) -> SpinVerdict {
+    if window < SPIN_MIN_WINDOW {
+        SpinVerdict::Open
+    } else if !spinning(cpu_ms, window) {
+        SpinVerdict::Next(0)
+    } else if hot.saturating_add(1) >= SPIN_WINDOWS {
+        SpinVerdict::Trip
+    } else {
+        SpinVerdict::Next(hot + 1)
+    }
+}
+
 /// A process's user + kernel CPU so far, in ms; `None` when it cannot be read.
 pub fn cpu_ms(pid: u32) -> Option<u64> {
     let mut sys = sysinfo::System::new();
@@ -370,6 +403,22 @@ mod tests {
         assert!(!spinning(2_499, Duration::from_secs(10)));
         // A tick a second after a spawn: the parent's own startup is not a spin.
         assert!(!spinning(900, Duration::from_secs(1)));
+    }
+
+    /// One spinning window is not a trip; two in a row are; a calm window between them clears
+    /// the first (owner ruling 5 Nov 2026 — the ARM VM's swap burst, the Dell's 2.8%).
+    #[test]
+    fn the_breaker_trips_only_on_consecutive_spinning_windows() {
+        use std::time::Duration;
+        let ten = Duration::from_secs(10);
+        assert_eq!(judge(0, 9_680, ten), SpinVerdict::Next(1), "a single spinning window stopped the group");
+        assert_eq!(judge(1, 9_680, ten), SpinVerdict::Trip, "a second spinning window in a row must stop it");
+        assert_eq!(judge(1, 135, ten), SpinVerdict::Next(0), "a calm window must clear the earlier hot one");
+        assert_eq!(judge(0, 135, ten), SpinVerdict::Next(0));
+        // A short window judges nothing and keeps the count, whatever the CPU.
+        assert_eq!(judge(1, 900, Duration::from_secs(1)), SpinVerdict::Open);
+        // The Dell's worst start window (2.8% of a core over 5 s) never even counts as hot.
+        assert_eq!(judge(0, 140, Duration::from_secs(5)), SpinVerdict::Next(0));
     }
 
     #[test]

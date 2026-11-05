@@ -1039,6 +1039,9 @@ struct Pool {
     /// kernel ms and when that was read. A spawn starts it at zero; an adopted pool has none
     /// until its first watchdog read.
     cpu: Option<(u64, std::time::Instant)>,
+    /// Consecutive breaker windows this pool's process spun through (`php_cgi::judge`); the
+    /// group is stopped at [`super::php_cgi::SPIN_WINDOWS`], and a calm window resets it.
+    hot: u8,
 }
 
 /// Consecutive dead-looking polls before a pool is reaped on PROBE evidence
@@ -1212,6 +1215,7 @@ impl PhpFpmPools {
             misses: 0,
             // A process spawned now has used no CPU yet: the breaker's first window starts here.
             cpu: Some((0, std::time::Instant::now())),
+            hot: 0,
         });
         Ok(())
     }
@@ -1262,6 +1266,7 @@ impl PhpFpmPools {
             debug: true,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
         Ok(())
     }
@@ -1281,6 +1286,7 @@ impl PhpFpmPools {
             debug,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
     }
 
@@ -1358,7 +1364,8 @@ impl PhpFpmPools {
 
     /// The php-cgi churn breaker (plan §3 D1(a), owner rulings 14 Sep 2026, ledger #605): stop
     /// every group whose PARENT used [`super::php_cgi::SPIN_CPU_SHARE`] of a CPU core or more
-    /// since its baseline — a parent retrying workers it cannot start — and return
+    /// over [`super::php_cgi::SPIN_WINDOWS`] consecutive windows — a parent retrying workers it
+    /// cannot start; a start's burst fills one window at most — and return
     /// `(minor, reason)` for each, the reason quoting that group's own output. The watchdog
     /// reports them `gave-up` and nothing restarts them: a respawn would spin again.
     ///
@@ -1388,9 +1395,10 @@ impl PhpFpmPools {
             .collect()
     }
 
-    /// [`Self::trip_spinning`]'s mechanism: read every pool process's CPU, stop and drop the ones
-    /// spinning since their baseline, move the baseline forward on the rest once a full window
-    /// has passed, and return the stopped minors. An ADOPTED parent is read only while its
+    /// [`Self::trip_spinning`]'s mechanism: read every pool process's CPU, and once a full window
+    /// has passed judge it ([`super::php_cgi::judge`]) — stop and drop a process whose window
+    /// completes a run of spinning ones, otherwise count the window hot or calm and move the
+    /// baseline forward — and return the stopped minors. An ADOPTED parent is read only while its
     /// command line names its minor's ini, so a busy process on a recycled pid is never stopped.
     fn stop_spinning(&mut self, platform: &dyn Platform) -> Vec<String> {
         let now = std::time::Instant::now();
@@ -1407,15 +1415,22 @@ impl PhpFpmPools {
                 self.pools.push(p);
                 continue;
             };
-            let spinning = p.cpu.is_some_and(|(before, at)| {
-                super::php_cgi::spinning(cpu.saturating_sub(before), now.duration_since(at))
+            // No baseline yet (adopted): this read is the first one, a calm start.
+            let verdict = p.cpu.map_or(super::php_cgi::SpinVerdict::Next(0), |(before, at)| {
+                super::php_cgi::judge(p.hot, cpu.saturating_sub(before), now.duration_since(at))
             });
-            if !spinning {
-                if p.cpu.map_or(true, |(_, at)| now.duration_since(at) >= super::php_cgi::SPIN_MIN_WINDOW) {
-                    p.cpu = Some((cpu, now));
+            match verdict {
+                super::php_cgi::SpinVerdict::Open => {
+                    self.pools.push(p);
+                    continue;
                 }
-                self.pools.push(p);
-                continue;
+                super::php_cgi::SpinVerdict::Next(hot) => {
+                    p.hot = hot;
+                    p.cpu = Some((cpu, now));
+                    self.pools.push(p);
+                    continue;
+                }
+                super::php_cgi::SpinVerdict::Trip => {}
             }
             let _ = services::stop(platform, pid);
             p.child.wait();
@@ -2595,6 +2610,7 @@ mod tests {
             debug: false,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
         pools.pools.push(Pool {
             minor: "8.3".into(),
@@ -2603,6 +2619,7 @@ mod tests {
             debug: false,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
 
         let reaped = pools.reap_dead(&platform);
@@ -2712,6 +2729,7 @@ mod tests {
             debug: false,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
 
         let busy = GroupPlatform(GroupStub { cmd: None, model: PoolModel::Fpm, held: Some(3) });
@@ -2755,6 +2773,7 @@ mod tests {
                 debug: false,
                 misses: 0,
                 cpu: Some((0, window_ago)),
+                hot: 0,
             });
         }
         std::thread::sleep(std::time::Duration::from_secs(4));
@@ -2764,18 +2783,32 @@ mod tests {
         assert!(pools.has("8.3", false) && pools.has("8.4", false));
 
         let group = GroupPlatform(GroupStub { cmd: None, model: GROUP_MODEL, held: None });
-        assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
-        assert!(!pools.has("8.3", false));
-        assert!(pools.has("8.4", false), "an idle process was stopped");
+        // One spinning window is not a trip (owner ruling 5 Nov 2026, `php_cgi::SPIN_WINDOWS`).
+        assert!(pools.stop_spinning(&group).is_empty(), "one spinning window stopped the group");
+        assert!(pools.has("8.3", false) && pools.has("8.4", false));
         // By MINOR, not by index: `stop_spinning` rebuilds the vector, so `pools[0]` means
         // "whatever survived first" — which reads as this assertion passing or failing for
         // reasons that have nothing to do with the baseline (W12: it failed on Windows
         // while naming the idle pool, and the idle pool is the only one left).
-        let idle = pools.pools.iter().find(|p| p.minor == "8.4").expect("the idle pool survives");
+        let pool = |pools: &PhpFpmPools, minor: &str| -> (Option<(u64, std::time::Instant)>, u8) {
+            let p = pools.pools.iter().find(|p| p.minor == minor).expect("the pool survives");
+            (p.cpu, p.hot)
+        };
+        assert_eq!(pool(&pools, "8.3").1, 1, "the spinner's first window must count as hot");
+        assert_eq!(pool(&pools, "8.4").1, 0);
         assert!(
-            idle.cpu.is_some_and(|(_, at)| at > window_ago),
+            pool(&pools, "8.4").0.is_some_and(|(_, at)| at > window_ago),
             "a full window passed: the idle pool's baseline must move forward"
         );
+        // The second window, backdated so the test does not wait out five seconds: the
+        // spinner burns a core through it, the idle process does not.
+        for p in &mut pools.pools {
+            p.cpu = p.cpu.map(|(ms, _)| (ms, std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
+        assert!(!pools.has("8.3", false));
+        assert!(pools.has("8.4", false), "an idle process was stopped");
         for p in &mut pools.pools {
             p.child.kill();
             p.child.wait();
@@ -2797,6 +2830,7 @@ mod tests {
             debug: false,
             misses: 0,
             cpu: Some((0, window_ago)),
+            hot: 0,
         });
         std::thread::sleep(std::time::Duration::from_secs(4));
         let recycled = GroupPlatform(GroupStub { cmd: Some("C:/Windows/System32/svchost.exe -k netsvcs"), model: GROUP_MODEL, held: None });
@@ -2807,6 +2841,11 @@ mod tests {
             model: GROUP_MODEL,
             held: None,
         });
+        assert!(pools.stop_spinning(&ours).is_empty(), "one spinning window stopped the group");
+        for p in &mut pools.pools {
+            p.cpu = p.cpu.map(|(ms, _)| (ms, std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW));
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3));
         assert_eq!(pools.stop_spinning(&ours), vec!["8.3".to_string()]);
         // Kill it HERE rather than trusting the stub's `stop`: that stub shells out to
         // `kill`, which does not exist on Windows, so the spinning child outlived the
@@ -2871,6 +2910,7 @@ mod tests {
             debug: false,
             misses: 0,
             cpu: None,
+            hot: 0,
         });
         assert!(
             pools.reap_dead(&platform).is_empty(),

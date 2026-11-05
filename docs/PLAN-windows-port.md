@@ -350,6 +350,9 @@ before anything is built on it.
       script does not stop the group; a tripped group is stopped and reported `gave-up` with the
       last `unable to spawn` line from its OWN output — one output log per minor, where every minor
       had shared one file — and is never restarted automatically, since a respawn would spin again.
+      **Amended 5 Nov 2026 (owner):** two CONSECUTIVE spinning windows, not one (`SPIN_WINDOWS`) —
+      one window stopped the 8.2/8.3 groups mid-swap on the ARM VM, while the Dell's 39 starts never
+      passed 2.8% of a core; a spin is now stopped on the second tick (the Dell, `windows_cgi_breaker_check`).
       *Done when (W4):* on the Dell, a group whose worker cannot be spawned is stopped within two
       watchdog ticks with that line in the reason and no php-cgi left, while legitimate churn and a
       worker-killing script leave it serving.

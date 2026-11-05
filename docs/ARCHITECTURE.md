@@ -833,8 +833,10 @@ Live-proven end to end by `site_stop_start_check`.
   **The churn breaker** (#605): php-cgi's parent respawns a dead worker at once and has no backoff,
   so when a worker cannot be spawned at all it retries at full speed — measured on the Dell at
   96.8% of a core and ~1 MB of log a second, with the port and the surviving workers still serving.
-  Each watchdog tick reads the parent's CPU (`php_cgi::cpu_ms`); at 25% of a core or more over at
-  least 5 s, `PhpFpmPools::trip_spinning` stops the group and the watchdog reports `gave-up`,
+  Each watchdog tick reads the parent's CPU (`php_cgi::cpu_ms`); at 25% of a core or more over TWO
+  consecutive windows of at least 5 s (`php_cgi::SPIN_WINDOWS`, `judge`; ruling 5 Nov 2026 — one
+  window stopped two groups mid-swap under ARM emulation, where a start's burst can fill one window but
+  never two), `PhpFpmPools::trip_spinning` stops the group and the watchdog reports `gave-up`,
   quoting the last `unable to spawn` line from that minor's own output log
   (`php-cgi-<minor>-output.log`), and never restarts it — a respawn would spin again. Legitimate
   recycling (0.9% at 1722 requests a second) and a script that kills its own worker (0.6%, the other

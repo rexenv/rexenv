@@ -168,7 +168,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   … no authentication agent is running"). Either the toast is too short-lived to count or this path skips both;
   the log line is owed in every case (an apply that did nothing must say so somewhere a reader can find).
 
-- [ ] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
+- [x] **Windows: the php-cgi churn breaker stopped two groups mid-swap on the Win11 ARM VM** (found 24 Oct 2026
   running 0.9.1's §M). After the in-app relaunch onto 0.9.1 moved the 8.2 and 8.3 groups onto their re-pinned
   builds, `health: [gave-up] PHP-FPM 8.2/8.3: stopped — its php-cgi parent was using most of a CPU core in a
   loop` fired for BOTH within ~25 s of the swap (`php_cgi::SPIN_CPU_SHARE` 0.25 over ≥ 5 s, ledger #605), the
@@ -186,6 +186,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   same x64 zips emulated (the catalog's arm64 rows point at the x64 zip), which is where it tripped — no ARM host
   exists since the VM's deletion (27 Oct). Without one, the low-risk change is to require the share over TWO
   consecutive windows (a spawn burst ends, a spin does not) — owner's call before building it.
+  ✓ **Built 5 Nov 2026 (owner said build it):** `php_cgi::judge` counts consecutive spinning windows
+  (`Pool::hot`), trip at `SPIN_WINDOWS` = 2, a calm window clears the count. L0 + 3/3 plants (ledger #605);
+  the Dell's `windows_cgi_breaker_check` `PASS`, the spin stopped on the 2nd tick (20 s), legitimate load
+  (46,672 requests) and a worker-killing script untouched. **Not proven:** that this clears the ARM
+  swap burst itself — no ARM host; a Windows-on-ARM user who meets a `gave-up` after an update is the signal.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`

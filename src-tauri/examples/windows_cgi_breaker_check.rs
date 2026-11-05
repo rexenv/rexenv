@@ -13,7 +13,8 @@
 //! - **Never on a script that kills its own worker:** three more ticks of that, the same.
 //! - **A spin is stopped:** a group started from a COPY of the PHP tree and ADOPTED (the path a
 //!   relaunched app takes — judged only while its command line names its ini) has its
-//!   php-cgi.exe renamed and one worker killed; the next tick stops it, quoting the group's own
+//!   php-cgi.exe renamed and one worker killed; the first tick only counts the spinning window
+//!   (`php_cgi::SPIN_WINDOWS`, two in a row), the second stops it, quoting the group's own
 //!   `unable to spawn` line, no php-cgi of the group is left, the port is free and the output
 //!   log stops growing.
 //!
@@ -152,13 +153,15 @@ mod windows {
         let spin_began = Instant::now();
         let mut tripped = Vec::new();
         let mut ticks = 0;
-        while tripped.is_empty() && ticks < 3 {
+        while tripped.is_empty() && ticks < 4 {
             std::thread::sleep(TICK);
             ticks += 1;
             tripped = adopted.trip_spinning(&*plat);
         }
         println!("  · tripped after {ticks} tick(s), {:.0} s: {tripped:?}", spin_began.elapsed().as_secs_f64());
-        check.is("the spin is stopped within two ticks", !tripped.is_empty() && ticks <= 2, &format!("{ticks} ticks"));
+        // Two consecutive spinning windows, so the SECOND tick: the first stopping it means
+        // one window tripped again; a third means a spinning window read as calm.
+        check.is("the spin is stopped on the second tick", !tripped.is_empty() && ticks == 2, &format!("{ticks} ticks"));
         check.is(
             "the reason quotes the group's own unable-to-spawn line",
             tripped.first().is_some_and(|(m, r)| m == MINOR && r.contains("unable to spawn: [0x00000002]")),
