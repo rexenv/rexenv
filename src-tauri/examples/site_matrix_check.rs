@@ -216,7 +216,7 @@ async fn main() {
             let conn = state.db.lock().unwrap();
             php::effective_patch(&conn, &minor).ok().flatten().unwrap_or_else(|| version.to_string())
         };
-        let site_php = binaries::resolve(handle.state::<AppState>().platform.as_ref(), "php", &patch)
+        let site_php = binaries::resolve_program(handle.state::<AppState>().platform.as_ref(), "php", &patch)
             .await
             .expect("resolve the effective PHP");
 
@@ -409,7 +409,7 @@ async fn run_one(
                         let conn = state.db.lock().unwrap();
                         php::effective_patch(&conn, &newest).ok().flatten().unwrap_or(newest.clone())
                     };
-                    php_owned = binaries::resolve(state.platform.as_ref(), "php", &patch).await.expect("newest PHP");
+                    php_owned = binaries::resolve_program(state.platform.as_ref(), "php", &patch).await.expect("newest PHP");
                 }
             }
             Err(e) => verdict_problems.push(format!("site_provision_retry refused: {e}")),

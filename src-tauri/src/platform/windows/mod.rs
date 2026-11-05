@@ -389,6 +389,8 @@ impl ProcessSupervisor for WindowsSupervisor {
             per_version: &[
                 ("zip", ExtChange::BuiltInBefore("8.2")),
                 ("gd", ExtChange::NamedBefore("8.0", "gd2")),
+                // 8.5 compiles OPcache in; its zip has no php_opcache.dll (the Dell, 5 Nov 2026).
+                ("opcache", ExtChange::BuiltInFrom("8.5")),
             ],
         })
     }

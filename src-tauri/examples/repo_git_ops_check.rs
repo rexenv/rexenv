@@ -26,6 +26,12 @@ fn git_in(dir: &Path, args: &[&str]) {
             "user.email=fixtures@rexenv.test",
             "-c",
             "user.name=rexenv fixtures",
+            // The machine's own git config is not the fixture's: the Dell signs every
+            // commit with gpg, which timed out with no agent over SSH (5 Nov 2026).
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "tag.gpgsign=false",
         ])
         .args(args)
         .output()

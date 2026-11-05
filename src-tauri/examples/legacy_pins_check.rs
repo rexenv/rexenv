@@ -195,7 +195,7 @@ async fn main() -> ExitCode {
                 continue;
             }
         };
-        let php = match binaries::resolve(plat, "php", full).await {
+        let php = match binaries::resolve_program(plat, "php", full).await {
             Ok(p) => p,
             Err(e) => {
                 check_line(&mut ok, &format!("php {full}"), false, &e.to_string());

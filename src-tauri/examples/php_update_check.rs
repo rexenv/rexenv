@@ -125,7 +125,7 @@ async fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let cli = match binaries::resolve(&*plat, "php", &target).await {
+    let cli = match binaries::resolve_program(&*plat, "php", &target).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("resolving php (cli) {target} FAILED: {e}");

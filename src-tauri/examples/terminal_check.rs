@@ -23,7 +23,7 @@ async fn main() {
     let plat = platform::current();
 
     // Bundled PHP 8.3.31 + WP-CLI + the `wp` wrapper.
-    let php_bin = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let php_bin = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.expect("php");
     let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let wp_dir = terminal::ensure_wp_wrapper(&*plat, &php_bin, &wp_phar).expect("wp wrapper");
     let php_dir = php_bin.parent().unwrap().to_path_buf();

@@ -72,7 +72,7 @@ fn extension_lines(group: &CgiGroup, version: &str, php_dir: &Path) -> String {
     for ext in group.ext_lines(version) {
         lines.push_str(&format!("extension = {ext}\n"));
     }
-    for ext in group.zend_extensions {
+    for ext in group.zend_lines(version) {
         lines.push_str(&format!("zend_extension = {ext}\n"));
     }
     lines
@@ -167,7 +167,11 @@ pub fn preflight_verdict(
     let warnings: Vec<&str> = output
         .lines()
         .map(str::trim)
-        .filter(|l| l.contains("PHP Startup") || l.contains("Unable to load") || l.starts_with("PHP Warning"))
+        // `Failed loading` is how a Zend extension fails, and php-cgi prints it without the
+        // `PHP ` prefix — the 8.5 opcache line passed every other test here (5 Nov 2026).
+        .filter(|l| {
+            l.contains("PHP Startup") || l.contains("Unable to load") || l.contains("Failed loading") || l.starts_with("PHP Warning")
+        })
         .collect();
     if !warnings.is_empty() {
         return Err(warnings.join("; "));
@@ -568,5 +572,34 @@ mod tests {
 
         // A version that does not parse takes no rule: the preflight names the gap.
         assert_eq!(RULES.ext_lines("weird"), ["curl", "gd", "imap", "zip"]);
+    }
+
+    /// 8.5 builds OPcache in and ships no `php_opcache.dll`: a `zend_extension = opcache` line
+    /// there printed `Warning: Failed loading Zend extension 'opcache'` ahead of every CLI run's
+    /// output (the Dell, 5 Nov 2026). The line goes from 8.5 on; OPcache is still expected
+    /// loaded; and that warning, which carries no `PHP ` prefix, now refuses a preflight.
+    #[test]
+    fn a_zend_extension_built_in_from_a_minor_gets_no_line_and_is_still_expected() {
+        use crate::platform::traits::ExtChange;
+        const RULES: CgiGroup = CgiGroup {
+            extensions: &["curl"],
+            zend_extensions: &["opcache"],
+            per_version: &[("opcache", ExtChange::BuiltInFrom("8.5"))],
+        };
+        let dir = Path::new("/php");
+        let zend = |v: &str| -> Vec<String> {
+            render_cli_ini(&RULES, v, dir).lines().filter_map(|l| l.strip_prefix("zend_extension = ").map(String::from)).collect()
+        };
+        assert_eq!(zend("8.4.27"), ["opcache"], "8.4 ships php_opcache.dll and must still load it");
+        assert!(zend("8.5.12").is_empty(), "8.5 has no php_opcache.dll to load");
+        let group_ini = render_ini(&RULES, "8.5.12", dir, Path::new("/l.log"), None, &[]);
+        assert!(!group_ini.contains("zend_extension"), "the group's ini follows the version too:\n{group_ini}");
+        let out_85 = "[PHP Modules]\ncurl\nZend OPcache\n\n[Zend Modules]\nZend OPcache\n";
+        assert_eq!(preflight_verdict(&RULES, "8.5.12", true, out_85), Ok(()));
+        let err = preflight_verdict(&RULES, "8.5.12", true, "[PHP Modules]\ncurl\n").unwrap_err();
+        assert!(err.contains("Zend OPcache"), "built in or not, OPcache must show loaded: {err}");
+        // The Dell's own line, as php-cgi prints it.
+        let warned = "Warning: Failed loading Zend extension 'opcache' (tried: C:\\php\\ext\\opcache (The specified module could not be found)) in Unknown on line 0\n[PHP Modules]\ncurl\nZend OPcache\n";
+        assert!(preflight_verdict(&RULES, "8.5.12", true, warned).is_err(), "a Zend extension's load failure passed the preflight");
     }
 }

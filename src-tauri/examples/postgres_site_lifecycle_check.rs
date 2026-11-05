@@ -117,7 +117,7 @@ async fn main() {
     // Leg 2, first half: the record and the artifact must agree. This is the
     // conflation that shipped — the minor was judged by a build that was not
     // the one the registry selects.
-    let php_bin = rexenv_lib::core::binaries::resolve(handle.state::<AppState>().platform.as_ref(), "php", &patch)
+    let php_bin = rexenv_lib::core::binaries::resolve_program(handle.state::<AppState>().platform.as_ref(), "php", &patch)
         .await
         .expect("the effective PHP resolves");
     let loaded = std::process::Command::new(&php_bin)

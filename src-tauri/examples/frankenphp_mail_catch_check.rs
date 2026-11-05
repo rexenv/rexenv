@@ -104,7 +104,7 @@ async fn main() -> std::process::ExitCode {
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     }
 
-    let bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
+    let bin = binaries::resolve_program(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp binary (cached)");
     // The backend's own stdout/stderr (under the sandbox) — spilled by every failure below.

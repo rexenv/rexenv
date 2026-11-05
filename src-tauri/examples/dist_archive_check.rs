@@ -138,7 +138,7 @@ async fn main() {
     // Binaries come from the shared cache (the documented exception); the
     // vendored tree is materialised INTO THE SANDBOX.
     let patch = php::patch_for_minor("8.3").expect("pinned 8.3");
-    let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("php");
+    let php_bin = binaries::resolve_program(&*plat, "php", patch).await.expect("php");
     let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("wp-cli phar");

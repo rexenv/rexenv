@@ -191,7 +191,7 @@ async fn main() {
 
     println!("\n=== 4. serve their file ===");
     let cfg = fresh;
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let mut nginx = Reaped::new(
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
         NGINX_PORT,

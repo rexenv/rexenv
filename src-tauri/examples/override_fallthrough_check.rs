@@ -100,7 +100,7 @@ async fn main() {
          refusal it justifies needs re-examining rather than this check re-running"
     );
 
-    let nginx_bin = rexenv_lib::core::binaries::resolve(
+    let nginx_bin = rexenv_lib::core::binaries::resolve_program(
         &*plat,
         "nginx",
         rexenv_lib::core::binaries::pins().nginx,

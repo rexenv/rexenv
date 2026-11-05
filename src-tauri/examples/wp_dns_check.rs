@@ -119,7 +119,7 @@ async fn main() {
 
     // 4) The bundled PHP — the build the bug lives in.
     let plat = platform::current();
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php)
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php)
         .await
         .expect("resolve the bundled php");
     let url = format!("http://{PROBE_HOST}:{FIXTURE_PORT}/");

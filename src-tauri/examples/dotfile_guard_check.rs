@@ -44,7 +44,7 @@ async fn main() -> ExitCode {
     let fpm_bin =
         binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.expect("php-fpm");
     let nginx_bin =
-        binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.expect("nginx");
+        binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.expect("nginx");
 
     // A docroot shaped like the incident: cloned repo droppings beside PHP.
     let docroot = sandbox.root().join("sites").join(domain).join("public");
@@ -152,7 +152,7 @@ async fn main() -> ExitCode {
     fpm.reap();
 
     // ── and against a REAL FrankenPHP (its embedded PHP, no pool) ──────────
-    let franken_bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
+    let franken_bin = binaries::resolve_program(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp (cached)");
     let franken_conf = frankenphp::write_config(

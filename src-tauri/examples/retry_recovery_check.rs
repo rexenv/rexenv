@@ -87,7 +87,7 @@ async fn main() {
     println!("=== a site is already being served ===");
     sites::provision(&conn, &*plat, &ca, mk(FIRST, &first_path)).expect("first site");
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: 8081, https: 8444, nginx: NGINX_PORT, bind: None }).unwrap();
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let mut nginx = Reaped::new(
         services::start_nginx(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix).unwrap(),
         NGINX_PORT,

@@ -247,7 +247,7 @@ async fn main() {
     // reap, URL capture) living in an example that already had WordPress, and a
     // second copy of the thing that stops a public tunnel leaking is a second
     // thing to keep correct.
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.expect("php");
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)
@@ -570,7 +570,7 @@ async fn main() {
     }
     println!("9 · origin_port({OVERRIDE}) = {fp_port} (nginx is {})", services::NGINX_HTTP_PORT);
 
-    let fp_bin = binaries::resolve(&*plat, "frankenphp", binaries::pins().frankenphp)
+    let fp_bin = binaries::resolve_program(&*plat, "frankenphp", binaries::pins().frankenphp)
         .await
         .expect("frankenphp binary");
     let fp_conf = frankenphp::write_config(

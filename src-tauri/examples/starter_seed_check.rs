@@ -177,7 +177,7 @@ async fn legs(
         eprintln!("FAIL 5: writing the starter files failed: {e}");
         return false;
     }
-    let php = match binaries::resolve(plat, "php", binaries::pins().php).await {
+    let php = match binaries::resolve_program(plat, "php", binaries::pins().php).await {
         Ok(p) => p,
         Err(e) => {
             // A missing PHP is a precondition failure, not a passing run: the

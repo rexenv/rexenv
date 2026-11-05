@@ -144,7 +144,7 @@ async fn main() -> std::process::ExitCode {
     );
 
     // ── B. the URL pass on a copy whose wp-config signs in nowhere (#573) ─────
-    let php8 = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let php8 = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.expect("php");
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.expect("wp-cli");
     let docroot = sandbox.root().join("Local Sites/ea/app/public");
     std::fs::create_dir_all(&docroot).unwrap();
@@ -197,7 +197,7 @@ async fn main() -> std::process::ExitCode {
     let scratch = sandbox.root().join("db-imports");
     for (label, php, from, to) in [
         ("PHP 8.x", php8.clone(), "ea.local", "ea.rex"),
-        ("PHP 7.4", binaries::resolve(&*plat, "php", "7.4.33").await.expect("php 7.4"), "ea.rex", "ea2.rex"),
+        ("PHP 7.4", binaries::resolve_program(&*plat, "php", "7.4.33").await.expect("php 7.4"), "ea.rex", "ea2.rex"),
     ] {
         let replaced =
             wordpress::rehome_urls_on_copy(&*plat, &php, &wp, &docroot, &scratch, PORT, COPY_DB, from, to, false, rexenv_lib::core::proxy::DEFAULT_HTTPS_PORT);

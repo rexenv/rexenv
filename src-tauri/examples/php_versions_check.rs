@@ -131,7 +131,7 @@ async fn main() {
         println!("=== PHP {v} ===");
 
         // CLI: resolve, then prove it is THIS version and can serve WordPress.
-        match binaries::resolve(&*plat, "php", v).await {
+        match binaries::resolve_program(&*plat, "php", v).await {
             Ok(path) => {
                 println!("  php     cached at: {}", path.display());
                 match version_line(&path) {

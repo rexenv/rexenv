@@ -104,7 +104,7 @@ async fn main() {
             return;
         }
     }
-    let nginx = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
     let cert =
         ssl::ensure_site_cert(plat.paths(), plat.permissions(), &ca, adminer::ADMINER_HOST)

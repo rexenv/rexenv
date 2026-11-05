@@ -18,8 +18,22 @@ use tauri::Manager;
 
 mod common;
 
-#[tokio::main]
-async fn main() {
+/// The body runs on a thread with an 8 MB stack, not on `main`'s: Windows gives the main
+/// thread 1 MB, and `#[tokio::main]` polls the whole future there, so `cli_server`'s
+/// dispatch future overflowed it on the Dell (5 Nov 2026, "thread 'main' has overflowed its
+/// stack") — an abort, which skips every Drop and left the example's mysqld running on the
+/// real port for the next check to trip over. macOS's main thread is 8 MB, so the Mac never
+/// saw it.
+fn main() {
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| tokio::runtime::Builder::new_multi_thread().enable_all().build().expect("runtime").block_on(run()))
+        .expect("spawn the check's thread")
+        .join()
+        .unwrap_or_else(|_| std::process::exit(101));
+}
+
+async fn run() {
     let plat = rexenv_lib::platform::current();
     let domain = format!("cliwpi-{}.rex", std::process::id());
 
@@ -35,7 +49,7 @@ async fn main() {
     // it there. See `common::pin_fixture_sites_dir`.
     let _sites_dir = common::pin_fixture_sites_dir(&conn, "cliwpi");
     let ca = ssl::load_or_create(plat.paths(), plat.permissions()).unwrap();
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql

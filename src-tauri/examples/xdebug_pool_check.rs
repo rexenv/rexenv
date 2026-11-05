@@ -76,7 +76,7 @@ async fn main() {
     ok &= gate.is_ok();
 
     println!("\n=== DBGp handshake (what the IDE sees) ===");
-    let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("php cli");
+    let php_bin = binaries::resolve_program(&*plat, "php", patch).await.expect("php cli");
     let listener = TcpListener::bind(("127.0.0.1", DBGP_PORT)).expect("bind dbgp listener");
     listener.set_nonblocking(false).unwrap();
     let handle = thread::spawn(move || {

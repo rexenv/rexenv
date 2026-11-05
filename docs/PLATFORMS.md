@@ -274,7 +274,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   every minor's ini, and the preflight refused 7.4, 8.0, 8.1, 8.4 and 8.5 groups outright — found
   by a user, since every proof had run on the default 8.3 (#603, 8 Oct 2026). A PHP claim on
   Windows is proven on every pinned minor (`windows_php_cli_check` iterates them), and a new
-  minor's differences go in `CgiGroup::per_version`.
+  minor's differences go in `CgiGroup::per_version`. Zend extensions too: 8.5 builds OPcache in and
+  ships no `php_opcache.dll`, and the `zend_extension = opcache` line every minor got printed
+  `Warning: Failed loading Zend extension 'opcache'` on STDOUT ahead of every 8.5 CLI run — unseen
+  for seven weeks because the check looked only for `PHP Startup` (`ExtChange::BuiltInFrom`, #603).
 - **`std::fs::canonicalize` answers the verbatim form** (`\\?\C:\Users\x`). Compare canonical
   against canonical (#642 — plain against verbatim answered false on the Dell), and STORE the
   plain form: a linked docroot goes through `sites::plain_path` once, at the storage point

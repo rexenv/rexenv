@@ -114,7 +114,7 @@ async fn main() -> ExitCode {
     // THE STEP PHP HAS NO EQUIVALENT OF. A digest match proves we got bytes
     // somebody signed for; it says nothing about whether rexenv's login gate and
     // frame protections still have a hook to hang on.
-    let php = match binaries::resolve(&*plat, "php", binaries::pins().php).await {
+    let php = match binaries::resolve_program(&*plat, "php", binaries::pins().php).await {
         Ok(p) => p,
         Err(e) => {
             eprintln!("resolving php FAILED: {e}");

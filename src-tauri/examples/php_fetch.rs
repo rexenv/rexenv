@@ -8,7 +8,7 @@ use rexenv_lib::platform;
 #[tokio::main]
 async fn main() {
     let plat = platform::current();
-    match binaries::resolve(&*plat, "php", binaries::pins().php).await {
+    match binaries::resolve_program(&*plat, "php", binaries::pins().php).await {
         Ok(path) => {
             println!("php cached at: {}", path.display());
             let out = std::process::Command::new(&path)

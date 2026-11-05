@@ -440,7 +440,7 @@ first:
   each, every one `ALL GOOD`, no fixture mysqld left): eleven consecutive passes since the leftover docroots went.
   The capture never fired. Tried on the Dell first, it never reached WordPress — see the next row.
 
-- [ ] **22 live-check examples are tagged `all` in `scripts/live-checks.sh` but cannot run on Windows** (found
+- [x] **22 live-check examples are tagged `all` in `scripts/live-checks.sh` but cannot run on Windows** (found
   5 Nov 2026 on the Dell): each does `binaries::resolve(&*plat, "php", ...)` and unwraps it, and Windows' php is a
   directory distribution, so the first line of real work panics — `wp_plugins_check` 5/5: `Other("php is a
   directory distribution — use resolve_dir")` at `examples/wp_plugins_check.rs:36`. None of the 22 mentions
@@ -453,6 +453,44 @@ first:
   OS, and `all` here claims Windows coverage that does not exist. Fix: one `common` helper that resolves the PHP CLI
   per OS (the file on macOS/Linux, `php.exe` inside the directory on Windows), used by all 22, then a Dell run of
   each; until then retag them `macos,linux`. Owner's call which.
+  ✓ **Fixed 5 Nov 2026 (owner: build the helper).** The helper already existed — `binaries::resolve_program`
+  answers the executable on every OS — so every example's `binaries::resolve(` of `php`, `nginx` or
+  `frankenphp` now calls it (42 lines in 40 files, plus one wrapped call the sweep missed and the guard
+  caught), held by `no_example_resolves_a_program_that_is_a_tree_on_some_os` (ledger #940). **Run on the
+  Dell, stack stopped, one at a time:** 17 of 22 pass — adminer_check, adminer_update_check, blueprint_check,
+  cli_wp_install_check, multisite_check, network_check, php_fetch, php_tools_check, starter_seed_check,
+  tunnel_muplugin_check, wp_info_check, wp_login_check, wp_noise_check, wp_packages_check,
+  wp_premium_update_check, wp_tools_check, wpcli_check. Three of those needed a second fix the run found:
+  `cli_wp_install_check` overflowed Windows' 1 MB main-thread stack (its body now runs on an 8 MB thread) and
+  the abort leaked its mysqld onto :13306, which made the next four checks refuse to start;
+  `repo_install_check`'s fixture commit timed out on the Dell's global `commit.gpgsign` (fixtures now pass
+  `commit.gpgsign=false`, as does `repo_git_ops_check`); `wp_packages_check` read `wp` where Windows writes
+  `wp.cmd`. The run also found PHP 8.5's opcache warning (next row). The five that do not pass: next-but-one row.
+
+- [x] **Windows: every PHP 8.5 CLI run printed `Warning: Failed loading Zend extension 'opcache'` on stdout**
+  (found 5 Nov 2026 by `laravel_postgres_check` on the Dell; in its logs since 8.5.8, 15 Sep). 8.5's zip builds
+  OPcache in and ships no `php_opcache.dll`, and the ini wrote `zend_extension = opcache` for every minor — so
+  the warning led every 8.5 WP-CLI, Composer and terminal `php` run, and the group's preflight let it through
+  (php-cgi's `<b>Warning</b>: Failed loading …` matched none of its patterns). `windows_php_cli_check` had
+  "passed" 8.5.8 on 8 Oct because it looked only for `PHP Startup`.
+  ✓ `ExtChange::BuiltInFrom("8.5")` on the Windows model, `CgiGroup::zend_lines` applying `per_version` to Zend
+  extensions, the preflight refusing `Failed loading`, the check refusing any `Warning`. L0 + 3/3 plants; on the
+  Dell the check built without the rule failed both 8.5.12 rows and with it passes every minor 7.4–8.5 (ledger
+  #601, #603). Not run: an 8.5 site served end to end on Windows.
+
+- [ ] **Five of the 22 Windows-capable examples still fail on the Dell** (5 Nov 2026, after the row above):
+  (1) `adminer_deeplink_check` — the auto-submitted Adminer login POST answers **403** (cookies
+  `adminer_key,adminer_sid` set) and the DB view shows no `wp_*` tables: the deep link into Adminer may be
+  broken on Windows, or the check's client differs from WebView2 — unknown which; (2) `laravel_postgres_check`
+  — PostgreSQL in its sandbox refused connections on :15432 after `initdb` reported ok, and Composer could not
+  resolve `repo.packagist.org` (curl error 6) though `Resolve-DnsName` answered the same minute; (3)
+  `repo_install_check` — A's `composer install` failed with an EMPTY message, and F's bun row needs bun, which
+  the Dell does not have; (4) `wp_plugins_check` never reached its checks: `wp core download` of `latest.zip`
+  timed out at 600 s with 36.9 of 37.2 MB received, twice — the Dell's link to wordpress.org, not the code (the
+  same download passed inside other checks); (5) `wp_themes_check` has no verdict — one run refused (the leaked
+  mysqld on :13306), the next was cut off when the SSH session dropped mid-run, its log empty. Also seen: `repo_run_all_check`
+  (tagged `all`, not one of the 22) drives `cli_server` on `#[tokio::main]`'s main thread like
+  `cli_wp_install_check` did — the same 1 MB-stack risk, not run.
 ## Release gates (human, scripted — see the docs named)
 
 **This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s

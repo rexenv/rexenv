@@ -106,7 +106,7 @@ async fn main() -> std::process::ExitCode {
     }
 
     // Install WordPress (MySQL is up now).
-    let php = rexenv_lib::core::binaries::resolve(&*plat, "php", rexenv_lib::core::binaries::pins().php).await.unwrap();
+    let php = rexenv_lib::core::binaries::resolve_program(&*plat, "php", rexenv_lib::core::binaries::pins().php).await.unwrap();
     let wp = rexenv_lib::core::binaries::resolve_file(&*plat, "wp-cli", rexenv_lib::core::binaries::pins().wp_cli).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql
         .sql_client_bins(&*plat, rexenv_lib::core::binaries::pins().mysql)

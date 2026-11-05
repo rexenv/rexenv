@@ -535,15 +535,30 @@ pub enum ExtChange {
     /// Its file had another name before this minor (`gd2` until 8.0): that name on the line,
     /// the extension's own name still expected loaded.
     NamedBefore(&'static str, &'static str),
+    /// Compiled into PHP from this minor on (OPcache in 8.5, which ships no `php_opcache.dll`):
+    /// no line, still expected loaded. The line it replaces made every 8.5 CLI run print
+    /// `Warning: Failed loading Zend extension 'opcache'` ahead of its output — into WP-CLI's
+    /// and Composer's stdout (the Dell, 5 Nov 2026; in its logs since 8.5.8 on 15 Sep).
+    BuiltInFrom(&'static str),
 }
 
 impl CgiGroup {
     /// The names `version` (a minor or a patch) writes as `extension = …` lines.
     pub fn ext_lines(&self, version: &str) -> Vec<&'static str> {
-        self.extensions
+        self.lines_for(self.extensions, version)
+    }
+
+    /// The names `version` writes as `zend_extension = …` lines — the same rules as
+    /// [`Self::ext_lines`], so a Zend extension a minor builds in gets no line either.
+    pub fn zend_lines(&self, version: &str) -> Vec<&'static str> {
+        self.lines_for(self.zend_extensions, version)
+    }
+
+    fn lines_for(&self, names: &[&'static str], version: &str) -> Vec<&'static str> {
+        names
             .iter()
             .filter_map(|&ext| match self.change_for(ext, version) {
-                Some(ExtChange::DroppedFrom(_) | ExtChange::BuiltInBefore(_)) => None,
+                Some(ExtChange::DroppedFrom(_) | ExtChange::BuiltInBefore(_) | ExtChange::BuiltInFrom(_)) => None,
                 Some(ExtChange::NamedBefore(_, file)) => Some(file),
                 None => Some(ext),
             })
@@ -566,7 +581,7 @@ impl CgiGroup {
         let v = minor_tuple(version)?;
         let at_or_after = |m: &str| minor_tuple(m).is_some_and(|m| v >= m);
         self.per_version.iter().filter(|(e, _)| *e == ext).map(|(_, c)| *c).find(|c| match c {
-            ExtChange::DroppedFrom(m) => at_or_after(m),
+            ExtChange::DroppedFrom(m) | ExtChange::BuiltInFrom(m) => at_or_after(m),
             ExtChange::BuiltInBefore(m) | ExtChange::NamedBefore(m, _) => !at_or_after(m),
         })
     }

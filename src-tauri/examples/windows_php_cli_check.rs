@@ -99,7 +99,9 @@ mod windows {
             let missing: Vec<&str> = expected.iter().copied().filter(|e| !listed.contains(&e.to_string())).collect();
             check.is(
                 &format!("PHP {version}: a bare `php -m` loads its {} extensions with no startup warning", expected.len()),
-                out.status.success() && missing.is_empty() && !stdout.contains("PHP Startup") && !stderr.contains("PHP Startup"),
+                // ANY warning, not only `PHP Startup`: 8.5's `Warning: Failed loading Zend extension
+                // 'opcache'` carries no such prefix and passed this line (5 Nov 2026).
+                out.status.success() && missing.is_empty() && !stdout.contains("Warning") && !stderr.contains("Warning"),
                 &format!("missing {missing:?}; stderr {stderr}"),
             );
             let minor = php::minor_of(version);

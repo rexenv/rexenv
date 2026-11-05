@@ -70,7 +70,7 @@ async fn main() -> std::process::ExitCode {
     common::await_listening(rexenv_lib::core::services::NGINX_HTTP_PORT, "nginx", None);
     common::await_listening(rexenv_lib::core::services::PHP_FPM_PORT, "php-fpm 8.3", None);
 
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
 
     // Clean slate (re-runnable): drop the leftover DB + docroot so we install fresh.

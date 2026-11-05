@@ -31,7 +31,7 @@ async fn main() -> ExitCode {
     let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::pins().php)
         .await
         .expect("resolve php-fpm");
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx)
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx)
         .await
         .expect("resolve nginx");
 

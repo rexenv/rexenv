@@ -109,7 +109,7 @@ async fn main() -> std::process::ExitCode {
         std::thread::sleep(Duration::from_millis(250));
     }
 
-    let php = binaries::resolve(&*plat, "php", binaries::pins().php).await.unwrap();
+    let php = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.unwrap();
     let wp = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
     let mysql_base = binaries::resolve_dir(&*plat, "mysql", binaries::pins().mysql).await.unwrap();
     let (db_client, _) = rexenv_lib::core::db::DbEngine::Mysql

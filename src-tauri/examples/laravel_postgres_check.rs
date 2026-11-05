@@ -142,7 +142,7 @@ async fn main() {
     println!("\n=== what each bundled PHP says about pdo_pgsql ===");
     let mut phps = Vec::new();
     for v in binaries::pins().php_versions {
-        match binaries::resolve(&*plat, "php", v).await {
+        match binaries::resolve_program(&*plat, "php", v).await {
             Ok(bin) => phps.push((*v, bin)),
             Err(e) => {
                 eprintln!("  {v}: could not resolve ({e})");

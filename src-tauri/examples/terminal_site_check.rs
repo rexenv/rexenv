@@ -59,7 +59,7 @@ async fn main() {
     // Same resolution terminal_open does.
     let minor = php::minor_of(&site.php_version);
     let patch = php::patch_for_minor(&minor).unwrap();
-    let php_bin = binaries::resolve(&*plat, "php", patch).await.unwrap();
+    let php_bin = binaries::resolve_program(&*plat, "php", patch).await.unwrap();
     let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli).await.unwrap();
     let wp_dir = terminal::ensure_wp_wrapper(&*plat, &php_bin, &wp_phar).unwrap();
     let php_dir = php_bin.parent().unwrap().to_path_buf();

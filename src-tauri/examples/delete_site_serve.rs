@@ -84,7 +84,7 @@ async fn main() {
 
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
     let fpm_bin = binaries::resolve(&*plat, "php-fpm", binaries::pins().php).await.unwrap();
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
 
     let fpm_conf = services::write_fpm_config(&*plat, "8.3", services::PHP_FPM_PORT, None, &[]).unwrap();

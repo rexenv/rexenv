@@ -47,7 +47,7 @@ async fn main() {
     let mut ok = true;
 
     // Tools: default-pin PHP CLI, WP-CLI, the mariadb bundle.
-    let php_bin = binaries::resolve(&*plat, "php", binaries::pins().php).await.expect("php");
+    let php_bin = binaries::resolve_program(&*plat, "php", binaries::pins().php).await.expect("php");
     let phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("wp-cli");

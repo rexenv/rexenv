@@ -91,7 +91,7 @@ async fn main() -> ExitCode {
     println!("wp-cli  {}\ncomposer {}\n", wp.display(), composer.display());
 
     for version in binaries::pins().php_versions {
-        let php = match binaries::resolve(&*plat, "php", version).await {
+        let php = match binaries::resolve_program(&*plat, "php", version).await {
             Ok(p) => p,
             Err(e) => {
                 checks.is(&format!("PHP {version} resolves"), false, &e.to_string());

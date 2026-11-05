@@ -98,7 +98,7 @@ async fn main() {
     let mut pools = PhpFpmPools::default();
     pools.start(&*plat, &["8.1".to_string()]).await.expect("pools");
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None }).unwrap();
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
     // Drop-GUARDED: four PANICKING readiness gates follow (two here, two after
     // the switch), and Rust does not kill a raw `Child` on an unwind — a failing

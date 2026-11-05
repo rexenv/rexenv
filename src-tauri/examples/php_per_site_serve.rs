@@ -75,7 +75,7 @@ async fn main() {
     let cfg = sites::rebuild_configs(&conn, &*plat, &ca, &rexenv_lib::core::service_manager::Ports { http: CADDY_HTTP, https: CADDY_HTTPS, nginx: NGINX_PORT, bind: None })
         .expect("rebuild configs");
 
-    let nginx_bin = binaries::resolve(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
+    let nginx_bin = binaries::resolve_program(&*plat, "nginx", binaries::pins().nginx).await.unwrap();
     let caddy_bin = binaries::resolve(&*plat, "caddy", binaries::pins().caddy).await.unwrap();
     services::test_nginx_config(&*plat, &nginx_bin, &cfg.nginx_conf, &cfg.nginx_prefix)
         .expect("nginx -t");

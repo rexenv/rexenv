@@ -114,7 +114,7 @@ async fn main() {
     let canary = plant_canary();
 
     let patch = php::patch_for_minor("8.3").expect("pinned 8.3");
-    let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("php");
+    let php_bin = binaries::resolve_program(&*plat, "php", patch).await.expect("php");
     let wp_phar = binaries::resolve_file(&*plat, "wp-cli", binaries::pins().wp_cli)
         .await
         .expect("wp-cli phar");
@@ -253,7 +253,13 @@ async fn main() {
     let wrapper_dir =
         rexenv_lib::core::terminal::ensure_wp_wrapper(&*plat, &php_bin, &wp_phar)
             .expect("wp wrapper");
-    let wrapper = wrapper_dir.join("wp");
+    // `wp` on macOS/Linux, `wp.cmd` on Windows (`terminal::wp_wrapper_for`, #689): reading
+    // only `wp` panicked on the Dell (5 Nov 2026) before D asserted anything.
+    let wrapper = ["wp", "wp.cmd"]
+        .iter()
+        .map(|n| wrapper_dir.join(n))
+        .find(|p| p.is_file())
+        .expect("the wrapper ensure_wp_wrapper wrote");
     let script = std::fs::read_to_string(&wrapper).expect("read the wrapper");
     if script.contains("WP_CLI_PACKAGES_DIR") {
         fail(

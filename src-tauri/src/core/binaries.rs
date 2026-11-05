@@ -8442,4 +8442,41 @@ mod tests {
         install_catalog(Default::default());
     }
 
+    /// No live-check example resolves a program with [`resolve`] when that program ships as a
+    /// TREE on some OS: there `resolve` errors ("php is a directory distribution — use
+    /// resolve_dir"), so the example dies before its first real check. Found 5 Nov 2026 on the
+    /// Dell: 22 examples tagged `all` in `scripts/live-checks.sh` resolved `php` this way and
+    /// could never run on Windows, and 24 more did the same with `nginx` / `frankenphp`.
+    /// [`resolve_program`] answers the executable on every OS. A guard rather than the sweep
+    /// alone: the bad line reads correct on the Mac, where both calls return the same path.
+    #[test]
+    fn no_example_resolves_a_program_that_is_a_tree_on_some_os() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("examples");
+        let mut bad = Vec::new();
+        let mut scanned = 0usize;
+        for entry in std::fs::read_dir(&dir).expect("examples dir") {
+            let path = entry.expect("entry").path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("example source");
+            for (at, _) in src.match_indices("binaries::resolve(") {
+                scanned += 1;
+                // The program is the first string literal of the call, which may wrap lines.
+                let call = &src[at..];
+                let call = &call[..call.find(';').unwrap_or(call.len())];
+                let Some(name) = call.split('"').nth(1) else { continue };
+                let tree_on: Vec<_> = ["macos", "windows", "linux"]
+                    .into_iter()
+                    .filter(|os| shape_of_on(name, os) != Shape::Single)
+                    .collect();
+                if !tree_on.is_empty() {
+                    let line = src[..at].matches('\n').count() + 1;
+                    bad.push(format!("{}:{line} resolves \"{name}\", a tree on {tree_on:?}", path.display()));
+                }
+            }
+        }
+        assert!(scanned > 10, "the scan found only {scanned} resolve calls: is it reading the examples?");
+        assert!(bad.is_empty(), "use binaries::resolve_program:\n{}", bad.join("\n"));
+    }
 }

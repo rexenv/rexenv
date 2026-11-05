@@ -23,6 +23,10 @@ fn git_fixture(dir: &Path, files: &[(&str, &str)]) {
             "user.email=fixtures@rexenv.test",
             "-c",
             "user.name=rexenv fixtures",
+            // The machine's own git config is not the fixture's: the Dell signs every
+            // commit with gpg, which timed out with no agent over SSH (5 Nov 2026).
+            "-c",
+            "commit.gpgsign=false",
             "commit",
             "-qm",
             "fixture",
@@ -58,7 +62,7 @@ async fn main() {
     let node = devtools::resolve_node(&env).expect("node");
     let npm = devtools::resolve_package_manager(&env, "npm").expect("npm").path;
     let patch = php::patch_for_minor("8.3").expect("8.3 pinned");
-    let php_bin = binaries::resolve(&*plat, "php", patch).await.expect("bundled php");
+    let php_bin = binaries::resolve_program(&*plat, "php", patch).await.expect("bundled php");
     let composer = binaries::resolve_file(&*plat, "composer", binaries::pins().composer)
         .await
         .expect("pinned composer.phar");
