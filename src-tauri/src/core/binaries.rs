@@ -1563,11 +1563,13 @@ const CLOUDFLARED_2026_6_1_WIN_AMD64_SHA256: &str = "5253e66f1f493c4e13539749f1a
 /// three end-of-life minors, see [`php_windows_backport_tag`].
 fn php_windows_sha256(version: &str) -> Option<&'static str> {
     match version {
-        // shivammathur/php-builder-windows' builds of 21 Oct 2026 (the php.net bytes these
-        // replace were 14ae3250…, dfb70498…, 9cfe246c…).
-        "7.4.33" => Some("a6f4a5f868e13e1fff802fe337e72d4483f496fe40a10216e25e28c370ccab24"),
-        "8.0.30" => Some("98f4aa8269171842df943258395c3b476d9ac80d2c422397a629bd81845130a6"),
-        "8.1.34" => Some("0b57b72712e9bfe680499c1f0c3267ce4ac3ee5f571e7af569c1683dc12819e3"),
+        // shivammathur/php-builder-windows' rebuilds of 25 Oct 2026, same backport source as
+        // the 21 Oct builds they replaced in place (a6f4a5f8…, 98f4aa82…, 0b57b727… — 0.9.5
+        // shipped those, so its 7.4/8.0/8.1 downloads failed the checksum from 25 Oct). The
+        // php.net bytes before them were 14ae3250…, dfb70498…, 9cfe246c….
+        "7.4.33" => Some("b57eb4c0b9280a28edab196784509770729c7cc068046a6d26311a74f3b5162b"),
+        "8.0.30" => Some("47b17c933e16775ef43489b9f21d1f592c806c284ecf81057ad3bb4d59e114d9"),
+        "8.1.34" => Some("6fcfeb119d026a194241d3d8e809e00a8388e74ac0c791f72d3239dc42bb58a1"),
         "8.2.35" => Some("798ffa4b9ce22a820d57048e9695df7245bf917ed067917f256942a10918a8cc"),
         "8.3.36" => Some("3c9242622c7402b47c38d2ec2ed779cef3a290fd6f2bde6c35f9c482699e7900"),
         "8.4.27" => Some("93bd8a815a52156606fb906d0573437908c61f96e2cc52c03a51e36a41bf5236"),
@@ -1597,6 +1599,13 @@ fn php_windows_sha256(version: &str) -> Option<&'static str> {
 /// bundled code). Those assets are REPLACED IN PLACE under the same name, so a rebuild
 /// there turns this pin into a checksum failure — loud, and never different bytes. The
 /// gated copy in rexenv/runtimes `php-windows-legacy-1` is the record of what was pinned.
+///
+/// It happened within a day: all three assets were rebuilt on 25 Oct 2026 (no backport
+/// commit after 19 Oct; the publisher's release cleanup), and 0.9.5 on Windows could not
+/// install 7.4, 8.0 or 8.1 — found 5 Nov 2026 creating a 7.4 site on the Dell. Re-pinned
+/// after the same measurements, by hand: each `php*.dll` still exports
+/// `zend_mm_safe_error_ex` (llvm-objdump), and on the Dell `php -m` loads the group's
+/// extensions with `pdo_pgsql`, and memory exhaustion exits 1 with no shutdown function run.
 fn php_windows_backport_tag(version: &str) -> Option<&'static str> {
     match version {
         "7.4.33" => Some("php7.4"),

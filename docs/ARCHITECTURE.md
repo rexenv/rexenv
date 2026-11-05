@@ -3144,7 +3144,9 @@ IPC surface — which is how a reader ends up designing against a system with on
   the measurement per minor; the L0 half refuses to let a pinned minor go unrecorded, and
   `wp_dns_check` FAILS on any disagreement between the record and the build in front of
   it — in either direction, because a minor that turned threaded means the mu-plugin is
-  dead weight for it.
+  dead weight for it. The record is per pool model (#939): Windows' php-cgi group runs
+  php.net's zips (7.4–8.1: the backport builds), measured on the Dell 5 Nov 2026 — all
+  seven threaded, no c-ares — and those are its own rows, never macOS's.
   **Since 7 Oct 2026 the real fix ships for 8.1–8.5** (`php-8x-8`): rexenv's own 8.x
   builds had linked c-ares too — not by asking for it, but because spc's curl builder
   turns it on whenever `libcares` is in the build, and **swoole** depends on it. The

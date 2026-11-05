@@ -254,8 +254,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   §6.6 leaves them.
 - [x] **Windows: two per-OS answers still read off macOS builds** ✓ 4 Nov 2026 — both now ask the platform's pool
   model: a php-cgi group answers `pdo_pgsql` from the extensions it loads (Windows: every minor) and curl's resolver
-  `None` (unmeasured), ledger #939, L0 + 2 plants. Owed on the Dell (offline that day): `php -m` on 7.4/8.0, a 7.4
-  PostgreSQL site, `curl_version()["ares"]` per minor. Was: `php::pdo_pgsql_supported` →
+  `None` (unmeasured), ledger #939, L0 + 2 plants. **Dell ✓ 5 Nov 2026:** `pdo_pgsql` in `php -m` on every minor,
+  `pg74.rex` (7.4 + PostgreSQL, `--starter-db`) accepted and reading PostgreSQL 18.6 through its php-cgi group, and
+  curl's resolver measured threaded on all seven pinned zips — the group now answers those rows (plant red). Was: `php::pdo_pgsql_supported` →
   `binaries::php_has_pdo_pgsql` is keyed on the macOS self-hosted tag (so Windows refuses PostgreSQL
   on 7.4/8.0 although `platform/windows/mod.rs` enables `pdo_pgsql`), and `wp_dns::resolver_for(minor)`
   carries macOS measurements with no OS. Xdebug and the update catalogs are already per-OS. Split
@@ -328,6 +329,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   returning an error → `Abort`. Next: run the failing shape under a console (`-NoNewWindow`) until it
   fails, so `CheckIfAppIsRunning`'s red line names the path; then disable the task for the swap (and
   re-enable it in `.onInstFailed` too), or re-run our kill loop after a settle. PUBLISH-TESTING §A 0.8.13.
+  **5 Nov 2026, the Dell:** 8 more rounds of a 0.9.5 NSIS build `/S` over the running app + agent (run as `dell`
+  from a `/IT` task, not the elevated ssh token) → 8 × exit 0, 6–17 s each — 0 of 13 on the Dell in all. The only
+  host that ever failed (the Win11 ARM VM) was deleted 27 Oct; this stays open until a second Windows host runs it.
+
+- [x] **Windows: PHP 7.4/8.0/8.1 failed their checksum on every fresh install since 25 Oct** ✓ 5 Nov 2026 — found
+  creating a 7.4 site on the Dell (`checksum mismatch for …/php-builder-windows/releases/download/php7.4/…`).
+  shivammathur rebuilt all three backport zips IN PLACE on 25 Oct (no backport commit after 19 Oct), the case
+  `binaries::php_windows_backport_tag` predicts; 0.9.5 ships the 21 Oct hashes. Re-pinned (`b57eb4c0…`, `47b17c93…`,
+  `6fcfeb11…`) after re-measuring: each `php*.dll` still exports `zend_mm_safe_error_ex`, and on the Dell `php -m`
+  loads the group's set with `pdo_pgsql`, memory exhaustion exits 1 with no shutdown function. Proven by the
+  re-pinned build installing 7.4 on the Dell (`pg74.rex`). `docs/PORTS.md` row.
+- [ ] **Windows 7.4/8.0/8.1 re-pin: what reaches users** (opened 5 Nov 2026, from the row above). (1) Every 0.9.5
+  Windows install still fails those three minors until a release carries the new pins — the signed
+  `manifest-windows.json` lists only 8.2–8.5, so no manifest publish can fix it without adding rows. (2) rexenv/runtimes'
+  `php-windows-legacy-1` (the record of what was pinned) still holds the 21 Oct bytes — refreshing it is a runtimes
+  publish, owner-approved. (3) Nothing tells us the next in-place rebuild before a user does: a scheduled `curl |
+  sha256sum` of the three URLs against the pins would.
 
 - [x] **macOS: the root edge daemon recreates the app's `logs/` as ROOT when the data folder vanishes** ✓ 4 Nov
   2026 — the daemon logs to `/Library/Logs/rexenv/caddy-start.log` (`EdgeSupervisor::start_log_path`; the install

@@ -78,9 +78,11 @@ pub enum CurlResolver {
 ///
 /// **The table describes rexenv/runtimes' builds — the php-fpm platforms (macOS, Linux).**
 /// [`resolver_for_on`] answers per pool model: a php-cgi group (Windows) runs php.net's official
-/// zips, which nobody has measured, so it answers `None` rather than borrowing these rows (until
-/// 4 Nov 2026 every OS read them). Owed: `curl_version()["ares"]` on the Dell for each pinned
-/// minor, then a Windows arm.
+/// zips (7.4/8.0/8.1: shivammathur's backport builds), so it has its OWN rows rather than
+/// borrowing these (until 4 Nov 2026 every OS read them, and from then until the Dell measured
+/// them it answered `None`). Measured 5 Nov 2026 on the Dell, each pinned zip:
+/// `curl_version()["ares"]` empty with `CURL_VERSION_ASYNCHDNS` set — curl 7.70.0 (7.4),
+/// 7.76.1 (8.0), 8.15.0 (8.1), 8.23.0 (8.2–8.5); 7.4 also through its php-cgi group.
 pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
     resolver_for_on(&crate::platform::current().supervisor().php_pool_model(), minor)
 }
@@ -88,7 +90,12 @@ pub fn resolver_for(minor: &str) -> Option<CurlResolver> {
 /// [`resolver_for`] for a given pool model — pure, so a test states each platform's answer.
 pub fn resolver_for_on(model: &crate::platform::traits::PoolModel, minor: &str) -> Option<CurlResolver> {
     if matches!(model, crate::platform::traits::PoolModel::CgiGroup(_)) {
-        return None;
+        return match minor {
+            // php.net's zips and the backport builds, each pinned one measured on the Dell
+            // (5 Nov 2026): no c-ares linked, curl's threaded resolver.
+            "7.4" | "8.0" | "8.1" | "8.2" | "8.3" | "8.4" | "8.5" => Some(CurlResolver::Threaded),
+            _ => None,
+        };
     }
     match minor {
         // OURS (rexenv/runtimes), curl 8.21.0, no c-ares linked at all.
@@ -398,16 +405,16 @@ mod tests {
         // Our builds — the php-fpm platforms. Stated per model so the test holds on any host.
         let fpm = crate::platform::traits::PoolModel::Fpm;
         let resolver_for = |m: &str| resolver_for_on(&fpm, m);
-        // php.net's Windows builds were never measured: no borrowed answer.
+        // php.net's Windows builds have their own measured rows (the Dell, 5 Nov 2026).
         let group = crate::platform::traits::PoolModel::CgiGroup(crate::platform::traits::CgiGroup {
             extensions: &["curl"], zend_extensions: &[], per_version: &[],
         });
-        assert_eq!(resolver_for_on(&group, "8.3"), None, "a php-cgi group borrowed rexenv/runtimes' measurement");
         let mut ares = 0;
         let mut threaded = 0;
-        for v in crate::core::binaries::pins().php_versions {
+        let models = [&fpm, &group];
+        for (model, v) in models.iter().flat_map(|m| crate::core::binaries::pins().php_versions.iter().map(move |v| (*m, v))) {
             let minor = v.rsplit_once('.').map(|(m, _)| m).unwrap_or(v);
-            match resolver_for(minor) {
+            match resolver_for_on(model, minor) {
                 Some(CurlResolver::Ares) => ares += 1,
                 Some(CurlResolver::Threaded) => threaded += 1,
                 None => panic!(
@@ -435,8 +442,9 @@ mod tests {
         }
 
         // A minor rexenv does not pin has no recorded answer, rather than a
-        // default that would read as a measurement.
+        // default that would read as a measurement — on either model.
         assert_eq!(resolver_for("8.9"), None);
+        assert_eq!(resolver_for_on(&group, "8.9"), None);
     }
 
     #[test]
