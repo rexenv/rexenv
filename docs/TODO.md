@@ -333,7 +333,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   2026 — the daemon logs to `/Library/Logs/rexenv/caddy-start.log` (`EdgeSupervisor::start_log_path`; the install
   makes the folder; every "check the start log" sentence names the platform's path), ledger #938, L0 + 2 plants.
   Linux needs nothing (systemd fails `209/STDOUT` rather than creating the folder); Windows runs no root daemon.
-  Owed: SMOKE "Moving the app data aside with the edge live…" on the 15.8 VM.
+  SMOKE "Moving the app data aside with the edge live…" ✓ on the 15.8 VM — **15.8 VM, 5 Nov 2026** (a `tauri build --debug` bundle of `3ccab205` — this Mac's ld-27106 writes release proc-macro dylibs dyld refuses, `mis-aligned LINKEDIT string pool`): `rex stop`/`rex start` reinstalled the daemon (plist now names `/Library/Logs/rexenv/caddy-start.log`, the folder root:wheel), `wtp.rex` 200; app quit, data folder moved aside, `launchctl kickstart -k` the daemon → caddy failed 6 times on the missing Caddyfile over ~40 s and the folder never came back; moved back → 0 root-owned files in it, 200, the app re-adopted the edge.
   (found 18 Oct 2026 running 0.9.0's §M on the 15.8 VM). With the edge LaunchDaemon live, renaming
   `~/Library/Application Support/dev.rexenv.rexenv` aside made launchd recreate `…/dev.rexenv.rexenv/logs`
   root-owned within a second — the daemon plist's `StandardOutPath`/`StandardErrorPath` point into the

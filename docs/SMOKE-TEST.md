@@ -3083,13 +3083,14 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   waiting up to N s". **Tell:** an admin prompt, or "its admin socket never came up".
   ✓ 11 Oct 2026, 15.8 VM, this tree's release build: `rex start` at +27 s, exit 0 ~2.5 min later.
   Linux: its edge unit starts in seconds; the row matters only on a machine where it does not.
-- [ ] **Moving the app data aside with the edge live leaves nothing root-owned** (ledger #938): Start
+- [x] **Moving the app data aside with the edge live leaves nothing root-owned** (ledger #938): Start
   all, quit rexenv, `mv ~/Library/Application\ Support/dev.rexenv.rexenv{,.aside}` → wait 5 s →
   the folder is NOT back (or, if it is, nothing in it is owned by root: `ls -la` it); open rexenv →
   it starts with a fresh data folder, no `Permission denied`. The edge's output is in
   `/Library/Logs/rexenv/caddy-start.log`. Put the folder back after (`rm -rf` the new one only
   after checking it is the fresh one, then `mv` the `.aside` back). **Tell:** a root-owned `logs/`
-  inside the user's app data. Linux/Windows: no step (systemd fails the unit `209/STDOUT` instead
+  inside the user's app data. ✓ **15.8 VM, 5 Nov 2026** (a `tauri build --debug` bundle of `3ccab205` — this Mac's ld-27106 writes release proc-macro dylibs dyld refuses, `mis-aligned LINKEDIT string pool`): `rex stop`/`rex start` reinstalled the daemon (plist now names `/Library/Logs/rexenv/caddy-start.log`, the folder root:wheel), `wtp.rex` 200; app quit, data folder moved aside, `launchctl kickstart -k` the daemon → caddy failed 6 times on the missing Caddyfile over ~40 s and the folder never came back; moved back → 0 root-owned files in it, 200, the app re-adopted the edge. Not run: opening rexenv on a fresh folder while the old one is aside.
+  Linux/Windows: no step (systemd fails the unit `209/STDOUT` instead
   of creating the folder; Windows runs no root daemon).
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
