@@ -178,6 +178,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   reproduce on the Dell (native x64) — if it trips there too, the breaker needs to exempt a group's first N
   seconds after a start the app itself ordered, or read the spin against the WORKER count rather than wall CPU.
   `docs/PUBLISH-TESTING.md` §A 0.9.1 §M has the log.
+  **Dell, 5 Nov 2026 — does NOT trip on native x64:** 5 × `rex restart` + 1 cold start with the 8.3 tree moved
+  aside (re-downloaded, the swap's "new binaries" shape) + 1 more restart, every group PARENT's CPU sampled each second
+  for 60 s: 39 parents (7.4, 8.2, 8.3, 8.4), each 0–203 ms of CPU for its whole start incl. 10 workers; the worst
+  5-s window 2.8 % of a core (the breaker needs 25 % = 1250 ms); no `gave-up` in `health.log`. So the margin on
+  native hardware is ~6× even counting the start the baseline skips. **What stays open:** Windows on ARM runs these
+  same x64 zips emulated (the catalog's arm64 rows point at the x64 zip), which is where it tripped — no ARM host
+  exists since the VM's deletion (27 Oct). Without one, the low-risk change is to require the share over TWO
+  consecutive windows (a spawn burst ends, a spin does not) — owner's call before building it.
 
 - [ ] **Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`** (found 8 Oct
   2026 on the Dell, Windows 10 22H2, signatures 1.459.601.0, putting it back for the 0.8.12 §M): `Start-Process`
