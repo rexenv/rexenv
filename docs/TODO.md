@@ -436,6 +436,23 @@ first:
   original sighting was tangled with.
   **Still unexplained, and unchanged by this.** A working instrument is not an explanation;
   it only means the next occurrence will leave evidence. The row stays open for that.
+  **5 Nov 2026 — five more clean runs on the dev Mac, stack stopped** (`rex stop`, then `rex start` after; 16–19 s
+  each, every one `ALL GOOD`, no fixture mysqld left): eleven consecutive passes since the leftover docroots went.
+  The capture never fired. Tried on the Dell first, it never reached WordPress — see the next row.
+
+- [ ] **22 live-check examples are tagged `all` in `scripts/live-checks.sh` but cannot run on Windows** (found
+  5 Nov 2026 on the Dell): each does `binaries::resolve(&*plat, "php", ...)` and unwraps it, and Windows' php is a
+  directory distribution, so the first line of real work panics — `wp_plugins_check` 5/5: `Other("php is a
+  directory distribution — use resolve_dir")` at `examples/wp_plugins_check.rs:36`. None of the 22 mentions
+  `target_os`, `resolve_dir(.."php")` or the pool model (grep, 5 Nov): `adminer_check`, `adminer_deeplink_check`,
+  `adminer_update_check`, `blueprint_check`, `cli_wp_install_check`, `laravel_postgres_check`, `multisite_check`,
+  `network_check`, `php_tools_check`, `php_fetch`, `repo_install_check`, `starter_seed_check`,
+  `tunnel_muplugin_check`, `wp_premium_update_check`, `wpcli_check`, `wp_login_check`, `wp_packages_check`,
+  `wp_themes_check`, `wp_info_check`, `wp_plugins_check`, `wp_tools_check`, `wp_noise_check`. Only one was RUN on
+  Windows; the other 21 are by source. **Why it matters:** the os column is what says a check proves something on an
+  OS, and `all` here claims Windows coverage that does not exist. Fix: one `common` helper that resolves the PHP CLI
+  per OS (the file on macOS/Linux, `php.exe` inside the directory on Windows), used by all 22, then a Dell run of
+  each; until then retag them `macos,linux`. Owner's call which.
 ## Release gates (human, scripted — see the docs named)
 
 **This section is HALF the set.** The rows below are `docs/PUBLISH-TESTING.md`'s
