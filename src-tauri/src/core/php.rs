@@ -2751,6 +2751,18 @@ mod tests {
         crate::test_support::spinning_child()
     }
 
+    /// How long a breaker test waits through its second window.
+    const SECOND_WINDOW_SLEEP: std::time::Duration = std::time::Duration::from_secs(4);
+
+    /// Move every pool's baseline time back so that, after [`SECOND_WINDOW_SLEEP`], its window
+    /// is exactly [`crate::core::php_cgi::SPIN_MIN_WINDOW`] long — keeping the CPU it was read at.
+    fn backdate_to_one_window(pools: &mut PhpFpmPools) {
+        let at = std::time::Instant::now() + SECOND_WINDOW_SLEEP - crate::core::php_cgi::SPIN_MIN_WINDOW;
+        for p in &mut pools.pools {
+            p.cpu = p.cpu.map(|(ms, _)| (ms, at));
+        }
+    }
+
     /// The churn breaker's mechanism (ledger #605): a pool process that used a quarter of a core
     /// or more since its baseline is stopped and dropped; an idle one is kept, its baseline moved
     /// forward once a full window has passed. Where the platform runs php-fpm the breaker reads
@@ -2800,12 +2812,12 @@ mod tests {
             pool(&pools, "8.4").0.is_some_and(|(_, at)| at > window_ago),
             "a full window passed: the idle pool's baseline must move forward"
         );
-        // The second window, backdated so the test does not wait out five seconds: the
-        // spinner burns a core through it, the idle process does not.
-        for p in &mut pools.pools {
-            p.cpu = p.cpu.map(|(ms, _)| (ms, std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW));
-        }
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        // The second window, backdated by one second so that after four of sleep it is
+        // EXACTLY the minimum window (1250 ms needed from four real seconds). Backdating by
+        // the whole window made it 8 s long — 2000 ms needed from three — and the spinner
+        // fell short under verify's parallel load (5 Nov 2026, both breaker tests red).
+        backdate_to_one_window(&mut pools);
+        std::thread::sleep(SECOND_WINDOW_SLEEP);
         assert_eq!(pools.stop_spinning(&group), vec!["8.3".to_string()], "the spinning process is stopped");
         assert!(!pools.has("8.3", false));
         assert!(pools.has("8.4", false), "an idle process was stopped");
@@ -2842,10 +2854,8 @@ mod tests {
             held: None,
         });
         assert!(pools.stop_spinning(&ours).is_empty(), "one spinning window stopped the group");
-        for p in &mut pools.pools {
-            p.cpu = p.cpu.map(|(ms, _)| (ms, std::time::Instant::now() - crate::core::php_cgi::SPIN_MIN_WINDOW));
-        }
-        std::thread::sleep(std::time::Duration::from_secs(3));
+        backdate_to_one_window(&mut pools);
+        std::thread::sleep(SECOND_WINDOW_SLEEP);
         assert_eq!(pools.stop_spinning(&ours), vec!["8.3".to_string()]);
         // Kill it HERE rather than trusting the stub's `stop`: that stub shells out to
         // `kill`, which does not exist on Windows, so the spinning child outlived the
