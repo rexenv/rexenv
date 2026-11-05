@@ -134,11 +134,20 @@ async fn main() -> std::process::ExitCode {
     assert!(login_html.contains("rexenv_autologin"), "auto-submit script not injected by the wrapper");
     println!("✓ deep-link returns Adminer login form WITH the rexenv auto-submit script");
 
-    // 2) Replay what the script does: POST the form with an EMPTY password. The
-    //    login form carries no CSRF token (Adminer auto-fills a valid one when none
-    //    is posted for the unauthenticated login), so we post auth fields only.
+    // 2) Replay what the script does: submit the page's OWN form with an EMPTY password —
+    //    its hidden CSRF `token` included. Adminer 6.2's login form carries one and a POST
+    //    without it lands back on the login page with no message; this check used to post
+    //    the auth fields alone (true of the Adminer it was written against) and went red
+    //    on the Dell, which had 6.2.0, while the app's script — which submits the real
+    //    form — kept working (5 Nov 2026). Sent only when the form has one.
+    let token = login_html
+        .split("name='token' value='")
+        .nth(1)
+        .and_then(|rest| rest.split('\'').next())
+        .map(|t| format!("&token={}", t.replace(':', "%3A")))
+        .unwrap_or_default();
     let form = format!(
-        "auth%5Bdriver%5D=server&auth%5Bserver%5D=127.0.0.1%3A13306&auth%5Busername%5D=root&auth%5Bpassword%5D=&auth%5Bdb%5D={db_name}"
+        "auth%5Bdriver%5D=server&auth%5Bserver%5D=127.0.0.1%3A13306&auth%5Busername%5D=root&auth%5Bpassword%5D=&auth%5Bdb%5D={db_name}{token}"
     );
     let post = client
         .post(&deeplink)
@@ -150,6 +159,7 @@ async fn main() -> std::process::ExitCode {
         .expect("POST auth");
     capture_cookies(&post, &mut jar);
     let code = post.status().as_u16();
+    let post_headers = format!("{:?}", post.headers());
     let post_body = post.text().await.unwrap_or_default();
     println!("auth POST → {code} (cookies: {})", jar.keys().cloned().collect::<Vec<_>>().join(","));
     // The stock empty-password wall must NOT appear (our login() override removed it).
@@ -164,6 +174,16 @@ async fn main() -> std::process::ExitCode {
     let body = view.text().await.unwrap_or_default();
     let landed = body.contains("wp_options") || body.contains("wp_posts");
     println!("DB view shows wp_* tables: {landed}");
+    if !landed {
+        // Adminer answers a failed login with 403 and says why in its `error` block; a bare
+        // "403" told the 5 Nov 2026 Dell run nothing about the cause.
+        for (what, html) in [("auth POST", &post_body), ("DB view", &body)] {
+            println!("  {what} — Adminer said: {}", adminer_messages(html));
+        }
+        // No message means the refusal may not be Adminer's at all: who answered, and how.
+        println!("  auth POST headers: {post_headers}");
+        println!("  auth POST body starts: {:?}", post_body.chars().take(600).collect::<String>());
+    }
     assert!(landed, "authenticated session did not land in the site's DB (no wp_* tables listed)");
     println!("✓ scoped session lands straight in `{db_name}` (wp_* tables listed) — no manual login");
 
@@ -189,3 +209,29 @@ fn capture_cookies(resp: &reqwest::Response, jar: &mut BTreeMap<String, String>)
     }
 }
 
+/// The text of Adminer's `class='error'` / `class='message'` blocks, tags stripped — what it
+/// tells a user who failed to log in. `(none)` when it said nothing.
+fn adminer_messages(html: &str) -> String {
+    let mut out = Vec::new();
+    for marker in ["class='error'", "class=\"error\"", "class='message'", "class=\"message\""] {
+        let mut rest = html;
+        while let Some(at) = rest.find(marker) {
+            let tail = &rest[at..];
+            let start = tail.find('>').map_or(tail.len(), |i| i + 1);
+            let end = tail.find("</div>").unwrap_or(tail.len()).max(start);
+            let mut text = String::new();
+            let mut in_tag = false;
+            for c in tail[start..end].chars() {
+                match c {
+                    '<' => in_tag = true,
+                    '>' => in_tag = false,
+                    c if !in_tag => text.push(c),
+                    _ => {}
+                }
+            }
+            out.push(text.split_whitespace().collect::<Vec<_>>().join(" "));
+            rest = &tail[end..];
+        }
+    }
+    if out.is_empty() { "(none)".into() } else { out.join(" | ") }
+}

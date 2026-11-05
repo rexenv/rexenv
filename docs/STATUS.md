@@ -23,36 +23,36 @@ App version **0.9.5** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 ### Ledger-driven proof backlog — 2
 
 - `TODO.md:387` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
-- `TODO.md:481` Five of the 22 Windows-capable examples still fail on the Dell
+- `TODO.md:481` Four of the 22 Windows-capable examples still fail on the Dell (five found)
 
 ### Release gates (human, scripted — see the docs named) — 10
 
-- `TODO.md:506` The in-app update's remaining human rows (macOS)
-- `TODO.md:516` Release 5.4 — clean-Mac smoke test
-- `TODO.md:522` Tunnel probe session
-- `TODO.md:526` Intel spot-run
-- `TODO.md:531` In-app verifies owed
-- `TODO.md:547` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:559` The live pool swap is still L3
-- `TODO.md:563` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:571` Install WordPress into an empty LINKED folder
-- `TODO.md:578` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:511` The in-app update's remaining human rows (macOS)
+- `TODO.md:521` Release 5.4 — clean-Mac smoke test
+- `TODO.md:527` Tunnel probe session
+- `TODO.md:531` Intel spot-run
+- `TODO.md:536` In-app verifies owed
+- `TODO.md:552` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:564` The live pool swap is still L3
+- `TODO.md:568` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:576` Install WordPress into an empty LINKED folder
+- `TODO.md:583` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:585` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:624` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:635` Xdebug on PHP 8.0
-- `TODO.md:640` SMAppService privileged helper
-- `TODO.md:642` Developer ID signing + notarization
+- `TODO.md:590` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:629` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:640` Xdebug on PHP 8.0
+- `TODO.md:645` SMAppService privileged helper
+- `TODO.md:647` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 5
 
-- `TODO.md:647` The web UI still shows desktop actions
-- `TODO.md:653` The web UI's sign-in — four hardening items owed before Phase 1b is called done
-- `TODO.md:666` Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row bel…
-- `TODO.md:715` Headless mode on macOS and Windows
-- `TODO.md:720` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:652` The web UI still shows desktop actions
+- `TODO.md:658` The web UI's sign-in — four hardening items owed before Phase 1b is called done
+- `TODO.md:671` Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row bel…
+- `TODO.md:720` Headless mode on macOS and Windows
+- `TODO.md:725` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

@@ -478,10 +478,15 @@ first:
   Dell the check built without the rule failed both 8.5.12 rows and with it passes every minor 7.4–8.5 (ledger
   #601, #603). Not run: an 8.5 site served end to end on Windows.
 
-- [ ] **Five of the 22 Windows-capable examples still fail on the Dell** (5 Nov 2026, after the row above):
-  (1) `adminer_deeplink_check` — the auto-submitted Adminer login POST answers **403** (cookies
-  `adminer_key,adminer_sid` set) and the DB view shows no `wp_*` tables: the deep link into Adminer may be
-  broken on Windows, or the check's client differs from WebView2 — unknown which; (2) `laravel_postgres_check`
+- [ ] **Four of the 22 Windows-capable examples still fail on the Dell (five found)** (5 Nov 2026, after the row above):
+  (1) ✓ `adminer_deeplink_check` — **not a Windows bug, and not a product bug:** Adminer 6.2's login form carries
+  a hidden CSRF `token`, and the check posted the auth fields without it (true of the Adminer it was written
+  against), so Adminer answered its login page again — 403, no message. The Dell had 6.2.0 from a binary update.
+  Driving the Dell's live Adminer by hand: the same POST without the token → login page; with it → logged in,
+  `wp_options` listed. The app's auto-submit script submits the page's real form, token included, so the deep
+  link itself worked throughout. The check now sends the token when the form has one (as
+  `adminer_proxy_check` already did) and prints Adminer's own message on a failure: Dell `ALL GOOD`, auth POST
+  302, `wp_*` tables listed (5 Nov 2026); (2) `laravel_postgres_check`
   — PostgreSQL in its sandbox refused connections on :15432 after `initdb` reported ok, and Composer could not
   resolve `repo.packagist.org` (curl error 6) though `Resolve-DnsName` answered the same minute; (3)
   `repo_install_check` — A's `composer install` failed with an EMPTY message, and F's bun row needs bun, which
