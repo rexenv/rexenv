@@ -157,7 +157,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [x] **Linux: an in-app update apply that pkexec refuses leaves NO trace** ✓ 4 Nov 2026 — every failed apply now
   writes `app update: the install did not happen — <why>` to `rexenv.log` (`app_update_apply` is a wrapper whose
   one job is that line; common code, all three OSes), ledger #937, TEXT test + plant. The toast was never missing
-  in code (`toastBackendError`) — it was gone before the screenshot. Owed: the refused apply re-run on the VM. (found 24 Oct 2026, 0.9.2's §M on the
+  in code (`toastBackendError`) — it was gone before the screenshot. **Re-run on the VM ✓ 5 Nov 2026:** a
+  0.9.4-labelled container build of `097fd74d` swapped into `/usr/bin/rexenv`, launched from ssh (`session-7.scope`,
+  no polkit agent), Settings → Updates → Install rexenv 0.9.5 → `rexenv.log` 03:50:28 `WARN … app update: the install
+  did not happen — could not put rexenv 0.9.5 in place (… polkit refused), or no authentication agent is running …)`;
+  `/usr/bin/rexenv` unchanged (sha256 before = after); the 0.9.5 binary restored after. (found 24 Oct 2026, 0.9.2's §M on the
   22.04 VM — `docs/PUBLISH-TESTING.md` §A 0.9.2): with the app in an ssh login session (no polkit agent) the
   download ran to 15.9 MB and the Updates row silently went back to `Install rexenv 0.9.2` — no `rexenv.log` line,
   no toast in a screenshot 90 s later. 0.9.1's run of the same shape showed the honest toast ("could not put rexenv
