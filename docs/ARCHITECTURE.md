@@ -2409,8 +2409,11 @@ words (the browser shell's mock and two dev review pages excepted).
   install (`EdgeSupervisor::restarts_identical_install`, ledger #912). On a fresh server the first-run
   root steps (the `.rex` route, the CA's trust, the root edge) are the setup's: it forks a child that
   becomes the account and runs the desktop's own `run_system_setup` and `edge_install_script`, and
-  every script that code would hand pkexec is relayed to the root parent instead (#923). macOS refuses
-  `--headless` with a sentence (owner ruling D3). **Windows runs it since 6 Nov 2026 (T5 W1):** a
+  every script that code would hand pkexec is relayed to the root parent instead (#923). **macOS runs
+  it since 6 Nov 2026 (T5 M1, #945) only with this account at the console** (`/dev/console`'s owner):
+  with nobody logged in AppKit never sends finish-launching and the app sat in `NSApplication run`
+  doing nothing, so that launch exits 2 with a sentence. Started, it is Accessory (no dock tile) and
+  answers the administrator prompt with a sentence. **Windows runs it since 6 Nov 2026 (T5 W1):** a
   headless launch there is session 0 — an SSH session, or an S4U task that runs whether or not
   anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
   do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a

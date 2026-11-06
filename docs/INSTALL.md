@@ -508,6 +508,15 @@ asks the two AI-agent questions; with no console to ask at, it leaves them as th
 - To go back to the desktop app: `schtasks /Delete /TN \rexenv\headless /F` from an administrator
   console, then open rexenv — it turns the DNS agent back into a logon task by itself.
 
+### Headless — a Mac that stays logged in (6 Nov 2026)
+
+`rexenv --headless` runs the stack with no window and no menu-bar item, driven by `rex` — for a Mac mini
+used as a server. **It needs this account logged in** (turn on *Automatically log in as* in System
+Settings → Users & Groups; the screen can stay locked): with nobody logged in macOS never finishes
+launching an app, so rexenv refuses with a sentence instead of starting and doing nothing. Finish the
+app's own setup once first — a headless rexenv answers every administrator prompt with a sentence.
+`rexenv --headless-setup` is not built on macOS yet.
+
 ### Uninstalling — do the in-app step FIRST
 
 rexenv installs things outside its own folder that deleting the app cannot remove: the

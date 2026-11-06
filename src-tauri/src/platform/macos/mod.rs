@@ -7,6 +7,7 @@
 
 pub mod activation;
 pub mod app_bundle;
+mod headless_rules;
 mod keychain_trust;
 pub mod relauncher;
 pub mod parent_death_guard;
@@ -239,8 +240,29 @@ impl MacosPrivileges {
     }
 }
 
+/// `--headless`'s preparation (`platform::prepare_headless`, T5 M1): refuse unless this account is the one
+/// at the console. With nobody logged in the app never reaches `setup` (measured, `headless_rules`), so a
+/// launch that cannot work says so instead of hanging.
+pub(crate) fn prepare_headless() -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    let console = std::fs::metadata("/dev/console").ok().map(|m| m.uid());
+    // SAFETY: a plain syscall with no arguments.
+    let uid = unsafe { libc::getuid() };
+    if headless_rules::session_is_ours(console, uid) {
+        Ok(())
+    } else {
+        Err(Error::Other(headless_rules::NEEDS_SESSION.into()))
+    }
+}
+
+pub(crate) use headless_rules::SETUP_NOT_YET as HEADLESS_SETUP_NOT_YET;
+
 impl PrivilegeManager for MacosPrivileges {
     fn run_privileged(&self, script: &str, reason: &PromptReason) -> Result<String> {
+        // Headless (T5 M1): nobody at the screen to answer the prompt — refuse in words first.
+        if crate::is_headless_launch() {
+            return Err(Error::Other(headless_rules::NEEDS_PROMPT.into()));
+        }
         // One dialog at a time — and one build of the per-process work dir.
         static ONE_PROMPT: std::sync::Mutex<()> = std::sync::Mutex::new(());
         let _one = ONE_PROMPT.lock().unwrap_or_else(|p| p.into_inner());

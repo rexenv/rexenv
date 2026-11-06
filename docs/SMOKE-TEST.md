@@ -2048,6 +2048,17 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   ABSENCE is correct — do not read a missing line as the backstop not running.
   **Open: no run on a machine with orphans recorded.**
 
+## Headless on a logged-in Mac (`rexenv --headless`, T5 M1, ledger #945)
+
+- [x] Quit the app. From another machine over SSH: `/Applications/rexenv.app/Contents/MacOS/rexenv
+      --headless &` → `rex status` lists the stack within seconds; no dock tile and no menu-bar item
+      (`lsappinfo` says `UIElement`); `rex site create x.newtld` answers "rexenv is running headless …
+      not made" at once — no administrator prompt appears on the Mac's screen. ✓ 6 Nov 2026, the
+      15.8 VM (debug build in the installed bundle).
+- [x] Turn automatic login off and log out; start the same command from a system LaunchDaemon (`UserName` = this account,
+      `RunAtLoad`) → it exits 2 with "needs this account logged in", within a second,
+      and leaves no process. ✓ 6 Nov 2026, the 15.8 VM — 0.9.5 hung there with `rex` waiting forever.
+
 ## The menu bar (no dock icon)
 *The behavioural half of #437/#438 — the L0 tests prove the menu's RULES, and only a
 hand can prove a spec entry became the item it describes.*

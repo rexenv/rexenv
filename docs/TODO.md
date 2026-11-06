@@ -607,7 +607,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   makes the `.rex` rule and CA trust, registers `\rexenv\headless` + the agent as S4U boot tasks, takes D7's
   consents; owed: its run on the Dell (offline mid-run), the reboot with nobody logged on, whether an
   unelevated uninstaller can delete an S4U task, and what a silent update does while `\rexenv\headless`
-  keeps restarting rexenv.exe. Open: M1–M3 (macOS).
+  keeps restarting rexenv.exe. ✓ **M1** 6 Nov 2026 (#945, the 15.8 VM): `rexenv --headless` on macOS runs only
+  with this account at the console — no dock tile, the prompt refused in words — and exits 2 with a sentence
+  instead of hanging when nobody is logged in. Open: M2 (the daemon-context "setup incomplete"), M3 (the setup).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the

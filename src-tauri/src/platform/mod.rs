@@ -311,8 +311,8 @@ pub fn run_elevated_step(argv: &[String]) -> Option<i32> {
 
 /// `--headless`: make this process able to run with no display — on Linux, start rexenv's own Xvfb
 /// and point GTK at it (`linux/headless.rs`, docs/PLAN-headless-web.md T1). Called by `main.rs` on
-/// the main thread before Tauri boots. macOS and Windows have no headless mode yet (owner ruling D3,
-/// 26 Oct 2026: Linux first) and refuse with a sentence — never a launch that silently opens a window.
+/// the main thread before Tauri boots. Windows needs nothing prepared (T5 W1); macOS refuses unless this
+/// account is logged in (T5 M1) — never a launch that hangs or silently opens a window.
 pub fn prepare_headless() -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
@@ -323,15 +323,16 @@ pub fn prepare_headless() -> Result<(), String> {
     {
         windows::prepare_headless().map_err(|e| e.to_string())
     }
+    // macOS: only with this account at the console — a login-less Mac never reaches `setup` (T5 M1).
     #[cfg(target_os = "macos")]
     {
-        Err(headless_unsupported(words::current().os_name))
+        macos::prepare_headless().map_err(|e| e.to_string())
     }
 }
 
 /// `sudo rexenv --headless-setup`: the administrator's one-time step for a headless install. `None`
 /// when argv is not the setup. Windows: an administrator console's one-time step (T5 W2,
-/// `windows/headless.rs`); macOS answers with the same refusal as `--headless`.
+/// `windows/headless.rs`); macOS has `--headless` but not its setup yet (T5 M3) and says so.
 pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
     #[cfg(target_os = "linux")]
     {
@@ -344,19 +345,10 @@ pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
     #[cfg(target_os = "macos")]
     {
         argv.iter().any(|a| a == "--headless-setup").then(|| {
-            eprintln!("{}", headless_unsupported(words::current().os_name));
+            eprintln!("{}", macos::HEADLESS_SETUP_NOT_YET);
             2
         })
     }
-}
-
-/// The refusal an OS without a headless mode gives (`--headless`, `--headless-setup`).
-#[cfg(target_os = "macos")]
-fn headless_unsupported(os_name: &str) -> String {
-    format!(
-        "rexenv's headless mode is not available on {os_name} yet — it runs on Linux, on a server \
-         with no display. On {os_name}, open the rexenv app instead."
-    )
 }
 
 /// Clear the inherit flag on every handle this process was born holding, so no child — a

@@ -157,6 +157,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 
 ## 6. macOS — the traps
 
+- **With nobody logged in, an AppKit app never finishes launching** (measured on the 15.8 VM,
+  6 Nov 2026, `docs/PLAN-headless-web.md` §2b). A LaunchDaemon starting rexenv at the login window
+  got a live process parked in `-[NSApplication run]` with no tokio thread — Tauri's `setup` never
+  ran and `rex` hung; the same daemon with the user logged in worked, web UI included. So headless
+  on macOS means a logged-in account (automatic login), and `--headless` checks `/dev/console`'s
+  owner first (#945).
 - **Binary preparation order is fixed:** de-quarantine → relink Homebrew dylibs to `/usr/lib`
   → ad-hoc codesign **LAST** (a relink after the signature invalidates it).
 - **Privileged prompts run in the foreground.** A backgrounded osascript cannot show the

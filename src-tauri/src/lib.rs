@@ -463,8 +463,11 @@ pub fn run() {
             // reliably give a dock tile for (7723eb9) — on the one screen a new
             // user cannot get past.
             let login_needs_window = hidden_launch && login_launch_needs_window(platform.as_ref());
+            // A headless launch is Accessory whatever setup's state: it never shows a window, so a dock
+            // tile would be a tile with nothing behind it (T5 M1; on the VM a daemon-context launch read
+            // setup as incomplete, §2b — `first_window_decision` returns early for headless anyway).
             #[cfg(target_os = "macos")]
-            if hidden_launch && !login_needs_window {
+            if hidden_launch && (!login_needs_window || is_headless_launch()) {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
 

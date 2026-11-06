@@ -469,7 +469,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
     logged in brings the stack, `.rex` names and `rex` up.
   - **W3 — flags survive the Explorer hop.** ✓ 6 Nov 2026 (#742 widened, run on the Dell): `--web` is carried
     like `--hidden`; `--headless` needs no carrying because a headless launch never hops (session 0 has no shell).
-  - **M1 — `--headless` on macOS requires the user's session.** Refuse with a sentence when this user has
+  - **M1 — `--headless` on macOS requires the user's session.** ✓ 6 Nov 2026 (#945, run on the 15.8 VM: logged in it
+    serves `rex` as a `UIElement` app and refuses the prompt in words; logged out it exits 2 with the sentence). Refuse with a sentence when this user has
     no window-server session, instead of the silent hang of §2b; with one, run window-less like Linux.
   - **M2 — the daemon-context "setup incomplete".** Pin down which read differs in the system domain
     (`login_launch_needs_window`: the resolver route or the CA trust) and make it answer the same.
