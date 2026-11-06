@@ -140,11 +140,13 @@ pub fn next_instance(name: &str) -> std::io::Result<NamedPipeServer> {
 }
 
 /// Send the instance holding the lock `request` — `cli_server::handoff_request`'s line, the same bytes the
-/// unix socket sends (show your window, or run login-start for a `--hidden` launch). True when a holder was
-/// reached — the caller exits; false when nobody is there any more (it died between the claim and now), and
-/// the caller starts. Best-effort past the connect, as on macOS: a wedged app that never answers still owns
-/// the stack.
-pub fn hand_off(config_dir: &Path, request: &str) -> bool {
+/// unix socket sends (show your window, or run login-start for a `--hidden` launch). `Some(answer)` when a
+/// holder was reached — the caller exits, and reads the answer for what to say (`holder_is_headless`: a
+/// headless holder has no window to bring forward); `None` when nobody is there any more (it died between
+/// the claim and now), and the caller starts. Best-effort past the connect, as on macOS: a wedged app that
+/// never answers still owns the stack, and its answer is empty. Until 7 Nov 2026 this returned a bare
+/// `bool` and dropped the answer, so a launch on a headless PC said it had brought a window forward.
+pub fn hand_off(config_dir: &Path, request: &str) -> Option<Vec<u8>> {
     let name = pipe_name(&config_dir.to_string_lossy());
     let deadline = Instant::now() + Duration::from_secs(2);
     let mut pipe = loop {
@@ -153,7 +155,7 @@ pub fn hand_off(config_dir: &Path, request: &str) -> bool {
             Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY) && Instant::now() < deadline => {
                 std::thread::sleep(Duration::from_millis(50));
             }
-            Err(_) => return false,
+            Err(_) => return None,
         }
     };
     let _ = pipe.write_all(request.as_bytes());
@@ -162,8 +164,8 @@ pub fn hand_off(config_dir: &Path, request: &str) -> bool {
     let (tx, rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         let mut buf = [0u8; 64];
-        let _ = tx.send(pipe.read(&mut buf).is_ok());
+        let n = pipe.read(&mut buf).unwrap_or(0);
+        let _ = tx.send(buf[..n].to_vec());
     });
-    let _ = rx.recv_timeout(Duration::from_millis(1500));
-    true
+    Some(rx.recv_timeout(Duration::from_millis(1500)).unwrap_or_default())
 }

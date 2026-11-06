@@ -3808,6 +3808,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       with no autologin included — both tasks in session 0 30 s after boot, ten services up, `.rex`
       resolving, sites 200 (a WordPress cold first request took 14–26 s). Trap: `curl.exe` there needs
       `--ssl-no-revoke` — schannel fails rexenv's CA with `CRYPT_E_NO_REVOCATION_CHECK` (it has no CRL).
+- [ ] **A second launch on a headless PC says so** (ledger #913, 7 Nov 2026): with `\rexenv\headless`
+      running in session 0, log in on the desktop and run `rexenv.exe` from a console → it exits and
+      prints "rexenv is already running headless on this machine — it has no window to show.", not
+      "brought its window to the front"; no rexenv window appears. Until 7 Nov 2026 the pipe's handoff
+      dropped the holder's answer and always said a window had come forward.
 - [x] **The web UI with nobody logged on** (#947): `rexenv.exe --headless --web` in session 0 →
       `rex web url`'s link through `ssh -L 9443:127.0.0.1:9443` signs in and the Sites screen lists the
       sites, though Task Manager shows no `msedgewebview2.exe`. ✓ 6 Nov 2026, the Dell (curl: `/ipc` and

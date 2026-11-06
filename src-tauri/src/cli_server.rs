@@ -2381,9 +2381,10 @@ pub fn claim_pipe_at_startup() -> PipeStartup {
         crate::platform::AppPipeClaim::Ours(held) => PipeStartup::Ours(Some(held)),
         crate::platform::AppPipeClaim::AnotherInstance => {
             let login = crate::is_hidden_launch();
-            if crate::platform::hand_off_to_app_pipe(&dir, &handoff_request(login)) {
-                // Never headless: Windows has no headless mode (D3), so its holder always has a window.
-                eprintln!("{}", handoff_note(login, false));
+            if let Some(answer) = crate::platform::hand_off_to_app_pipe(&dir, &handoff_request(login)) {
+                // The holder may be headless (`rexenv.exe --headless`, a boot task since 6 Nov 2026): read
+                // its answer, as the unix socket does, rather than assume a window to bring forward.
+                eprintln!("{}", handoff_note(login, holder_is_headless(&answer)));
                 PipeStartup::AnotherInstanceRuns
             } else {
                 // Held a moment ago and gone now — this copy is the app.
@@ -2939,6 +2940,9 @@ mod tests {
         let src = crate::core::copy_scan::production_source(include_str!("cli_server.rs"));
         assert!(src.contains("sock.write_all(handoff_request(login).as_bytes())"), "the unix handoff");
         assert!(src.contains("hand_off_to_app_pipe(&dir, &handoff_request(login))"), "the Windows handoff");
+        // Both transports read the holder's answer for the note — Windows assumed a window until 7 Nov 2026.
+        assert_eq!(src.matches("handoff_note(login, holder_is_headless(").count(), 2, "the unix and the Windows note");
+        assert!(!src.contains("handoff_note(login, false)"), "a handoff that assumes the holder has a window");
         let pipe = crate::core::copy_scan::production_source(include_str!("platform/windows/app_pipe.rs"));
         assert!(pipe.contains("pipe.write_all(request.as_bytes())"));
         assert!(!pipe.contains("app.open"), "the pipe builds its own request again");
