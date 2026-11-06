@@ -3819,7 +3819,8 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       (POSTINSTALL runs the task) and `rex status` answering. A non-zero exit with the OLD version in
       place means the per-minute keep-alive started rexenv.exe inside the swap — safe, re-run it.
       ✓ 6 Nov 2026, the Dell: 3 of 3 rounds exit 0 in 5 s, `--headless` back on a new pid each time.
-- [ ] **A fresh PC's first headless setup** (needs a person at the desktop): a Windows account that
+- [ ] **A fresh PC's first headless setup** (needs a person at the desktop — the certificate prompt
+      refuses programmatic answers, PLATFORMS §7, tried 6 Nov 2026): a Windows account that
       never ran rexenv's setup; from an administrator console ON THE DESKTOP, `--headless-setup` →
       Windows asks to trust rexenv's certificate (answer Yes) and the rest follows; the same from an
       SSH session refuses with "needs this PC's desktop" and changes nothing.

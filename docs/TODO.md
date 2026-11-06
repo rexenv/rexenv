@@ -616,7 +616,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   question measured (the unelevated token may end and delete the S4U task, not disable it — #944): the uninstaller
   deletes `\rexenv\headless`, a silent install ends it before the swap and runs it after — ✓ RUN on the Dell
   (3 of 3 `/S` over a running headless PC, exit 0, back at once). Still open: a fresh PC's first run (needs a
-  person at the desktop for the CA confirmation). ✓ The web UI through a tunnel in a real browser (#947). D8's second step
+  person at the desktop for the CA confirmation — tried by automation 6 Nov 2026: the prompt is a system
+  window no user process may answer, so it is the owner's SMOKE row). ✓ The web UI through a tunnel in a real browser (#947). D8's second step
   (the webview-free host — **superseded** 6 Nov 2026: the web UI answers in session 0 once `dispatch` falls
   back to the app's local origin, #947; no command refactor is needed). ✓ macOS reboot with automatic login (#946, the 15.8 VM): only
   `--headless` comes up once a headless launch takes itself out of macOS's reopen-at-login list.

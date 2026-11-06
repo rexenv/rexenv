@@ -359,6 +359,12 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   task's account is `<COMPUTER>\<user>` — `WORKGROUP\<user>` fails with "No mapping between account names
   and security IDs"; and a task created with default settings is `Queued` forever while a laptop is on
   battery (`DisallowStartIfOnBatteries`) — every rexenv task sets both battery flags off.
+- **The CurrentUser\Root confirmation cannot be answered by a program — by design.** Deleting (or
+  adding) a root in the user's store raises "Root Certificate Store" / "Security Warning" from a
+  higher-integrity system component: from the desktop session, UIAutomation sees the window's NAME but
+  none of its controls, `FindWindow` does not find it, and UIPI blocks messages and keystrokes to it
+  even from an elevated task (measured on the Dell, 6 Nov 2026). Any proof that needs that answer —
+  a fresh PC's first headless setup, the trust half of onboarding — is a person's row in SMOKE.
 - **`curl.exe` fails rexenv's sites until told not to check revocation** — Windows' curl uses
   schannel, which asks for the CA's revocation list; rexenv's local CA has none, so a trusted site
   answers `000` with `CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`. Probe with `curl.exe
