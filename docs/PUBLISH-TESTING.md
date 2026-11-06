@@ -191,6 +191,9 @@ first; the stack kept running throughout):**
   folders the 16 Oct `rsync --delete` emptied (no docroot, or only `wp-content`) — fixture damage, not the update.
   **A trap for the next run:** `ssh … 'pkill -f "/usr/bin/rexenv --hidden"'` matches the ssh shell's OWN command
   line and kills it (exit 255) — write the pattern as `[/]usr/bin/rexenv`.
+**winget, 7 Nov 2026** (missed at publish, caught by the reconcile): `scripts/winget-manifest.sh 0.9.6` → sha256
+`11C24E944C9CF65C6F54106BA2BD9FFE19CD59D6294237D3E953E11662360323` (the asset's API digest agrees); `winget validate`
+on the Dell succeeded; PR microsoft/winget-pkgs#473110.
 
 ## A) ✅ 0.9.5 — PUBLISHED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 

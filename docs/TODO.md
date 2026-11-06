@@ -242,9 +242,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).
-- [ ] **winget: 0.9.6 is not submitted** — RELEASING step 9's winget manifest was not run for 0.9.6 (published
-  6 Nov 2026); winget still offers 0.9.5. `./scripts/winget-manifest.sh` → `winget validate` on the Dell → a PR to
-  `microsoft/winget-pkgs` (outward-facing: the owner's go). Found by the 7 Nov 2026 reconcile.
+- [ ] **winget: 0.9.6 PR 473110 waits for a moderator** — RELEASING step 9's winget manifest was missed at 0.9.6's
+  publish (found by the 7 Nov 2026 reconcile) and run the same day: `./scripts/winget-manifest.sh 0.9.6` (sha256
+  `11C24E94…0323`, equal to the release asset's API digest), `winget validate` on the Dell → "Manifest validation
+  succeeded", https://github.com/microsoft/winget-pkgs/pull/473110 opened (owner's go). Nothing to do from here but
+  watch it merge; winget offers 0.9.5 until then.
+
 - [ ] **Windows: WebView2's `downloadBootstrapper` on a PC without WebView2** — never run: every test
   machine already has WebView2. Open: that the per-user installer fetches it without an admin
   prompt. Also open from SMOKE § Windows: a run with Smart App Control ON.
