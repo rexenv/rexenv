@@ -318,7 +318,7 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
   the VPS, with macOS (LaunchDaemon) and Windows (service / boot-time task) filled in the same change
   as `Error::Unported` plus a sentence in `platform/words.rs`, and a TODO row each. The web transport
   itself is common code and works on all three as soon as their headless mode exists.
-- **D8 — T5's shape for macOS and Windows (measured §2b, 6 Nov 2026).** Recommended, in two steps:
+- **D8 — T5's shape for macOS and Windows (measured §2b, 6 Nov 2026).** **Ruled 6 Nov 2026: the two steps below.** Recommended, in two steps:
   - **First (Phase 1a on both, small):** Windows — `--headless` runs from an S4U boot task (and the DNS agent
     from one too), with an elevated `rexenv.exe --headless-setup` doing the UAC steps once and writing both
     tasks; carry `--web`/`--headless` through the Explorer hop. macOS — `--headless` refuses unless a user
@@ -454,7 +454,25 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   so they need either the setup to do them or a GUI-less first setup. The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
   Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
-- **T5 — the other OSes per D3.** T0 measured 6 Nov 2026 (§2b); waits on D8. Was: the other OSes per D3.
+- **T5 — the other OSes per D3.** T0 measured 6 Nov 2026 (§2b); D8 ruled the same day — step one is below,
+  step two (D1 (c), the webview-free command host) gets its own plan.
+  - **W1 — `--headless` on Windows.** `prepare_headless` accepts it (session 0 needs nothing prepared);
+    `run_privileged` refuses on a headless launch with a sentence instead of opening rexenv's dialog and UAC
+    in a session with no desktop. Done when a session-0 `--headless` launch serves `rex`, and a privileged
+    call answers the refusal rather than waiting.
+  - **W2 — `rexenv.exe --headless-setup` from an elevated console.** Runs the elevated-step ops itself
+    (the resolver's NRPT rule; the CA into `CurrentUser\Root`, whose own confirmation dialog needs the
+    desktop the console is on), registers two S4U boot tasks — the app with `--headless [--web]` and the
+    DNS agent — and takes D7's consents (`--enable-mcp`, `--agent-access`). Done when a reboot with nobody
+    logged in brings the stack, `.rex` names and `rex` up.
+  - **W3 — flags survive the Explorer hop.** `--headless` and `--web` carried like `--hidden` (#742).
+  - **M1 — `--headless` on macOS requires the user's session.** Refuse with a sentence when this user has
+    no window-server session, instead of the silent hang of §2b; with one, run window-less like Linux.
+  - **M2 — the daemon-context "setup incomplete".** Pin down which read differs in the system domain
+    (`login_launch_needs_window`: the resolver route or the CA trust) and make it answer the same.
+  - **M3 — `sudo rexenv --headless-setup` on macOS.** A LaunchAgent running `--headless [--web]` at the
+    user's login, the autologin instructions, D7's consents, and the privileged steps the branded prompt
+    does today (edge daemon, resolver file, CA trust) run by the setup itself.
 - **T6 — web transport.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger
   #929): `rexenv --web` serves the embedded bundle on `127.0.0.1:9443` (`web_server.rs`, rules in
   `web_rules.rs`); `POST /ipc/<cmd>` goes through `Webview::on_message` on the hidden main webview,
