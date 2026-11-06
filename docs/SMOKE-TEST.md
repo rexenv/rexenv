@@ -3780,7 +3780,7 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       **6 Nov 2026 (#742 widened, the Dell, debug build):** a battery-allowed `/IT` task
       `--hidden --web` → the copy Explorer started (bare command line) logged "launched at login"
       and "web: serving the UI", and `rex web url` printed the link.
-- [ ] **Headless — nobody logged on** (`rexenv.exe --headless-setup`, T5 W2, ledger #943/#944;
+- [x] **Headless — nobody logged on** (`rexenv.exe --headless-setup`, T5 W2, ledger #943/#944;
       `docs/INSTALL.md` § Windows "Headless"). Quit the app; from an administrator console on the
       desktop run `rexenv.exe --headless-setup` (answer the two questions) → it prints the `.rex`
       rule, the CA, `\rexenv\headless` and the agent as boot tasks. `schtasks /Run /TN
@@ -3789,8 +3789,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       `.rex` site answers 200 (`curl.exe --resolve` from the PC), and `rex site create x.newtld`
       answers the headless refusal sentence instead of a prompt. Then delete `\rexenv\headless`
       from an administrator console, open the app → the agent is a logon task again (`schtasks
-      /Query /TN \rexenv\dns-agent /XML` shows `InteractiveToken`). **Not yet run** (the Dell
-      went offline mid-run, 6 Nov 2026).
+      /Query /TN \rexenv\dns-agent /XML` shows `InteractiveToken`). ✓ **6 Nov 2026, the Dell (debug
+      build, setup from an elevated SSH console with the CA already trusted):** all of it, the reboot
+      with no autologin included — both tasks in session 0 30 s after boot, ten services up, `.rex`
+      resolving, sites 200 (a WordPress cold first request took 14–26 s). Trap: `curl.exe` there needs
+      `--ssl-no-revoke` — schannel fails rexenv's CA with `CRYPT_E_NO_REVOCATION_CHECK` (it has no CRL).
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of

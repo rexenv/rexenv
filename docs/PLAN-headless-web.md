@@ -461,8 +461,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
     `run_privileged` refuses on a headless launch with a sentence instead of opening rexenv's dialog and UAC
     in a session with no desktop. Done when a session-0 `--headless` launch serves `rex`, and a privileged
     call answers the refusal rather than waiting.
-  - **W2 — `rexenv.exe --headless-setup` from an elevated console.** BUILT 6 Nov 2026 (#944, L0 + `windows-check`);
-    its Dell run was cut off when the Dell went offline — the setup, `\rexenv\headless` started, and the reboot are owed. Runs the elevated-step ops itself
+  - **W2 — `rexenv.exe --headless-setup` from an elevated console.** ✓ 6 Nov 2026 (#944, run on the Dell: the setup,
+    `\rexenv\headless` started, and a reboot with nobody logged on brought the stack, `.rex` and `rex` up in session 0). Runs the elevated-step ops itself
     (the resolver's NRPT rule; the CA into `CurrentUser\Root`, whose own confirmation dialog needs the
     desktop the console is on), registers two S4U boot tasks — the app with `--headless [--web]` and the
     DNS agent — and takes D7's consents (`--enable-mcp`, `--agent-access`). Done when a reboot with nobody

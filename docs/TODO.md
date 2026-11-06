@@ -603,11 +603,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `rex` hangs), while any launch with a user logged in — SSH or a system LaunchDaemon — works, web UI included.
   D8 ruled the same day (two steps). ✓ **W1** 6 Nov 2026: `rexenv.exe --headless` runs on Windows and refuses
   every dialog in words (#943, run on the Dell). ✓ **W3** 6 Nov 2026: `--web` survives the Explorer hop and a
-  headless launch never hops (#742). **W2 BUILT** 6 Nov 2026 (#944): `--headless-setup` from an elevated console
-  makes the `.rex` rule and CA trust, registers `\rexenv\headless` + the agent as S4U boot tasks, takes D7's
-  consents; owed: its run on the Dell (offline mid-run), the reboot with nobody logged on, whether an
-  unelevated uninstaller can delete an S4U task, and what a silent update does while `\rexenv\headless`
-  keeps restarting rexenv.exe. ✓ **M1** 6 Nov 2026 (#945, the 15.8 VM): `rexenv --headless` on macOS runs only
+  headless launch never hops (#742). ✓ **W2** 6 Nov 2026 (#944, the Dell): `--headless-setup` registers
+  `\rexenv\headless` + the agent as S4U boot tasks; a reboot with nobody logged on brought the stack, `.rex`
+  and `rex` up in session 0. Still open from W2: whether an unelevated uninstaller can delete an S4U task,
+  and what a silent update does while `\rexenv\headless` keeps restarting rexenv.exe (the in-app update of a
+  headless PC is unbuilt); a fresh PC's first run (the CA confirmation on a desktop console). ✓ **M1** 6 Nov 2026 (#945, the 15.8 VM): `rexenv --headless` on macOS runs only
   with this account at the console — no dock tile, the prompt refused in words — and exits 2 with a sentence
   instead of hanging when nobody is logged in. Open: M2 (the daemon-context "setup incomplete"), M3 (the setup).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of

@@ -484,7 +484,7 @@ account owns (installed through an elevated shell) is refused with the copy-past
 fix (#693). **Updating by hand** still works: run the newer `setup.exe` over the installed one
 — interactively it asks before closing a running rexenv.
 
-### Headless — nobody logged on, driven by `rex` (built 6 Nov 2026, not yet run end to end)
+### Headless — nobody logged on, driven by `rex` (6 Nov 2026)
 
 rexenv can run this account's stack at boot with nobody logged on — a spare PC under a desk, reached
 over SSH. Once, from an **administrator console opened by the account rexenv runs as** (right-click

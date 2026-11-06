@@ -349,6 +349,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   task's account is `<COMPUTER>\<user>` — `WORKGROUP\<user>` fails with "No mapping between account names
   and security IDs"; and a task created with default settings is `Queued` forever while a laptop is on
   battery (`DisallowStartIfOnBatteries`) — every rexenv task sets both battery flags off.
+- **`curl.exe` fails rexenv's sites until told not to check revocation** — Windows' curl uses
+  schannel, which asks for the CA's revocation list; rexenv's local CA has none, so a trusted site
+  answers `000` with `CRYPT_E_NO_REVOCATION_CHECK (0x80092012)`. Probe with `curl.exe
+  --ssl-no-revoke` (the Dell, 6 Nov 2026); browsers are not affected.
 - **A running php-cgi or nginx does not stop a tree's RENAME** — `retire_stale_tree` moves it aside
   and then cannot delete it; `binaries::sweep_stale_trees` removes the `.<name>.stale-<pid>` asides
   at the end of the launch fetch (#898).
