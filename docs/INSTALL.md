@@ -484,10 +484,34 @@ account owns (installed through an elevated shell) is refused with the copy-past
 fix (#693). **Updating by hand** still works: run the newer `setup.exe` over the installed one
 — interactively it asks before closing a running rexenv.
 
+### Headless — nobody logged on, driven by `rex` (built 6 Nov 2026, not yet run end to end)
+
+rexenv can run this account's stack at boot with nobody logged on — a spare PC under a desk, reached
+over SSH. Once, from an **administrator console opened by the account rexenv runs as** (right-click
+PowerShell → *Run as administrator*), with the rexenv app quit:
+
+```
+& "$env:LOCALAPPDATA\rexenv\rexenv.exe" --headless-setup [--enable-mcp] [--agent-access read|changes|full]
+schtasks /Run /TN \rexenv\headless      # or restart the PC
+```
+
+It makes the `.rex` rule and trusts the certificate (run it from the desktop the first time —
+Windows asks to confirm the certificate, and an SSH session has no desktop to ask on), then registers
+two tasks that start at boot as this account with no password stored: `\rexenv\headless`
+(`rexenv.exe --headless`, restarted within a minute if it stops) and the DNS agent. With no flags it
+asks the two AI-agent questions; with no console to ask at, it leaves them as they are.
+
+- A headless rexenv never shows a dialog: anything that needs a Windows administrator prompt
+  answers with a sentence saying where to do it instead.
+- `--enable-web` is accepted, but the web UI cannot answer yet with nobody logged on — Windows starts
+  no WebView2 there (`docs/PLAN-headless-web.md` §2b). Use `rex` and `rex mcp`.
+- To go back to the desktop app: `schtasks /Delete /TN \rexenv\headless /F` from an administrator
+  console, then open rexenv — it turns the DNS agent back into a logon task by itself.
+
 ### Uninstalling — do the in-app step FIRST
 
 rexenv installs things outside its own folder that deleting the app cannot remove: the
-`.rex` NRPT rule, the `\rexenv\dns-agent` scheduled task, the local CA in your Root
+`.rex` NRPT rule, the `\rexenv\dns-agent` scheduled task (and `\rexenv\headless` on a headless PC), the local CA in your Root
 store, and the `rex` copy on your `Path`. (Since 5 Oct 2026 the uninstaller from Apps &
 Features ends and deletes the scheduled task itself, so a resolver never outlives the app;
 it then tells you the `.rex` rule and the certificate are still there — those two need

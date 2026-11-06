@@ -3766,6 +3766,20 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       window and started nothing. ✓ **30 Sep 2026 (Win11 VM, this tree's build, the console logged
       in):** two processes, window handle 0; "launched at login — staying in the notification
       area"; login-start ran; the marker gone.
+      **6 Nov 2026 (#742 widened, the Dell, debug build):** a battery-allowed `/IT` task
+      `--hidden --web` → the copy Explorer started (bare command line) logged "launched at login"
+      and "web: serving the UI", and `rex web url` printed the link.
+- [ ] **Headless — nobody logged on** (`rexenv.exe --headless-setup`, T5 W2, ledger #943/#944;
+      `docs/INSTALL.md` § Windows "Headless"). Quit the app; from an administrator console on the
+      desktop run `rexenv.exe --headless-setup` (answer the two questions) → it prints the `.rex`
+      rule, the CA, `\rexenv\headless` and the agent as boot tasks. `schtasks /Run /TN
+      \rexenv\headless` → `rexenv.exe --headless` in session 0, `rex status` lists the stack.
+      Restart the PC and do NOT log in; from another machine over SSH: `rex status` answers, a
+      `.rex` site answers 200 (`curl.exe --resolve` from the PC), and `rex site create x.newtld`
+      answers the headless refusal sentence instead of a prompt. Then delete `\rexenv\headless`
+      from an administrator console, open the app → the agent is a logon task again (`schtasks
+      /Query /TN \rexenv\dns-agent /XML` shows `InteractiveToken`). **Not yet run** (the Dell
+      went offline mid-run, 6 Nov 2026).
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of

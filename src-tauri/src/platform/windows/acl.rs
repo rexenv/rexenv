@@ -182,6 +182,40 @@ pub(super) fn current_user_sid() -> Result<String> {
     sid
 }
 
+/// One `u32` field of this process's token (`TokenElevation`'s `TokenIsElevated`, `TokenSessionId`);
+/// `None` when the token cannot be read.
+fn token_u32(class: windows_sys::Win32::Security::TOKEN_INFORMATION_CLASS) -> Option<u32> {
+    let mut token: HANDLE = null_mut();
+    // SAFETY: as in `current_user_sid`.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+        return None;
+    }
+    let mut value = 0u32;
+    let mut needed = 0u32;
+    // SAFETY: both classes asked for here return a single DWORD (TOKEN_ELEVATION is one u32); the buffer
+    // is that u32 and its size; `token` is closed exactly once below.
+    let ok = unsafe {
+        GetTokenInformation(token, class, (&mut value as *mut u32).cast(), std::mem::size_of::<u32>() as u32, &mut needed)
+    };
+    unsafe {
+        CloseHandle(token);
+    }
+    (ok != 0).then_some(value)
+}
+
+/// Whether this process holds an ELEVATED token — started from an administrator console, or by UAC.
+/// `rexenv.exe --headless-setup` requires it (T5 W2), and an elevated process runs rexenv's privileged
+/// ops itself instead of asking UAC for a second copy of itself.
+pub(super) fn process_is_elevated() -> bool {
+    token_u32(windows_sys::Win32::Security::TokenElevation).is_some_and(|v| v != 0)
+}
+
+/// The session this process runs in. 0 is the one with no interactive desktop: services, an SSH
+/// session, an S4U task (docs/PLAN-headless-web.md §2b) — where no dialog can be answered.
+pub(super) fn session_id() -> Option<u32> {
+    token_u32(windows_sys::Win32::Security::TokenSessionId)
+}
+
 /// The SID Windows stamps as OWNER on files this process creates — the token's
 /// default owner, which for an account in Administrators is `BUILTIN\Administrators`
 /// (S-1-5-32-544), not the account itself. Measured 19 Sep 2026 on the clean

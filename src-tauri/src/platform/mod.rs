@@ -330,8 +330,8 @@ pub fn prepare_headless() -> Result<(), String> {
 }
 
 /// `sudo rexenv --headless-setup`: the administrator's one-time step for a headless install. `None`
-/// when argv is not the setup. Windows has `--headless` but not its setup yet (T5 W2) and says so;
-/// macOS answers with the same refusal as `--headless`.
+/// when argv is not the setup. Windows: an administrator console's one-time step (T5 W2,
+/// `windows/headless.rs`); macOS answers with the same refusal as `--headless`.
 pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
     #[cfg(target_os = "linux")]
     {
@@ -339,10 +339,7 @@ pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
     }
     #[cfg(target_os = "windows")]
     {
-        argv.iter().any(|a| a == "--headless-setup").then(|| {
-            eprintln!("{}", windows::HEADLESS_SETUP_NOT_YET);
-            2
-        })
+        windows::run_headless_setup(argv)
     }
     #[cfg(target_os = "macos")]
     {

@@ -22,6 +22,8 @@
 AllowSkipFiles off
 
 !define REXENV_DNS_TASK "\rexenv\dns-agent"
+; A headless install's boot task (platform/windows/logon_task.rs HEADLESS_TASK, T5 W2).
+!define REXENV_HEADLESS_TASK "\rexenv\headless"
 !define REXENV_EXE "rexenv.exe"
 
 ; Stop the agent's task (so nothing puts the agent back), then kill every rexenv.exe of this
@@ -103,6 +105,11 @@ AllowSkipFiles off
   ; removes it. No UAC: the task is the user's own. NRPT and the certificate are NOT touched here
   ; (they need the elevated step inside the app); the note after the uninstall says so.
   nsExec::ExecToLog 'schtasks /Delete /TN "${REXENV_DNS_TASK}" /F'
+  Pop $0
+  ; A headless install's boot task too, before the agent is waited out -- it restarts rexenv.exe
+  ; within the minute otherwise. Best effort: `--headless-setup` registered it from an administrator
+  ; console, and an unelevated uninstaller may be refused (docs/TODO.md, T5 W2).
+  nsExec::ExecToLog 'schtasks /Delete /TN "${REXENV_HEADLESS_TASK}" /F'
   Pop $0
   !insertmacro REXENV_STOP_AGENT_AND_WAIT
 !macroend

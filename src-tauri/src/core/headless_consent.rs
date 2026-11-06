@@ -93,7 +93,8 @@ pub fn bad_level(value: &str) -> String {
 /// exactly as the card's controls write them. A level above Read is set for ALWAYS — there is no
 /// session to end and no one to see a 7-day expiry. Returns one line per change, for the terminal.
 ///
-/// The ONE non-GUI writer of these keys (ledger #920): called only by the root setup.
+/// The ONE non-GUI writer of these keys (ledger #920): called only by an administrator's setup — Linux's
+/// root one, Windows' elevated one.
 pub fn apply(conn: &Connection, consent: &Consent) -> Result<Vec<String>> {
     let mut said = Vec::new();
     if let Some(on) = consent.mcp {
@@ -184,9 +185,9 @@ mod tests {
         }
     }
 
-    /// **Only the root setup writes these keys outside the GUI** (ledger #920). `apply` has one
-    /// caller in the tree, and it sits in the Linux setup after the root check and inside the
-    /// child that dropped to the user. A second caller — a `rex` verb, an argv mode the user's own
+    /// **Only an administrator's setup writes these keys outside the GUI** (ledger #920). `apply` has
+    /// two callers in the tree: the Linux setup after the root check and inside the child that dropped
+    /// to the user, and the Windows setup after its elevation check (T5 W2). A second caller — a `rex` verb, an argv mode the user's own
     /// processes could run, an MCP tool — is how an agent would widen its own access.
     #[test]
     fn only_the_root_setup_calls_apply() {
@@ -214,7 +215,16 @@ mod tests {
                 walk(&dir, &dir, &mut callers);
             }
         }
-        assert_eq!(callers, ["platform/linux/headless.rs"], "apply must have exactly one caller");
+        callers.sort();
+        assert_eq!(callers, ["platform/linux/headless.rs", "platform/windows/headless.rs"], "apply's callers are the two setups");
+        // Windows (T5 W2): the setup runs as the account itself, so the door is the ELEVATED token — an
+        // agent's own unelevated process cannot pass it without a UAC prompt the user would see.
+        let win = include_str!("../platform/windows/headless.rs");
+        assert_eq!(win.matches("headless_consent::apply(").count(), 1);
+        let win_setup = &win[win.find("fn setup(argv: &[String])").expect("the Windows setup")..];
+        let elevated = win_setup.find("if !acl::process_is_elevated() {").expect("the elevation check");
+        let write = win_setup.find("headless_consent::apply(").expect("the Windows write");
+        assert!(elevated < write, "the elevation check must come before the write");
         let door = include_str!("../platform/linux/headless.rs");
         assert_eq!(door.matches("headless_consent::apply(").count(), 1);
         let setup = &door[door.find("fn setup(argv: &[String])").expect("the setup")..];

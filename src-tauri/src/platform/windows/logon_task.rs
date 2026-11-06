@@ -36,23 +36,67 @@ pub(crate) fn xml_escape(s: &str) -> String {
     out
 }
 
-/// The task definition: run `exe --dns-agent --log "<log>"` as `user_sid`, at that user's logon and
-/// every minute after `REPEAT_FROM`, one instance at a time, for as long as it runs.
-pub(crate) fn dns_agent_task_xml(user_sid: &str, exe: &Path, log: &Path) -> String {
+/// When a task starts, and as what. `Logon` is the desktop's shape (measured 15 Sep 2026, ledger #616):
+/// at this user's logon, with the interactive token, registered without elevation. `Boot` is a
+/// headless install's (docs/PLAN-headless-web.md T5 W2): at boot with NOBODY logged on, as an S4U
+/// principal (the user's own token, no stored password — session 0, measured on the Dell 6 Nov 2026:
+/// an S4U task ran the whole backend there); registering one takes an administrator, which is why only
+/// `rexenv.exe --headless-setup` writes it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TaskStart {
+    Logon,
+    Boot,
+}
+
+/// The task definition: run `exe --dns-agent --log "<log>"` as `user_sid`, at that user's logon (or at
+/// boot, `TaskStart::Boot`) and every minute after `REPEAT_FROM`, one instance at a time, for as long
+/// as it runs.
+pub(crate) fn dns_agent_task_xml(user_sid: &str, exe: &Path, log: &Path, start: TaskStart) -> String {
+    task_xml(
+        "rexenv's DNS resolver: answers *.rex (and your other rexenv TLDs) with this computer. Removed by rexenv's \"Remove system changes\".",
+        user_sid,
+        exe,
+        &format!("--dns-agent --log \"{}\"", log.display()),
+        start,
+    )
+}
+
+/// The headless app's boot task (T5 W2): `rexenv.exe --headless [--web]` at boot as an S4U principal,
+/// kept alive by the same per-minute repetition the agent has (a no-op under `IgnoreNew` while it runs,
+/// a restart within the minute when it does not). Written by `--headless-setup` only.
+pub(crate) const HEADLESS_TASK: &str = r"\rexenv\headless";
+
+pub(crate) fn headless_task_xml(user_sid: &str, exe: &Path, web: bool) -> String {
+    task_xml(
+        "rexenv, headless: runs this account's local development stack at boot with nobody logged on, driven by `rex` (and the web UI when it is on). Written by rexenv.exe --headless-setup.",
+        user_sid,
+        exe,
+        if web { "--headless --web" } else { "--headless" },
+        TaskStart::Boot,
+    )
+}
+
+fn task_xml(description: &str, user_sid: &str, exe: &Path, arguments: &str, start: TaskStart) -> String {
     let sid = xml_escape(user_sid);
+    // Our own constant, written as it always was (unescaped — `'` and `"` are legal text): an escaped
+    // copy would change the desktop's bytes and re-register every install once.
     let command = xml_escape(&exe.display().to_string());
-    let arguments = xml_escape(&format!("--dns-agent --log \"{}\"", log.display()));
+    let arguments = xml_escape(arguments);
+    let (trigger, logon_type) = match start {
+        TaskStart::Logon => (
+            format!("    <LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>{sid}</UserId>\n    </LogonTrigger>"),
+            "InteractiveToken",
+        ),
+        TaskStart::Boot => ("    <BootTrigger>\n      <Enabled>true</Enabled>\n    </BootTrigger>".to_string(), "S4U"),
+    };
     format!(
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>rexenv's DNS resolver: answers *.rex (and your other rexenv TLDs) with this computer. Removed by rexenv's "Remove system changes".</Description>
+    <Description>{description}</Description>
   </RegistrationInfo>
   <Triggers>
-    <LogonTrigger>
-      <Enabled>true</Enabled>
-      <UserId>{sid}</UserId>
-    </LogonTrigger>
+{trigger}
     <TimeTrigger>
       <Repetition>
         <Interval>PT1M</Interval>
@@ -65,7 +109,7 @@ pub(crate) fn dns_agent_task_xml(user_sid: &str, exe: &Path, log: &Path) -> Stri
   <Principals>
     <Principal id="Author">
       <UserId>{sid}</UserId>
-      <LogonType>InteractiveToken</LogonType>
+      <LogonType>{logon_type}</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
   </Principals>
@@ -129,6 +173,39 @@ pub(crate) fn utf16_file_bytes(xml: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// A headless install's two tasks (T5 W2): at BOOT, as an S4U principal — no logon trigger, no
+    /// interactive token — and otherwise the desktop agent's measured settings, the per-minute
+    /// keep-alive included. The desktop's (`Logon`) definition is unchanged by the split: its bytes are
+    /// what every install compares with, and a different byte re-registers the task on every machine.
+    #[test]
+    fn a_headless_install_starts_the_agent_and_the_app_at_boot_with_nobody_logged_on() {
+        let sid = "S-1-5-21-3487155226-1665577948-3202841263-1001";
+        let exe = Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv.exe");
+        let agent = dns_agent_task_xml(sid, exe, Path::new(r"C:\l\dns-agent.log"), TaskStart::Boot);
+        for xml in [&agent, &headless_task_xml(sid, exe, false), &headless_task_xml(sid, exe, true)] {
+            assert!(xml.contains("<BootTrigger>") && !xml.contains("<LogonTrigger>"), "{xml}");
+            assert_eq!(element(xml, "LogonType"), vec!["S4U"]);
+            assert_eq!(element(xml, "UserId"), vec![sid], "the principal only — a boot trigger names nobody");
+            assert_eq!(element(xml, "RunLevel"), vec!["LeastPrivilege"]);
+            assert_eq!(element(xml, "Interval"), vec!["PT1M"], "the keep-alive");
+            assert_eq!(element(xml, "ExecutionTimeLimit"), vec!["PT0S"]);
+            assert_eq!(element(xml, "DisallowStartIfOnBatteries"), vec!["false"], "a laptop on battery queues it forever otherwise");
+            assert_eq!(element(xml, "StopIfGoingOnBatteries"), vec!["false"]);
+            assert_eq!(element(xml, "MultipleInstancesPolicy"), vec!["IgnoreNew"]);
+            assert_eq!(element(xml, "Command"), vec![exe.display().to_string()]);
+            assert_eq!(task_principal_sid(xml).as_deref(), Some(sid));
+        }
+        assert!(element(&agent, "Arguments")[0].starts_with("--dns-agent --log"));
+        assert_eq!(element(&headless_task_xml(sid, exe, false), "Arguments"), vec!["--headless"]);
+        assert_eq!(element(&headless_task_xml(sid, exe, true), "Arguments"), vec!["--headless --web"]);
+        let logon = dns_agent_task_xml(sid, exe, Path::new(r"C:\l\dns-agent.log"), TaskStart::Logon);
+        assert_eq!(element(&logon, "LogonType"), vec!["InteractiveToken"]);
+        let as_logon = agent.replace("<LogonType>S4U</LogonType>", "<LogonType>InteractiveToken</LogonType>").replace(
+            "    <BootTrigger>\n      <Enabled>true</Enabled>\n    </BootTrigger>",
+            &format!("    <LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>{sid}</UserId>\n    </LogonTrigger>"),
+        );
+        assert_eq!(as_logon, logon, "the two differ in trigger and token only");
+    }
 
     /// Ledger #787 — **the silent installer stops the agent's task and waits the binary free
     /// before the swap, refuses to skip a locked file, and restarts the task after; the
@@ -161,8 +238,11 @@ mod tests {
         // interactive uninstall left it Ready, 5 Oct 2026). Then delete, then wait the agent out.
         let app = preun.find("!insertmacro CheckIfAppIsRunning").expect("the uninstaller must stop the app first");
         let del = preun.find("schtasks /Delete /TN \"${REXENV_DNS_TASK}\" /F").expect("the uninstaller deletes the task");
+        assert!(hooks.contains(&format!("!define REXENV_HEADLESS_TASK \"{HEADLESS_TASK}\"")), "the hooks must name the headless task as the setup registers it");
+        let del_headless = preun.find("schtasks /Delete /TN \"${REXENV_HEADLESS_TASK}\" /F").expect("the uninstaller deletes a headless install's boot task");
         let wait = preun.find("!insertmacro REXENV_STOP_AGENT_AND_WAIT").expect("and waits the agent out");
         assert!(app < del && del < wait, "app, then task, then agent: {preun}");
+        assert!(app < del_headless && del_headless < wait, "the headless task goes before the agent is waited out: {preun}");
         assert!(!preun.contains("${If} ${Silent}"), "the task goes with the app in every uninstall, silent or not: {preun}");
         let postun = section("NSIS_HOOK_POSTUNINSTALL");
         assert!(postun.contains("${IfNot} ${Silent}") && postun.contains("MessageBox") && postun.contains(".rex DNS rule") && postun.contains("certificate"), "the interactive uninstall still says what it did not remove: {postun}");
@@ -185,6 +265,7 @@ mod tests {
             sid,
             Path::new(r"C:\Program Files\rexenv\rexenv.exe"),
             Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log"),
+            TaskStart::Logon,
         );
         assert!(xml.contains("<LogonTrigger>"), "{xml}");
         assert_eq!(element(&xml, "UserId"), vec![sid, sid], "trigger and principal are this user");
@@ -204,7 +285,7 @@ mod tests {
             vec![r"--dns-agent --log &quot;C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log&quot;"]
         );
         // Deterministic: the same inputs give the same bytes, so an unchanged definition is skipped.
-        assert_eq!(xml, dns_agent_task_xml(sid, Path::new(r"C:\Program Files\rexenv\rexenv.exe"), Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log")));
+        assert_eq!(xml, dns_agent_task_xml(sid, Path::new(r"C:\Program Files\rexenv\rexenv.exe"), Path::new(r"C:\Users\DELL\AppData\Local\rexenv\rexenv\data\logs\dns-agent.log"), TaskStart::Logon));
     }
 
     /// A user folder may hold `&` or an apostrophe; the document must stay XML.
@@ -216,7 +297,7 @@ mod tests {
     fn another_accounts_task_is_never_taken_over() {
         let ours = "S-1-5-21-3487155226-1665577948-3202841263-1001";
         let theirs = "S-1-5-21-3487155226-1665577948-3202841263-1002";
-        let xml = dns_agent_task_xml(theirs, Path::new(r"C:\x\rexenv.exe"), Path::new(r"C:\x\a.log"));
+        let xml = dns_agent_task_xml(theirs, Path::new(r"C:\x\rexenv.exe"), Path::new(r"C:\x\a.log"), TaskStart::Logon);
         assert_eq!(task_principal_sid(&xml).as_deref(), Some(theirs));
         assert_eq!(task_principal_sid("<?xml version=\"1.0\"?><Task></Task>"), None);
         assert_eq!(task_principal_sid("ERROR: The system cannot find the file specified."), None);
@@ -232,7 +313,7 @@ mod tests {
 
     #[test]
     fn paths_with_xml_characters_are_escaped() {
-        let xml = dns_agent_task_xml("S-1-5-21-1", Path::new(r"C:\Users\A & B\rexenv.exe"), Path::new(r"C:\Users\O'Neil <x>\dns.log"));
+        let xml = dns_agent_task_xml("S-1-5-21-1", Path::new(r"C:\Users\A & B\rexenv.exe"), Path::new(r"C:\Users\O'Neil <x>\dns.log"), TaskStart::Logon);
         assert_eq!(element(&xml, "Command"), vec![r"C:\Users\A &amp; B\rexenv.exe"]);
         assert_eq!(element(&xml, "Arguments"), vec![r"--dns-agent --log &quot;C:\Users\O&apos;Neil &lt;x&gt;\dns.log&quot;"]);
         assert!(!xml.contains(" & "), "a raw ampersand");

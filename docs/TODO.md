@@ -603,7 +603,11 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `rex` hangs), while any launch with a user logged in — SSH or a system LaunchDaemon — works, web UI included.
   D8 ruled the same day (two steps). ✓ **W1** 6 Nov 2026: `rexenv.exe --headless` runs on Windows and refuses
   every dialog in words (#943, run on the Dell). ✓ **W3** 6 Nov 2026: `--web` survives the Explorer hop and a
-  headless launch never hops (#742). Open: W2 (the elevated `--headless-setup` + S4U boot tasks), M1–M3 (macOS).
+  headless launch never hops (#742). **W2 BUILT** 6 Nov 2026 (#944): `--headless-setup` from an elevated console
+  makes the `.rex` rule and CA trust, registers `\rexenv\headless` + the agent as S4U boot tasks, takes D7's
+  consents; owed: its run on the Dell (offline mid-run), the reboot with nobody logged on, whether an
+  unelevated uninstaller can delete an S4U task, and what a silent update does while `\rexenv\headless`
+  keeps restarting rexenv.exe. Open: M1–M3 (macOS).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the

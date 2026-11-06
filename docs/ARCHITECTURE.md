@@ -2416,7 +2416,12 @@ words (the browser shell's mock and two dev review pages excepted).
   do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a
   privileged change refuses before rexenv's dialog and UAC, the panic box is skipped (#943). It also
   starts no WebView2, so the web UI's `/ipc` (which rides the webview) fails there — D8's second
-  step. `--headless-setup` is not built on Windows yet (W2) and says so.
+  step. `rexenv.exe --headless-setup` (W2, #944) is the administrator's one step: elevated (an
+  elevated process runs rexenv's ops itself, `run_ops_here`, rather than asking UAC again), from the
+  installed exe, and on a desktop when the CA still needs trusting (session 0 cannot show that
+  confirmation), it runs the desktop's `run_system_setup`, registers `\rexenv\headless` and the DNS
+  agent as S4U boot tasks, and writes D7's consents. Every launch's agent refresh asks whether
+  `\rexenv\headless` exists and keeps the agent a boot task if so.
   **The two GUI consents on a box with no GUI (T3, D7).** The MCP opt-in and the Agent access dial
   are consents by rule — `rex config` and the MCP `settings` tool refuse them (#203, #397) — and a
   headless server has no Settings card. So the administrator's `sudo rexenv --headless-setup` carries

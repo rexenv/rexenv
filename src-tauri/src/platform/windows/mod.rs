@@ -33,6 +33,7 @@ mod elevation_rules;
 mod exe_icon;
 mod firefox_root;
 mod handles;
+mod headless;
 mod headless_rules;
 mod ipc_rules;
 mod job_guard;
@@ -171,7 +172,7 @@ impl CertTrustManager for WindowsCertTrust {
 /// S4U boot task — runs the whole backend as it is (measured, docs/PLAN-headless-web.md §2b); what it
 /// lacks is a desktop, and the doors that would need one refuse on a headless launch
 /// (`headless_rules`).
-pub(crate) use headless_rules::SETUP_NOT_YET as HEADLESS_SETUP_NOT_YET;
+pub(crate) use headless::run_setup as run_headless_setup;
 
 pub(crate) fn prepare_headless() -> Result<()> {
     Ok(())
@@ -186,6 +187,15 @@ impl PrivilegeManager for WindowsPrivileges {
         // Headless (session 0, T5 W1): no desktop for the dialog or for UAC, so refuse in words first.
         if crate::is_headless_launch() {
             return Err(Error::Other(headless_rules::NEEDS_SETUP.into()));
+        }
+        // Already elevated (`--headless-setup` from an administrator console, T5 W2): run rexenv's ops
+        // here. The ops are checked the same way (`run_ops_here` parses them first); a second, UAC-started
+        // copy would add nothing but a dialog — and in session 0 a dialog nobody can answer.
+        if acl::process_is_elevated() {
+            return match elevation::run_ops_here(script) {
+                (0, output) => Ok(output),
+                (code, output) => Err(elevation_rules::failed(code, &output)),
+            };
         }
         elevation::run_privileged(script, &reason.sentence())
     }
@@ -1015,6 +1025,18 @@ impl WindowsDnsAgent {
             .output()?)
     }
 
+    /// When the agent starts: at BOOT on a headless install — the one `--headless-setup` made, which is
+    /// what registered `\rexenv\headless` (T5 W2) — else at logon. Asked on every `install`, so the
+    /// app's launch-time refresh keeps the boot task a boot task instead of turning it back into a logon
+    /// one (which would leave a login-less boot with no `.rex` resolver).
+    fn start() -> logon_task::TaskStart {
+        if Self::schtasks(&["/Query", "/TN", logon_task::HEADLESS_TASK]).is_ok_and(|o| o.status.success()) {
+            logon_task::TaskStart::Boot
+        } else {
+            logon_task::TaskStart::Logon
+        }
+    }
+
     /// Run `schtasks`, and on a non-zero exit say which step failed with what schtasks printed.
     fn schtasks_ok(step: &str, args: &[&str]) -> Result<()> {
         let out = Self::schtasks(args)?;
@@ -1043,7 +1065,7 @@ impl DnsAgentManager for WindowsDnsAgent {
     fn definition_contents(&self, exe: &Path, log: &Path) -> String {
         // An unreadable SID yields a definition schtasks refuses; `install` reads it first and fails
         // with the real reason instead.
-        logon_task::dns_agent_task_xml(&acl::current_user_sid().unwrap_or_default(), exe, log)
+        logon_task::dns_agent_task_xml(&acl::current_user_sid().unwrap_or_default(), exe, log, Self::start())
     }
     /// Register (or re-register) the task and start it now. An unchanged definition with the task
     /// present is left alone — the app calls this on every launch.
@@ -1061,7 +1083,7 @@ impl DnsAgentManager for WindowsDnsAgent {
                 }
             }
         }
-        let bytes = logon_task::utf16_file_bytes(&logon_task::dns_agent_task_xml(&sid, exe, log));
+        let bytes = logon_task::utf16_file_bytes(&logon_task::dns_agent_task_xml(&sid, exe, log, Self::start()));
         let path = self.definition_path()?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
