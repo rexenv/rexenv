@@ -94,8 +94,56 @@ point at whatever the next build leaves there. Run the setup with the installed 
 pub(crate) const CONSENT_UNCHANGED: &str = "MCP endpoint and Agent access: left as they are (off and read \
 unless set before). Re-run with --enable-mcp and --agent-access <level> to change them.";
 
+/// **Why a headless launch re-shapes its own token before anything starts** (measured on the Dell, 7 Nov
+/// 2026, 0.9.6). An S4U task — `\rexenv\headless` — gets an administrator its FULL token: UAC filters only
+/// interactive logons, so `<RunLevel>LeastPrivilege</RunLevel>` changed nothing. Every service the headless
+/// rexenv started came out at High integrity (`S:(ML;;NWNR;;;HI)`), owned by Administrators, with a DACL
+/// of `BA`, `SYSTEM` and the S4U logon SID — and NOT this account's SID. The desktop rexenv that came next
+/// runs with the filtered token (Medium, `BA` deny-only), so `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)`
+/// on each of them failed with ERROR_ACCESS_DENIED: no command line, no ownership marker, and it "adopted 1"
+/// (Caddy, found by its admin socket) of a running stack. The same call from the elevated SSH token, and
+/// from the desktop token on a desktop-started stack, succeeded on every pid.
+///
+/// The fix gives every process the headless rexenv starts the shape a desktop-started one has: this
+/// account in the default DACL (so the desktop may open, wait on and stop it, and set nginx's reload
+/// event) and Medium integrity (so High's no-write-up cannot refuse the stop). Both are inherited from
+/// the token at each CreateProcess, so changing this process's own token once, before Tauri boots and
+/// before any service starts, covers every child and grandchild (nginx workers, the php-cgi groups).
+/// `BA` stays, so an elevated console keeps the access it had.
+pub(crate) fn child_default_dacl(user_sid: &str) -> String {
+    format!("D:(A;;GA;;;{user_sid})(A;;GA;;;SY)(A;;GA;;;BA)")
+}
+
+/// The Medium mandatory level — the desktop's filtered token's, which a headless launch lowers itself to.
+pub(crate) const MEDIUM_INTEGRITY_SID: &str = "S-1-16-8192";
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// The default DACL names THIS account with full access — the one ACE the S4U token's own default
+    /// lacked — and keeps SYSTEM and Administrators; nothing else (no logon SID, no Everyone).
+    #[test]
+    fn a_headless_launchs_children_are_open_to_this_account() {
+        let sid = "S-1-5-21-3487155226-1665577948-3202841263-1001";
+        let dacl = child_default_dacl(sid);
+        assert!(dacl.starts_with("D:"), "{dacl}");
+        let aces: Vec<&str> = dacl[2..].trim_matches(['(', ')']).split(")(").collect();
+        assert_eq!(aces, vec![format!("A;;GA;;;{sid}").as_str(), "A;;GA;;;SY", "A;;GA;;;BA"]);
+        assert!(!dacl.contains("S-1-5-5-") && !dacl.contains(";WD)"), "{dacl}");
+        assert_eq!(MEDIUM_INTEGRITY_SID, "S-1-16-8192");
+    }
+
+    /// Windows' `prepare_headless` re-shapes the token — the only code a headless launch runs before
+    /// Tauri boots — and a failure there is logged, not fatal (a headless PC whose desktop cannot adopt
+    /// its stack is better than one whose stack never starts).
+    #[test]
+    fn prepare_headless_reshapes_the_token_and_survives_a_failure() {
+        let body = body_of(&mod_rs(), "pub(crate) fn prepare_headless() -> Result<()> {", "");
+        assert!(body.contains("acl::open_children_to_this_account()"), "{body}");
+        assert!(!body.contains("acl::open_children_to_this_account()?"), "a failure must not end the launch:\n{body}");
+    }
+
     /// `windows/mod.rs` as text: the Win32 halves are not compiled on the macOS test host, so the
     /// order of their first lines is what can be checked here (the #175 bound: TEXT, not behaviour).
     fn mod_rs() -> String {

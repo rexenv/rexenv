@@ -287,3 +287,21 @@ their full text as it stood is kept here.
   (the webview-free host — **superseded** 6 Nov 2026: the web UI answers in session 0 once `dispatch` falls
   back to the app's local origin, #947; no command refactor is needed). ✓ macOS reboot with automatic login (#946, the 15.8 VM): only
   `--headless` comes up once a headless launch takes itself out of macOS's reopen-at-login list.
+
+## Reconcile of 7 Nov 2026
+
+### From “Phase 4+ (next era)”
+
+- [x] **Windows: a desktop rexenv does not adopt services a HEADLESS one started** (found 6 Nov 2026 in 0.9.6's Dell
+  gate). The stack running from a `\rexenv\headless` (S4U, session 0) launch was "adopted 1" (Caddy only) by the
+  desktop app that followed; the same 0.9.6 adopted 9 of a stack the desktop had started. Suspect: the adoption's
+  process query (the cmdline marker) cannot read a process whose token is the S4U logon session's. Until fixed,
+  INSTALL's "go back" says `rex stop` while the headless one still runs. Measure the query first (which call fails,
+  from a desktop token, on an S4U-started `mysqld`), then fix or record it as the rule.
+  ✓ 7 Nov 2026 (#948): measured — the desktop token's `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` failed with
+  ERROR_ACCESS_DENIED on every headless-started pid (S4U = the FULL admin token: High, DACL without the account);
+  fixed — a headless launch sets its token's default DACL to the account + SYSTEM + BA and lowers it to Medium
+  before anything starts (`acl::open_children_to_this_account`); RUN on the Dell: "adopted 9", pids unchanged,
+  the desktop's `rex stop` stopped them all. INSTALL's "go back" no longer needs `rex stop` first (from the
+  release after 0.9.6).
+

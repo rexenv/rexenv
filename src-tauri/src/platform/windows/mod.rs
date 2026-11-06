@@ -174,7 +174,14 @@ impl CertTrustManager for WindowsCertTrust {
 /// (`headless_rules`).
 pub(crate) use headless::run_setup as run_headless_setup;
 
+/// `--headless` (T5 W1): session 0 needs no display prepared — the dialogs refuse instead. What it does
+/// need is its children reachable from the desktop rexenv that may follow: an S4U task's token is the
+/// FULL administrator one, and its children were out of the desktop's reach (`headless_rules::
+/// child_default_dacl`, measured 7 Nov 2026). Best effort: logged, never fatal.
 pub(crate) fn prepare_headless() -> Result<()> {
+    if let Err(e) = acl::open_children_to_this_account() {
+        eprintln!("rexenv --headless: the services this launch starts may be out of the desktop app's reach: {e}");
+    }
     Ok(())
 }
 

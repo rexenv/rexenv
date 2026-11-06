@@ -79,6 +79,11 @@ impl OwnerOnlyDescriptor {
         let sid = current_user_sid()?;
         let sddl = super::owner_only::owner_only_sddl(&sid)
             .ok_or_else(|| Error::Other(format!("this process's user SID is not well-formed: {sid:?}")))?;
+        Self::from_sddl(&sddl)
+    }
+
+    /// Any SDDL string as a descriptor (the headless launch's default DACL uses it too).
+    fn from_sddl(sddl: &str) -> Result<Self> {
         let wide = wide_nul(sddl.encode_utf16());
         let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
         // SAFETY: `wide` is a NUL-terminated UTF-16 string that outlives the call, and
@@ -300,4 +305,69 @@ fn token_user_sid(token: HANDLE) -> Result<String> {
 
 fn wide_nul(units: impl Iterator<Item = u16>) -> Vec<u16> {
     units.chain(std::iter::once(0)).collect()
+}
+
+/// `--headless` on Windows: give every process this launch will start the shape a desktop-started one has
+/// — this account in the token's default DACL, and Medium integrity — so the desktop rexenv can read their
+/// command lines (ownership), wait on them and stop them. The reasons, and the measurement, are
+/// `headless_rules::child_default_dacl`'s. Changes THIS process's own token: both values are copied into
+/// each child's token at CreateProcess, so it must run before the first service starts.
+pub(super) fn open_children_to_this_account() -> Result<()> {
+    use windows_sys::Win32::Security::Authorization::ConvertStringSidToSidW;
+    use windows_sys::Win32::Security::{
+        GetLengthSid, SetTokenInformation, TokenDefaultDacl, TokenIntegrityLevel, PSID, SID_AND_ATTRIBUTES,
+        TOKEN_ADJUST_DEFAULT, TOKEN_DEFAULT_DACL, TOKEN_MANDATORY_LABEL,
+    };
+    // SE_GROUP_INTEGRITY (winnt.h) — a constant of a feature this crate does not otherwise need.
+    const SE_GROUP_INTEGRITY: u32 = 0x20;
+    let sid = current_user_sid()?;
+    let descriptor = OwnerOnlyDescriptor::from_sddl(&super::headless_rules::child_default_dacl(&sid))?;
+    let dacl = descriptor.dacl()?;
+    let mut token: HANDLE = null_mut();
+    // SAFETY: as in `current_user_sid`; TOKEN_ADJUST_DEFAULT is what both changes below need.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY | TOKEN_ADJUST_DEFAULT, &mut token) } == 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    let result = (|| -> Result<()> {
+        let default = TOKEN_DEFAULT_DACL { DefaultDacl: dacl };
+        // SAFETY: `default` points at a DACL inside `descriptor`, alive for this call; the size is the struct's.
+        let ok = unsafe {
+            SetTokenInformation(
+                token,
+                TokenDefaultDacl,
+                (&default as *const TOKEN_DEFAULT_DACL).cast(),
+                std::mem::size_of::<TOKEN_DEFAULT_DACL>() as u32,
+            )
+        };
+        if ok == 0 {
+            return Err(Error::Other(format!("the default DACL: {}", std::io::Error::last_os_error())));
+        }
+        let wide = wide_nul(super::headless_rules::MEDIUM_INTEGRITY_SID.encode_utf16());
+        let mut medium: PSID = null_mut();
+        // SAFETY: a NUL-terminated string SID; `medium` receives a LocalAlloc'ed SID, freed once below.
+        if unsafe { ConvertStringSidToSidW(wide.as_ptr(), &mut medium) } == 0 || medium.is_null() {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        let label = TOKEN_MANDATORY_LABEL { Label: SID_AND_ATTRIBUTES { Sid: medium, Attributes: SE_GROUP_INTEGRITY } };
+        // SAFETY: `label` points at `medium`, valid until the LocalFree after this call; the size covers
+        // the struct and the SID, as the API documents. LOWERING a token's own level needs no privilege.
+        let ok = unsafe {
+            SetTokenInformation(
+                token,
+                TokenIntegrityLevel,
+                (&label as *const TOKEN_MANDATORY_LABEL).cast(),
+                std::mem::size_of::<TOKEN_MANDATORY_LABEL>() as u32 + GetLengthSid(medium),
+            )
+        };
+        let err = std::io::Error::last_os_error();
+        // SAFETY: allocated by ConvertStringSidToSidW above, freed exactly once.
+        unsafe { LocalFree(medium.cast()) };
+        if ok == 0 {
+            return Err(Error::Other(format!("the integrity level: {err}")));
+        }
+        Ok(())
+    })();
+    // SAFETY: opened above, closed exactly once, here.
+    unsafe { CloseHandle(token) };
+    result
 }

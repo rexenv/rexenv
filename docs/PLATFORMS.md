@@ -359,6 +359,18 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   task's account is `<COMPUTER>\<user>` — `WORKGROUP\<user>` fails with "No mapping between account names
   and security IDs"; and a task created with default settings is `Queued` forever while a laptop is on
   battery (`DisallowStartIfOnBatteries`) — every rexenv task sets both battery flags off.
+- **An S4U task gets an administrator the FULL token — and its children are out of the desktop's reach**
+  (measured on the Dell, 7 Nov 2026, 0.9.6, #948). UAC filters only interactive logons:
+  `<RunLevel>LeastPrivilege</RunLevel>` changed nothing, and every service the headless rexenv started came
+  out High (`S:(ML;;NWNR;;;HI)`), owner `BA`, DACL `BA` + `SYSTEM` + the S4U logon SID — not the account's
+  SID. The desktop's filtered token (Medium, `BA` deny-only) then got ERROR_ACCESS_DENIED from
+  `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)` on every one: no command line, no ownership marker, and the
+  desktop "adopted 1" (Caddy, found by its admin socket). Granting the DACL alone is not enough — High's
+  no-write-up still refuses `PROCESS_TERMINATE` to a Medium caller. A headless launch now sets its own
+  token's default DACL (the account, `SYSTEM`, `BA`) and lowers it to Medium before anything starts
+  (`acl::open_children_to_this_account`); the children came out `ML;;NWNR;;;ME` with the account's ACE, and
+  the desktop adopted 9 and stopped them all. The headless rexenv's OWN process stays High — set at its
+  creation; nothing needs to open it.
 - **The CurrentUser\Root confirmation cannot be answered by a program — by design.** Deleting (or
   adding) a root in the user's store raises "Root Certificate Store" / "Security Warning" from a
   higher-integrity system component: from the desktop session, UIAutomation sees the window's NAME but

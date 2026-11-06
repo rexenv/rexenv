@@ -2421,8 +2421,12 @@ words (the browser shell's mock and two dev review pages excepted).
   (`dev.rexenv.rexenv.headless`: `--headless` in the GUI session, `KeepAlive` on a crash only), retires
   Start at login, and writes D7's consents: the third of `headless_consent::apply`'s administrator doors. **Windows runs it since 6 Nov 2026 (T5 W1):** a
   headless launch there is session 0 — an SSH session, or an S4U task that runs whether or not
-  anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
-  do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a
+  anyone is logged on — where the whole backend runs as it is. `prepare_headless` does one thing there
+  (#948): an S4U task gets an administrator the FULL token (High integrity, a default DACL without the
+  account's SID), and the services it started were out of the desktop's reach — no command line, so no
+  ownership, so a desktop that came next "adopted 1" of them. Before anything starts, the headless launch
+  puts the account in its token's default DACL and lowers it to Medium, so every child has the shape a
+  desktop-started one has and the desktop adopts and stops it. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a
   privileged change refuses before rexenv's dialog and UAC, the panic box is skipped (#943). It also
   starts no WebView2 — and the web UI works anyway (#947): `Webview::on_message` runs the invoke
   handler in Rust and reads the request URL only to class the call as the app's own, so when

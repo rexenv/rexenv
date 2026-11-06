@@ -553,12 +553,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   steps on real macOS, Windows and Linux machines, and a site reached through `ssh -D`. Plan:
   `docs/PLAN-headless-web.md`; the build log (T0–T9, ledger #911–#935) moved to `docs/archive/SHIPPED-2026-11.md`
   ("Judgement moves — reconcile of 7 Nov 2026").
-- [ ] **Windows: a desktop rexenv does not adopt services a HEADLESS one started** (found 6 Nov 2026 in 0.9.6's Dell
-  gate). The stack running from a `\rexenv\headless` (S4U, session 0) launch was "adopted 1" (Caddy only) by the
-  desktop app that followed; the same 0.9.6 adopted 9 of a stack the desktop had started. Suspect: the adoption's
-  process query (the cmdline marker) cannot read a process whose token is the S4U logon session's. Until fixed,
-  INSTALL's "go back" says `rex stop` while the headless one still runs. Measure the query first (which call fails,
-  from a desktop token, on an S4U-started `mysqld`), then fix or record it as the rule.
 - [ ] **Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup** (T5, ledger #943–#947,
   shipped 6 Nov 2026 on both OSes: `--headless` and `--headless-setup` run on Windows as S4U boot tasks and on macOS as
   a LaunchAgent; the web UI answers with no native webview). The one open row: on a PC where the CA was never trusted,

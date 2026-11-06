@@ -3808,6 +3808,12 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       with no autologin included — both tasks in session 0 30 s after boot, ten services up, `.rex`
       resolving, sites 200 (a WordPress cold first request took 14–26 s). Trap: `curl.exe` there needs
       `--ssl-no-revoke` — schannel fails rexenv's CA with `CRYPT_E_NO_REVOCATION_CHECK` (it has no CRL).
+- [x] **The desktop takes over a headless stack** (#948): with the stack started by `\rexenv\headless`
+      (session 0), disable and end the task, open the rexenv app on the desktop → its log says "adopted N"
+      with N the whole stack, every service keeps its pid, and `rex stop` from the desktop stops them all.
+      Before #948 the same steps gave "adopted 1" (Caddy) and a desktop that could not open the rest.
+      ✓ 7 Nov 2026, the Dell (a debug build with the fix as `\rexenv\headless`, the installed 0.9.6 as the
+      desktop): "adopted 9", the seven service pids unchanged, `rex stop` from session 1 left none.
 - [ ] **A second launch on a headless PC says so** (ledger #913, 7 Nov 2026): with `\rexenv\headless`
       running in session 0, log in on the desktop and run `rexenv.exe` from a console → it exits and
       prints "rexenv is already running headless on this machine — it has no window to show.", not
