@@ -92,11 +92,9 @@ fn setup(argv: &[String]) -> Result<Vec<String>> {
     WindowsDnsAgent.install(&exe, &log)?;
     said.push(format!("✓ {} now starts at boot too, so .rex resolves with nobody logged on.", logon_task::DNS_AGENT_TASK));
     said.push(if args.web {
-        "✓ web UI: requested (--web). On Windows it cannot answer yet with nobody logged on — session 0 starts no \
-         WebView2 (docs/PLAN-headless-web.md §2b); `rex` and `rex mcp` drive this PC."
-            .to_string()
+        "✓ web UI: on — 127.0.0.1:9443 only; `rex web url` prints its sign-in link.".to_string()
     } else {
-        format!("web UI: off (re-run with {} to request it).", rules::ENABLE_WEB_FLAG)
+        format!("web UI: off (re-run with {} to serve it on 127.0.0.1:9443).", rules::ENABLE_WEB_FLAG)
     });
     // 4. D7's two consents, into this account's own database (ledger #920).
     if consent.is_empty() {

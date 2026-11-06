@@ -107,6 +107,11 @@ pub struct PlatformWords {
     /// same per-OS spelling rule as `db_browser_origin`, filled for every OS
     /// (`docs/archive/PLAN-db-console-open-and-phpmyadmin.md` §3.3).
     pub phpmyadmin_origin: &'static str,
+    /// The origin the app's OWN pages are served from — Tauri's `tauri` protocol, in this OS's webview's
+    /// spelling (the `db_browser_origin` rule). The web UI hands it to `Webview::on_message` when the
+    /// webview cannot say its URL: in Windows session 0 no WebView2 starts and `url()` fails, while the
+    /// invoke handler itself needs no native webview (T5 / D8 step two, measured on the Dell).
+    pub app_origin: &'static str,
     /// What to do when rexenv is running from somewhere it was not installed to, so an
     /// update has nothing it may safely replace. macOS: drag the bundle into Applications;
     /// Windows: run the installer again. The refusal in `core::app_update` says this
@@ -174,6 +179,7 @@ pub const MACOS: PlatformWords = PlatformWords {
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
     phpmyadmin_origin: "rexpma://localhost",
+    app_origin: "tauri://localhost",
     reinstall_to_home: "Move rexenv.app into Applications in Finder, open it from there, then update.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv.app",
@@ -215,6 +221,7 @@ pub const WINDOWS: PlatformWords = PlatformWords {
     path_sep: "\\",
     db_browser_origin: "http://rexdb.localhost",
     phpmyadmin_origin: "http://rexpma.localhost",
+    app_origin: "http://tauri.localhost",
     reinstall_to_home: "Run the rexenv installer again so it lands in %LOCALAPPDATA%\\rexenv, open it from there, then update.",
     take_ownership: "takeown /R /F",
     update_replaces: "rexenv's program files (your data folder is not touched)",
@@ -270,6 +277,7 @@ pub const LINUX: PlatformWords = PlatformWords {
     path_sep: "/",
     db_browser_origin: "rexdb://localhost",
     phpmyadmin_origin: "rexpma://localhost",
+    app_origin: "tauri://localhost",
     reinstall_to_home: "Install rexenv from its .deb (sudo apt install ./rexenv_<version>_<arch>.deb) or run it as the AppImage from a folder you own, then update from there.",
     take_ownership: "sudo chown -R \"$USER\"",
     update_replaces: "rexenv's program files",
@@ -502,10 +510,12 @@ mod tests {
             let a = Console::Adminer.scheme();
             let p = Console::PhpMyAdmin.scheme();
             if scheme_shape {
+                assert_eq!(w.app_origin, "tauri://localhost");
                 assert_eq!(w.db_browser_origin, format!("{a}://localhost"));
                 assert_eq!(w.phpmyadmin_origin, format!("{p}://localhost"));
             }
             if http_shape {
+                assert_eq!(w.app_origin, "http://tauri.localhost");
                 assert_eq!(w.db_browser_origin, format!("http://{a}.localhost"));
                 assert_eq!(w.phpmyadmin_origin, format!("http://{p}.localhost"));
             }

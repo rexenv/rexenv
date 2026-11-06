@@ -328,7 +328,12 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
     sentence in `platform/words.rs`.
   - **Then (Phase 1b on both, large):** D1 (c) — an app-owned command host the CLI, MCP and web server
     call without the webview, which also removes Xvfb on Linux. 17 command files and both socket servers;
-    its own plan.
+    its own plan. **Superseded 6 Nov 2026 by a measurement (#947):** the native webview was never what the
+    dispatch needed — `Webview::on_message` runs the handler in Rust and only `webview.url()` asks the native
+    side. With the app's local origin as the fallback URL, the web UI answered in Windows session 0 with zero
+    `msedgewebview2.exe` (`list_sites`, `global_status`, `app_info`; a `service-health` event over `/events`).
+    macOS needs nothing more: a headless Mac runs in the user's session (M1/M2), where WKWebView exists and
+    the web UI was measured working (§2b). Linux keeps Xvfb (tao's `gtk::init` needs a display regardless).
   - The alternative to the first step on macOS — making AppKit finish launching with no window server
     (an `NSApplicationActivationPolicyProhibited` launch that calls `finishLaunching` itself) — is
     unmeasured and fights the framework; not recommended without a spike.

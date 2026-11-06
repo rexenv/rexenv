@@ -617,7 +617,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   deletes `\rexenv\headless`, a silent install ends it before the swap and runs it after. Still open: a silent
   update RUN over a headless PC (a `tauri build` installer on the Dell; a keep-alive start inside the swap fails
   safe), a fresh PC's first run (needs a person at the desktop for the CA confirmation), and D8's second step
-  (the webview-free host, its own plan). ✓ macOS reboot with automatic login (#946, the 15.8 VM): only
+  (the webview-free host — **superseded** 6 Nov 2026: the web UI answers in session 0 once `dispatch` falls
+  back to the app's local origin, #947; no command refactor is needed). ✓ macOS reboot with automatic login (#946, the 15.8 VM): only
   `--headless` comes up once a headless launch takes itself out of macOS's reopen-at-login list.
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item

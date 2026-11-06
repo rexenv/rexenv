@@ -353,8 +353,9 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **Session 0 has no desktop — no dialog, no UAC, no WebView2** (measured on the Dell, 6 Nov 2026,
   `docs/PLAN-headless-web.md` §2b). An SSH session and an S4U scheduled task both run there. The backend
   runs unchanged, but a `MessageBoxW` blocks its thread forever, UAC cannot prompt, and WebView2 never
-  starts (zero `msedgewebview2.exe`; the web UI's `/ipc` answers "failed to receive message from webview").
-  A headless launch therefore refuses every dialog in words (#943). Two traps found on the way: an S4U
+  starts (zero `msedgewebview2.exe`; before 6 Nov 2026 the web UI's `/ipc` answered "failed to receive
+  message from webview" — only `Webview::url()` needed the native webview, and `dispatch` now falls back
+  to the app's local origin, `words::app_origin`, #947). A headless launch refuses every dialog in words (#943). Two traps found on the way: an S4U
   task's account is `<COMPUTER>\<user>` — `WORKGROUP\<user>` fails with "No mapping between account names
   and security IDs"; and a task created with default settings is `Queued` forever while a laptop is on
   battery (`DisallowStartIfOnBatteries`) — every rexenv task sets both battery flags off.

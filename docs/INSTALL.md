@@ -503,8 +503,9 @@ asks the two AI-agent questions; with no console to ask at, it leaves them as th
 
 - A headless rexenv never shows a dialog: anything that needs a Windows administrator prompt
   answers with a sentence saying where to do it instead.
-- `--enable-web` is accepted, but the web UI cannot answer yet with nobody logged on — Windows starts
-  no WebView2 there (`docs/PLAN-headless-web.md` §2b). Use `rex` and `rex mcp`.
+- `--enable-web` serves the web UI on `127.0.0.1:9443` too (reach it with `ssh -L 9443:127.0.0.1:9443`;
+  `rex web url` prints the sign-in link) — it works with nobody logged on, though Windows starts no
+  WebView2 there.
 - To go back to the desktop app: `schtasks /Delete /TN \rexenv\headless /F` from an administrator
   console, then open rexenv — it turns the DNS agent back into a logon task by itself.
 

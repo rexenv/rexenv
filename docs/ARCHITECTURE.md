@@ -2424,8 +2424,10 @@ words (the browser shell's mock and two dev review pages excepted).
   anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
   do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a
   privileged change refuses before rexenv's dialog and UAC, the panic box is skipped (#943). It also
-  starts no WebView2, so the web UI's `/ipc` (which rides the webview) fails there — D8's second
-  step. `rexenv.exe --headless-setup` (W2, #944) is the administrator's one step: elevated (an
+  starts no WebView2 — and the web UI works anyway (#947): `Webview::on_message` runs the invoke
+  handler in Rust and reads the request URL only to class the call as the app's own, so when
+  `webview.url()` cannot answer, `web_server::dispatch` passes the app's local origin
+  (`PlatformWords::app_origin`). Events need no webview either (`listen_any`). `rexenv.exe --headless-setup` (W2, #944) is the administrator's one step: elevated (an
   elevated process runs rexenv's ops itself, `run_ops_here`, rather than asking UAC again), from the
   installed exe, and on a desktop when the CA still needs trusting (session 0 cannot show that
   confirmation), it runs the desktop's `run_system_setup`, registers `\rexenv\headless` and the DNS

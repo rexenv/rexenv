@@ -662,4 +662,21 @@ mod tests {
         assert!(spawn.contains(".header_read_timeout(rules::HEADER_READ_TIMEOUT)") && spawn.contains(".timer("), "header timeout with a timer");
         assert!(spawn.contains("try_acquire_owned()"), "the connection cap");
     }
+
+    /// The web UI needs no native webview (T5, D8's second step, measured on the Dell 6 Nov 2026: in
+    /// Windows session 0, zero `msedgewebview2.exe`, `/ipc/list_sites` answered and an event crossed
+    /// `/events`). `dispatch` asks the webview its URL and, when there is no native webview to answer,
+    /// uses the app's local origin — `on_message` reads the URL only to class the call as the app's own.
+    /// TEXT (the #175 bound): the fallback stays, and it is the platform's origin, not one OS's literal.
+    #[test]
+    fn the_web_ui_dispatches_without_a_native_webview() {
+        let src = include_str!("web_server.rs");
+        let body = &src[src.find("async fn dispatch(").expect("dispatch")..];
+        let body = &body[..body.find("\n}\n").expect("its end")];
+        let ask = body.find("match webview.url() {").expect("the URL is asked first");
+        let fallback = body.find("crate::platform::words::current().app_origin").expect("the local-origin fallback");
+        assert!(ask < fallback, "{body}");
+        assert!(!body.contains("tauri.localhost") && !body.contains("tauri://"), "the origin is the platform's (words.rs), not inline");
+        assert!(body.find("webview.on_message(").expect("on_message") > fallback, "{body}");
+    }
 }

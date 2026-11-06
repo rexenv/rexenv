@@ -403,7 +403,16 @@ async fn dispatch(app: &AppHandle, cmd: &str, args: Value) -> Result<Value, Valu
         return Err(json!("rexenv's window is not up yet — retry in a moment"));
     };
     let webview: tauri::Webview = window.as_ref().clone();
-    let url = webview.url().map_err(|e| json!(e.to_string()))?;
+    // The webview's own URL — or, when there is no native webview to ask (Windows session 0 starts no
+    // WebView2, plan §2b), the app's local origin. `on_message` uses the URL only to see that the call is
+    // the app's own (`Origin::Local`); the invoke handler runs in Rust and needs no native webview.
+    let url = match webview.url() {
+        Ok(url) => url,
+        Err(e) => {
+            log::debug!("web: the webview cannot say its URL ({e}); dispatching as the app's local origin");
+            tauri::Url::parse(crate::platform::words::current().app_origin).map_err(|e| json!(e.to_string()))?
+        }
+    };
     let request = tauri::webview::InvokeRequest {
         cmd: cmd.to_string(),
         callback: CallbackFn(0),

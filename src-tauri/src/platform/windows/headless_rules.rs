@@ -25,8 +25,9 @@ pub(crate) const ENABLE_WEB_FLAG: &str = "--enable-web";
 pub(crate) struct SetupArgs {
     pub consent: crate::core::headless_consent::Consent,
     /// `--enable-web`: the boot task runs `rexenv.exe --headless --web`. The task is rewritten on every
-    /// run, so a run without it turns the web UI off — said in the setup's output. On Windows the web UI
-    /// cannot answer yet in session 0 (no WebView2, plan §2b); the setup says that too.
+    /// run, so a run without it turns the web UI off — said in the setup's output. Session 0 starts no
+    /// WebView2, and the web UI answers anyway: its dispatch falls back to the app's local origin
+    /// (`web_server::dispatch`, measured on the Dell 6 Nov 2026).
     pub web: bool,
 }
 
