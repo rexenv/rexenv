@@ -551,8 +551,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 - [ ] **Headless rexenv on a VPS — open: the rest of Phase 1b** (Phase 1a, T0–T4, shipped in 0.9.3; T5 is the
   "Headless mode on macOS and Windows" row below; the web UI's desktop actions and its sign-in hardening are their own
-  rows above). Open in T8: the every-route walk of the web UI on the Ubuntu VM. Open in T9: the CA download's trust
-  steps on real macOS, Windows and Linux machines, and a site reached through `ssh -D`. Plan:
+  rows above). ✓ T8's every-route walk RAN 7 Nov 2026 — on the Dell (`\rexenv\headless --web`, the current build,
+  Playwright WebKit through `ssh -L`) rather than the VM: the web UI is one frontend and one server on every OS. 26
+  routes (six screens, six Settings sections, every tab of a WordPress and a PHP site), no sign-in loss, no
+  error text; it FOUND #952's regression (the CSP framed the consoles on `localhost` only, the site's Database
+  tab refused phpMyAdmin) — fixed and re-run, phpMyAdmin inside the frame on `rexenv.localhost:9445`. Open in T9:
+  the CA download's trust steps on real macOS, Windows and Linux machines, and a site reached through `ssh -D`. Plan:
   `docs/PLAN-headless-web.md`; the build log (T0–T9, ledger #911–#935) moved to `docs/archive/SHIPPED-2026-11.md`
   ("Judgement moves — reconcile of 7 Nov 2026").
 - [ ] **Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup** (T5, ledger #943–#947,

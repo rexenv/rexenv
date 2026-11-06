@@ -49,8 +49,8 @@ App version **0.9.6** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 - `TODO.md:539` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
 - `TODO.md:552` Headless rexenv on a VPS — open: the rest of Phase 1b
-- `TODO.md:558` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
-- `TODO.md:565` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:562` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
+- `TODO.md:569` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

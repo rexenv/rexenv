@@ -4609,6 +4609,15 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   setup's unit line is L0 only (no systemd there).
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the unit's `ExecStart=/usr/bin/rexenv --headless --web`, the token `-rw-------`; no link → 401 with the `rex web url` sentence; the link → `/sites`, the `?t=` gone; a fresh account (`useradd`) → 401 on `/ipc/app_info` and on 9444, `Permission denied` on the token file; `Host: evil.example` → 403.
 
+### The web UI's every route (T8)
+- [x] Through the tunnel, open every screen and every tab: Sites, Services, Databases, Mail, Tunnels,
+  Import, each Settings section, and every tab of a WordPress and a PHP site — each renders, nothing
+  signs you out, no "Something went wrong", no console error; the site's Database tab shows phpMyAdmin
+  or Adminer INSIDE the frame.
+  ✓ 7 Nov 2026 — the Dell (`\rexenv\headless --web`, current build), Playwright WebKit: 26 routes; the
+  only console error was the Database tab's refused frame (#952's CSP regression) — fixed, re-run clean.
+  The `Load failed` page errors a hard `goto` raises are the previous page's cancelled fetches, not a route.
+
 ### The web UI's pickers and desktop actions (T8, ledger #931)
 - [x] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
   walks into `rexenv/Sites/`, a symlink out of home (`ln -s /etc ~/out`) answers with the sentence,

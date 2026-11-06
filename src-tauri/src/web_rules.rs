@@ -85,7 +85,7 @@ pub const TRANSPORT_META: &str = r#"<meta name="rexenv-transport" content="web" 
 /// origins a browser does not have; `frame-ancestors 'none'` because nothing should frame the UI.
 pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
 img-src 'self' data: https://*.w.org; font-src 'self' data:; connect-src 'self'; \
-frame-src 'self' http://localhost:9444 http://127.0.0.1:9444 http://localhost:9445 http://127.0.0.1:9445; \
+frame-src 'self' http://rexenv.localhost:9444 http://rexenv.localhost:9445 http://localhost:9444 http://127.0.0.1:9444 http://localhost:9445 http://127.0.0.1:9445; \
 object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 // ── Auth (T7) ────────────────────────────────────────────────────────────────────────────────
@@ -487,6 +487,19 @@ mod tests {
         assert!(!page.contains("<script"), "no script: the CSP forbids inline script");
         let hostile = after_sign_in_page("/\"><script>x</script>");
         assert!(hostile.contains("content=\"0;url=/\"") && !hostile.contains("<script"), "{hostile}");
+    }
+
+    /// The page may frame each console on the name it is signed in on: #952 moved the app to
+    /// `rexenv.localhost`, the frame followed (`webConsoleOrigins` builds it from the page's hostname),
+    /// and the CSP still listed only `localhost` — the site's Database tab showed a refused frame until
+    /// the route walk of 7 Nov 2026 found it.
+    #[test]
+    fn the_csp_frames_the_consoles_on_the_web_host() {
+        let frame_src = CSP.split(';').map(str::trim).find(|d| d.starts_with("frame-src")).expect("frame-src");
+        for (_, port) in console_ports() {
+            let origin = format!("http://{WEB_HOST}:{port}");
+            assert!(frame_src.split_whitespace().any(|s| s == origin), "{origin} missing from {frame_src}");
+        }
     }
 
     /// A sign-in link is spent only on `rexenv.localhost` — on `localhost` it moves there, port kept, so
