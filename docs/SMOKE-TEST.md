@@ -4587,6 +4587,14 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   with no link → the sentence naming `rex web url`; the printed link → the app, and the address bar
   loses the `?t=`. A second browser profile without the link → the sentence again. Another local
   account: `curl localhost:9443/ipc/app_info -X POST` → 401. `curl -H 'Host: evil.example'` → 403.
+  **Since #950:** the same link a second time → 403 "used already…"; two `rex web url` print two
+  different links; Settings → General → **Sign out** → the sentence page, and the old session's cookie
+  replayed → 401; an older install's `web-token` file is gone after the start.
+  ✓ 7 Nov 2026 — the Dell (debug build `--headless --web` through `ssh -L`): link twice → 303 then
+  403; two links differ and the second still signs in; `/ipc/app_info` 200 with the session, `POST
+  /signout` 200 + `Max-Age=0`, the replayed id → 401, a cross-origin sign-out → 403; the 0.9.6
+  `web-token` file deleted at start; WebKit: the card's Sign out → the sentence page, no cookie left.
+  Not waited out: the ten-minute and 8 h/24 h limits (L0 `sign_in_codes_and_sessions_expire`).
   ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
   setup's unit line is L0 only (no systemd there).
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the unit's `ExecStart=/usr/bin/rexenv --headless --web`, the token `-rw-------`; no link → 401 with the `rex web url` sentence; the link → `/sites`, the `?t=` gone; a fresh account (`useradd`) → 401 on `/ipc/app_info` and on 9444, `Permission denied` on the token file; `Host: evil.example` → 403.

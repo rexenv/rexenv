@@ -118,3 +118,10 @@ export async function webListen<T>(event: string, handler: (e: WebEvent<T>) => v
     if (r.serverId !== null && streamId) void post("/events/unlisten", { stream: streamId, id: r.serverId });
   };
 }
+
+/** End this browser's web UI session (`POST /signout`, behind the same gate as every POST) and show
+ *  the server's "needs its sign-in link" page. The server clears the cookie in its reply. */
+export async function webSignOut(): Promise<void> {
+  await fetch("/signout", { method: "POST", credentials: "same-origin", headers: webHeaders() });
+  window.location.replace("/");
+}

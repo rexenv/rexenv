@@ -12,7 +12,7 @@ import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStat
   LiveSyncOptions,
   LiveSyncJobState, LiveSyncPushPlan,
   LiveSyncStatus, LiveSyncPreview, LiveSyncCreateInput, AdoptableWorktree, DirListing, CaDownload } from "@/types";
-import { transport, webInvoke, webListen } from "./transport";
+import { transport, webInvoke, webListen, webSignOut } from "./transport";
 import {
   mockAppInfo,
   mockPlatformWords,
@@ -47,6 +47,11 @@ export function isTauri(): boolean {
 }
 
 export { transport } from "./transport";
+
+/** Sign this browser out of the web UI. Only the web transport has a session to end. */
+export async function signOutOfWebUi(): Promise<void> {
+  if (transport() === "web") await webSignOut();
+}
 
 /** Lazily import the Tauri API so a browser-only dev build doesn't crash. Over the web transport
  *  the same command goes to `POST /ipc/<cmd>` (`transport.ts`). */

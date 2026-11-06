@@ -45,19 +45,74 @@ struct Stream {
 #[derive(Default)]
 struct Streams(Mutex<HashMap<String, Stream>>);
 
-/// The sign-in token and the live sessions (session id → its CSRF value). Sessions live in memory:
-/// a restart signs every browser out, and the link `rex web url` prints signs it back in.
+/// The unspent sign-in codes (each minted by one `rex web url`) and the live sessions. Both live in
+/// memory only: a restart signs every browser out and voids every link, and `rex web url` mints a new
+/// one (`web_rules::SIGN_IN_CODE_TTL`, `SESSION_IDLE`, `SESSION_MAX`).
+#[derive(Default)]
 struct Auth {
-    token: String,
-    sessions: Mutex<HashMap<String, String>>,
+    codes: Mutex<Vec<(String, std::time::Instant)>>,
+    sessions: Mutex<HashMap<String, Session>>,
 }
 
-/// The address `rex web url` prints, once the server is up.
-static SIGN_IN_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+struct Session {
+    csrf: String,
+    started: std::time::Instant,
+    seen: std::time::Instant,
+}
 
-/// `rex web url`'s answer: the sign-in link, or `None` when this launch serves no web UI.
+impl Auth {
+    /// A new single-use code; expired ones are dropped on the way.
+    fn mint_code(&self) -> String {
+        let code = random_hex();
+        if let Ok(mut c) = self.codes.lock() {
+            c.retain(|(_, at)| rules::code_live(at.elapsed()));
+            c.push((code.clone(), std::time::Instant::now()));
+        }
+        code
+    }
+    /// Spend `code`: true once, for a live code this server minted. Compared in constant time.
+    fn take_code(&self, code: &str) -> bool {
+        let Ok(mut c) = self.codes.lock() else { return false };
+        c.retain(|(_, at)| rules::code_live(at.elapsed()));
+        match c.iter().position(|(k, _)| rules::same_secret(k, code)) {
+            Some(i) => {
+                c.swap_remove(i);
+                true
+            }
+            None => false,
+        }
+    }
+    fn start_session(&self) -> (String, String) {
+        let (id, csrf) = (random_hex(), random_hex());
+        let now = std::time::Instant::now();
+        if let Ok(mut s) = self.sessions.lock() {
+            s.insert(id.clone(), Session { csrf: csrf.clone(), started: now, seen: now });
+        }
+        (id, csrf)
+    }
+    /// The CSRF value of a LIVE session, marking it used; a session past its limits is removed.
+    fn csrf_of(&self, id: &str) -> Option<String> {
+        let mut s = self.sessions.lock().ok()?;
+        s.retain(|_, v| rules::session_live(v.started.elapsed(), v.seen.elapsed()));
+        let session = s.get_mut(id)?;
+        session.seen = std::time::Instant::now();
+        Some(session.csrf.clone())
+    }
+    fn end_session(&self, id: &str) {
+        if let Ok(mut s) = self.sessions.lock() {
+            s.remove(id);
+        }
+    }
+}
+
+/// This launch's sign-in state, once the server is up.
+static AUTH: std::sync::OnceLock<Arc<Auth>> = std::sync::OnceLock::new();
+
+/// `rex web url`'s answer: a NEW single-use sign-in link (ten minutes), or `None` when this launch
+/// serves no web UI.
 pub fn sign_in_url() -> Option<String> {
-    SIGN_IN_URL.get().cloned()
+    let code = AUTH.get()?.mint_code();
+    Some(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, code))
 }
 
 /// 32 random bytes as hex — a token, a session id, a CSRF value.
@@ -68,23 +123,14 @@ fn random_hex() -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// The token from its owner-only file, made on first use. Kept across restarts, so a link the
-/// developer saved keeps working; delete the file to change it.
-fn load_token() -> crate::error::Result<String> {
-    let platform = crate::platform::current();
-    let path = platform.paths().config_dir()?.join(rules::TOKEN_FILE);
-    if let Ok(t) = std::fs::read_to_string(&path) {
-        let t = t.trim().to_string();
-        if t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Ok(t);
+/// The permanent token an older rexenv wrote: removed, so a link made from it stops working with the
+/// rest (`web_rules::TOKEN_FILE`).
+fn forget_permanent_token() {
+    if let Ok(dir) = crate::platform::current().paths().config_dir() {
+        if std::fs::remove_file(dir.join(rules::TOKEN_FILE)).is_ok() {
+            log::info!("web: removed the old permanent sign-in token — `rex web url` now mints a single-use link");
         }
     }
-    let t = random_hex();
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    platform.permissions().write_private(&path, t.as_bytes())?;
-    Ok(t)
 }
 
 impl Streams {
@@ -128,14 +174,8 @@ pub fn spawn_if_requested(app: AppHandle) {
             return;
         }
     }
-    let token = match load_token() {
-        Ok(t) => t,
-        Err(e) => {
-            log::error!("web: not started — no sign-in token: {e}");
-            return;
-        }
-    };
-    let auth = Arc::new(Auth { token, sessions: Mutex::new(HashMap::new()) });
+    forget_permanent_token();
+    let auth = Arc::new(Auth::default());
     tauri::async_runtime::spawn(async move {
         // **Every port, both loopbacks, or nothing (ledger #935).** A console port left to whoever
         // binds it first receives the session cookie — a cookie is per host, never per port — and
@@ -202,7 +242,7 @@ pub fn spawn_if_requested(app: AppHandle) {
             rules::WEB_PORT,
             rules::console_ports().iter().map(|(_, p)| p.to_string()).collect::<Vec<_>>().join(", ")
         );
-        let _ = SIGN_IN_URL.set(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, auth.token));
+        let _ = AUTH.set(auth.clone());
     });
 }
 
@@ -243,7 +283,7 @@ async fn handle_console(app: &AppHandle, auth: &Arc<Auth>, console: crate::core:
     let method = req.method().as_str().to_string();
     let host = header(&req, "host").unwrap_or_default().to_string();
     let session = header(&req, "cookie").and_then(|c| rules::cookie_value(c, rules::SESSION_COOKIE)).map(str::to_string);
-    let csrf = session.as_deref().and_then(|id| auth.sessions.lock().ok()?.get(id).cloned());
+    let csrf = session.as_deref().and_then(|id| auth.csrf_of(id));
     let verdict = rules::console_gate(&rules::Ask {
         method: &method,
         host: Some(&host).filter(|h| !h.is_empty()).map(|h| h.as_str()),
@@ -299,7 +339,7 @@ async fn handle(app: &AppHandle, streams: &Arc<Streams>, auth: &Arc<Auth>, req: 
     let method = req.method().as_str().to_string();
     let path = req.uri().path().to_string();
     let session = header(&req, "cookie").and_then(|c| rules::cookie_value(c, rules::SESSION_COOKIE)).map(str::to_string);
-    let csrf = session.as_deref().and_then(|id| auth.sessions.lock().ok()?.get(id).cloned());
+    let csrf = session.as_deref().and_then(|id| auth.csrf_of(id));
     let token = rules::token_in_query(req.uri().query()).map(str::to_string);
     let verdict = rules::gate(&rules::Ask {
         method: &method,
@@ -354,22 +394,27 @@ async fn handle(app: &AppHandle, streams: &Arc<Streams>, auth: &Arc<Auth>, req: 
             }
             json_reply(StatusCode::OK, json!({ "ok": true }))
         }
+        Route::SignOut => {
+            if let Some(id) = session.as_deref() {
+                auth.end_session(id);
+            }
+            let mut r = json_reply(StatusCode::OK, json!({ "ok": true }));
+            r.headers_mut().insert("set-cookie", rules::session_cookie_cleared().parse().expect("a cookie"));
+            r
+        }
         Route::Static(rel) => asset(app, rel, None),
         Route::Index => asset(app, "index.html", Some(&csrf)),
         Route::Refused(status, why) => refused(status, why),
     }
 }
 
-/// A sign-in link: a right token starts a session and sends the browser to the same path without
-/// the token (so it leaves the address bar); a wrong one is refused.
+/// A sign-in link: a live, unspent code starts a session — and is spent — and sends the browser to the
+/// same path without it (so it leaves the address bar); anything else is refused.
 fn exchange(auth: &Auth, token: &str, path: &str) -> Response<Body> {
-    if !rules::same_secret(token, &auth.token) {
-        return refused(403, "that sign-in link is not this server's — run `rex web url` again");
+    if !auth.take_code(token) {
+        return refused(403, "that sign-in link was used already, is older than ten minutes, or is not this server's — run `rex web url` for a new one");
     }
-    let (id, csrf) = (random_hex(), random_hex());
-    if let Ok(mut s) = auth.sessions.lock() {
-        s.insert(id.clone(), csrf);
-    }
+    let (id, _csrf) = auth.start_session();
     let mut r = full(StatusCode::SEE_OTHER, "text/plain", "");
     r.headers_mut().insert("location", rules::after_sign_in(path).parse().expect("a plain path"));
     r.headers_mut().insert("set-cookie", rules::session_cookie(&id).parse().expect("a cookie"));

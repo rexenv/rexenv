@@ -89,10 +89,37 @@ pub const CSRF_HEADER: &str = "x-rexenv-csrf";
 /// Where the page learns that value: a `<meta>` in the `index.html` a session is served — a
 /// cross-site page cannot read our HTML, so it cannot learn it.
 pub const CSRF_META: &str = "rexenv-csrf";
-/// The URL parameter carrying the token (`rex web url`).
+/// The URL parameter carrying the sign-in code (`rex web url`).
 pub const TOKEN_PARAM: &str = "t";
-/// The token's file under the config dir, written owner-only.
+/// Where a PERMANENT sign-in token lived until 7 Nov 2026 (config dir, owner-only). A link made from it
+/// worked forever — in shell history, a browser's history, a pasted chat — so it was replaced by
+/// single-use codes; the file is deleted when the web UI starts, so no secret outlives its use.
 pub const TOKEN_FILE: &str = "web-token";
+
+/// **How long a sign-in link works, how long a session lives** (security review of PR #10, item 2,
+/// 29 Oct 2026: "the token never expires, sessions have no idle/absolute limit or sign-out"). Each
+/// `rex web url` mints a NEW code that signs in ONE browser, once, within this window — enough to
+/// copy it into a browser, short enough that a leaked link is dead by the time anyone finds it.
+pub const SIGN_IN_CODE_TTL: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// A session unused this long is signed out — a working day, so a lunch break does not cost a sign-in.
+pub const SESSION_IDLE: std::time::Duration = std::time::Duration::from_secs(8 * 60 * 60);
+/// No session outlives this, used or not: one `rex web url` a day, at most.
+pub const SESSION_MAX: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+/// Whether a sign-in code minted `age` ago may still be traded for a session.
+pub fn code_live(age: std::time::Duration) -> bool {
+    age < SIGN_IN_CODE_TTL
+}
+
+/// Whether a session started `age` ago and last used `idle` ago is still signed in.
+pub fn session_live(age: std::time::Duration, idle: std::time::Duration) -> bool {
+    age < SESSION_MAX && idle < SESSION_IDLE
+}
+
+/// The `Set-Cookie` that ends a session in the browser too (`POST /signout`).
+pub fn session_cookie_cleared() -> String {
+    format!("{SESSION_COOKIE}=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/")
+}
 
 /// What a request without a session is told.
 pub const NO_SESSION: &str = "rexenv's web UI needs its sign-in link. On the server, run `rex web url` \
@@ -260,6 +287,8 @@ pub enum Route<'a> {
     /// `POST /events/listen` / `POST /events/unlisten`.
     Listen,
     Unlisten,
+    /// `POST /signout` — end this session (behind the gate like any POST: session, Origin, CSRF).
+    SignOut,
     /// `GET` of a built file (`assets/…`, `favicon…`), relative to the bundle root.
     Static(&'a str),
     /// `GET` of anything a client-side route could be: the app's `index.html`.
@@ -284,7 +313,8 @@ pub fn route<'a>(method: &str, path: &'a str, names: &[&str]) -> Route<'a> {
         ("GET", "/events") => return Route::Events,
         ("POST", "/events/listen") => return Route::Listen,
         ("POST", "/events/unlisten") => return Route::Unlisten,
-        (_, "/events" | "/events/listen" | "/events/unlisten") => return Route::Refused(405, "wrong method"),
+        ("POST", "/signout") => return Route::SignOut,
+        (_, "/events" | "/events/listen" | "/events/unlisten" | "/signout") => return Route::Refused(405, "wrong method"),
         _ => {}
     }
     if method != "GET" && method != "HEAD" {
@@ -367,6 +397,44 @@ pub fn sse_frame(kind: &str, data: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A sign-in code works for its ten minutes and not after; a session ends at 8 h idle or 24 h old,
+    /// whichever comes first.
+    #[test]
+    fn sign_in_codes_and_sessions_expire() {
+        use std::time::Duration as D;
+        assert!(code_live(D::from_secs(0)) && code_live(D::from_secs(599)));
+        assert!(!code_live(D::from_secs(600)) && !code_live(D::from_secs(86_400)));
+        assert!(session_live(D::from_secs(60), D::from_secs(0)));
+        assert!(session_live(D::from_secs(23 * 3600), D::from_secs(7 * 3600)));
+        assert!(!session_live(D::from_secs(9 * 3600), D::from_secs(8 * 3600)), "idle limit");
+        assert!(!session_live(D::from_secs(24 * 3600), D::from_secs(0)), "absolute limit, even in use");
+    }
+
+    /// Sign-out is a POST behind the gate (a cross-site page cannot sign the developer out), and its
+    /// reply clears the cookie in the browser.
+    #[test]
+    fn sign_out_is_a_gated_post_that_clears_the_cookie() {
+        assert_eq!(route("POST", "/signout", &[]), Route::SignOut);
+        assert_eq!(route("GET", "/signout", &[]), Route::Refused(405, "wrong method"));
+        let no_csrf = Ask { method: "POST", host: Some("localhost:9443"), origin: Some("http://localhost:9443"), has_token: false, session_csrf: Some("abc"), csrf_header: None };
+        assert!(matches!(gate(&no_csrf), Gate::Refuse(403, _)));
+        let cleared = session_cookie_cleared();
+        assert!(cleared.starts_with(&format!("{SESSION_COOKIE}=;")) && cleared.contains("Max-Age=0") && cleared.contains("HttpOnly"), "{cleared}");
+    }
+
+    /// The server mints a code per `rex web url` and spends it at the exchange: no permanent token is
+    /// read or written any more (TEXT — the server half is not unit-testable without a socket).
+    #[test]
+    fn the_server_mints_single_use_codes_and_keeps_no_permanent_token() {
+        let src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web_server.rs")).expect("web_server.rs");
+        let src = crate::core::copy_scan::production_source(&src);
+        assert!(!src.contains("write_private"), "a sign-in secret written to disk again");
+        let exchange = &src[src.find("fn exchange(").expect("exchange")..];
+        let exchange = &exchange[..exchange.find("\n}\n").expect("its end")];
+        assert!(exchange.contains("take_code("), "the exchange must SPEND the code:\n{exchange}");
+        assert!(src.contains("rules::code_live(") && src.contains("rules::session_live("), "the limits must be checked");
+    }
 
     const NAMES: &[&str] = &["list_sites", "app_info"];
 

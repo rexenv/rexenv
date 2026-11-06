@@ -23,6 +23,7 @@ import { StartStopToggle } from "@/components/common/StartStopToggle";
 import { RexLogo } from "@/components/common/RexLogo";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
 import { RemoteCaCard } from "@/components/settings/RemoteCaCard";
+import { WebSessionCard } from "@/components/settings/WebSessionCard";
 import { transport } from "@/lib/ipc";
 import { AppPicker, type AppChoice } from "@/components/ui/app-picker";
 import { useBrowsers } from "@/lib/useBrowser";
@@ -2053,6 +2054,7 @@ export function Settings() {
                 <Card title="Theme">
                   <ThemeSetting />
                 </Card>
+                {transport() === "web" && <WebSessionCard />}
                 <GeneralPrefsCard />
                 <CliCard />
                 <WpCliPackagesCard />

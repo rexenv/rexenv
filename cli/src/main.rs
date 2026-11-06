@@ -380,7 +380,7 @@ COMMANDS:
                 Default TLD for new sites; --repair puts back the OS resolver
                 file for a TLD your sites answer on (what `doctor` names)
   version       App + CLI versions (needs the app; -v/--version works without)
-  web url       The web UI's sign-in link (a `rexenv --web` instance; open it through an SSH tunnel)
+  web url       A new single-use sign-in link for the web UI (ten minutes; open it through an SSH tunnel)
   mcp           MCP stdio bridge for an AI agent's client — used in the client's
                 config, not run by hand (e.g. `claude mcp add rexenv -- rex mcp`)
   completions zsh|bash    Print a shell completion script (eval or install it)
@@ -3572,9 +3572,10 @@ fn cmd_tld(words: &[String], json_output: bool) {
     outln!(".{}", data["tld"].as_str().unwrap_or("?"));
 }
 
-/// `rex web url`: the sign-in link of a `rexenv --web` instance (docs/PLAN-headless-web.md T7). The
-/// token in it is the web UI's whole credential — this verb is how its owner reads it, over the
-/// owner-only socket, and it is printed nowhere else.
+/// `rex web url`: a NEW sign-in link for a `rexenv --web` instance (docs/PLAN-headless-web.md T7). The
+/// code in it signs in one browser, once, within ten minutes (`web_rules::SIGN_IN_CODE_TTL`, since 7 Nov
+/// 2026 — before, one permanent token); this verb mints it over the owner-only socket, and it is
+/// printed nowhere else.
 fn cmd_web(args: &[String], json_output: bool) {
     if args.first().map(String::as_str) != Some("url") {
         errln!("usage: rex web url");
@@ -3585,6 +3586,7 @@ fn cmd_web(args: &[String], json_output: bool) {
         Some(url) if json_output => print_json(&json!({ "url": url })),
         Some(url) => {
             outln!("{url}");
+            outln!("  works once, for ten minutes — run `rex web url` again for another browser");
             outln!("  open it in your browser through a tunnel (9444/9445 are the database consoles):");
             outln!("  ssh -L 9443:127.0.0.1:9443 -L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445 <this server>");
         }

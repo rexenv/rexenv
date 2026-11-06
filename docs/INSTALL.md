@@ -705,12 +705,13 @@ databases' `root` has no password on loopback and the sites answer every local u
 a desktop. From your own machine:
 ```sh
 ssh -L 9443:127.0.0.1:9443 -L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445 <server>   # keep it open
-ssh <server> rex web url                       # prints http://localhost:9443/?t=…
+ssh <server> rex web url                       # prints http://localhost:9443/?t=… (a NEW link each time)
 ```
-Open that link in your browser: it signs that browser in (a session cookie; restarting rexenv signs
-it out, and the same link signs it back in). The link IS the password — anyone who has it and can
-reach the port is you; it lives in `~/.local/share/rexenv/config/web-token`, readable only by your
-account, and deleting that file makes a new one at the next start. A browser without it, a page
+Open that link in your browser within ten minutes: it signs that browser in, once — the link is then
+spent, so a copy left in a shell or browser history signs nobody in. Each browser takes its own
+`rex web url`. A session ends after 8 hours unused or 24 hours in all, when rexenv restarts, or with
+Settings → General → **Sign out**; then run `rex web url` again. (Before 7 Nov 2026 the link was a
+permanent token kept in `~/.local/share/rexenv/config/web-token`; that file is now deleted.) A browser without it, a page
 from another site and a request with another `Host` are refused. Folder and file pickers list the
 SERVER's folders (your home and Sites folder only). The Database Browser's two consoles answer on
 9444 (Adminer) and 9445 (phpMyAdmin) — forward them too, with the same numbers, or the Databases

@@ -2480,12 +2480,15 @@ and the title bar ask `transport()` and stay window-only (ledger #929).
 local account and every process (a plugin's `wp_remote_get` included) reaches `127.0.0.1:9443`, and
 a page in the developer's own browser can aim requests at it. So `web_rules::gate` runs first on
 every request: the `Host` must name loopback (a DNS-rebinding page arrives with its own name); an
-`Origin`, wherever one is sent, must be `http://<Host>`; the token from `rex web url` (64 hex, an
-owner-only `web-token` file, printed only over the owner-only CLI socket) is traded once for an
-`HttpOnly; SameSite=Strict` session cookie; everything else needs that session; and every POST
-needs an `Origin` and the session's CSRF header, whose value only the `index.html` served to that
-session carries. Sessions are in memory — a restart signs browsers out, the same link signs them
-back in. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit. **All three ports on both
+`Origin`, wherever one is sent, must be `http://<Host>`; a sign-in code from `rex web url` (64 hex,
+minted per call over the owner-only CLI socket, held only in memory) is SPENT for an `HttpOnly;
+SameSite=Strict` session cookie — once, within ten minutes; everything else needs that session; and
+every POST needs an `Origin` and the session's CSRF header, whose value only the `index.html` served
+to that session carries. Sessions are in memory and end at 8 h idle or 24 h old, at a restart, or at
+`POST /signout` (Settings' Sign out over the web) — signing back in takes a new `rex web url` (#950).
+Until 7 Nov 2026 the credential was ONE permanent token in an owner-only `web-token` file: a link that
+worked forever from any shell or browser history it landed in, with no way to sign a browser out; the
+file is deleted when the web UI starts. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit. **All three ports on both
 loopbacks, or nothing (ledger #935):** 9443, 9444 and 9445 are held on `127.0.0.1` AND `[::1]` before
 anything is served, and one that cannot be held stops the web UI — the first version skipped a busy
 console port and served the rest, and the session cookie (per host, never per port) would then go to
