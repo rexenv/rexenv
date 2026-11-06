@@ -2229,12 +2229,12 @@ pub const HIDDEN_LAUNCH_FLAG: &str = "--hidden";
 
 /// Whether THIS process was started as a login launch: its own `--hidden`, or — on Windows — a
 /// `--hidden` launch that hopped out of a confining job through Explorer, which carries no
-/// arguments (`platform::hopped_hidden`, ledger #742). Decided once: the hop's marker is consumed
+/// arguments (`platform::hopped_flag`, ledger #742). Decided once: the hop's marker is consumed
 /// on first read, and both the pipe claim and `setup` ask.
 pub(crate) fn is_hidden_launch() -> bool {
     static HIDDEN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *HIDDEN.get_or_init(|| {
-        std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG) || platform::hopped_hidden() || is_headless_launch()
+        std::env::args().any(|a| a == HIDDEN_LAUNCH_FLAG) || platform::hopped_flag(HIDDEN_LAUNCH_FLAG) || is_headless_launch()
     })
 }
 

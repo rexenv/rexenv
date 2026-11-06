@@ -109,9 +109,10 @@ impl hyper::body::Body for ChannelBody {
     }
 }
 
-/// Whether this launch asked for the web UI.
+/// Whether this launch asked for the web UI — on its own arguments, or (Windows) through the hop
+/// out of a confining job, which drops them (`platform::hopped_flag`, ledger #742).
 pub fn requested(argv: &[String]) -> bool {
-    argv.iter().any(|a| a == rules::WEB_FLAG)
+    argv.iter().any(|a| a == rules::WEB_FLAG) || crate::platform::hopped_flag(rules::WEB_FLAG)
 }
 
 /// Start the web UI if `--web` was passed. Port-gated: a holder of 9443 is named, never fought.

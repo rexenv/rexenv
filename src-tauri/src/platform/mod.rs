@@ -405,16 +405,17 @@ pub fn relaunch_outside_confining_job() -> Option<i32> {
     }
 }
 
-/// Whether THIS copy was started by a hop that dropped a `--hidden` flag on the way (Explorer
-/// passes no arguments; the hopping copy leaves a marker). Consumes the marker. Always `false` off
-/// Windows — nothing else hops.
-pub fn hopped_hidden() -> bool {
+/// Whether THIS copy was started by a hop that dropped `flag` (`--hidden` or `--web`) on the way
+/// (Explorer passes no arguments; the hopping copy leaves a marker, read once per process). Always
+/// `false` off Windows — nothing else hops.
+pub fn hopped_flag(flag: &str) -> bool {
     #[cfg(target_os = "windows")]
     {
-        windows::hopped_hidden()
+        windows::hopped_flags().contains(&flag)
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = flag;
         false
     }
 }

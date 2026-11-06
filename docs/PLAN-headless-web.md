@@ -162,7 +162,7 @@ boot-time task or a service runs, so SSH alone is a faithful stand-in.
   with its arguments intact, adopted the nine services, and reached the network. Same backend result as SSH.
 - **A `/IT` task launch loses its arguments.** The task scheduler's job forbids breakaway, so the app hops out
   through Explorer (`relaunch_outside_confining_job`), and the relaunched process had a bare command line:
-  `--web` was gone. `--hidden` survives the hop only because `platform::hopped_hidden` carries it (#742).
+  `--web` was gone. `--hidden` survived the hop only because the hop marker carried it (#742; `--web` too since W3).
   Any new flag a logon task passes needs the same carrying.
 - **What still needs a desktop, from the code:** every `run_privileged` call is a UAC prompt
   (`elevation.rs`: rexenv's dialog, then `ShellExecuteExW` `runas`), and UAC has no unattended form, so the
@@ -466,7 +466,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
     desktop the console is on), registers two S4U boot tasks — the app with `--headless [--web]` and the
     DNS agent — and takes D7's consents (`--enable-mcp`, `--agent-access`). Done when a reboot with nobody
     logged in brings the stack, `.rex` names and `rex` up.
-  - **W3 — flags survive the Explorer hop.** `--headless` and `--web` carried like `--hidden` (#742).
+  - **W3 — flags survive the Explorer hop.** ✓ 6 Nov 2026 (#742 widened, run on the Dell): `--web` is carried
+    like `--hidden`; `--headless` needs no carrying because a headless launch never hops (session 0 has no shell).
   - **M1 — `--headless` on macOS requires the user's session.** Refuse with a sentence when this user has
     no window-server session, instead of the silent hang of §2b; with one, run window-less like Linux.
   - **M2 — the daemon-context "setup incomplete".** Pin down which read differs in the system domain

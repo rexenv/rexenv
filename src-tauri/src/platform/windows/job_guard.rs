@@ -58,16 +58,19 @@ pub(crate) fn parent_exe() -> Option<String> {
 pub(crate) fn relaunch_outside_confining_job() -> Option<i32> {
     let limits = own_job_limits();
     let parent = parent_exe();
-    if !rules::should_hop(rules::confining(limits), parent.as_deref()) {
+    let args: Vec<String> = std::env::args().collect();
+    let headless = args.iter().any(|a| a == crate::HEADLESS_FLAG);
+    if !rules::should_hop(rules::confining(limits), parent.as_deref(), headless) {
         return None;
     }
     let exe = std::env::current_exe().ok()?;
     let shell = std::path::PathBuf::from(std::env::var_os("SystemRoot")?).join(rules::SHELL_EXE);
-    // Explorer passes no arguments: a `--hidden` (login) launch leaves the flag in a marker the
-    // new copy reads once (`hopped_hidden`), or it would arrive as a launch the user made.
-    let marker = hop_marker_path().filter(|_| std::env::args().any(|a| a == crate::HIDDEN_LAUNCH_FLAG));
+    // Explorer passes no arguments: a launch with `--hidden` (login) or `--web` leaves them in a
+    // marker the new copy reads once (`hopped_flags`), or it would arrive as a bare launch.
+    let carried = rules::carried_flags(&args);
+    let marker = hop_marker_path().filter(|_| !carried.is_empty());
     if let Some(m) = &marker {
-        let _ = std::fs::write(m, rules::hop_marker_contents(now_secs()));
+        let _ = std::fs::write(m, rules::hop_marker_contents(now_secs(), &carried));
     }
     let before: Vec<u32> = rexenv_pids(&exe);
     // Explorer opens the path in ITS process and hands us nothing back — its own
@@ -94,17 +97,21 @@ pub(crate) fn relaunch_outside_confining_job() -> Option<i32> {
     None
 }
 
-/// Whether the copy that hopped here was a `--hidden` launch: reads the marker once, deletes it,
-/// and trusts it only while fresh (`job_guard_rules::hop_marker_fresh`).
-pub(crate) fn hopped_hidden() -> bool {
-    let Some(m) = hop_marker_path() else { return false };
-    let Ok(contents) = std::fs::read_to_string(&m) else { return false };
-    let _ = std::fs::remove_file(&m);
-    rules::hop_marker_fresh(&contents, now_secs())
+/// The flags the copy that hopped here was launched with (`--hidden`, `--web`): the marker is read
+/// ONCE per process, deleted, trusted only while fresh (`job_guard_rules::hop_marker_flags`), and
+/// the answer kept — the login decision and the web UI both ask.
+pub(crate) fn hopped_flags() -> &'static [&'static str] {
+    static FLAGS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    FLAGS.get_or_init(|| {
+        let Some(m) = hop_marker_path() else { return Vec::new() };
+        let Ok(contents) = std::fs::read_to_string(&m) else { return Vec::new() };
+        let _ = std::fs::remove_file(&m);
+        rules::hop_marker_flags(&contents, now_secs())
+    })
 }
 
 fn hop_marker_path() -> Option<std::path::PathBuf> {
-    crate::platform::current().paths().config_dir().ok().map(|d| d.join(rules::HOP_HIDDEN_MARKER))
+    crate::platform::current().paths().config_dir().ok().map(|d| d.join(rules::HOP_MARKER))
 }
 
 fn now_secs() -> u64 {
