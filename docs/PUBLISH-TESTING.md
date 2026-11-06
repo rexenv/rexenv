@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
+## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M on all three
 
 **Run 42197342159, source `67e6fa93` (tag `v0.9.6`), 16 assets, the body the tag's verbatim.** The FIRST run
 (42192163104, on `e40d2d95`) lost only its macOS lane, in 0 s: "The configuration 'macos-14-arm64-us-default' is not
@@ -149,7 +149,7 @@ day by a HEADLESS (S4U, session 0) instance, and a desktop app does not adopt wh
 desktop started was "adopted 9" by the same 0.9.6 (control run). New TODO row; INSTALL's "go back" says `rex stop`
 first. (2) `rex service restart php-7.4` on Windows says "PHP-FPM 7.4 restarted" — the table's PHP-CGI relabel is not
 applied there (0.9.5 the same); fixed on master for the next release.
-**Not run:** §M; the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
+**Not run:** the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
 second-browser rows; a fresh PC's first Windows headless setup (a person's row).
 **Published by the owner 6 Nov 2026 12:16 UTC.** The tap's Update cask, Install scripts and Notify the website
 runs green; the cask reads `0.9.6` with the dmg's `a8a70b4f…` (= the release asset's API digest). `brew audit --cask
@@ -163,6 +163,34 @@ but `rexenv.github.io/apt` kept serving the 29 Oct site — every Pages IP, the 
 run (42220589038) deployed the same, and the new site went live ~14 min after it (13:03 UTC). `check-apt-repo.sh` then
 good signature, amd64 and arm64 0.9.6. A Pages deployment reported "success" is not a site that serves it: the check is
 the verdict, and a lag past half an hour is worth a second run.
+**§M — the update itself, 0.9.5 → 0.9.6 in-app, on all three (each machine rolled back to the PUBLISHED 0.9.5
+first; the stack kept running throughout):**
+- **Dell (Win10 22H2):** the 0.9.5 `setup.exe /S` run as `dell` through an `/IT` task (not the elevated ssh token, so
+  the install folder stays `dell`-owned) → the installer stopped the app and did NOT reopen it (only the DNS agent
+  ran) → launched → "0.9.6 can be installed (serial 22, 15582783 bytes)" 1 s after "adopted 11" → the rail's
+  `Update ready` → Settings → Updates (`rexenv 0.9.5 → 0.9.6 · 14.9 MB`, the consent sentence, Install + Skip) →
+  Install → "Apps & Features now reads 0.9.6", `swapped to 0.9.6 (RenamePair)` → the dialog → OK → **back as 0.9.6
+  in 3 s** ("reopening … once this process exits", "swept 1 leftover(s)", "rexenv is now 0.9.6 (updated from
+  0.9.5)", "adopted 11"); **all 62 service pids (caddy, nginx, mysqld, mailpit, frankenphp, every php-cgi)
+  identical before and after**; 10 sites 200, `runall-1720`/`runall-14864` 403 (as at 10:43 the same morning,
+  before any of this: fixture sites with no index). Three WordPress sites took >20 s on their first request after
+  the relaunch and 0.3 s after — no pid had changed, so not the update. The Dell's clock reads CMOS with no time
+  sync (8 h ahead); the app's log lines carry that clock.
+- **macOS 15.8 VM:** the official 0.9.5 `.app.tar.gz` swapped in over ssh (quit → `rm -rf` → `mv`, no quarantine)
+  → `open` → "0.9.6 can be installed (serial 27, 32821436 bytes)" at +5 s; `rex start` for the full stack; `rex
+  status` printed `update   rexenv 0.9.6 can be installed from Settings → Updates` → `Update ready` → Install →
+  `swapped to 0.9.6 (AtomicSwap)` **13 s** after the press → the dialog → OK → **back as 0.9.6 in 1 s**, "swept 1
+  leftover(s)", "adopted 8"; mysqld and the three php-fpm masters kept their pids; 8/8 sites 200; `rex status`'s
+  update line gone; no new crash report.
+- **Ubuntu 22.04 arm64 VM:** `apt-get install --allow-downgrades` the 0.9.5 deb → launched from GNOME's search
+  (`app-gnome-rexenv-10704.scope`) → "0.9.6 can be installed (serial 13, 17034876 bytes)" 1 s after "adopted 7" →
+  Install → the GNOME polkit prompt ("rexenv needs administrator permission to install the update it downloaded —
+  the new rexenv package"), password typed blind → `swapped to 0.9.6 (RenamePair)` 1 s later, `dpkg-query` 0.9.6 →
+  the dialog → OK → **back as 0.9.6 in 0 s**, "swept 2 leftover(s)", "adopted 7", every pid kept; `conv71l`,
+  `gitl`, `try.gitl`, `l16lx` 200. `l14lx`, `lm`, `lv`, `guard`, `live-sync` 404 and `wtl` 403 are the sites whose
+  folders the 16 Oct `rsync --delete` emptied (no docroot, or only `wp-content`) — fixture damage, not the update.
+  **A trap for the next run:** `ssh … 'pkill -f "/usr/bin/rexenv --hidden"'` matches the ssh shell's OWN command
+  line and kills it (exit 255) — write the pattern as `[/]usr/bin/rexenv`.
 
 ## A) ✅ 0.9.5 — PUBLISHED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
