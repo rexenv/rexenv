@@ -1,11 +1,12 @@
 # PLAN — headless rexenv on a server, driven from a browser and from `rex`
 
-**Status:** IN PROGRESS — 26 Oct 2026. T0 measured and **T1 built and run on the Ubuntu VM the same day**
-(§6); Phase 1a (T0–T4) shipped in 0.9.3, T6–T9 built 28 Oct (open rows in `docs/TODO.md`). **T5 (macOS and
-Windows) started 6 Nov 2026: its T0 is measured (§2b) and its shape waits on the owner's ruling D8 (§5).**
-The facts in §2 were read from the tree at `14ab9608`;
-**T0 was measured the same day on the Ubuntu 22.04 arm64 VM (§2a)**, and the shape waits on the owner's
-rulings D1–D7 (§5). Re-ordered the
+**Status:** IN PROGRESS — Phase 1a (T0–T4) shipped in 0.9.3; **T5 (macOS and Windows) shipped 6 Nov 2026**
+(ledger #943–#947, D8's second step superseded), open only for a fresh Windows PC's first setup (the owner's
+SMOKE row); Phase 1b (T6–T9) built 28 Oct, open for T8's every-route walk and T9's trust steps on real machines
+(rows in `docs/TODO.md`; header corrected by the 7 Nov 2026 reconcile — it still said T5 waited on D8).
+History: T0 measured and T1 built and run on the Ubuntu VM 26 Oct 2026 (§6). The facts in §2 were read from the
+tree at `14ab9608`; T0 was measured the same day on the Ubuntu 22.04 arm64 VM (§2a), and the shape then waited on
+the owner's rulings D1–D7 (§5 — all ruled since, D4 moot). Re-ordered the
 same day after GitHub issue rexenv/rexenv#7: Phase 1a (headless + `rex`/`rex mcp` + configurable edge
 ports) ships before the web UI, because it alone is what that user needs.
 Tracked as the "Headless rexenv on a VPS" row in `docs/TODO.md` (Phase 4+).

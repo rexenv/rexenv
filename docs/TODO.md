@@ -6,6 +6,14 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 7 Nov 2026, after 0.9.6** (HEAD `d93d3130`, v0.9.6 + 4 commits): the script found nothing ticked; the
+judgement pass found — shape 1 (open only on paper) 2: winget PR 437674 MERGED 30 Oct 2026 (as 0.9.5), and the Windows
+7.4/8.0/8.1 re-pin reached users in 0.9.6 (both ticked and moved); shape 3 (narrative inside an open row) 2: the two
+headless rows rewritten to their open reason, their text moved to `docs/archive/SHIPPED-2026-11.md` ("Judgement
+moves"); a stale condition fixed in the update-channel row ("the first release after 0.9.1"); a stale PLAN header
+(`PLAN-headless-web.md` still said T5 waited on D8). One row added: winget 0.9.6 was never submitted (RELEASING step 9).
+Shapes 2, 4: 0. Open after the pass: 34 rows.
+
 **Reconciled 6 Nov 2026** (HEAD `91eb3acb`, v0.9.5 + 19 commits): 11 ticked blocks moved to the new
 `docs/archive/SHIPPED-2026-11.md` (Now 8 — the login-launch self-update #936, the Linux refused-update log line #937, the
 churn breaker's two windows #605, the per-OS pdo_pgsql/resolver answers #939, the Linux tunnel guard's normal stop,
@@ -150,7 +158,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
-  a published `manifest.json` naming a PHP patch newer than the pin, i.e. the first release after 0.9.1 (the Adminer
+  a published `manifest.json` naming a PHP patch newer than the pin — no run has met one yet (0.9.6's §M, 6 Nov 2026,
+  installed the app kind through Settings → Updates on all three OSes, the rexenv row only; the Adminer
   kind ran on Windows on the 0.9.1 release build, 24 Oct 2026 — pill → page → Install → gone; SMOKE's ◐ notes). The channel
   itself is BUILT (owner ask 23 Oct 2026; `docs/PLAN-unified-updates.md` T0–T7 + D1, ledger #901–#908, L0 + WebKit on
   the dev Mac, Windows and Linux compiled): one poller behind one setting, one inventory (`core/update_hub.rs`, app
@@ -233,9 +242,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).
-- [ ] **winget: PR 437674 waits for a moderator** — `scripts/winget-manifest.sh` generated it; the PR
-  is OPEN with `Azure-Pipeline-Passed` + `Validation-Completed` (checked 9 Oct 2026). Nothing to do
-  from here but watch it merge.
+- [ ] **winget: 0.9.6 is not submitted** — RELEASING step 9's winget manifest was not run for 0.9.6 (published
+  6 Nov 2026); winget still offers 0.9.5. `./scripts/winget-manifest.sh` → `winget validate` on the Dell → a PR to
+  `microsoft/winget-pkgs` (outward-facing: the owner's go). Found by the 7 Nov 2026 reconcile.
 - [ ] **Windows: WebView2's `downloadBootstrapper` on a PC without WebView2** — never run: every test
   machine already has WebView2. Open: that the per-user installer fetches it without an admin
   prompt. Also open from SMOKE § Windows: a run with Smart App Control ON.
@@ -294,15 +303,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   **5 Nov 2026, the Dell:** 8 more rounds of a 0.9.5 NSIS build `/S` over the running app + agent (run as `dell`
   from a `/IT` task, not the elevated ssh token) → 8 × exit 0, 6–17 s each — 0 of 13 on the Dell in all. The only
   host that ever failed (the Win11 ARM VM) was deleted 27 Oct; this stays open until a second Windows host runs it.
-
-- [ ] **Windows 7.4/8.0/8.1 re-pin: what reaches users** (opened 5 Nov 2026, from the row above). (1) Every 0.9.5
-  Windows install still fails those three minors until a release carries the new pins — the signed
-  `manifest-windows.json` lists only 8.2–8.5, so no manifest publish can fix it without adding rows. Open for (1) only.
-  ✓ (2) 6 Nov 2026, owner-approved: rexenv/runtimes `php-windows-legacy-2` mirrors the 25 Oct bytes (runtimes e6bf4f0,
-  run 42143994884 — sha, `zend_mm_safe_error_ex` export, `php -m` = php.net's, fixed memory-exhaustion path; immutable).
-  ✓ (3) runtimes `check-php-windows.yml` (daily 06:41 UTC) hashes the three zips against php-windows.yml's SET and
-  rexenv's `php_windows_sha256` on master, and opens one `php-windows-bytes` issue on drift; first run 42143989415:
-  all three match both.
 
 ## Ledger-driven proof backlog
 
@@ -544,89 +544,25 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   is for servers whose accounts you trust; a headless DB password is the real fix; (4) console uploads
   are buffered whole (up to 256 MB a request, cloned per redirect hop) — stream them or cap concurrency.
 
-- [ ] **Headless rexenv on a VPS — Phase 1a (T0–T4) shipped in 0.9.3; open: T5 (macOS/Windows, D3 — its own row below) and Phase 1b (T6–T9: the web UI);
-  D2 (the macro) and D5 (9443) ruled 28 Oct 2026.** **T6 built 28 Oct 2026** (#929): `rexenv --web` on
-  `127.0.0.1:9443`, `/ipc` through the main webview's own `on_message`, `/events` as SSE, one command
-  list for the handler and the web; run in the cloud container only — T6's VM run through an SSH tunnel
-  with a site created and deleted done 29 Oct 2026 (SMOKE "The web UI"). **T7 built 28 Oct 2026** (#930): one gate
-  before any routing — loopback Host, our Origin, the `rex web url` token → an `HttpOnly;
-  SameSite=Strict` session, a CSRF header on every POST; `--headless-setup --enable-web`; T7's VM/tunnel run done 29 Oct 2026, with the
-  port/`[::1]`/timeout hardening (#935) and four items still owed (the sign-in hardening row above). **T8 partly built 28 Oct 2026** (#931): the web picker
-  (`browse_dir`, home and Sites only), desktop actions refuse on a headless launch, URLs open in the
-  developer's browser; the Database Browser on a loopback port per console (9444 Adminer, 9445
-  phpMyAdmin, #933); real Adminer and phpMyAdmin run through
-  the tunnel 29 Oct 2026; **open in T8: the every-route walk on the VM, and hiding the desktop actions (its row above)**. **T9 built 28 Oct 2026** (#932): the CA certificate download with
-  the cost said and each OS's trust steps, name-constrained to the sites' endings (#934); **open in T9: the steps on real macOS/Windows/Linux
-  machines and a site through `ssh -D`**. T0 measured 26 Oct 2026 on the Ubuntu
-  VM; D1 (Xvfb), D3 (Linux first) and D7 (a closed passwordless set, corrected from a polkit rule that
-  would have been passwordless root) ruled the same day. **T1 built and run on the VM 26 Oct 2026**:
-  `rexenv --headless` (own Xvfb, no session bus — 31 s → 1 s to `setup` — no window, no tray),
-  `sudo rexenv --headless-setup` (the edge's three `systemctl` argv only), a Linux edge start with
-  identical root files is a restart, honest hand-off and `rex open` (ledger #911–#913; SMOKE Linux
-  "Headless on a server"). **T2 S1 built 26 Oct 2026** (D6 ruled the same day): `edge_http_port` /
-  `edge_https_port` / `edge_bind` as gated settings, the manager and every runtime edge check on them
-  (#914, #915); **S2 built the same day** — one `site_url` per side, WordPress/login/Bedrock/Laravel
-  carry the port, the URL-rewriting flows refuse off 443 (#916, #917); **S3 the same day** — an
-  installed root edge stays the edge on any port (#918); **S4 the same day**: the Settings card
-  (replacing a card that saved nothing), Onboarding names the port, and the VM run on a fresh headless
-  account beside a foreign nginx — which found and fixed Caddy's redirect dropping the port (#919)
-  and a fresh account's missing log folder. **Open in T2: the macOS and Windows runs** (a fresh
-  account on the 15.8 VM and on the Dell; the card's GUI rows of SMOKE "Edge ports") and the
-  443 → 8443 → 443 round trip on one account. **T3's code half built 26 Oct 2026** (D7's consent):
-  `sudo rexenv --headless-setup` takes `--enable-mcp` / `--agent-access <level>` or asks in the
-  terminal with the card's own sentences (the paragraph moved into Rust, `mcp_server::ENABLE_CONSENT`),
-  and writes as the user from a forked child — `rex config` still refuses both (#920; run in the cloud
-  container only). **T3's VM run done 26 Oct 2026** (#920): the consents by flag, pty and no-tty, and over `rex mcp` a
-  scratch create → plugin add + activate → its output → delete, nothing left. **T4's unit built 26 Oct 2026**: the setup writes
-  and enables `rexenv-headless.service` (`KillMode=process`, the user's runtime dir) and lingering
-  (#921), INSTALL § Linux "Server (headless)"; **T4's VM run done the same day** (#921: restart keeps the stack, `kill -9` restarted, hand-off, a boot
-  with no login brings everything up); **T4's deb note added the same day** (print-only postinst, #922), **and the FRESH server** (#923: the
-  setup makes the route, the CA's trust and the root edge through the desktop's own code, run on a
-  fresh account with the VM's rexenv state parked). **T2's macOS and Windows runs done 27 Oct 2026** (fresh `t2rex` accounts
-  on the 15.8 VM and the Dell; #915–#917, #919 now ✅ on all three; the card seen on both). **Phase 1a
-  is complete**; open after it: ~~the 443 → 8443 → 443 round trip on one account~~ (#918 ✅ — **run on Linux and macOS 28 Oct 2026**; macOS's found the reload wedge row in § Now. Linux's on the 24.04 server VM, 0.9.4: the root unit took 8443 and 443 back through `rex restart`, no child edge, adoption kept its pid; `edge_bind 127.0.0.1` moved it to loopback), T5 (headless on
-  macOS/Windows, D3), and Phase 1b (the web UI, T6–T9). Was open in T4: a FRESH server — the edge install, the `.rex` route and the CA
-  trust are root steps the closed set refuses (#911), so a server where no GUI setup ever ran has
-  only the 8080/8443 child edge and no `.rex` names; the setup (already root) is the natural place
-  to do them. Owner ask 26 Oct 2026: install rexenv
-  on a display-less server, drive it from `rex` and from the same UI served on a port. The same day,
-  GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
-  offered to test a build. A public bind and real site domains are later phases.
-  Plan: `docs/PLAN-headless-web.md`.
+- [ ] **Headless rexenv on a VPS — open: the rest of Phase 1b** (Phase 1a, T0–T4, shipped in 0.9.3; T5 is the
+  "Headless mode on macOS and Windows" row below; the web UI's desktop actions and its sign-in hardening are their own
+  rows above). Open in T8: the every-route walk of the web UI on the Ubuntu VM. Open in T9: the CA download's trust
+  steps on real macOS, Windows and Linux machines, and a site reached through `ssh -D`. Plan:
+  `docs/PLAN-headless-web.md`; the build log (T0–T9, ledger #911–#935) moved to `docs/archive/SHIPPED-2026-11.md`
+  ("Judgement moves — reconcile of 7 Nov 2026").
 - [ ] **Windows: a desktop rexenv does not adopt services a HEADLESS one started** (found 6 Nov 2026 in 0.9.6's Dell
   gate). The stack running from a `\rexenv\headless` (S4U, session 0) launch was "adopted 1" (Caddy only) by the
   desktop app that followed; the same 0.9.6 adopted 9 of a stack the desktop had started. Suspect: the adoption's
   process query (the cmdline marker) cannot read a process whose token is the S4U logon session's. Until fixed,
   INSTALL's "go back" says `rex stop` while the headless one still runs. Measure the query first (which call fails,
   from a desktop token, on an S4U-started `mysqld`), then fix or record it as the rule.
-- [ ] **Headless mode on macOS and Windows** — `--headless` and `--headless-setup` refuse there with a
-  sentence (owner ruling D3, 26 Oct 2026: Linux first; `platform::prepare_headless`). macOS would need a
-  LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
-  boot-time task or service with no desktop, and UAC has no unattended form. Plan:
-  `docs/PLAN-headless-web.md` T5. **T0 measured 6 Nov 2026 (plan §2b), waits on the owner's D8:** Windows
-  session 0 (SSH, and an S4U boot task) runs the whole backend unchanged but starts no WebView2, so the web
-  UI's `/ipc` fails there; a login-less Mac hangs in `NSApplication run` before `setup` (no tokio thread,
-  `rex` hangs), while any launch with a user logged in — SSH or a system LaunchDaemon — works, web UI included.
-  D8 ruled the same day (two steps). ✓ **W1** 6 Nov 2026: `rexenv.exe --headless` runs on Windows and refuses
-  every dialog in words (#943, run on the Dell). ✓ **W3** 6 Nov 2026: `--web` survives the Explorer hop and a
-  headless launch never hops (#742). ✓ **W2** 6 Nov 2026 (#944, the Dell): `--headless-setup` registers
-  `\rexenv\headless` + the agent as S4U boot tasks; a reboot with nobody logged on brought the stack, `.rex`
-  and `rex` up in session 0. Still open from W2: whether an unelevated uninstaller can delete an S4U task,
-  and what a silent update does while `\rexenv\headless` keeps restarting rexenv.exe (the in-app update of a
-  headless PC is unbuilt); a fresh PC's first run (the CA confirmation on a desktop console). ✓ **M1** 6 Nov 2026 (#945, the 15.8 VM): `rexenv --headless` on macOS runs only
-  with this account at the console — no dock tile, the prompt refused in words — and exits 2 with a sentence
-  instead of hanging when nobody is logged in. ✓ **M2** 6 Nov 2026 (#945): the daemon context cannot read the login
-  keychain (the CA read failed, not the resolver's), so a system-domain launch is refused and a LaunchAgent is the
-  shape. ✓ **M3** 6 Nov 2026 (#946, the 15.8 VM): `sudo rexenv --headless-setup` writes the LaunchAgent and the
-  consents as the account after checking the app's setup. **T5 step one is built on both OSes.** ✓ W2's uninstaller
-  question measured (the unelevated token may end and delete the S4U task, not disable it — #944): the uninstaller
-  deletes `\rexenv\headless`, a silent install ends it before the swap and runs it after — ✓ RUN on the Dell
-  (3 of 3 `/S` over a running headless PC, exit 0, back at once). Still open: a fresh PC's first run (needs a
-  person at the desktop for the CA confirmation — tried by automation 6 Nov 2026: the prompt is a system
-  window no user process may answer, so it is the owner's SMOKE row). ✓ The web UI through a tunnel in a real browser (#947). D8's second step
-  (the webview-free host — **superseded** 6 Nov 2026: the web UI answers in session 0 once `dispatch` falls
-  back to the app's local origin, #947; no command refactor is needed). ✓ macOS reboot with automatic login (#946, the 15.8 VM): only
-  `--headless` comes up once a headless launch takes itself out of macOS's reopen-at-login list.
+- [ ] **Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup** (T5, ledger #943–#947,
+  shipped 6 Nov 2026 on both OSes: `--headless` and `--headless-setup` run on Windows as S4U boot tasks and on macOS as
+  a LaunchAgent; the web UI answers with no native webview). The one open row: on a PC where the CA was never trusted,
+  `--headless-setup`'s CurrentUser\Root confirmation is a system window no user process may answer (UIPI; tried by
+  automation 6 Nov 2026), so it is the owner's SMOKE row, run at the desktop. Plan: `docs/PLAN-headless-web.md` T5;
+  the build log (T0, W1–W3, M1–M3, D8) moved to `docs/archive/SHIPPED-2026-11.md` ("Judgement moves — reconcile of
+  7 Nov 2026").
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
