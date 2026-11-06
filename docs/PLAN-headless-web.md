@@ -456,7 +456,8 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
 - **T5 — the other OSes per D3.** T0 measured 6 Nov 2026 (§2b); D8 ruled the same day — step one is below,
   step two (D1 (c), the webview-free command host) gets its own plan.
-  - **W1 — `--headless` on Windows.** `prepare_headless` accepts it (session 0 needs nothing prepared);
+  - **W1 — `--headless` on Windows.** ✓ 6 Nov 2026 (#943; the Dell: a session-0 `--headless` served `rex`,
+    and a site create on a new TLD answered the refusal in under a second, nothing created). `prepare_headless` accepts it (session 0 needs nothing prepared);
     `run_privileged` refuses on a headless launch with a sentence instead of opening rexenv's dialog and UAC
     in a session with no desktop. Done when a session-0 `--headless` launch serves `rex`, and a privileged
     call answers the refusal rather than waiting.

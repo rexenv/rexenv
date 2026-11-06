@@ -2409,8 +2409,14 @@ words (the browser shell's mock and two dev review pages excepted).
   install (`EdgeSupervisor::restarts_identical_install`, ledger #912). On a fresh server the first-run
   root steps (the `.rex` route, the CA's trust, the root edge) are the setup's: it forks a child that
   becomes the account and runs the desktop's own `run_system_setup` and `edge_install_script`, and
-  every script that code would hand pkexec is relayed to the root parent instead (#923). macOS and
-  Windows refuse `--headless` with a sentence (owner ruling D3).
+  every script that code would hand pkexec is relayed to the root parent instead (#923). macOS refuses
+  `--headless` with a sentence (owner ruling D3). **Windows runs it since 6 Nov 2026 (T5 W1):** a
+  headless launch there is session 0 — an SSH session, or an S4U task that runs whether or not
+  anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
+  do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a
+  privileged change refuses before rexenv's dialog and UAC, the panic box is skipped (#943). It also
+  starts no WebView2, so the web UI's `/ipc` (which rides the webview) fails there — D8's second
+  step. `--headless-setup` is not built on Windows yet (W2) and says so.
   **The two GUI consents on a box with no GUI (T3, D7).** The MCP opt-in and the Agent access dial
   are consents by rule — `rex config` and the MCP `settings` tool refuse them (#203, #397) — and a
   headless server has no Settings card. So the administrator's `sudo rexenv --headless-setup` carries

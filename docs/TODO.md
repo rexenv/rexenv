@@ -601,6 +601,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   session 0 (SSH, and an S4U boot task) runs the whole backend unchanged but starts no WebView2, so the web
   UI's `/ipc` fails there; a login-less Mac hangs in `NSApplication run` before `setup` (no tokio thread,
   `rex` hangs), while any launch with a user logged in — SSH or a system LaunchDaemon — works, web UI included.
+  D8 ruled the same day (two steps). ✓ **W1** 6 Nov 2026: `rexenv.exe --headless` runs on Windows and refuses
+  every dialog in words (#943, run on the Dell). Open: W2 (the elevated `--headless-setup` + S4U boot tasks),
+  W3 (flags through the Explorer hop), M1–M3 (macOS).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the

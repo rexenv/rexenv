@@ -334,6 +334,14 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   listeners leaves the master alive, and it respawns a worker — two nginx trees served side by side
   on the Dell. Stop the master through `ProcessSupervisor::stop` (as Stop all does), and remember
   `Proc::kill` is a no-op on an ADOPTED handle; on macOS/Linux the master listens, which hid this.
+- **Session 0 has no desktop — no dialog, no UAC, no WebView2** (measured on the Dell, 6 Nov 2026,
+  `docs/PLAN-headless-web.md` §2b). An SSH session and an S4U scheduled task both run there. The backend
+  runs unchanged, but a `MessageBoxW` blocks its thread forever, UAC cannot prompt, and WebView2 never
+  starts (zero `msedgewebview2.exe`; the web UI's `/ipc` answers "failed to receive message from webview").
+  A headless launch therefore refuses every dialog in words (#943). Two traps found on the way: an S4U
+  task's account is `<COMPUTER>\<user>` — `WORKGROUP\<user>` fails with "No mapping between account names
+  and security IDs"; and a task created with default settings is `Queued` forever while a laptop is on
+  battery (`DisallowStartIfOnBatteries`) — every rexenv task sets both battery flags off.
 - **A running php-cgi or nginx does not stop a tree's RENAME** — `retire_stale_tree` moves it aside
   and then cannot delete it; `binaries::sweep_stale_trees` removes the `.<name>.stale-<pid>` asides
   at the end of the launch fetch (#898).

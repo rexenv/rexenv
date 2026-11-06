@@ -147,6 +147,11 @@ mod windows_cert_rules;
 #[allow(dead_code)]
 #[path = "windows/logon_task.rs"]
 mod windows_logon_task;
+// And headless mode's words and its no-dialog TEXT tests (T5 W1).
+#[cfg(all(test, not(target_os = "windows")))]
+#[allow(dead_code)]
+#[path = "windows/headless_rules.rs"]
+mod windows_headless_rules;
 // And the elevated step's arguments, result and words (ledger #619).
 #[cfg(all(test, not(target_os = "windows")))]
 #[allow(dead_code)]
@@ -313,20 +318,33 @@ pub fn prepare_headless() -> Result<(), String> {
     {
         linux::prepare_headless().map_err(|e| e.to_string())
     }
-    #[cfg(not(target_os = "linux"))]
+    // Windows: session 0 needs nothing prepared; the dialogs refuse instead (T5 W1).
+    #[cfg(target_os = "windows")]
+    {
+        windows::prepare_headless().map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
     {
         Err(headless_unsupported(words::current().os_name))
     }
 }
 
 /// `sudo rexenv --headless-setup`: the administrator's one-time step for a headless install. `None`
-/// when argv is not the setup; off Linux the setup answers with the same refusal as `--headless`.
+/// when argv is not the setup. Windows has `--headless` but not its setup yet (T5 W2) and says so;
+/// macOS answers with the same refusal as `--headless`.
 pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
     #[cfg(target_os = "linux")]
     {
         linux::run_headless_setup(argv)
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    {
+        argv.iter().any(|a| a == "--headless-setup").then(|| {
+            eprintln!("{}", windows::HEADLESS_SETUP_NOT_YET);
+            2
+        })
+    }
+    #[cfg(target_os = "macos")]
     {
         argv.iter().any(|a| a == "--headless-setup").then(|| {
             eprintln!("{}", headless_unsupported(words::current().os_name));
@@ -336,7 +354,7 @@ pub fn run_headless_setup(argv: &[String]) -> Option<i32> {
 }
 
 /// The refusal an OS without a headless mode gives (`--headless`, `--headless-setup`).
-#[cfg(not(target_os = "linux"))]
+#[cfg(target_os = "macos")]
 fn headless_unsupported(os_name: &str) -> String {
     format!(
         "rexenv's headless mode is not available on {os_name} yet — it runs on Linux, on a server \

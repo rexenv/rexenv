@@ -33,6 +33,7 @@ mod elevation_rules;
 mod exe_icon;
 mod firefox_root;
 mod handles;
+mod headless_rules;
 mod ipc_rules;
 mod job_guard;
 mod job_guard_rules;
@@ -166,12 +167,26 @@ impl CertTrustManager for WindowsCertTrust {
     }
 }
 
+/// `--headless`'s preparation (`platform::prepare_headless`): nothing. Session 0 — an SSH session or an
+/// S4U boot task — runs the whole backend as it is (measured, docs/PLAN-headless-web.md §2b); what it
+/// lacks is a desktop, and the doors that would need one refuse on a headless launch
+/// (`headless_rules`).
+pub(crate) use headless_rules::SETUP_NOT_YET as HEADLESS_SETUP_NOT_YET;
+
+pub(crate) fn prepare_headless() -> Result<()> {
+    Ok(())
+}
+
 pub struct WindowsPrivileges;
 impl PrivilegeManager for WindowsPrivileges {
     /// rexenv's own dialog with the reason, then UAC elevating `rexenv.exe --elevated-step`, which runs only
     /// rexenv's ops (`elevation.rs`, ledger #619). `script` is ops text — `WindowsDns`'s commands — never
     /// PowerShell; anything else is refused before a dialog is shown.
     fn run_privileged(&self, script: &str, reason: &crate::platform::traits::PromptReason) -> Result<String> {
+        // Headless (session 0, T5 W1): no desktop for the dialog or for UAC, so refuse in words first.
+        if crate::is_headless_launch() {
+            return Err(Error::Other(headless_rules::NEEDS_SETUP.into()));
+        }
         elevation::run_privileged(script, &reason.sentence())
     }
     /// No privileged ports on Windows: the desktop user's filtered token bound `:443` and `:80`
@@ -1135,6 +1150,10 @@ impl LocalIpc for WindowsLocalIpc {
 /// when debug assertions are off. The app may survive a panic on a background
 /// thread, so the text does not claim it stopped.
 pub fn fatal_notice(summary: &str, crash_log: Option<&Path>) {
+    // A headless launch has no desktop to show the box on (`headless_rules`); the crash log has it.
+    if crate::is_headless_launch() {
+        return;
+    }
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         MessageBoxW, MB_ICONERROR, MB_OK, MB_SETFOREGROUND,
     };
