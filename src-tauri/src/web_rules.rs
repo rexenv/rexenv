@@ -143,6 +143,8 @@ and open the address it prints (through your SSH tunnel).";
 /// Whether `host` (the `Host` header) names this machine's loopback: `localhost`, `127.0.0.1` or
 /// `[::1]`, any port — an `ssh -L 8000:localhost:9443` tunnel arrives as `localhost:8000`. A DNS
 /// rebinding page arrives with ITS name, which is the attack this refuses.
+///
+/// `rexenv.localhost` is loopback too — the one name a session lives on (`WEB_HOST`).
 pub fn host_ok(host: Option<&str>) -> bool {
     let Some(host) = host else { return false };
     let name = match host.strip_prefix('[') {
@@ -156,7 +158,29 @@ pub fn host_ok(host: Option<&str>) -> bool {
             None => host,
         },
     };
-    name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1"
+    name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1" || name.eq_ignore_ascii_case(WEB_HOST)
+}
+
+/// **The name the web UI is signed in on** (security review of PR #10, item 1, ledger #952). A cookie is
+/// per HOST, never per port: a session cookie set on `localhost` went to every `http://localhost:*` the
+/// developer's browser opened — a hostile dev server on the laptop received it and could replay it
+/// through the tunnel, `index.html` (CSRF value included) and all. Browsers resolve every `*.localhost`
+/// name to loopback themselves (Chromium, WebKit and Firefox; macOS's resolver too — measured 7 Nov
+/// 2026), so the sign-in happens on this name and the cookie is host-only to it: no other localhost
+/// server sees it. The consoles live on the same name (`rexenv.localhost:9444`), so it reaches them.
+pub const WEB_HOST: &str = "rexenv.localhost";
+
+/// Whether `host` (a `Host` header that passed [`host_ok`]) is [`WEB_HOST`], any port.
+pub fn is_web_host(host: &str) -> bool {
+    let name = host.rsplit_once(':').filter(|(_, p)| all_digits(p)).map_or(host, |(n, _)| n);
+    name.eq_ignore_ascii_case(WEB_HOST)
+}
+
+/// The same request on [`WEB_HOST`]: a sign-in link opened on `localhost:<port>` is sent there with
+/// its code unspent, keeping the tunnel's port.
+pub fn on_web_host(host: &str, path_and_query: &str) -> String {
+    let port = host.rsplit_once(':').filter(|(_, p)| all_digits(p)).map(|(_, p)| format!(":{p}")).unwrap_or_default();
+    format!("http://{WEB_HOST}{port}{path_and_query}")
 }
 
 fn all_digits(s: &str) -> bool {
@@ -197,6 +221,19 @@ pub fn after_sign_in(path: &str) -> &str {
     if plain { path } else { "/" }
 }
 
+/// The page a spent sign-in link answers with: it moves the browser on to `after_sign_in(path)` itself.
+/// A `303` would not do from a link opened on `localhost` (moved to [`WEB_HOST`], #952): the redirect
+/// chain then started on another site, and WebKit and Chromium send no `SameSite=Strict` cookie on its
+/// last hop — the browser arrived signed out until a reload (measured 7 Nov 2026). A `<meta refresh>` is a
+/// navigation THIS page starts, so it is same-site; no script, so the page's CSP is untouched.
+pub fn after_sign_in_page(path: &str) -> String {
+    let to = after_sign_in(path);
+    format!(
+        "<!doctype html><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"0;url={to}\">\
+         <title>rexenv</title><p>Signed in — <a href=\"{to}\">open rexenv</a>.</p>"
+    )
+}
+
 /// What the gate decides for one request.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Gate {
@@ -204,6 +241,8 @@ pub enum Gate {
     Pass,
     /// A token in the URL: check it, start a session, send the browser to the same path without it.
     Exchange,
+    /// A token in the URL on a host other than [`WEB_HOST`]: send the browser to `WEB_HOST`, code unspent.
+    MoveToWebHost,
     /// Refused, with the status and a sentence.
     Refuse(u16, &'static str),
 }
@@ -232,7 +271,7 @@ pub fn gate(a: &Ask) -> Gate {
         }
     }
     if a.has_token && a.method == "GET" {
-        return Gate::Exchange;
+        return if is_web_host(a.host.unwrap_or_default()) { Gate::Exchange } else { Gate::MoveToWebHost };
     }
     let Some(csrf) = a.session_csrf else {
         return Gate::Refuse(401, NO_SESSION);
@@ -438,6 +477,32 @@ mod tests {
             &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/core/dbconsole_proxy.rs")).expect("dbconsole_proxy.rs"),
         );
         assert!(proxy.contains("let mut body: bytes::Bytes = body.into();"), "the proxy holds the body as Bytes");
+    }
+
+    /// The sign-in answer moves the browser on by itself, to a plain path only (it lands in HTML).
+    #[test]
+    fn the_sign_in_page_moves_on_to_a_plain_path() {
+        let page = after_sign_in_page("/sites");
+        assert!(page.contains(r#"http-equiv="refresh" content="0;url=/sites""#), "{page}");
+        assert!(!page.contains("<script"), "no script: the CSP forbids inline script");
+        let hostile = after_sign_in_page("/\"><script>x</script>");
+        assert!(hostile.contains("content=\"0;url=/\"") && !hostile.contains("<script"), "{hostile}");
+    }
+
+    /// A sign-in link is spent only on `rexenv.localhost` — on `localhost` it moves there, port kept, so
+    /// the cookie is never set on the name every local dev server shares.
+    #[test]
+    fn sign_in_happens_only_on_the_web_host() {
+        assert!(host_ok(Some("rexenv.localhost:9443")) && host_ok(Some("REXENV.localhost")));
+        assert!(!host_ok(Some("rexenv.localhost.evil.example")) && !host_ok(Some("evil.localhost:9443")));
+        assert!(is_web_host("rexenv.localhost:8000") && !is_web_host("localhost:9443") && !is_web_host("127.0.0.1:9443"));
+        let ask = |host| Ask { method: "GET", host: Some(host), origin: None, has_token: true, session_csrf: None, csrf_header: None };
+        assert_eq!(gate(&ask("rexenv.localhost:9443")), Gate::Exchange);
+        assert_eq!(gate(&ask("localhost:9443")), Gate::MoveToWebHost);
+        assert_eq!(gate(&ask("[::1]:9443")), Gate::MoveToWebHost);
+        assert_eq!(on_web_host("localhost:8000", "/sites?t=ab"), "http://rexenv.localhost:8000/sites?t=ab");
+        assert_eq!(on_web_host("[::1]:9443", "/?t=ab"), "http://rexenv.localhost:9443/?t=ab");
+        assert_eq!(on_web_host("localhost", "/?t=ab"), "http://rexenv.localhost/?t=ab");
     }
 
     /// A sign-in code works for its ten minutes and not after; a session ends at 8 h idle or 24 h old,
@@ -646,8 +711,13 @@ mod tests {
         // The token in the URL is the way in, and only by GET.
         a.method = "GET";
         a.has_token = true;
+        // On `localhost` it is moved to the web host first (#952); there it is spent.
+        assert_eq!(gate(&a), Gate::MoveToWebHost);
+        a.host = Some("rexenv.localhost:9443");
+        a.origin = None;
         assert_eq!(gate(&a), Gate::Exchange);
         a.method = "POST";
+        a.origin = Some("http://rexenv.localhost:9443");
         assert_eq!(gate(&a), Gate::Refuse(401, NO_SESSION));
         assert!(NO_SESSION.contains("rex web url"));
     }

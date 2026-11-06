@@ -2486,6 +2486,11 @@ SameSite=Strict` session cookie — once, within ten minutes; everything else ne
 every POST needs an `Origin` and the session's CSRF header, whose value only the `index.html` served
 to that session carries. Sessions are in memory and end at 8 h idle or 24 h old, at a restart, or at
 `POST /signout` (Settings' Sign out over the web) — signing back in takes a new `rex web url` (#950).
+The session lives on ONE name, `rexenv.localhost` (#952): a cookie is per host, never per port, so a
+cookie on `localhost` reached every `http://localhost:*` dev server in the developer's browser, which could
+replay it through the tunnel. Browsers resolve `*.localhost` to loopback themselves; a link opened on
+`localhost` is moved there with its code unspent, and the spent link answers with a `<meta refresh>` page,
+not a 303 — after a cross-site redirect chain WebKit and Chromium withhold a `SameSite=Strict` cookie.
 Until 7 Nov 2026 the credential was ONE permanent token in an owner-only `web-token` file: a link that
 worked forever from any shell or browser history it landed in, with no way to sign a browser out; the
 file is deleted when the web UI starts. `sudo rexenv --headless-setup --enable-web` puts `--web` in the boot unit. **All three ports on both

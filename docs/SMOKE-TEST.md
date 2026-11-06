@@ -4595,6 +4595,16 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   /signout` 200 + `Max-Age=0`, the replayed id → 401, a cross-origin sign-out → 403; the 0.9.6
   `web-token` file deleted at start; WebKit: the card's Sign out → the sentence page, no cookie left.
   Not waited out: the ten-minute and 8 h/24 h limits (L0 `sign_in_codes_and_sessions_expire`).
+  **Since #952:** `rex web url` prints `http://rexenv.localhost:9443/?t=…`; the same link with `localhost`
+  → the browser ends on `rexenv.localhost:9443`, signed in, without a reload; the cookie's domain is
+  `rexenv.localhost`; another server on `localhost:<port>` receives no cookie; the Database Browser frame
+  (`rexenv.localhost:9444`) is let through.
+  ✓ 7 Nov 2026 — the Dell (debug `--headless --web`, `ssh -L`), Playwright WebKit: the `localhost` link →
+  `rexenv.localhost:9443/sites` signed in, cookie `rexenv_web@rexenv.localhost`, a local echo server on
+  `localhost:13000` got `cookie=` (empty), `localhost:9443/` → 401, `rexenv.localhost:9444` passed the gate
+  (502 — the edge was down under the test task). The first build answered the exchange with a 303 and
+  WebKit arrived signed OUT (no Strict cookie after a cross-site chain) — fixed by the `<meta refresh>`
+  page; resolution measured in WebKit, Chromium and macOS's resolver (`*.localhost` → loopback).
   ◐ 28 Oct 2026 — the cloud container: every refusal and the sign-in, with curl and Chromium; the
   setup's unit line is L0 only (no systemd there).
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the unit's `ExecStart=/usr/bin/rexenv --headless --web`, the token `-rw-------`; no link → 401 with the `rex web url` sentence; the link → `/sites`, the `?t=` gone; a fresh account (`useradd`) → 401 on `/ipc/app_info` and on 9444, `Permission denied` on the token file; `Host: evil.example` → 403.

@@ -528,14 +528,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **The web UI's sign-in — two hardening items owed before Phase 1b is called done** (items 2 and 4 closed 7 Nov 2026) (security
+- [ ] **The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to every local account** (items 1, 2 and 4 closed 7 Nov 2026) (security
   review of PR #10, 29 Oct 2026; the review's CONFIRMED port-squat, `[::1]`, header-timeout and CA-EKU
-  findings were fixed the same day, #935/#934). Open: (1) **the cookie alone yields the CSRF value**
-  (`mark_index` writes it into `index.html` for any request carrying the session) and every
-  `http://localhost:*` server in the developer's browser receives that cookie — a hostile local dev
-  server on the LAPTOP could replay it through the tunnel; fix: serve on `rexenv.localhost` (and
-  `adminer.`/`pma.` on one port) with host-only cookies, and hand the CSRF value out once at sign-in;
-  ~~(2) the token never expires and sessions have no idle/absolute limit or sign-out~~ ✓ 7 Nov 2026 (#950):
+  findings were fixed the same day, #935/#934). Open: ~~(1) the cookie alone yields the CSRF value — every `http://localhost:*` server received the cookie~~
+  ✓ 7 Nov 2026 (#952): the session lives on `rexenv.localhost` only (host-only cookie; a `localhost` link is
+  moved there unspent; a meta-refresh sign-in page so WebKit keeps the Strict cookie) — RUN on the Dell in
+  WebKit; the CSRF value stays in the page, its attack's precondition gone; ~~(2) the token never expires and sessions have no idle/absolute limit or sign-out~~ ✓ 7 Nov 2026 (#950):
   `rex web url` mints a single-use ten-minute code, sessions end at 8 h idle / 24 h, Settings → Sign out, no
   token on disk — RUN on the Dell; (3) **the stack is open to every local account** on the
   server (passwordless DB `root` on loopback, the direct Adminer vhost) — INSTALL now says the web UI

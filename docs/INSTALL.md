@@ -705,11 +705,13 @@ databases' `root` has no password on loopback and the sites answer every local u
 a desktop. From your own machine:
 ```sh
 ssh -L 9443:127.0.0.1:9443 -L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445 <server>   # keep it open
-ssh <server> rex web url                       # prints http://localhost:9443/?t=… (a NEW link each time)
+ssh <server> rex web url                       # prints http://rexenv.localhost:9443/?t=… (a NEW link each time)
 ```
 Open that link in your browser within ten minutes: it signs that browser in, once — the link is then
 spent, so a copy left in a shell or browser history signs nobody in. Each browser takes its own
-`rex web url`. A session ends after 8 hours unused or 24 hours in all, when rexenv restarts, or with
+`rex web url`. The address is `rexenv.localhost`, which your browser resolves to your own machine by itself
+(no setup); the session lives on that name only, so the other `localhost` servers you run never see it. A
+session ends after 8 hours unused or 24 hours in all, when rexenv restarts, or with
 Settings → General → **Sign out**; then run `rex web url` again. (Before 7 Nov 2026 the link was a
 permanent token kept in `~/.local/share/rexenv/config/web-token`; that file is now deleted.) A browser without it, a page
 from another site and a request with another `Host` are refused. Folder and file pickers list the

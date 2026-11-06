@@ -46,14 +46,14 @@ App version **0.9.6** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 
 ### Phase 4+ (next era) — 4
 
-- `TODO.md:531` The web UI's sign-in — two hardening items owed before Phase 1b is called done
-- `TODO.md:546` Headless rexenv on a VPS — open: the rest of Phase 1b
-- `TODO.md:552` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
-- `TODO.md:559` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:531` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
+- `TODO.md:544` Headless rexenv on a VPS — open: the rest of Phase 1b
+- `TODO.md:550` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
+- `TODO.md:557` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 
-**✅ 780 · ◐ 149 · 🔨 5 · 🚫 17** of 951 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
+**✅ 781 · ◐ 149 · 🔨 5 · 🚫 17** of 952 rows, plus 16 🚫 premises living inside ◐/✅ rows (#15, #40, #43, #52, #149, #154, #254, #294, #309, #343, #350, #365, #432, #486, #541, #877).
 
 ## Plans in flight (`docs/PLAN-*.md`) and their own Status line
 

@@ -112,7 +112,7 @@ static AUTH: std::sync::OnceLock<Arc<Auth>> = std::sync::OnceLock::new();
 /// serves no web UI.
 pub fn sign_in_url() -> Option<String> {
     let code = AUTH.get()?.mint_code();
-    Some(format!("http://localhost:{}/?{}={}", rules::WEB_PORT, rules::TOKEN_PARAM, code))
+    Some(format!("http://{}:{}/?{}={}", rules::WEB_HOST, rules::WEB_PORT, rules::TOKEN_PARAM, code))
 }
 
 /// 32 random bytes as hex — a token, a session id, a CSRF value.
@@ -377,6 +377,18 @@ async fn handle(app: &AppHandle, streams: &Arc<Streams>, auth: &Arc<Auth>, req: 
         }
         rules::Gate::Refuse(status, why) => return refused(status, why),
         rules::Gate::Exchange => return exchange(auth, token.as_deref().unwrap_or_default(), &path),
+        rules::Gate::MoveToWebHost => {
+            let pq = req.uri().path_and_query().map(|pq| pq.as_str().to_string()).unwrap_or_else(|| "/".into());
+            let mut r = full(StatusCode::SEE_OTHER, "text/plain", "");
+            match rules::on_web_host(header(&req, "host").unwrap_or_default(), &pq).parse() {
+                Ok(location) => {
+                    r.headers_mut().insert("location", location);
+                }
+                Err(_) => return refused(400, "a sign-in link rexenv cannot move to its own address"),
+            }
+            r.headers_mut().insert("referrer-policy", "no-referrer".parse().expect("a header"));
+            return r;
+        }
         rules::Gate::Pass => csrf.unwrap_or_default(),
     };
     match rules::route(&method, &path, &names) {
@@ -436,8 +448,7 @@ fn exchange(auth: &Auth, token: &str, path: &str) -> Response<Body> {
         return refused(403, "that sign-in link was used already, is older than ten minutes, or is not this server's — run `rex web url` for a new one");
     }
     let (id, _csrf) = auth.start_session();
-    let mut r = full(StatusCode::SEE_OTHER, "text/plain", "");
-    r.headers_mut().insert("location", rules::after_sign_in(path).parse().expect("a plain path"));
+    let mut r = full(StatusCode::OK, "text/html; charset=utf-8", rules::after_sign_in_page(path));
     r.headers_mut().insert("set-cookie", rules::session_cookie(&id).parse().expect("a cookie"));
     r.headers_mut().insert("referrer-policy", "no-referrer".parse().expect("a header"));
     r
