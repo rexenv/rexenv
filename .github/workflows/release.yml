@@ -126,9 +126,9 @@ jobs:
 
   # ── macOS: the universal dmg + the in-app update archive.
   macos:
-    name: macOS universal dmg (macos-14)
+    name: macOS universal dmg (macos-15)
     needs: versions
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -451,5 +451,5 @@ jobs:
           {
             echo "### ⚠️ rexenv $V is a DRAFT on $GITHUB_REPOSITORY"
             echo "Publish only after docs/PUBLISH-TESTING.md §A (Apple-Silicon launch gate) passes on this exact dmg. Publishing fires release-published.yml → the tap's Update cask (from the published dmg's hash) and its installer test — and is what makes every asset reachable; a draft's assets 404 for everyone. Then publish the six app-update descriptors in rexenv/runtimes (RELEASING.md step 8)."
-            echo "Built on GitHub-hosted runners only: macos-14, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)."
+            echo "Built on GitHub-hosted runners only: macos-15, windows-latest, ubuntu-22.04 and ubuntu-22.04-arm (the Linux floor, glibc ≤ 2.35 asserted)."
           } >> "$GITHUB_STEP_SUMMARY"

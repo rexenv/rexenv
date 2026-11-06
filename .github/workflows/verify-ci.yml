@@ -1,6 +1,6 @@
 # The BAR on every release runner, without cutting a tag.
 #
-# `release.yml` runs scripts/verify.sh on macos-14, windows-latest, ubuntu-22.04 and
+# `release.yml` runs scripts/verify.sh on macos-15, windows-latest, ubuntu-22.04 and
 # ubuntu-22.04-arm before it builds anything. A red bar there costs a tag (v0.8.8's first
 # run, 27 Sep 2026: macOS and Windows red in verify.sh, and the step's `bash -e` swallowed
 # the log). This workflow is the same step on the same runners, on demand, with the log
@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       runners:
-        description: "Which runners (comma-separated subset of: macos-14,windows-latest,ubuntu-22.04,ubuntu-22.04-arm)"
+        description: "Which runners (comma-separated subset of: macos-15,windows-latest,ubuntu-22.04,ubuntu-22.04-arm)"
         required: false
-        default: "macos-14,windows-latest"
+        default: "macos-15,windows-latest"
       bisect:
         description: "true = run the bar's stages as SEPARATE steps (lib tests, cli tests, examples, clippy, the rest) instead of one verify.sh — a runner that dies keeps no log of the step it died in, but every finished step's log survives, so this says WHICH stage killed it"
         type: boolean

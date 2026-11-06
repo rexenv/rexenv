@@ -31,7 +31,7 @@ git push origin v<X.Y.Z>            (or: Actions → "Release" → Run workflow)
         │  the ANNOTATED tag's body = the public release notes (scripts/tag-notes.sh)
         │
         ▼
-.github/workflows/release.yml   — macos-14 runner
+.github/workflows/release.yml   — macos-15 runner
         │  version guard: tag == tauri.conf.json == package.json == both Cargo.tomls
         │  scripts/verify.sh (the bar — lib tests + examples + clippy + tsc)
         │  pnpm release:mac   → rexenv_<X.Y.Z>_universal.dmg
@@ -569,7 +569,10 @@ Changelog link points at the website and never moved.
 - **§A0's payload list lives in the workflow now.** When something new is compiled
   into the binary, add its per-slice check to the "§A0 artefact integrity" step in
   `release.yml` (and to `docs/PUBLISH-TESTING.md` §A0) in the same commit.
-- Runner note: `macos-14` is arm64; the universal build cross-compiles the x86_64
+- Runner note: `macos-15` is arm64 (`macos-14` until 0.9.6: GitHub retired the label and 0.9.6's first
+  run's macOS lane failed in 0 s with "The configuration 'macos-14-arm64-us-default' is not supported" —
+  the Linux and Windows lanes had passed, so no draft; the tag was moved onto the fix). The deployment
+  target is `tauri.conf.json`'s `minimumSystemVersion` (13.0), not the runner's macOS. The universal build cross-compiles the x86_64
   slice via the checked-in `rustup target add`. Private-repo macOS minutes bill at a
   10× multiplier — the verify + universal build takes tens of minutes per run.
 
