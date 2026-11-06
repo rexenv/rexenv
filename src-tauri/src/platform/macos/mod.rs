@@ -240,19 +240,28 @@ impl MacosPrivileges {
     }
 }
 
-/// `--headless`'s preparation (`platform::prepare_headless`, T5 M1): refuse unless this account is the one
-/// at the console. With nobody logged in the app never reaches `setup` (measured, `headless_rules`), so a
-/// launch that cannot work says so instead of hanging.
+/// `--headless`'s preparation (`platform::prepare_headless`, T5 M1/M2): refuse unless this account is the
+/// one at the console, and the launch runs in its own session. With nobody logged in the app never reaches
+/// `setup`; from the system domain it cannot read its own keychain (both measured, `headless_rules`) — a
+/// launch that cannot work says so instead of hanging or misreading its setup.
 pub(crate) fn prepare_headless() -> Result<()> {
     use std::os::unix::fs::MetadataExt;
     let console = std::fs::metadata("/dev/console").ok().map(|m| m.uid());
     // SAFETY: a plain syscall with no arguments.
     let uid = unsafe { libc::getuid() };
-    if headless_rules::session_is_ours(console, uid) {
-        Ok(())
-    } else {
-        Err(Error::Other(headless_rules::NEEDS_SESSION.into()))
+    if !headless_rules::session_is_ours(console, uid) {
+        return Err(Error::Other(headless_rules::NEEDS_SESSION.into()));
     }
+    // And this account's own session, not the system domain, where its keychain is out of reach (T5 M2).
+    let managername = std::process::Command::new("/bin/launchctl")
+        .arg("managername")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+    if !headless_rules::session_context_ok(managername.as_deref()) {
+        return Err(Error::Other(headless_rules::NEEDS_USER_DOMAIN.into()));
+    }
+    Ok(())
 }
 
 pub(crate) use headless_rules::SETUP_NOT_YET as HEADLESS_SETUP_NOT_YET;

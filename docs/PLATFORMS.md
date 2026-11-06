@@ -163,6 +163,10 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   ran and `rex` hung; the same daemon with the user logged in worked, web UI included. So headless
   on macOS means a logged-in account (automatic login), and `--headless` checks `/dev/console`'s
   owner first (#945).
+- **A LaunchDaemon with `UserName` is not that user's session.** It runs in the system domain
+  (`launchctl managername` = `System`): no login keychain in the search list, no user trust
+  settings, so `security verify-cert` fails a CA the user trusts. SSH (`Background`) and a
+  LaunchAgent (`Aqua`) both read it right. Supervise per-user work with a LaunchAgent (#945, M2).
 - **Binary preparation order is fixed:** de-quarantine → relink Homebrew dylibs to `/usr/lib`
   → ad-hoc codesign **LAST** (a relink after the signature invalidates it).
 - **Privileged prompts run in the foreground.** A backgrounded osascript cannot show the

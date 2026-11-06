@@ -472,7 +472,9 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   - **M1 — `--headless` on macOS requires the user's session.** ✓ 6 Nov 2026 (#945, run on the 15.8 VM: logged in it
     serves `rex` as a `UIElement` app and refuses the prompt in words; logged out it exits 2 with the sentence). Refuse with a sentence when this user has
     no window-server session, instead of the silent hang of §2b; with one, run window-less like Linux.
-  - **M2 — the daemon-context "setup incomplete".** Pin down which read differs in the system domain
+  - **M2 — the daemon-context "setup incomplete".** ✓ 6 Nov 2026 (#945): it was the CA read — the system domain has no login
+    keychain and no user trust settings, so `security verify-cert` fails there; the resolver read is the same in both. A system-domain
+    launch is refused (`launchctl managername` = `System`); a LaunchAgent (`Aqua`) or SSH (`Background`) reads trust correctly. Pin down which read differs in the system domain
     (`login_launch_needs_window`: the resolver route or the CA trust) and make it answer the same.
   - **M3 — `sudo rexenv --headless-setup` on macOS.** A LaunchAgent running `--headless [--web]` at the
     user's login, the autologin instructions, D7's consents, and the privileged steps the branded prompt

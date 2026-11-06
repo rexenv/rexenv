@@ -2058,6 +2058,10 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
 - [x] Turn automatic login off and log out; start the same command from a system LaunchDaemon (`UserName` = this account,
       `RunAtLoad`) → it exits 2 with "needs this account logged in", within a second,
       and leaves no process. ✓ 6 Nov 2026, the 15.8 VM — 0.9.5 hung there with `rex` waiting forever.
+- [x] Logged in again: the same system LaunchDaemon → exits 2 with "started by a system LaunchDaemon,
+      where macOS keeps this account's keychain out of reach"; a LaunchAgent in `~/Library/LaunchAgents`
+      running `--headless` (loaded into `gui/<uid>`) → `rex status` says `CA trusted` (T5 M2, #945).
+      ✓ 6 Nov 2026, the 15.8 VM.
 
 ## The menu bar (no dock icon)
 *The behavioural half of #437/#438 — the L0 tests prove the menu's RULES, and only a

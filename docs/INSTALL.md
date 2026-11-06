@@ -515,6 +515,8 @@ used as a server. **It needs this account logged in** (turn on *Automatically lo
 Settings → Users & Groups; the screen can stay locked): with nobody logged in macOS never finishes
 launching an app, so rexenv refuses with a sentence instead of starting and doing nothing. Finish the
 app's own setup once first — a headless rexenv answers every administrator prompt with a sentence.
+Start it from a LaunchAgent in `~/Library/LaunchAgents` or an SSH login — not a system LaunchDaemon, where
+macOS keeps this account's keychain out of reach (rexenv refuses that one with a sentence).
 `rexenv --headless-setup` is not built on macOS yet.
 
 ### Uninstalling — do the in-app step FIRST

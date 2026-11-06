@@ -18,6 +18,22 @@ pub(crate) fn session_is_ours(console_uid: Option<u32>, uid: u32) -> bool {
     console_uid == Some(uid)
 }
 
+/// Whether the launchd session this process was started in can read the user's keychain and trust
+/// settings — `launchctl managername`'s answer. Measured on the 15.8 VM, 6 Nov 2026 (T5 M2): `Aqua` (the
+/// GUI login, a LaunchAgent) and `Background` (an SSH login) both see the login keychain and the CA as
+/// trusted; `System` — a LaunchDaemon, even one with `UserName` set to this account — sees only
+/// `System.keychain`, no user trust settings, and `security verify-cert` fails the trusted CA with
+/// `CSSMERR_TP_NOT_TRUSTED`. rexenv started there believed its own setup incomplete. Anything else
+/// (`LoginWindow`, an unreadable answer) is refused too.
+pub(crate) fn session_context_ok(managername: Option<&str>) -> bool {
+    matches!(managername.map(str::trim), Some("Aqua") | Some("Background"))
+}
+
+/// The refusal for a launch from the system domain.
+pub(crate) const NEEDS_USER_DOMAIN: &str = "rexenv --headless was started by a system LaunchDaemon, where \
+macOS keeps this account's keychain out of reach — rexenv would see its own certificate as untrusted. Start \
+it in this account's session instead: a LaunchAgent in ~/Library/LaunchAgents, or from an SSH login.";
+
 /// The refusal when this account is not the one logged in.
 pub(crate) const NEEDS_SESSION: &str = "rexenv's headless mode on macOS needs this account logged in: with \
 nobody logged in, macOS never finishes launching an app, so rexenv would start and do nothing. Turn on \
@@ -38,6 +54,15 @@ that once in the app first.";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_session_that_can_read_the_users_keychain_starts_headless() {
+        assert!(session_context_ok(Some("Aqua")), "a LaunchAgent in the GUI login");
+        assert!(session_context_ok(Some("Background\n")), "an SSH login (launchctl ends its answer with a newline)");
+        assert!(!session_context_ok(Some("System")), "a LaunchDaemon, UserName or not: no login keychain");
+        assert!(!session_context_ok(Some("LoginWindow")));
+        assert!(!session_context_ok(None), "unreadable is refused");
+    }
 
     #[test]
     fn only_the_account_at_the_console_starts_headless() {
@@ -73,5 +98,9 @@ mod tests {
         let body = &body[..body.find("\n}\n").expect("its end")];
         assert!(body.contains("std::fs::metadata(\"/dev/console\")"), "{body}");
         assert!(body.contains("headless_rules::session_is_ours(") && body.contains("headless_rules::NEEDS_SESSION"), "{body}");
+        let console = body.find("headless_rules::session_is_ours(").unwrap();
+        let context = body.find("headless_rules::session_context_ok(").expect("the session-context check");
+        assert!(body.contains("\"managername\"") && body.contains("headless_rules::NEEDS_USER_DOMAIN"), "{body}");
+        assert!(console < context, "nobody logged in is the first thing to say: {body}");
     }
 }

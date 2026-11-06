@@ -609,7 +609,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   and what a silent update does while `\rexenv\headless` keeps restarting rexenv.exe (the in-app update of a
   headless PC is unbuilt); a fresh PC's first run (the CA confirmation on a desktop console). ✓ **M1** 6 Nov 2026 (#945, the 15.8 VM): `rexenv --headless` on macOS runs only
   with this account at the console — no dock tile, the prompt refused in words — and exits 2 with a sentence
-  instead of hanging when nobody is logged in. Open: M2 (the daemon-context "setup incomplete"), M3 (the setup).
+  instead of hanging when nobody is logged in. ✓ **M2** 6 Nov 2026 (#945): the daemon context cannot read the login
+  keychain (the CA read failed, not the resolver's), so a system-domain launch is refused and a LaunchAgent is the
+  shape. Open: M3 (the setup).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the

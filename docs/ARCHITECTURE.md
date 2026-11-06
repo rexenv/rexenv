@@ -2412,7 +2412,9 @@ words (the browser shell's mock and two dev review pages excepted).
   every script that code would hand pkexec is relayed to the root parent instead (#923). **macOS runs
   it since 6 Nov 2026 (T5 M1, #945) only with this account at the console** (`/dev/console`'s owner):
   with nobody logged in AppKit never sends finish-launching and the app sat in `NSApplication run`
-  doing nothing, so that launch exits 2 with a sentence. Started, it is Accessory (no dock tile) and
+  doing nothing, so that launch exits 2 with a sentence. So does one from the system domain (a
+  LaunchDaemon, `launchctl managername` = `System`, M2): the login keychain and the user's trust settings
+  are out of reach there and the CA read as untrusted. Started, it is Accessory (no dock tile) and
   answers the administrator prompt with a sentence. **Windows runs it since 6 Nov 2026 (T5 W1):** a
   headless launch there is session 0 — an SSH session, or an S4U task that runs whether or not
   anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
