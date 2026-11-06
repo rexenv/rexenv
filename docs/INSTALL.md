@@ -506,8 +506,10 @@ asks the two AI-agent questions; with no console to ask at, it leaves them as th
 - `--enable-web` serves the web UI on `127.0.0.1:9443` too (reach it with `ssh -L 9443:127.0.0.1:9443`;
   `rex web url` prints the sign-in link) — it works with nobody logged on, though Windows starts no
   WebView2 there.
-- To go back to the desktop app: `schtasks /Delete /TN \rexenv\headless /F` from an administrator
-  console, then open rexenv — it turns the DNS agent back into a logon task by itself.
+- To go back to the desktop app: `rex stop` FIRST (while the headless rexenv still runs — the desktop app
+  does not take over services a headless one started), then `schtasks /Delete /TN \rexenv\headless /F` from
+  an administrator console and `schtasks /End /TN \rexenv\headless`, then open rexenv and Start all — it
+  turns the DNS agent back into a logon task by itself.
 
 ### Headless — a Mac that stays logged in (6 Nov 2026)
 

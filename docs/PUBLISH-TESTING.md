@@ -103,6 +103,55 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) 🚧 0.9.6 — DRAFTED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender green; waits on the owner's Publish
+
+**Run 42197342159, source `67e6fa93` (tag `v0.9.6`), 16 assets, the body the tag's verbatim.** The FIRST run
+(42192163104, on `e40d2d95`) lost only its macOS lane, in 0 s: "The configuration 'macos-14-arm64-us-default' is not
+supported" — GitHub retired the label; Linux ×2 and Windows had passed. No release object existed, so the tag was moved
+onto `67e6fa93` (the lanes on `macos-15`, no source change) per RELEASING.md and every lane went green. dmg `a8a70b4f…`,
+`.app.tar.gz` `4bd821c8…`, arm64 deb `e8e303d4…`, amd64 deb `cc6144d2…`, aarch64 AppImage `7178a841…`, amd64 AppImage
+`cfe382c5…`, setup.exe `11c24e94…`, zip `5dd1ac37…`; every asset passed `shasum -c` against its `.sha256`.
+`verify-full` green first time (windows-check and linux-check both ran).
+What 0.9.6 changes: headless on macOS and Windows (T5, #943–#946), the web UI without a native webview (#947), the
+Windows 7.4/8.0/8.1 re-pin (#939), PHP 8.5's built-in OPcache on Windows, the Composer allow-plugins message (#942),
+the churn breaker's two windows, macOS's login-launch quit keeping the stack, the edge log under `/Library/Logs`.
+**Defender ✅ on the Dell, signatures `1.463.153.0` → `1.463.155.0` first:** `MpCmdRun -Scan -ScanType 3` → "found no
+threats" for the `setup.exe` AND the `.zip`, exit 0; no detection logged that day.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 and the update key ×2
+in EACH slice; `minos 13.0` both; `codesign --verify --deep --strict` valid; Info.plist `0.9.6`. **§A0-b** on the
+archive: one top-level `rexenv.app/`, zero `._` members, the same per-slice counts, codesign valid, `0.9.6`.
+**§A ✅ on the 15.8 VM, from the PUBLISHED 0.9.5 (the official bundle), stack started first:** `conv71`, `gitp`, `wtp`,
+`l14vm`, `sm763`, `php74`, `smoke-pg`, `smoke1` 200 (`smoke-lv` 503, stopped as before); app quit; the new app over
+`/Applications` with a synthetic quarantine → the Gatekeeper sheet ("rexenv" Not Opened, `Done` / `Move to Bin`) → Done
+(System Events, by name) → no app process; `xattr -rd` → `rex 0.9.6 (67e6fa9) · app rexenv 0.9.6 (67e6fa9)`, "the
+resolver agent is running 0.9.5 7edade0 but this build is 0.9.6" → kickstarted, "adopted 8"; **7/7 masters KEPT**
+(caddy, mysqld, postgres, Mailpit, nginx, both 8.x fpm); the sites as before at +0 s and +60 s; crash reports 6 → 6.
+Then `sudo … --headless-setup` from the release binary → the checks pass, the LaunchAgent the account's and
+`plutil`-clean; removed after.
+**Linux ✅ on the 22.04 arm64 VM, from the PUBLISHED 0.9.5 deb, GUI and stack running:** the deb's Depends; `apt-get
+install` 4 s → `dpkg-query` 0.9.6, `dpkg -V` clean, `rexenv-edge` and `rexenv-dns-route` active; relaunched from
+GNOME's search (`app-gnome-rexenv-*.scope`) → `rex 0.9.6 (67e6fa9)`, "adopted 7", **7/7 service pids KEPT**; the sites'
+codes as before (`conv71l`, `l16lx`, `try.gitl`, `gitl` 200; the fixture folders 403/404 before and after) at +0 s and
++60 s; P1 a fresh `.rex` name → 127.0.0.1; `/var/crash` empty; `manifest accepted (6 entries)`.
+**Linux headless ✅ on the 24.04 server VM, from the 0.9.5 deb, `rexenv-headless.service` running:** `apt-get install`
+(the post-install note printed), service restart → `rex 0.9.6`, **5/5 service pids KEPT**, `demo.rex` 200 before and
+after.
+**Windows ✅ on the Dell (Win10 22H2), from the PUBLISHED 0.9.5 `setup.exe` (installed first over the 5 Nov local
+build), app launched on the desktop (Interactive task):** `setup.exe /S` over the running app + agent → exit 0 in 7 s;
+`rexenv.exe` and Apps & Features 0.9.6, the agent task Running, `uninstall.exe` present; relaunched → `rex 0.9.6
+(67e6fa9)`; **40/40 php-cgi, FrankenPHP, nginx, caddy, Mailpit and mysqld pids KEPT**; 11 sites 200 and the two
+`runall` fixtures 403, before and at +0 s / +60 s (`curl.exe --ssl-no-revoke`). This release's Windows rows: a
+**fresh PHP 7.4.33 download** (the cached tree moved aside) → the re-pinned bytes accepted, a 7.4 site served `7.4.33`;
+**PHP 8.5's group ini has no OPcache `zend_extension` line, and `php -v` with it prints no warning** with OPcache
+loaded built in.
+**Found, not release-blocking:** (1) the app adopted only 1 service after the update — the stack had been started that
+day by a HEADLESS (S4U, session 0) instance, and a desktop app does not adopt what a headless one started; a stack the
+desktop started was "adopted 9" by the same 0.9.6 (control run). New TODO row; INSTALL's "go back" says `rex stop`
+first. (2) `rex service restart php-7.4` on Windows says "PHP-FPM 7.4 restarted" — the table's PHP-CGI relabel is not
+applied there (0.9.5 the same); fixed on master for the next release.
+**Not run:** §M; the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
+second-browser rows; a fresh PC's first Windows headless setup (a person's row).
+
 ## A) ✅ 0.9.5 — PUBLISHED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 40812888060, source `7edade0e` (tag `v0.9.5`), every lane green first time, 16 assets, the body the tag's

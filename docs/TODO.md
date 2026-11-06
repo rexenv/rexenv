@@ -593,6 +593,12 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   GitHub issue rexenv/rexenv#7 asked for 1a for automated PR QA on Ubuntu 24.04 x86_64; its reporter
   offered to test a build. A public bind and real site domains are later phases.
   Plan: `docs/PLAN-headless-web.md`.
+- [ ] **Windows: a desktop rexenv does not adopt services a HEADLESS one started** (found 6 Nov 2026 in 0.9.6's Dell
+  gate). The stack running from a `\rexenv\headless` (S4U, session 0) launch was "adopted 1" (Caddy only) by the
+  desktop app that followed; the same 0.9.6 adopted 9 of a stack the desktop had started. Suspect: the adoption's
+  process query (the cmdline marker) cannot read a process whose token is the S4U logon session's. Until fixed,
+  INSTALL's "go back" says `rex stop` while the headless one still runs. Measure the query first (which call fails,
+  from a desktop token, on an S4U-started `mysqld`), then fix or record it as the rule.
 - [ ] **Headless mode on macOS and Windows** — `--headless` and `--headless-setup` refuse there with a
   sentence (owner ruling D3, 26 Oct 2026: Linux first; `platform::prepare_headless`). macOS would need a
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
