@@ -3257,7 +3257,9 @@ fn cmd_service(words: &[String], json_output: bool) {
         if json_output {
             return print_json(&r);
         }
-        let service = r["service"].as_str().unwrap_or(target);
+        // The table's name for the pool, not the app's key: `PHP-FPM 7.4` is a php-cgi group on Windows, and
+        // this line said "PHP-FPM 7.4 restarted" there (0.9.6's Dell gate) while `rex status` said PHP-CGI.
+        let service = pool_display_name(r["service"].as_str().unwrap_or(target));
         match r["outcome"].as_str().unwrap_or("") {
             "restarted" => outln!("✓ {service} restarted on a freshly generated config"),
             "reloaded" => outln!(
@@ -4770,6 +4772,15 @@ fn cli_finding(cli: &Value, found: Option<&Path>) -> (bool, String) {
 
 #[cfg(test)]
 mod tests {
+    /// Every line that names a pool shows the table's name for it (`PHP-CGI 8.3` on Windows): the
+    /// `service restart` answer printed the app's `PHP-FPM` key there until 0.9.6's Dell gate found it.
+    #[test]
+    fn every_line_naming_a_pool_uses_the_display_name() {
+        let src = include_str!("main.rs");
+        let restart = &src[src.find("if action == Some(\"restart\") {").expect("the restart branch")..];
+        let restart = &restart[..restart.find("\"restarted\" =>").expect("its answer")];
+        assert!(restart.contains("let service = pool_display_name(r[\"service\"]"), "{restart}");
+    }
     /// A site's address is the one the app sends (`url`, with the edge's port off 443 — docs/
     /// PLAN-headless-web.md T2); an older app sends none and the answer is `https://<domain>`.
     #[test]
