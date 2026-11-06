@@ -3811,7 +3811,9 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
 - [x] **The web UI with nobody logged on** (#947): `rexenv.exe --headless --web` in session 0 →
       `rex web url`'s link through `ssh -L 9443:127.0.0.1:9443` signs in and the Sites screen lists the
       sites, though Task Manager shows no `msedgewebview2.exe`. ✓ 6 Nov 2026, the Dell (curl: `/ipc` and
-      an `/events` event; a browser through the tunnel is the human half still to look at).
+      an `/events` event) and the browser half the same day: Chrome on the dev Mac through `ssh -L`, the
+      sign-in link → the Sites screen with all 13 sites Running, 9/9 services and live CPU/RAM, no
+      console error.
 - [x] **A silent update over a headless PC** (#944): with `\rexenv\headless` running, `setup.exe /S`
       of a newer build → exit 0, the new `rexenv.exe` in place, `--headless` running again at once
       (POSTINSTALL runs the task) and `rex status` answering. A non-zero exit with the OLD version in
