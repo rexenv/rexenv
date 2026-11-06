@@ -1055,6 +1055,11 @@ pub fn set_path(
     id: &str,
     path: &Path,
 ) -> Result<Option<Site>> {
+    // Every changed docroot is STORED through here, so here is where Windows' verbatim prefix comes off
+    // (#953): `rex site move` sent a canonicalised `\\?\C:\…` parent, the moved site was stored with it,
+    // and php-cgi answered "No input file specified." for every request (the Dell, 7 Nov 2026). #770 had
+    // fixed the same prefix for a LINKED docroot only.
+    let path = plain_path(path.to_path_buf());
     let path_s = path.display().to_string();
     validate_docroot_path(&path_s)?;
     if !store::set_site_path(conn, id, &path_s)? {
@@ -3089,6 +3094,15 @@ mod tests {
         let f = &prod[prod.find("pub fn validate_linked_docroot_on(").expect("the validation")..];
         let f = &f[..f.find("\n}\n").unwrap_or(f.len())];
         assert!(f.contains("Ok(plain_path(canon))"), "the linked docroot must be STORED through plain_path");
+        // #953: a MOVED docroot too — `set_path` is where every changed docroot is stored, and the move
+        // compares and joins a plain destination.
+        let f = &prod[prod.find("pub fn set_path(").expect("set_path")..];
+        let f = &f[..f.find("\n}\n").unwrap_or(f.len())];
+        let plain = f.find("let path = plain_path(path.to_path_buf());").expect("set_path stores through plain_path");
+        assert!(plain < f.find("store::set_site_path(").expect("the store"), "plain before the store");
+        let cmd = include_str!("../commands/sites.rs");
+        let mv = &cmd[cmd.find("pub async fn move_site_docroot(").expect("move_site_docroot")..];
+        assert!(mv.find("core::sites::plain_path(").expect("a plain destination") < mv.find("check_docroot_move(").expect("the check"));
     }
 
     /// `rex site create s1.rex` names the site `s1`, as the dialog would pair them —

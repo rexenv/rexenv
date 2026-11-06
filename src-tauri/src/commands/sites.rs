@@ -1165,7 +1165,10 @@ pub async fn move_site_docroot(
     // The user is changing this site's docroot — that adopts it (promotion
     // choke point; a scratch site they touched is theirs).
     promote_if_scratch(&state, &id);
-    let dest = std::path::PathBuf::from(&dest_parent);
+    // Without Windows' verbatim prefix (`rex` canonicalises it client-side): the checks compare it with
+    // the STORED plain path — `dest.starts_with(src)` never matched a `\\?\` dest — and the target
+    // is stored from it (#953).
+    let dest = core::sites::plain_path(std::path::PathBuf::from(&dest_parent));
     let (site, target) = {
         let conn = lock(&state)?;
         let site = core::sites::get(&conn, &id)?

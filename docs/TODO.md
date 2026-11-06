@@ -291,6 +291,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
+- [ ] **The first request after `site move` fails once on Windows** (found 7 Nov 2026 by #953's run on the
+  Dell): with the fix in, `rex site move` returns, the first GET answers 404 "No input file specified." (or
+  no connection) and the next ones 200 — the command returns before nginx's reload has taken effect. Measure
+  where (`move_site_docroot` awaits `ReadyCheck`s — which, and do they cover the reload?) before changing it;
+  macOS/Linux unmeasured.
+
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 
@@ -418,8 +424,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   server/domain/move`, `mail clear`, `tunnel start`, `wp core update/switch`,
   (**corrected 9 Oct 2026:** `wp core switch/update` and `tunnel start --yes`/`stop` were live-run 5 Sep —
   `docs/CLI-ROADMAP.md`'s live-run record; `php install` ran on the Linux VM 24 Sep and on the Win11 VM
-  9 Oct. Still owed: `php uninstall`, `php settings set`, `db versions --set`, `site server/domain/move`,
-  `mail clear`, plus CLI-ROADMAP's `tld --remove` real-removal leg and `site restart`'s other outcomes.)
+  9 Oct. ✓ **7 Nov 2026, the Dell:** `php uninstall`, `php settings set`, `db versions --set`, `site
+  server/domain/move`, `mail clear` and `site restart`'s backend outcome all RUN (CLI-ROADMAP's record; the
+  move found and fixed #953). Still owed: CLI-ROADMAP's `tld --remove` real-removal leg (UAC — the owner's)
+  and `site restart`'s refusal outcome.)
   `site create --starter-db` (**RUN 3 Sep 2026** — the seed is real: table
   `starter_items`, a `db.php`, the page renders "connected" and one row) —
   plus the packaged-GUI walks still noted inside their shipped entries: MariaDB

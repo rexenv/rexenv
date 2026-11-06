@@ -2504,7 +2504,7 @@ fn cmd_repo(words: &[String], json_output: bool) {
         Some("link") => {
             let raw = dir_arg("rex repo <domain> link <path> [--name N] [--theme]");
             let target = match std::fs::canonicalize(&raw) {
-                Ok(t) => t.to_string_lossy().into_owned(),
+                Ok(t) => plain(t).to_string_lossy().into_owned(),
                 Err(e) => {
                     errln!("rex: {raw}: {e}");
                     exit(1);
@@ -3021,6 +3021,20 @@ fn cmd_site_domain(words: &[String], json_output: bool) {
     );
 }
 
+/// A canonicalised path without Windows' verbatim prefix (`\\?\C:\…` → `C:\…`, `\\?\UNC\h\s` →
+/// `\\h\s`): what `std::fs::canonicalize` answers there is not a path nginx or php-cgi can serve from,
+/// and the app stores what it is sent (#953). Elsewhere a no-op.
+fn plain(p: PathBuf) -> PathBuf {
+    let text = p.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\") {
+        return PathBuf::from(rest);
+    }
+    p
+}
+
 fn cmd_site_move(words: &[String], json_output: bool) {
     let site = find_site(words, "rex site move <domain> <dest-parent>");
     let Some(dest) = words.get(1).filter(|w| !w.starts_with("--")) else {
@@ -3028,7 +3042,7 @@ fn cmd_site_move(words: &[String], json_output: bool) {
         exit(1);
     };
     let dest = match std::fs::canonicalize(dest) {
-        Ok(p) => p,
+        Ok(p) => plain(p),
         Err(e) => {
             errln!("rex: cannot use {dest}: {e}");
             exit(1);
@@ -3063,7 +3077,7 @@ fn cmd_site_relink(words: &[String], json_output: bool) {
     // shell prompt (`rex site relink x.rex ./moved`) means what the user's cwd
     // says it means, not what the app's does.
     let path = match std::fs::canonicalize(path) {
-        Ok(p) => p,
+        Ok(p) => plain(p),
         Err(e) => {
             errln!("rex: cannot use {path}: {e}");
             exit(1);
@@ -4067,7 +4081,7 @@ fn cmd_db_import(words: &[String], json_output: bool) {
     // Absolute path client-side: the APP resolves relative paths against ITS
     // cwd, not this shell's.
     let file = match std::fs::canonicalize(file) {
-        Ok(p) => p,
+        Ok(p) => plain(p),
         Err(e) => {
             errln!("rex: cannot read {file}: {e}");
             exit(1);
@@ -4774,6 +4788,23 @@ fn cli_finding(cli: &Value, found: Option<&Path>) -> (bool, String) {
 
 #[cfg(test)]
 mod tests {
+    /// #953 — a path `rex` canonicalises reaches the app without Windows' verbatim prefix, at every
+    /// place it canonicalises one the app will STORE or open (site move, relink, repo link, db import).
+    #[test]
+    fn a_canonicalised_path_goes_to_the_app_without_the_verbatim_prefix() {
+        use std::path::PathBuf;
+        assert_eq!(super::plain(PathBuf::from(r"\\?\C:\Users\dell\rx415")), PathBuf::from(r"C:\Users\dell\rx415"));
+        assert_eq!(super::plain(PathBuf::from(r"\\?\UNC\nas\web")), PathBuf::from(r"\\nas\web"));
+        assert_eq!(super::plain(PathBuf::from("/Users/x/Sites")), PathBuf::from("/Users/x/Sites"));
+        let src = include_str!("main.rs");
+        let src = &src[..src.find("\n#[cfg(test)]\nmod tests {").expect("the test module")];
+        for (i, _) in src.match_indices("match std::fs::canonicalize(") {
+            let arm = &src[i..i + 160.min(src.len() - i)];
+            assert!(arm.contains("plain("), "a canonicalised path sent as it came:\n{arm}");
+        }
+        assert!(src.matches("match std::fs::canonicalize(").count() >= 4);
+    }
+
     /// Every line that names a pool shows the table's name for it (`PHP-CGI 8.3` on Windows): the
     /// `service restart` answer printed the app's `PHP-FPM` key there until 0.9.6's Dell gate found it.
     #[test]

@@ -296,7 +296,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 - **`std::fs::canonicalize` answers the verbatim form** (`\\?\C:\Users\x`). Compare canonical
   against canonical (#642 — plain against verbatim answered false on the Dell), and STORE the
   plain form: a linked docroot goes through `sites::plain_path` once, at the storage point
-  (#770), or the nginx config would carry `//?/C:/…`.
+  (#770), or the nginx config would carry `//?/C:/…`. #770 covered the LINK path only: `rex site move`
+  canonicalised its destination client-side, the moved site was stored as `\\?\C:\…`, and php-cgi
+  answered "No input file specified." on every request (the Dell, 7 Nov 2026). Now `sites::set_path` —
+  where every changed docroot is stored — strips it, the move compares a plain destination, and `rex`
+  sends plain paths from all four places it canonicalises (#953).
 - **`hosts` is never touched** — shared by every tool on the machine.
 - **NRPT has no fallback** — with the agent down, `.rex` fails rather than asking the interface's
   server, so a host running rexenv upstream cannot mask a broken Windows route (measured on the

@@ -134,7 +134,7 @@ to launch a specific copy with `open /Applications/rexenv.app` when it matters. 
 |---|---|---|---|
 | `mail list [--unread] [query]` | `mailpit_messages` | ✓ | shipped 16 Jul — 3 real caught messages listed. The socket command also takes `query` and `unread` (bool, absent = whole inbox, so an older `rex` against a newer app is unchanged), and **both reached the CLI on 23 Aug 2026** (ledger #385) — this row said they had not for ten days, while the Infrastructure section below recorded the same day they did |
 | `mail mark-read` | `mailpit_mark_all_read` | ✓ | socket command `mail.mark_read` landed 14 Aug 2026 with the Mail screen's "Mark all read"; **`rex mail mark-read` shipped 23 Aug 2026** (ledger #385) — named `mark-read`, not `read`, because it marks EVERY message. The tag on this row still read "IPC exists" ten days later |
-| `mail clear [--yes]` | `mailpit_clear` | ✓ | shipped 16 Jul (confirm-gated; not live-run — user mail) |
+| `mail clear [--yes]` | `mailpit_clear` | ✓ | shipped 16 Jul (confirm-gated). **Live-run 7 Nov 2026** on the Dell's test inbox (27 → 0) — never on the owner's own mail |
 | `mail open` | `mailpit_status` (uiUrl) + local `open` | ✓ | shipped 16 Jul |
 
 ## Tunnels
@@ -360,13 +360,18 @@ What remains:
    regenerated and the edge reloaded), the old docroot was untouched, a relative
    path resolved against the CLI's cwd, and a missing path was refused before
    anything was sent.
+   **7 Nov 2026, the Dell (Windows 10, the installed 0.9.6, a throwaway `v415.rex`/`v953.rex`):**
+   `php install 8.1` → `php settings 8.1 set memory_limit=512M` (read back `512M`) → `php uninstall
+   8.1` (list back to `-`); `db versions --set postgres 17.11.0` and back to 18.6.0 (each read back);
+   `mail clear --yes` on the test machine's own inbox (27 → "0 messages"); `site server` nginx →
+   frankenphp → nginx with 200 each; `site restart` on the FrankenPHP site — the **backend** outcome
+   ("restarted FrankenPHP for v415.rex on 127.0.0.1:8202"); `site restart --pool` on nginx — the
+   shared outcome plus the pool bounce (200 after); `site domain v415.rex v415b.rex --yes`; `site move`
+   — which FOUND #953 (a `\\?\` docroot php-cgi could not serve; fixed, both halves run).
    <!-- /live-run-record -->
    Still owed: **`tld --remove`**'s real-removal leg (a TLD of ours with no site
    left AND a foreground password prompt — the 5 Sep run drove only the three
-   refusals); **`mail clear`** (the inbox held the user's own mail on 5 Sep 2026 —
-   clearing it to tick a row is not a trade, so the row stays honest until a run
-   on an inbox that is nobody's); **`site restart`**'s other two outcomes (shipped 2 Sep 2026 with L0
-   only: the backend leg needs a real FrankenPHP/Apache site stopped and
-   respawned, and the refusal leg needs an ADOPTED backend, neither of which a
-   unit test can hold). Kept BELOW the marker on purpose — a partly-run command
-   is named on both sides, and only the owed half belongs outside.
+   refusals; on Windows a UAC secure-desktop click, the owner's); **`site restart`**'s refusal
+   outcome (an ADOPTED backend a non-app process may not stop — a unit test cannot hold it). Kept BELOW
+   the marker on purpose — a partly-run command is named on both sides, and only the owed half belongs
+   outside.
