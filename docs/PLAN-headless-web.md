@@ -1,7 +1,9 @@
 # PLAN — headless rexenv on a server, driven from a browser and from `rex`
 
 **Status:** IN PROGRESS — 26 Oct 2026. T0 measured and **T1 built and run on the Ubuntu VM the same day**
-(§6); T2 onward not started. The facts in §2 were read from the tree at `14ab9608`;
+(§6); Phase 1a (T0–T4) shipped in 0.9.3, T6–T9 built 28 Oct (open rows in `docs/TODO.md`). **T5 (macOS and
+Windows) started 6 Nov 2026: its T0 is measured (§2b) and its shape waits on the owner's ruling D8 (§5).**
+The facts in §2 were read from the tree at `14ab9608`;
 **T0 was measured the same day on the Ubuntu 22.04 arm64 VM (§2a)**, and the shape waits on the owner's
 rulings D1–D7 (§5). Re-ordered the
 same day after GitHub issue rexenv/rexenv#7: Phase 1a (headless + `rex`/`rex mcp` + configurable edge
@@ -136,6 +138,65 @@ handed back with `gdm` running and the GUI app relaunched by its autostart.
   (`src/lib/ipc/index.ts:41`) against `@/lib/mock`, so a browser renders the shell. What that path does
   not cover is the real transport; T6 still owes it.
 
+## 2b. T5's T0 — measured on the Dell and the macOS 15.8 VM, 6 Nov 2026
+
+The installed 0.9.5 on both, driven over SSH. Every probe process, task and daemon was the run's own and was
+removed after; the Dell was handed back with the app hidden in the console session, the VM with its
+autologin restored (one reboot proved it) and powered off. The probe asked three things in each context:
+does `rex status` answer, does `rexenv --web` serve, and does `POST /ipc/list_sites` (which goes through the
+main webview's `on_message`, T6) come back with the sites.
+
+**Windows (Dell, Win10 22H2).** An SSH session runs in **session 0** — no desktop, which is exactly where a
+boot-time task or a service runs, so SSH alone is a faithful stand-in.
+- **Session 0 runs the whole backend with no code change.** `rexenv.exe --hidden --web` from SSH: `rex
+  status` answered in 2.1 s, nine running services were adopted, the CLI pipe, the MCP endpoint and the web
+  server came up, the runtime manifest downloaded.
+- **But no webview exists in session 0, so the web UI cannot work there as built.** Not one
+  `msedgewebview2.exe` started, and `/ipc/list_sites` answered `{"error":"runtime error: failed to receive
+  message from webview"}`. The same launch in the console session (a `/IT` task) had six `msedgewebview2.exe`
+  processes. WebView2 needs an interactive window station; T6's dispatch goes through the webview, so on
+  Windows the web UI needs a dispatch that does not (D1's option (c), for this OS at least).
+- **An S4U scheduled task is the login-less boot shape, and it works.** Registered with
+  `-LogonType S4U` (no stored password, runs whether or not the user is logged on) as `<COMPUTER>\dell` —
+  `WORKGROUP\dell` fails with "No mapping between account names and security IDs": it ran in session 0
+  with its arguments intact, adopted the nine services, and reached the network. Same backend result as SSH.
+- **A `/IT` task launch loses its arguments.** The task scheduler's job forbids breakaway, so the app hops out
+  through Explorer (`relaunch_outside_confining_job`), and the relaunched process had a bare command line:
+  `--web` was gone. `--hidden` survives the hop only because `platform::hopped_hidden` carries it (#742).
+  Any new flag a logon task passes needs the same carrying.
+- **What still needs a desktop, from the code:** every `run_privileged` call is a UAC prompt
+  (`elevation.rs`: rexenv's dialog, then `ShellExecuteExW` `runas`), and UAC has no unattended form, so the
+  NRPT rule, the CA's trust and the resolver hand-back must happen in a one-time setup run from an elevated
+  console, like Linux's `--headless-setup`. The DNS agent is a LOGON task (`logon_task.rs`), so a
+  login-less boot has no `.rex` resolver until it becomes a boot task too. No privileged port: the user's
+  token binds 443 (#611).
+
+**macOS (UTM VM, 15.8).**
+- **With the console user logged in, every context works.** Launched from SSH, and launched by a
+  LaunchDaemon in the SYSTEM domain (`UserName` = the user, `RunAtLoad`): `rex status` answered in 1–2 s, eight
+  services adopted, `/ipc/list_sites` returned the sites through WKWebView (WebContent processes present).
+- **With NOBODY logged in, the app hangs before `setup`.** Autologin off, the user logged out (`launchctl
+  bootout gui/501`), the same LaunchDaemon: the process started and never served. `rex status` hung for over
+  three minutes; a `sample` showed the main thread parked in `-[NSApplication run]` → `_DPSNextEvent` →
+  `mach_msg`, with ONE other thread (a GCD worker) and no tokio threads at all — Tauri's `setup` never ran,
+  because AppKit's finish-launching never arrives without a window server session. The only log line was
+  `NSXPCSharedListener … 'ClientCallsAuxiliary': Connection interrupted`. Linux's version of this is tao's
+  `gtk::init` panic (§2a); macOS's is a silent hang, which is worse — a supervisor sees a live process.
+- **A daemon launch thinks setup is incomplete.** Even with the user logged in, the system-domain launch
+  logged `launched at login with setup incomplete — showing the window` where the SSH launch did not: the
+  setup check reads something only the user's GUI domain answers (to pin down in T5 — the DNS agent's
+  LaunchAgent and the login keychain's trust are the candidates).
+- **What still needs a desktop, from the code:** every `run_privileged` is the branded `osascript` admin
+  prompt, impossible with no session; the edge is already a LaunchDaemon (it boots without a login); the
+  DNS agent is a LaunchAgent, which needs a login (or a `Background` session) to run.
+
+**What this means for the shape (D8, §5).** Phase 1a (`rex` + `rex mcp` driving the stack) is reachable on
+Windows today through an S4U boot task plus an elevated one-time setup; on macOS only on a Mac that logs a
+user in at boot (autologin), because the window-less, login-less launch never reaches `setup`. The web UI
+(Phase 1b) is blocked on Windows in session 0 and on a login-less Mac by the same root: T6's dispatch rides
+the webview. Both are answered by D1's option (c) — commands served by an app-owned host that does not need
+tao's event loop or a webview — which Linux deferred because Xvfb made (b) free there.
+
 ## 3. Shape
 
 ```
@@ -257,6 +318,20 @@ Catalog work in `rexenv/runtimes` and `core/binaries.rs`, under D-L8 of `docs/PL
   the VPS, with macOS (LaunchDaemon) and Windows (service / boot-time task) filled in the same change
   as `Error::Unported` plus a sentence in `platform/words.rs`, and a TODO row each. The web transport
   itself is common code and works on all three as soon as their headless mode exists.
+- **D8 — T5's shape for macOS and Windows (measured §2b, 6 Nov 2026).** Recommended, in two steps:
+  - **First (Phase 1a on both, small):** Windows — `--headless` runs from an S4U boot task (and the DNS agent
+    from one too), with an elevated `rexenv.exe --headless-setup` doing the UAC steps once and writing both
+    tasks; carry `--web`/`--headless` through the Explorer hop. macOS — `--headless` refuses unless a user
+    session exists, saying why, and `sudo rexenv --headless-setup` installs a LaunchAgent plus the
+    autologin instructions (a Mac mini as a server is normally set up that way); fix the daemon-context
+    "setup incomplete" read. Both keep the refusal for the web UI where §2b showed it cannot work, with a
+    sentence in `platform/words.rs`.
+  - **Then (Phase 1b on both, large):** D1 (c) — an app-owned command host the CLI, MCP and web server
+    call without the webview, which also removes Xvfb on Linux. 17 command files and both socket servers;
+    its own plan.
+  - The alternative to the first step on macOS — making AppKit finish launching with no window server
+    (an `NSApplicationActivationPolicyProhibited` launch that calls `finishLaunching` itself) — is
+    unmeasured and fights the framework; not recommended without a spike.
 - **D4 — secrets without a keyring:** **moot, 26 Oct 2026.** The owner ruled "honest refusal" on the
   question as this plan framed it — and the framing was wrong: live sync never used a keyring; its
   pairing has been a `0600` file under app data on every OS since 10 Oct (`core/live_sync/secrets.rs`,
@@ -379,7 +454,7 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
   so they need either the setup to do them or a GUI-less first setup. The systemd unit, `--headless-setup`, lingering, the deb's post-install note.
   `docs/INSTALL.md` gets a "Server (headless)" section, and `docs/SMOKE-TEST.md` gets the rows. After T4,
   Phase 1a is shippable, and issue #7's reporter gets a build to test on Ubuntu 24.04 x86_64.
-- **T5 — the other OSes per D3.**
+- **T5 — the other OSes per D3.** T0 measured 6 Nov 2026 (§2b); waits on D8. Was: the other OSes per D3.
 - **T6 — web transport.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger
   #929): `rexenv --web` serves the embedded bundle on `127.0.0.1:9443` (`web_server.rs`, rules in
   `web_rules.rs`); `POST /ipc/<cmd>` goes through `Webview::on_message` on the hidden main webview,

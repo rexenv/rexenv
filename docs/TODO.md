@@ -597,7 +597,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   sentence (owner ruling D3, 26 Oct 2026: Linux first; `platform::prepare_headless`). macOS would need a
   LaunchDaemon/LaunchAgent shape for a login-less Mac and its own answer to the window server; Windows a
   boot-time task or service with no desktop, and UAC has no unattended form. Plan:
-  `docs/PLAN-headless-web.md` T5.
+  `docs/PLAN-headless-web.md` T5. **T0 measured 6 Nov 2026 (plan §2b), waits on the owner's D8:** Windows
+  session 0 (SSH, and an S4U boot task) runs the whole backend unchanged but starts no WebView2, so the web
+  UI's `/ipc` fails there; a login-less Mac hangs in `NSApplication run` before `setup` (no tokio thread,
+  `rex` hangs), while any launch with a user logged in — SSH or a system LaunchDaemon — works, web UI included.
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
