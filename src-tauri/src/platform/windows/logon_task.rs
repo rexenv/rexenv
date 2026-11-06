@@ -230,9 +230,11 @@ mod tests {
         let pre = section("NSIS_HOOK_PREINSTALL");
         assert!(pre.contains("${If} ${Silent}") && pre.contains("!insertmacro REXENV_STOP_AGENT_AND_WAIT"), "the silent install stops the agent and waits — only the silent one: {pre}");
         let stop = section("REXENV_STOP_AGENT_AND_WAIT");
+        assert!(stop.find("schtasks /End /TN \"${REXENV_HEADLESS_TASK}\"").expect("a headless PC's app task is ended for the swap") < stop.find("FindProcessCurrentUser").unwrap(), "ended before the kill loop: {stop}");
         assert!(stop.contains("schtasks /End /TN \"${REXENV_DNS_TASK}\"") && stop.contains("FindProcessCurrentUser") && stop.contains("KillProcessCurrentUser") && stop.contains("Sleep 500") && stop.contains("${LoopUntil} $1 >= 20"), "end the task, then kill and wait, bounded: {stop}");
         let post = section("NSIS_HOOK_POSTINSTALL");
         assert!(post.contains("${If} ${Silent}") && post.contains("schtasks /Run /TN \"${REXENV_DNS_TASK}\""), "the silent install brings the resolver back on the new binary: {post}");
+        assert!(post.contains("schtasks /Run /TN \"${REXENV_HEADLESS_TASK}\""), "and a headless PC's app, at once: {post}");
         let preun = section("NSIS_HOOK_PREUNINSTALL");
         // The APP before the task: a running app's watchdog re-registers the task (the Dell's
         // interactive uninstall left it Ready, 5 Oct 2026). Then delete, then wait the agent out.

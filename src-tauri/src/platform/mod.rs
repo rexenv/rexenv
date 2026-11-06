@@ -237,6 +237,15 @@ pub use linux::process_start_token;
 #[cfg(target_os = "macos")]
 pub use macos::activation::activate_app;
 
+/// A headless launch is started by its supervisor (a LaunchAgent, a scheduled task, a systemd unit), so
+/// the OS must not ALSO reopen it at login as a desktop launch: on macOS that copy came first and the
+/// supervisor's handed off to it (T5 M3, `activation::disable_relaunch_on_login`). Windows and Linux have
+/// no such list for rexenv — nothing to do there.
+pub fn stay_out_of_login_relaunch() {
+    #[cfg(target_os = "macos")]
+    macos::activation::disable_relaunch_on_login();
+}
+
 /// The loopback port the embedded resolver serves on (`core::dns::DEFAULT_DNS_PORT`).
 ///
 /// Per OS because the OS's routing decides it, not rexenv: a macOS resolver file names a port, so

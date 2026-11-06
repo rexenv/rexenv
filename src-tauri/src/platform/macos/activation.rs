@@ -46,6 +46,21 @@ pub fn activate_app() {
     }
 }
 
+/// Keep a headless rexenv out of macOS's "reopen windows when logging back in" list (T5 M3). Its
+/// LaunchAgent starts it at login; when the list ALSO reopened it, the list's copy came first as a plain
+/// desktop launch and the agent's copy handed off to it and exited — measured on the 15.8 VM, 6 Nov 2026:
+/// after a reboot with automatic login, `TALAppsToRelaunchAtLogin` held `dev.rexenv.rexenv`, the app ran
+/// with no arguments and `headless.log` said "handed this login launch to it". Apple's own advice for an
+/// app "launched via launchd": call `disableRelaunchOnLogin` once and never pair it with `enable`.
+/// Thread-safe per AppKit; the marker is still required to reach `sharedApplication`.
+pub fn disable_relaunch_on_login() {
+    let Some(mtm) = MainThreadMarker::new() else {
+        log::debug!("relaunch on login: not the main thread — skipping");
+        return;
+    };
+    NSApplication::sharedApplication(mtm).disableRelaunchOnLogin();
+}
+
 #[cfg(test)]
 mod tests {
     /// Ledger #713 — the newer selector is never sent without asking first. A

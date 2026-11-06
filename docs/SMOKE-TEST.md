@@ -2067,7 +2067,9 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       the account's (not root's), nothing root-owned in app data, the app's Start at login is off. With
       the app open the agent hands off and stays down (no relaunch loop); quit the app and
       `launchctl kickstart gui/$UID/dev.rexenv.rexenv.headless` → `rex status` answers. ✓ 6 Nov 2026, the
-      15.8 VM. **Owed:** a reboot with automatic login. Tester trap: restoring a swapped binary with
+      15.8 VM. **Reboot with automatic login ✓ the same day:** only `rexenv --headless` runs after it (no
+      plain app reopened by "reopen windows" — the headless launch calls `disableRelaunchOnLogin`), the
+      stack comes up, sites 200 once Caddy's LaunchDaemon is up (~3 min on the VM). Tester trap: restoring a swapped binary with
       `cp` over the same inode makes the next `open` fail with POSIX 162 (the kernel's cached
       signature) — copy to a temp file and `mv` it in.
 
@@ -3806,6 +3808,14 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       with no autologin included — both tasks in session 0 30 s after boot, ten services up, `.rex`
       resolving, sites 200 (a WordPress cold first request took 14–26 s). Trap: `curl.exe` there needs
       `--ssl-no-revoke` — schannel fails rexenv's CA with `CRYPT_E_NO_REVOCATION_CHECK` (it has no CRL).
+- [ ] **A silent update over a headless PC** (#944): with `\rexenv\headless` running, `setup.exe /S`
+      of a newer build → exit 0, the new `rexenv.exe` in place, `--headless` running again at once
+      (POSTINSTALL runs the task) and `rex status` answering. A non-zero exit with the OLD version in
+      place means the per-minute keep-alive started rexenv.exe inside the swap — safe, re-run it.
+- [ ] **A fresh PC's first headless setup** (needs a person at the desktop): a Windows account that
+      never ran rexenv's setup; from an administrator console ON THE DESKTOP, `--headless-setup` →
+      Windows asks to trust rexenv's certificate (answer Yes) and the rest follows; the same from an
+      SSH session refuses with "needs this PC's desktop" and changes nothing.
 
 ### First-run setup prompts — ONE elevated step, not three
 macOS asks three times (resolver, keychain, ports 80/443). Windows asks twice, and one of

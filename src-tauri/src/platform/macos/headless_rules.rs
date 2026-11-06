@@ -220,6 +220,18 @@ mod tests {
         assert!(!is_app_bundle_binary(Path::new("/Users/me/rexenv/src-tauri/target/debug/rexenv")));
     }
 
+    /// A headless launch takes itself out of the reopen-at-login list (M3, measured: the list's copy won
+    /// the race against the LaunchAgent's). TEXT: the call sits in the headless branch of `setup`.
+    #[test]
+    fn a_headless_launch_is_not_reopened_by_the_login_list() {
+        let lib = include_str!("../../lib.rs");
+        let branch = lib.find("log::info!(\"headless: no tray icon").expect("the headless branch of setup");
+        let call = lib[branch..].find("platform::stay_out_of_login_relaunch();").expect("the call");
+        assert!(call < 400, "the call belongs in that branch");
+        let act = include_str!("activation.rs");
+        assert!(act.contains(".disableRelaunchOnLogin();") && !act.contains("enableRelaunchOnLogin"), "disable once, never paired with enable");
+    }
+
     fn mod_rs() -> &'static str {
         include_str!("mod.rs")
     }

@@ -30,6 +30,12 @@ AllowSkipFiles off
 ; user and WAIT until none is left: a kill is asynchronous and the file stays held for a
 ; moment, and a File step that lands in that moment fails. Bounded: 20 x 500 ms.
 !macro REXENV_STOP_AGENT_AND_WAIT
+  ; A headless PC's app task first (T5 W2): ended, not disabled -- the user's unelevated token may end
+  ; and delete that S4U task but not change it (measured on the Dell, 6 Nov 2026), so its per-minute
+  ; keep-alive can still start rexenv.exe again; a start that lands inside the swap fails the File step
+  ; and the silent install exits non-zero with the old version in place. Absent on a desktop: harmless.
+  nsExec::ExecToLog 'schtasks /End /TN "${REXENV_HEADLESS_TASK}"'
+  Pop $0
   nsExec::ExecToLog 'schtasks /End /TN "${REXENV_DNS_TASK}"'
   Pop $0
   StrCpy $1 0
@@ -87,6 +93,9 @@ AllowSkipFiles off
   ; silent means silent.
   ${If} ${Silent}
     nsExec::ExecToLog 'schtasks /Run /TN "${REXENV_DNS_TASK}"'
+    Pop $0
+    ; And a headless PC's app, at once rather than at the next minute's keep-alive. No task, no-op.
+    nsExec::ExecToLog 'schtasks /Run /TN "${REXENV_HEADLESS_TASK}"'
     Pop $0
   ${Else}
     !insertmacro REXENV_OFFER_VC_RUNTIME

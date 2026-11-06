@@ -576,6 +576,8 @@ pub fn run() {
             // refusing to launch over a missing icon would be worse.
             if is_headless_launch() {
                 log::info!("headless: no tray icon — rexenv is driven by `rex` and `rex mcp`");
+                // Its supervisor starts it at login; the OS's reopen list must not race it (T5 M3).
+                platform::stay_out_of_login_relaunch();
             } else if let Err(e) = install_tray(app.handle()) {
                 log::warn!("tray: could not install the menu-bar item: {e}");
                 // With no status item the dock tile is the only way back to

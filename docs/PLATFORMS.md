@@ -167,6 +167,11 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   (`launchctl managername` = `System`): no login keychain in the search list, no user trust
   settings, so `security verify-cert` fails a CA the user trusts. SSH (`Background`) and a
   LaunchAgent (`Aqua`) both read it right. Supervise per-user work with a LaunchAgent (#945, M2).
+- **"Reopen windows when logging back in" races a LaunchAgent.** An app running at shutdown is in
+  `TALAppsToRelaunchAtLogin`, and the reopen comes first as a plain launch — a headless rexenv's own
+  agent then handed off to it (measured on the VM, 6 Nov 2026). A launchd-started app calls
+  `-[NSApp disableRelaunchOnLogin]` once (Apple's advice; #946). And `/tmp` is wiped on reboot — keep
+  a test's backup elsewhere.
 - **Binary preparation order is fixed:** de-quarantine → relink Homebrew dylibs to `/usr/lib`
   → ad-hoc codesign **LAST** (a relink after the signature invalidates it).
 - **Privileged prompts run in the foreground.** A backgrounded osascript cannot show the
