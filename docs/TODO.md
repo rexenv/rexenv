@@ -528,7 +528,7 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **The web UI's sign-in — three hardening items owed before Phase 1b is called done** (item 2 closed 7 Nov 2026) (security
+- [ ] **The web UI's sign-in — two hardening items owed before Phase 1b is called done** (items 2 and 4 closed 7 Nov 2026) (security
   review of PR #10, 29 Oct 2026; the review's CONFIRMED port-squat, `[::1]`, header-timeout and CA-EKU
   findings were fixed the same day, #935/#934). Open: (1) **the cookie alone yields the CSRF value**
   (`mark_index` writes it into `index.html` for any request carrying the session) and every
@@ -539,8 +539,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `rex web url` mints a single-use ten-minute code, sessions end at 8 h idle / 24 h, Settings → Sign out, no
   token on disk — RUN on the Dell; (3) **the stack is open to every local account** on the
   server (passwordless DB `root` on loopback, the direct Adminer vhost) — INSTALL now says the web UI
-  is for servers whose accounts you trust; a headless DB password is the real fix; (4) console uploads
-  are buffered whole (up to 256 MB a request, cloned per redirect hop) — stream them or cap concurrency.
+  is for servers whose accounts you trust; a headless DB password is the real fix; ~~(4) console uploads
+  are buffered whole (up to 256 MB a request, cloned per redirect hop)~~ ✓ 7 Nov 2026 (#951): one buffer per
+  upload, shared across sends, two large uploads at a time — RUN on the Dell (peak 320 → 171 MB for two 80 MB).
 
 - [ ] **Headless rexenv on a VPS — open: the rest of Phase 1b** (Phase 1a, T0–T4, shipped in 0.9.3; T5 is the
   "Headless mode on macOS and Windows" row below; the web UI's desktop actions and its sign-in hardening are their own

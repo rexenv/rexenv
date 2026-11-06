@@ -183,19 +183,23 @@ pub(crate) fn replay_headers<'a>(
 /// frame (observed live as "Save does nothing" / blank first open). Per browser
 /// form semantics 301/302/303 become a body-less GET; 307/308 keep the method +
 /// body.
+///
+/// The body is held as `Bytes`, so each send — the first and every 307/308 replay — shares ONE copy
+/// (a refcount). Until 7 Nov 2026 it was a `Vec` cloned per send: a 256 MB console upload (an import)
+/// sat in memory two to six times over (security review of PR #10, item 4; ledger #951).
 pub async fn forward(
     console: Console,
     edge_https_port: u16,
     method: &str,
     path_and_query: &str,
     content_type: Option<&str>,
-    body: Vec<u8>,
+    body: impl Into<bytes::Bytes>,
 ) -> Result<ProxiedResponse> {
     let mut url = proxy_url(console, path_and_query)?;
     let mut method = reqwest::Method::from_bytes(method.as_bytes())
         .map_err(|e| Error::Other(format!("{} proxy: bad method: {e}", console.label())))?;
     let mut content_type = content_type.map(str::to_string);
-    let mut body = body;
+    let mut body: bytes::Bytes = body.into();
 
     let mut hops = 0u8;
     let resp = loop {
@@ -228,7 +232,7 @@ pub async fn forward(
                     && s != reqwest::StatusCode::PERMANENT_REDIRECT
                 {
                     method = reqwest::Method::GET;
-                    body = Vec::new();
+                    body = bytes::Bytes::new();
                     content_type = None;
                 }
                 continue;

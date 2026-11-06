@@ -4621,6 +4621,13 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   gate's refusals, the login POST through the jar, the CSP, and a foreign localhost page refused by
   `frame-ancestors` in Chromium; not a real Adminer or phpMyAdmin.
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): Browse on MySQL → Adminer 6.1.1 INSIDE the panel from `localhost:9444`, logged in as root, `SELECT 40+2` answered 42; console switched to phpMyAdmin → 5.2.3 inside from `localhost:9445` listing the server's databases; 9444 from another account → 401. Not run: a site's Database tab, the empty frame without the extra forwards.
+- [x] **Large console uploads are bounded (#951):** four 80 MB POSTs to `localhost:9444` at once → two
+  start, the other two get their first byte only when one of those finishes; rexenv's private memory
+  rises by about 2 × 80 MB, never 4 ×, and falls back after.
+  ✓ 7 Nov 2026 — the Dell (debug `--headless --web`, `ssh -L`; the edge was down, so each answered 502
+  AFTER being buffered — what is measured is the read): req1/req4 first byte at 0.02 s, req2/req3 at
+  56.6/57.6 s; private memory 10 → 171 MB → 10. The build before the one-buffer read peaked at 320 MB
+  for the same two (chunks + their concatenation).
 - [x] On the server: `rex site open <domain>` prints the site's URL (exit 0, nothing opened — on
   Linux `rex` never launches a browser); `rex open` → exit 1 with the headless sentence.
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): both as written.

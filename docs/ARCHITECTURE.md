@@ -2513,7 +2513,12 @@ take no token: the app's session cookie reaches them (cookies are per host, not 
 must carry the console's own Origin (a form in the frame cannot add the CSRF header), and the
 response's `frame-ancestors` names the app's page alone — the replacement for the `X-Frame-Options`
 the proxy strips, now that a browser CAN load this copy. The forward is the window's own
-`dbconsole_proxy::forward`. The page learns the ports from `<meta name="rexenv-consoles">`.
+`dbconsole_proxy::forward`. The page learns the ports from `<meta name="rexenv-consoles">`. A console
+body is buffered whole (the forward replays it on a 307/308, which a stream cannot), so it is bounded
+three ways (#951): `MAX_CONSOLE_BODY` (256 MB) per request; one buffer, reserved from the declared length
+and shared by every send as `Bytes` (before: `collect()`+`to_bytes()` held the chunks and their copy, and
+the proxy cloned a `Vec` per send — 2–6× the upload); and two large uploads in memory at a time
+(`MAX_CONCURRENT_CONSOLE_UPLOADS`; a third waits for a turn before it is read).
 
 **The CA for another machine's browser (T9, ledger #932).** Settings → SSL, over the web only, offers
 the local CA's certificate (never the key) for a browser that reaches the sites through `ssh -D`,

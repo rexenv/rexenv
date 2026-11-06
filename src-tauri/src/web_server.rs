@@ -272,6 +272,23 @@ async fn read_json(req: Request<Incoming>) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+/// A request body read into ONE buffer, reserved up front from its declared length: `collect()` then
+/// `to_bytes()` kept every received chunk AND their concatenation alive at the end — each upload twice
+/// over (measured on the Dell, 7 Nov 2026: two 80 MB uploads peaked at 320 MB; ledger #951). `None`
+/// past `max`, or when the client breaks off.
+async fn read_into_one_buffer(mut body: Incoming, max: usize, declared: Option<u64>) -> Option<Bytes> {
+    let mut buf = bytes::BytesMut::with_capacity(declared.map_or(0, |n| (n as usize).min(max)));
+    while let Some(frame) = body.frame().await {
+        if let Ok(data) = frame.ok()?.into_data() {
+            if buf.len() + data.len() > max {
+                return None;
+            }
+            buf.extend_from_slice(&data);
+        }
+    }
+    Some(buf.freeze())
+}
+
 fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
     req.headers().get(name).and_then(|v| v.to_str().ok())
 }
@@ -297,9 +314,13 @@ async fn handle_console(app: &AppHandle, auth: &Arc<Auth>, console: crate::core:
     }
     let path_and_query = req.uri().path_and_query().map(|pq| pq.as_str().to_string()).unwrap_or_else(|| "/".into());
     let content_type = header(&req, "content-type").map(str::to_string);
-    let body = match http_body_util::Limited::new(req.into_body(), rules::MAX_CONSOLE_BODY).collect().await {
-        Ok(b) => b.to_bytes().to_vec(),
-        Err(_) => return full(StatusCode::PAYLOAD_TOO_LARGE, "text/plain; charset=utf-8", "that upload is larger than the web UI takes (256 MB)"),
+    // A large upload waits for one of the turns BEFORE it is read into memory, and keeps it until the
+    // console has answered (`web_rules::MAX_CONCURRENT_CONSOLE_UPLOADS`).
+    static UPLOAD_TURNS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(rules::MAX_CONCURRENT_CONSOLE_UPLOADS);
+    let declared = header(&req, "content-length").and_then(|v| v.parse::<u64>().ok());
+    let _turn = if rules::console_upload_takes_a_turn(&method, declared) { UPLOAD_TURNS.acquire().await.ok() } else { None };
+    let Some(body) = read_into_one_buffer(req.into_body(), rules::MAX_CONSOLE_BODY, declared).await else {
+        return full(StatusCode::PAYLOAD_TOO_LARGE, "text/plain; charset=utf-8", "that upload is larger than the web UI takes (256 MB)");
     };
     // The edge's port as the user set it (`core::edge_ports`); no guess before the state exists.
     let Some(state) = app.try_state::<crate::state::app::AppState>() else {

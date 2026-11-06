@@ -57,6 +57,21 @@ pub const HEADER_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_s
 
 /// The largest console request body read — a phpMyAdmin import upload rides it.
 pub const MAX_CONSOLE_BODY: usize = 256 * 1024 * 1024;
+/// **How many large console uploads are held in memory at once** (security review of PR #10, item 4,
+/// ledger #951). A console body is buffered whole — the proxy replays it on a 307/308, which a stream
+/// cannot — so without a cap `MAX_CONNECTIONS` uploads of `MAX_CONSOLE_BODY` each could all be in
+/// memory together (64 GB). Two at a time bounds it at 512 MB; a third waits its turn, it is not refused.
+pub const MAX_CONCURRENT_CONSOLE_UPLOADS: usize = 2;
+/// A body at or under this is a form post, not an upload: it takes no turn.
+pub const CONSOLE_UPLOAD_THRESHOLD: u64 = 1024 * 1024;
+// The bound the cap promises, checked when it compiles: two turns of the largest body, 512 MB.
+const _: () = assert!(MAX_CONCURRENT_CONSOLE_UPLOADS * MAX_CONSOLE_BODY <= 512 * 1024 * 1024);
+
+/// Whether a console request must wait for one of the upload turns: a body-carrying method whose
+/// declared length is over the threshold, or not declared (chunked — it could be anything).
+pub fn console_upload_takes_a_turn(method: &str, content_length: Option<u64>) -> bool {
+    !matches!(method, "GET" | "HEAD" | "OPTIONS") && content_length.map_or(true, |n| n > CONSOLE_UPLOAD_THRESHOLD)
+}
 
 /// The largest `/ipc` body read. Commands carry paths and form values, never file contents.
 pub const MAX_IPC_BODY: usize = 4 * 1024 * 1024;
@@ -397,6 +412,33 @@ pub fn sse_frame(kind: &str, data: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Only a real upload takes a turn: a GET, a small form post and an OPTIONS never wait; a large or
+    /// undeclared (chunked) body does.
+    #[test]
+    fn only_large_console_uploads_wait_for_a_turn() {
+        assert!(!console_upload_takes_a_turn("GET", None));
+        assert!(!console_upload_takes_a_turn("POST", Some(4096)));
+        assert!(!console_upload_takes_a_turn("POST", Some(CONSOLE_UPLOAD_THRESHOLD)));
+        assert!(console_upload_takes_a_turn("POST", Some(CONSOLE_UPLOAD_THRESHOLD + 1)));
+        assert!(console_upload_takes_a_turn("POST", None), "chunked: could be anything");
+    }
+
+    /// The turn is taken before the body is read, and the proxy shares one copy across its sends.
+    #[test]
+    fn a_console_upload_waits_before_it_is_buffered_and_is_never_copied_per_send() {
+        let server = crate::core::copy_scan::production_source(
+            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web_server.rs")).expect("web_server.rs"),
+        );
+        let h = &server[server.find("async fn handle_console(").expect("handle_console")..];
+        assert!(h.find("UPLOAD_TURNS.acquire()").expect("the turn") < h.find("read_into_one_buffer(").expect("the read"));
+        assert!(!h.contains(".collect().await"), "collect() + to_bytes() holds the chunks and their copy together");
+        assert!(!h[..h.find("dbconsole_proxy::forward(").expect("forward")].contains(".to_vec()"), "the body copied before the proxy");
+        let proxy = crate::core::copy_scan::production_source(
+            &std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/core/dbconsole_proxy.rs")).expect("dbconsole_proxy.rs"),
+        );
+        assert!(proxy.contains("let mut body: bytes::Bytes = body.into();"), "the proxy holds the body as Bytes");
+    }
 
     /// A sign-in code works for its ten minutes and not after; a session ends at 8 h idle or 24 h old,
     /// whichever comes first.
