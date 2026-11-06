@@ -45,11 +45,120 @@ once — the screen can stay locked.";
 pub(crate) const NEEDS_PROMPT: &str = "rexenv is running headless, so nobody is at the screen to answer \
 macOS's administrator prompt and this change was not made. Make it once from the rexenv app on this Mac.";
 
-/// `--headless-setup` before it exists on macOS (T5 M3): `--headless` runs, so the sentence says what to do.
-pub(crate) const SETUP_NOT_YET: &str = "rexenv --headless-setup is not available on macOS yet. rexenv \
---headless runs while this account is logged in (turn on automatic login for it), but the .rex resolver, \
-the trusted certificate and the HTTPS server it relies on come from the rexenv app's own setup: finish \
-that once in the app first.";
+/// `sudo rexenv --headless-setup` (T5 M3), `--user`, `--enable-web`.
+pub(crate) const SETUP_FLAG: &str = "--headless-setup";
+pub(crate) const ENABLE_WEB_FLAG: &str = "--enable-web";
+
+/// What the setup was asked. `consent` empty = ask in the terminal, or leave both with no terminal.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct SetupArgs {
+    pub user: Option<String>,
+    pub consent: crate::core::headless_consent::Consent,
+    /// `--enable-web`: the LaunchAgent runs `rexenv --headless --web`. Rewritten on every run, so a run
+    /// without it turns the web UI off — said in the output.
+    pub web: bool,
+}
+
+/// Every argument the setup takes; anything else is refused BEFORE any change (a mistyped
+/// `--enable-mpc` must not read as "no consent given").
+pub(crate) fn parse_setup_args(argv: &[String]) -> std::result::Result<SetupArgs, String> {
+    use crate::core::headless_consent::{self, AGENT_ACCESS_FLAG, ENABLE_MCP_FLAG};
+    const USAGE: &str = "the setup takes --user <name>, --enable-mcp, --agent-access <read|changes|full> and --enable-web";
+    let mut out = SetupArgs::default();
+    let mut it = argv.iter().skip(1);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            SETUP_FLAG => {}
+            "--user" => {
+                let v = it.next().ok_or_else(|| format!("--user needs a name — {USAGE}"))?;
+                if out.user.replace(v.clone()).is_some() {
+                    return Err("--user given twice".into());
+                }
+            }
+            ENABLE_WEB_FLAG => {
+                if std::mem::replace(&mut out.web, true) {
+                    return Err(format!("{ENABLE_WEB_FLAG} given twice"));
+                }
+            }
+            ENABLE_MCP_FLAG => {
+                if out.consent.mcp.replace(true).is_some() {
+                    return Err(format!("{ENABLE_MCP_FLAG} given twice"));
+                }
+            }
+            AGENT_ACCESS_FLAG => {
+                let v = it.next().ok_or_else(|| headless_consent::bad_level(""))?;
+                let level = crate::core::agent_access::AccessLevel::parse(v).ok_or_else(|| headless_consent::bad_level(v))?;
+                if out.consent.access.replace(level).is_some() {
+                    return Err(format!("{AGENT_ACCESS_FLAG} given twice"));
+                }
+            }
+            other => return Err(format!("unknown argument {other:?} — {USAGE}")),
+        }
+    }
+    Ok(out)
+}
+
+/// The LaunchAgent the setup writes (M2: a LaunchAgent, never a system LaunchDaemon — the system domain
+/// cannot read the user's keychain).
+pub(crate) const AGENT_LABEL: &str = "dev.rexenv.rexenv.headless";
+
+/// The agent's plist: `exe --headless [--web]` at this account's GUI login (`LimitLoadToSessionType`
+/// `Aqua` — with automatic login, at boot), restarted when it CRASHES (`KeepAlive` `SuccessfulExit`
+/// false) but not when it exits cleanly — a launch that found the app already running hands off and
+/// exits 0, and a plain `KeepAlive` would relaunch it every ten seconds for as long as the app ran.
+pub(crate) fn agent_plist(exe: &std::path::Path, web: bool, log: &std::path::Path) -> String {
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let web_arg = if web { "\n\t\t<string>--web</string>" } else { "" };
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+         <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+         <plist version=\"1.0\">\n<dict>\n\
+         \t<key>Label</key>\n\t<string>{AGENT_LABEL}</string>\n\
+         \t<key>ProgramArguments</key>\n\t<array>\n\t\t<string>{exe}</string>\n\t\t<string>--headless</string>{web_arg}\n\t</array>\n\
+         \t<key>RunAtLoad</key>\n\t<true/>\n\
+         \t<key>KeepAlive</key>\n\t<dict>\n\t\t<key>SuccessfulExit</key>\n\t\t<false/>\n\t</dict>\n\
+         \t<key>LimitLoadToSessionType</key>\n\t<string>Aqua</string>\n\
+         \t<key>ProcessType</key>\n\t<string>Interactive</string>\n\
+         \t<key>AbandonProcessGroup</key>\n\t<true/>\n\
+         \t<key>AssociatedBundleIdentifiers</key>\n\t<array>\n\t\t<string>dev.rexenv.rexenv</string>\n\t</array>\n\
+         \t<key>StandardOutPath</key>\n\t<string>{log}</string>\n\
+         \t<key>StandardErrorPath</key>\n\t<string>{log}</string>\n\
+         </dict>\n</plist>\n",
+        exe = esc(&exe.display().to_string()),
+        log = esc(&log.display().to_string()),
+    )
+}
+
+/// The installed app's binary, not a build folder's: the agent would run whatever the next build left.
+pub(crate) fn is_app_bundle_binary(exe: &std::path::Path) -> bool {
+    exe.to_string_lossy().contains(".app/Contents/MacOS/")
+}
+
+pub(crate) const NEEDS_ROOT: &str = "run it as an administrator, from the account rexenv runs as:\n$ sudo \
+/Applications/rexenv.app/Contents/MacOS/rexenv --headless-setup";
+
+pub(crate) const NEEDS_APP_BINARY: &str = "run the setup with the installed app's binary \
+(/Applications/rexenv.app/Contents/MacOS/rexenv): the LaunchAgent runs the file it was given, and a build \
+folder's copy changes with every build.";
+
+/// What a headless Mac still needs from the app's own setup. Unlike Linux's setup, which makes these
+/// itself, macOS asks the user to confirm trusting the certificate on the screen — a step nobody can
+/// answer from a terminal — so the setup checks instead of doing.
+pub(crate) fn needs_app_setup(missing: &[&str]) -> String {
+    format!(
+        "this Mac has not finished rexenv's own setup ({}). Open the rexenv app once at the Mac's screen \
+         and finish it — trusting the certificate needs your confirmation there — then run this again.",
+        missing.join(", ")
+    )
+}
+
+pub(crate) const CONSENT_UNCHANGED: &str = "MCP endpoint and Agent access: left as they are (off and read \
+unless set before). Re-run with --enable-mcp and --agent-access <level> to change them.";
+
+/// The last line: what makes it run with nobody at the screen.
+pub(crate) const AUTOLOGIN: &str = "For it to start at boot with nobody at the screen, turn on automatic \
+login for this account: System Settings → Users & Groups → Automatically log in as (FileVault must be off \
+for that option to appear). The screen can stay locked.";
 
 #[cfg(test)]
 mod tests {
@@ -70,6 +179,45 @@ mod tests {
         assert!(!session_is_ours(Some(0), 501), "the login window: nobody logged in");
         assert!(!session_is_ours(Some(502), 501), "another account in front");
         assert!(!session_is_ours(None, 501), "an unreadable console is refused, not guessed");
+    }
+
+    fn args(v: &[&str]) -> Vec<String> {
+        std::iter::once("rexenv").chain(v.iter().copied()).map(String::from).collect()
+    }
+
+    #[test]
+    fn the_setup_takes_its_arguments_and_refuses_anything_else() {
+        let a = parse_setup_args(&args(&["--headless-setup", "--user", "linkon", "--enable-web", "--enable-mcp", "--agent-access", "read"])).unwrap();
+        assert_eq!(a.user.as_deref(), Some("linkon"));
+        assert!(a.web && a.consent.mcp == Some(true) && a.consent.access.is_some());
+        assert!(parse_setup_args(&args(&["--headless-setup"])).unwrap().consent.is_empty());
+        for bad in [&["--headless-setup", "--enable-mpc"][..], &["--headless-setup", "--user"], &["--headless-setup", "--agent-access", "root"], &["--headless-setup", "--user", "a", "--user", "b"]] {
+            assert!(parse_setup_args(&args(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    /// The LaunchAgent's shape (M2, M3): the user's GUI session only, restarted on a crash but NOT on a
+    /// clean exit (the hand-off to a running app exits 0), the flags as asked.
+    #[test]
+    fn the_agent_runs_headless_in_the_users_session_and_does_not_loop_on_a_hand_off() {
+        use std::path::Path;
+        let exe = Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv");
+        let p = agent_plist(exe, false, Path::new("/Users/a b/Library/Logs/headless.log"));
+        assert!(p.contains(&format!("<string>{AGENT_LABEL}</string>")));
+        assert!(p.contains("<string>/Applications/rexenv.app/Contents/MacOS/rexenv</string>\n\t\t<string>--headless</string>\n\t</array>"), "{p}");
+        assert!(p.contains("<key>KeepAlive</key>\n\t<dict>\n\t\t<key>SuccessfulExit</key>\n\t\t<false/>"), "{p}");
+        assert!(p.contains("<key>LimitLoadToSessionType</key>\n\t<string>Aqua</string>"), "{p}");
+        assert!(!p.contains("UserName"), "a LaunchAgent, never a daemon's UserName");
+        let w = agent_plist(exe, true, Path::new("/l"));
+        assert!(w.contains("<string>--headless</string>\n\t\t<string>--web</string>"), "{w}");
+        assert!(agent_plist(Path::new("/A&B/rexenv.app/Contents/MacOS/rexenv"), false, Path::new("/l")).contains("/A&amp;B/"));
+    }
+
+    #[test]
+    fn only_the_installed_binary_is_registered() {
+        use std::path::Path;
+        assert!(is_app_bundle_binary(Path::new("/Applications/rexenv.app/Contents/MacOS/rexenv")));
+        assert!(!is_app_bundle_binary(Path::new("/Users/me/rexenv/src-tauri/target/debug/rexenv")));
     }
 
     fn mod_rs() -> &'static str {

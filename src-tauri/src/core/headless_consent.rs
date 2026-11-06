@@ -94,7 +94,7 @@ pub fn bad_level(value: &str) -> String {
 /// session to end and no one to see a 7-day expiry. Returns one line per change, for the terminal.
 ///
 /// The ONE non-GUI writer of these keys (ledger #920): called only by an administrator's setup — Linux's
-/// root one, Windows' elevated one.
+/// and macOS's root ones, Windows' elevated one.
 pub fn apply(conn: &Connection, consent: &Consent) -> Result<Vec<String>> {
     let mut said = Vec::new();
     if let Some(on) = consent.mcp {
@@ -186,8 +186,8 @@ mod tests {
     }
 
     /// **Only an administrator's setup writes these keys outside the GUI** (ledger #920). `apply` has
-    /// two callers in the tree: the Linux setup after the root check and inside the child that dropped
-    /// to the user, and the Windows setup after its elevation check (T5 W2). A second caller — a `rex` verb, an argv mode the user's own
+    /// three callers in the tree: the Linux and macOS setups after the root check and inside the child
+    /// that dropped to the user, and the Windows setup after its elevation check (T5 W2, M3). A second caller — a `rex` verb, an argv mode the user's own
     /// processes could run, an MCP tool — is how an agent would widen its own access.
     #[test]
     fn only_the_root_setup_calls_apply() {
@@ -216,7 +216,20 @@ mod tests {
             }
         }
         callers.sort();
-        assert_eq!(callers, ["platform/linux/headless.rs", "platform/windows/headless.rs"], "apply's callers are the two setups");
+        assert_eq!(callers, ["platform/linux/headless.rs", "platform/macos/headless.rs", "platform/windows/headless.rs"], "apply's callers are the three setups");
+        // macOS (T5 M3): root (sudo) is the door, and the write runs in the child that dropped to the user.
+        let mac = include_str!("../platform/macos/headless.rs");
+        assert_eq!(mac.matches("headless_consent::apply(").count(), 1);
+        let mac_setup = &mac[mac.find("fn setup(argv: &[String])").expect("the macOS setup")..];
+        let mac_root = mac_setup.find("if unsafe { libc::geteuid() } != 0 {").expect("the root check");
+        let mac_child = mac_setup.find("as_user(&account, ").expect("the drop to the user");
+        assert!(mac_root < mac_child, "the root check must come before the child");
+        let fork = &mac[mac.find("fn as_user(").expect("as_user")..];
+        let fork = &fork[..fork.find("\n}\n").unwrap()];
+        assert!(fork.find("if become_user(account, &name) {").expect("the drop") < fork.find("f()").expect("the work"), "the work runs after the drop");
+        let drop_fn = &mac[mac.find("fn become_user(").expect("become_user")..];
+        let drop_fn = &drop_fn[..drop_fn.find("\n}\n").unwrap()];
+        assert!(drop_fn.contains("libc::setuid(account.uid) == 0") && drop_fn.contains("libc::setuid(0) != 0"), "the drop, proven");
         // Windows (T5 W2): the setup runs as the account itself, so the door is the ELEVATED token — an
         // agent's own unelevated process cannot pass it without a UAC prompt the user would see.
         let win = include_str!("../platform/windows/headless.rs");

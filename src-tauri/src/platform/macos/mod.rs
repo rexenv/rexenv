@@ -7,6 +7,7 @@
 
 pub mod activation;
 pub mod app_bundle;
+mod headless;
 mod headless_rules;
 mod keychain_trust;
 pub mod relauncher;
@@ -264,7 +265,7 @@ pub(crate) fn prepare_headless() -> Result<()> {
     Ok(())
 }
 
-pub(crate) use headless_rules::SETUP_NOT_YET as HEADLESS_SETUP_NOT_YET;
+pub(crate) use headless::run_setup as run_headless_setup;
 
 impl PrivilegeManager for MacosPrivileges {
     fn run_privileged(&self, script: &str, reason: &PromptReason) -> Result<String> {

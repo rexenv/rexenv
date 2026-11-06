@@ -515,9 +515,19 @@ used as a server. **It needs this account logged in** (turn on *Automatically lo
 Settings → Users & Groups; the screen can stay locked): with nobody logged in macOS never finishes
 launching an app, so rexenv refuses with a sentence instead of starting and doing nothing. Finish the
 app's own setup once first — a headless rexenv answers every administrator prompt with a sentence.
-Start it from a LaunchAgent in `~/Library/LaunchAgents` or an SSH login — not a system LaunchDaemon, where
-macOS keeps this account's keychain out of reach (rexenv refuses that one with a sentence).
-`rexenv --headless-setup` is not built on macOS yet.
+Set it up once, from the account rexenv runs as (an administrator's password, because it also records
+the two AI-agent consents):
+
+```
+sudo /Applications/rexenv.app/Contents/MacOS/rexenv --headless-setup [--enable-mcp] [--agent-access read|changes|full] [--enable-web]
+```
+
+It checks the app's own setup is finished (the `.rex` resolver, the trusted certificate, the HTTPS
+server — finish it in the app first if not), writes `~/Library/LaunchAgents/dev.rexenv.rexenv.headless.plist`
+(rexenv headless at this account's login, restarted if it crashes), turns the app's own Start at login
+off, and asks the two questions unless you typed them. Then turn on automatic login. Not a system
+LaunchDaemon: macOS keeps this account's keychain out of reach there, and rexenv refuses that launch.
+To go back: `launchctl bootout gui/$(id -u)/dev.rexenv.rexenv.headless` and delete the plist.
 
 ### Uninstalling — do the in-app step FIRST
 

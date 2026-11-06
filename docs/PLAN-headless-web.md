@@ -476,7 +476,9 @@ Phase 1a first (T0–T5), then Phase 1b (T6–T9).
     keychain and no user trust settings, so `security verify-cert` fails there; the resolver read is the same in both. A system-domain
     launch is refused (`launchctl managername` = `System`); a LaunchAgent (`Aqua`) or SSH (`Background`) reads trust correctly. Pin down which read differs in the system domain
     (`login_launch_needs_window`: the resolver route or the CA trust) and make it answer the same.
-  - **M3 — `sudo rexenv --headless-setup` on macOS.** A LaunchAgent running `--headless [--web]` at the
+  - **M3 — `sudo rexenv --headless-setup` on macOS.** ✓ 6 Nov 2026 (#946, run on the 15.8 VM). It CHECKS the app's setup instead of
+    doing it — the certificate needs the user's confirmation on the screen — and writes a LaunchAgent (M2), not a daemon.
+    Was: A LaunchAgent running `--headless [--web]` at the
     user's login, the autologin instructions, D7's consents, and the privileged steps the branded prompt
     does today (edge daemon, resolver file, CA trust) run by the setup itself.
 - **T6 — web transport.** **Built 28 Oct 2026, run in the cloud container — NOT on the VM** (ledger

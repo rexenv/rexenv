@@ -2415,7 +2415,11 @@ words (the browser shell's mock and two dev review pages excepted).
   doing nothing, so that launch exits 2 with a sentence. So does one from the system domain (a
   LaunchDaemon, `launchctl managername` = `System`, M2): the login keychain and the user's trust settings
   are out of reach there and the CA read as untrusted. Started, it is Accessory (no dock tile) and
-  answers the administrator prompt with a sentence. **Windows runs it since 6 Nov 2026 (T5 W1):** a
+  answers the administrator prompt with a sentence. `sudo rexenv --headless-setup` (M3, #946) checks the
+  app's setup is finished rather than doing it (the certificate's trust needs the user on the screen),
+  then — as the account, from a child that dropped root — writes a LaunchAgent
+  (`dev.rexenv.rexenv.headless`: `--headless` in the GUI session, `KeepAlive` on a crash only), retires
+  Start at login, and writes D7's consents: the third of `headless_consent::apply`'s administrator doors. **Windows runs it since 6 Nov 2026 (T5 W1):** a
   headless launch there is session 0 — an SSH session, or an S4U task that runs whether or not
   anyone is logged on — where the whole backend runs as it is and `prepare_headless` has nothing to
   do. What session 0 lacks is a desktop, so the doors that would open a dialog answer in words: a

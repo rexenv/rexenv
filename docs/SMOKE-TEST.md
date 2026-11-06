@@ -2062,6 +2062,14 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
       where macOS keeps this account's keychain out of reach"; a LaunchAgent in `~/Library/LaunchAgents`
       running `--headless` (loaded into `gui/<uid>`) → `rex status` says `CA trusted` (T5 M2, #945).
       ✓ 6 Nov 2026, the 15.8 VM.
+- [x] **`sudo rexenv --headless-setup`** (T5 M3, #946): without sudo → "run it as an administrator";
+      `--enable-mpc` → refused, nothing changed; with sudo → the checks pass, the LaunchAgent plist is
+      the account's (not root's), nothing root-owned in app data, the app's Start at login is off. With
+      the app open the agent hands off and stays down (no relaunch loop); quit the app and
+      `launchctl kickstart gui/$UID/dev.rexenv.rexenv.headless` → `rex status` answers. ✓ 6 Nov 2026, the
+      15.8 VM. **Owed:** a reboot with automatic login. Tester trap: restoring a swapped binary with
+      `cp` over the same inode makes the next `open` fail with POSIX 162 (the kernel's cached
+      signature) — copy to a temp file and `mv` it in.
 
 ## The menu bar (no dock icon)
 *The behavioural half of #437/#438 — the L0 tests prove the menu's RULES, and only a

@@ -611,7 +611,10 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   with this account at the console — no dock tile, the prompt refused in words — and exits 2 with a sentence
   instead of hanging when nobody is logged in. ✓ **M2** 6 Nov 2026 (#945): the daemon context cannot read the login
   keychain (the CA read failed, not the resolver's), so a system-domain launch is refused and a LaunchAgent is the
-  shape. Open: M3 (the setup).
+  shape. ✓ **M3** 6 Nov 2026 (#946, the 15.8 VM): `sudo rexenv --headless-setup` writes the LaunchAgent and the
+  consents as the account after checking the app's setup. **T5 step one is built on both OSes;** still open: W2's
+  three (an unelevated uninstaller vs an S4U task, a silent update vs the keep-alive, a fresh PC's first run), a
+  macOS reboot with automatic login, and D8's second step (the webview-free host, its own plan).
 - [ ] **WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of
   the 16 Oct rows (a network from live, a site behind basic auth) and the 15 Oct rows (per-item
   choice, anonymise, uploads on demand, resume) on each OS; a SUBDOMAIN network on a real host (the
