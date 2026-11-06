@@ -3812,10 +3812,11 @@ logged "this Mac's macOS version could not be read"; builds from `a0d4868f` on f
       `rex web url`'s link through `ssh -L 9443:127.0.0.1:9443` signs in and the Sites screen lists the
       sites, though Task Manager shows no `msedgewebview2.exe`. ✓ 6 Nov 2026, the Dell (curl: `/ipc` and
       an `/events` event; a browser through the tunnel is the human half still to look at).
-- [ ] **A silent update over a headless PC** (#944): with `\rexenv\headless` running, `setup.exe /S`
+- [x] **A silent update over a headless PC** (#944): with `\rexenv\headless` running, `setup.exe /S`
       of a newer build → exit 0, the new `rexenv.exe` in place, `--headless` running again at once
       (POSTINSTALL runs the task) and `rex status` answering. A non-zero exit with the OLD version in
       place means the per-minute keep-alive started rexenv.exe inside the swap — safe, re-run it.
+      ✓ 6 Nov 2026, the Dell: 3 of 3 rounds exit 0 in 5 s, `--headless` back on a new pid each time.
 - [ ] **A fresh PC's first headless setup** (needs a person at the desktop): a Windows account that
       never ran rexenv's setup; from an administrator console ON THE DESKTOP, `--headless-setup` →
       Windows asks to trust rexenv's certificate (answer Yes) and the rest follows; the same from an
