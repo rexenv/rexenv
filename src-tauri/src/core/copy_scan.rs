@@ -561,6 +561,63 @@ const LINK = "https://example.test/a//b";
         );
     }
 
+    /// **An action that opens something on the server's screen is offered only where there is one**
+    /// (TODO "The web UI still shows desktop actions", found 29 Oct 2026 on the 24.04 VM). Over the web
+    /// transport the page is in a browser — usually another machine, through a tunnel — and a headless
+    /// server answers reveal / open-folder / editor / external-terminal with `NO_SCREEN`: honest, but a
+    /// button that can only fail. The rule is one question, `canOpenOnThisScreen()`, asked by every file
+    /// that names one of those openers — so the next toast with a "Show in Finder" action cannot skip it.
+    /// And a PATH never goes through `openExternal` (whose web branch opens URLs in the developer's own
+    /// browser): paths take `openPath`, which this test can see.
+    #[test]
+    fn desktop_only_openers_are_offered_only_with_a_screen() {
+        const OPENERS: &[&str] =
+            &["revealPath", "openPath", "openSiteInEditor", "openInEditor", "openInTerminal", "openInTerminalApp"];
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
+                    walk(&p, root, out);
+                } else if matches!(p.extension().and_then(|x| x.to_str()), Some("ts" | "tsx")) {
+                    if let Ok(raw) = std::fs::read_to_string(&p) {
+                        let rel = p.strip_prefix(root).unwrap_or(&p).display().to_string().replace('\\', "/");
+                        out.push((rel, strip_ts_comments(&raw)));
+                    }
+                }
+            }
+        }
+        let names = |src: &str, word: &str| {
+            src.match_indices(word).any(|(i, _)| {
+                let before = src[..i].chars().next_back().unwrap_or(' ');
+                let after = src[i + word.len()..].chars().next().unwrap_or(' ');
+                let word_char = |c: char| c.is_alphanumeric() || c == '_';
+                !word_char(before) && !word_char(after)
+            })
+        };
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut files = Vec::new();
+        walk(&root, &root, &mut files);
+        assert!(files.len() > 20, "only {} frontend files scanned — the walk is broken", files.len());
+        let mut offenders = Vec::new();
+        for (rel, src) in &files {
+            if rel == "lib/ipc/index.ts" {
+                continue; // the wrappers themselves, and `canOpenOnThisScreen`'s definition
+            }
+            let used: Vec<&str> = OPENERS.iter().copied().filter(|w| names(src, w)).collect();
+            if !used.is_empty() && !names(src, "canOpenOnThisScreen") {
+                offenders.push(format!("{rel}: names {used:?} but never asks canOpenOnThisScreen()"));
+            }
+            for (i, _) in src.match_indices("openExternal(") {
+                let arg: String = src[i + "openExternal(".len()..].chars().take_while(|&c| c != ')').collect();
+                if arg.to_ascii_lowercase().contains("path") {
+                    offenders.push(format!("{rel}: openExternal({arg}) — a path goes through openPath"));
+                }
+            }
+        }
+        assert!(offenders.is_empty(), "{}", offenders.join("\n"));
+    }
+
     /// **Every IPC wrapper is actually CALLED somewhere.**
     ///
     /// `src/lib/ipc/` is the only door between the UI and the backend, and an

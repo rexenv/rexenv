@@ -32,6 +32,11 @@ the shipped UI toward one.
 ## Honest-UI rules (design-level, enforced in code)
 
 - Status derives from reality (ownership AND liveness) — no fake per-site toggles.
+- **An action that can only fail is not offered.** Over the web UI the page is in a browser, usually on
+  another machine; reveal, open folder, open in editor and an external terminal would open on the
+  SERVER's screen (a headless one answers `NO_SCREEN`). They are hidden there — every file that names one
+  of those openers asks `canOpenOnThisScreen()` (`src/lib/ipc`), and a path never rides `openExternal`'s
+  URL branch (ledger #949). Until 7 Nov 2026 they were shown and answered with the no-screen toast.
 - **An app picker wears the app's OWN icon; the monochrome glyph is for an icon that cannot be
   read, never for an operating system.** Windows and Linux shipped with `icon: None` on every
   editor, browser and terminal row — Chrome, Firefox and VS Code all wore the same grey glyph

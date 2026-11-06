@@ -18,8 +18,9 @@ import { toast, toastBackendError } from "@/lib/toast";
 import {
   logClear,
   logDownload,
+  canOpenOnThisScreen,
   logTargets,
-  openExternal,
+  openPath,
   tailLog,
   wpDebugLogClear,
   wpDebugLogDownload,
@@ -388,15 +389,17 @@ export function SiteLogs({
             <Download className="h-3.5 w-3.5" />
             Download
           </button>
-          <button
-            onClick={() => pathShown && void openExternal(pathShown).catch(toastBackendError)}
-            disabled={wpMissing || !pathShown}
-            title="Open the log file in the default app"
-            className={ACTION_CLS}
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Open file
-          </button>
+          {canOpenOnThisScreen() && (
+            <button
+              onClick={() => pathShown && void openPath(pathShown).catch(toastBackendError)}
+              disabled={wpMissing || !pathShown}
+              title="Open the log file in the default app"
+              className={ACTION_CLS}
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open file
+            </button>
+          )}
         </div>
       </div>
 

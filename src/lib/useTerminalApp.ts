@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { listTerminals, openInTerminalApp, type TerminalAsset } from "@/lib/ipc";
+import { canOpenOnThisScreen, listTerminals, openInTerminalApp, type TerminalAsset } from "@/lib/ipc";
 import { toastBackendError } from "@/lib/toast";
 import type { TerminalApp } from "@/types";
 
@@ -23,5 +23,6 @@ export function openInTerminal(
   siteId: string,
   asset?: TerminalAsset,
 ): void {
+  if (!canOpenOnThisScreen()) return;
   void openInTerminalApp(terminal.id, siteId, asset).catch(toastBackendError);
 }

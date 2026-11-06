@@ -73,6 +73,8 @@ import {
   setSiteEnv,
   siteDomains,
   revealPath,
+  openPath,
+  canOpenOnThisScreen,
   setSitePhpVersion,
   setSiteWebServer,
   setSiteXdebug,
@@ -606,6 +608,8 @@ function Overview({
   const wpConfig = `${site.path}${words.pathSep}wp-config.php`;
   const editorMenu = useEditorMenu(site.path);
   const terminalMenu = useTerminalMenu(site.id);
+  // Editor and folder open on the SERVER's screen — not offered over the web (`canOpenOnThisScreen`).
+  const screen = canOpenOnThisScreen();
   const browser = usePreferredBrowser();
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
@@ -770,14 +774,16 @@ function Overview({
                 menuLabel="Sign in through another browser"
               />
             )}
-            <QuickTile
-              icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
-              iconColor="text-rex-text-muted"
-              label={editor ? `Open in ${editor.name}` : "Open in editor"}
-              onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
-              menu={editorMenu}
-              menuLabel="Open this project in another editor"
-            />
+            {screen && (
+              <QuickTile
+                icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
+                iconColor="text-rex-text-muted"
+                label={editor ? `Open in ${editor.name}` : "Open in editor"}
+                onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
+                menu={editorMenu}
+                menuLabel="Open this project in another editor"
+              />
+            )}
             <QuickTile
               icon={<Database className="h-4 w-4" />}
               iconColor="text-rex-text-muted"
@@ -791,17 +797,22 @@ function Overview({
               onClick={onTerminal}
               menu={terminalMenu}
               menuLabel="Open this folder in one of your own terminals"
+              // Over the web the editor and folder tiles are gone (no screen to open them on):
+              // without Magic Login that leaves three tiles, so Terminal fills the last row.
+              span2={!screen && !isWordpress}
             />
-            <QuickTile
-              icon={<FolderOpen className="h-4 w-4" />}
-              iconColor="text-rex-text-muted"
-              label="Open project folder"
-              onClick={() => void openExternal(site.path).catch(toastBackendError)}
-              // Keeps the 2-col grid full: WordPress adds Magic Login (odd tile
-              // count), so the folder tile fills the trailing slot instead of
-              // spanning and leaving a hole beside Terminal.
-              span2={!isWordpress}
-            />
+            {screen && (
+              <QuickTile
+                icon={<FolderOpen className="h-4 w-4" />}
+                iconColor="text-rex-text-muted"
+                label="Open project folder"
+                onClick={() => void openPath(site.path).catch(toastBackendError)}
+                // Keeps the 2-col grid full: WordPress adds Magic Login (odd tile
+                // count), so the folder tile fills the trailing slot instead of
+                // spanning and leaving a hole beside Terminal.
+                span2={!isWordpress}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -1562,12 +1573,14 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
                 <span className="truncate font-mono text-[0.71875rem] text-rex-text-bright">
                   {done.backupPath}
                 </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => void revealPath(done.backupPath!).catch(toastBackendError)}
-                >
-                  {words.reveal}
-                </Button>
+                {canOpenOnThisScreen() && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => void revealPath(done.backupPath!).catch(toastBackendError)}
+                  >
+                    {words.reveal}
+                  </Button>
+                )}
               </div>
             )}
             <div className="mt-4 flex justify-end gap-2">
@@ -1765,10 +1778,10 @@ function PathField({
           {value}
         </span>
         <CopyButton value={value} />
-        {(openable || onOpen) && (
+        {(openable || onOpen) && canOpenOnThisScreen() && (
           <IconBtn
             title={onOpen ? words.reveal : "Open folder"}
-            onClick={onOpen ?? (() => void openExternal(value).catch(toastBackendError))}
+            onClick={onOpen ?? (() => void openPath(value).catch(toastBackendError))}
           >
             <FolderOpen className="h-3.5 w-3.5" />
           </IconBtn>

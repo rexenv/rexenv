@@ -1082,6 +1082,23 @@ export async function openExternal(target: string): Promise<void> {
   await invoke("open_external", { target });
 }
 
+/** Whether an action that opens something ON THE SERVER'S SCREEN — reveal a file, open a folder,
+ *  an editor, an external terminal — can reach the person using this page. False over the web
+ *  transport: the page is in a browser, often on another machine through a tunnel, and a headless
+ *  server answers those actions with `NO_SCREEN`. An action that can only fail is not offered, so
+ *  every caller of `revealPath`, `openPath` or `openSiteInEditor` asks this first (a Rust test,
+ *  `desktop_only_openers_are_offered_only_with_a_screen`, holds every file to it). */
+export function canOpenOnThisScreen(): boolean {
+  return transport() !== "web";
+}
+
+/** Open a local folder or file with the OS's handler (Finder / Explorer / the file manager). The path
+ *  half of {@link openExternal}, split out so the screen-only callers are findable by name. */
+export async function openPath(path: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("open_external", { target: path });
+}
+
 /** Reveal a file in the OS file manager with the file selected (macOS:
  *  `open -R`). No-op outside Tauri. */
 export async function revealPath(path: string): Promise<void> {

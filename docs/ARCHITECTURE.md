@@ -2500,7 +2500,9 @@ server's invisible display, so over the web `pickFolder` / `pickSqlFile` / `pick
 `WebPathPicker`, which lists the server through `browse_dir` — only under home and the Sites folder,
 the path resolved before it is compared. On a headless launch the desktop actions (open a URL or a
 browser, reveal, an editor, an external terminal) refuse with `NO_SCREEN` first; the web UI opens URLs
-in the developer's own browser and lists no server apps. The terminal (`/ipc` + its output events)
+in the developer's own browser, lists no server apps, and since 7 Nov 2026 does not OFFER the screen-only
+actions at all — `canOpenOnThisScreen()` hides the row's folder icon, "Open in editor", the folder tiles
+and path icons, the external-terminal menus and every toast's "Show in folder" (ledger #949). The terminal (`/ipc` + its output events)
 and the mail viewer (a `srcDoc` frame) need nothing. The Database Browser gets a loopback port per
 console (ledger #933): Adminer `127.0.0.1:9444`, phpMyAdmin `9445`, each its own origin for the reason
 the window gives each its own scheme (phpMyAdmin's absolute paths; one cookie jar per console). They

@@ -17,7 +17,7 @@ import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { Button } from "@/components/ui/button";
-import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity, worktreeRelations } from "@/lib/ipc";
+import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, openPath, canOpenOnThisScreen, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity, worktreeRelations } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
@@ -385,15 +385,17 @@ export function SiteRow({
           <PreferredBrowserIcon />
         </Button>
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Open folder"
-          title="Reveal site folder"
-          onClick={() => void openExternal(site.path).catch(toastBackendError)}
-        >
-          <FolderOpen className="h-4 w-4" />
-        </Button>
+        {canOpenOnThisScreen() && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open folder"
+            title="Reveal site folder"
+            onClick={() => void openPath(site.path).catch(toastBackendError)}
+          >
+            <FolderOpen className="h-4 w-4" />
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon"
@@ -657,18 +659,20 @@ export function SiteRow({
         <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onDuplicate}>
           Duplicate
         </MenuItem>
-        <MenuItem
-          icon={
-            <AppIcon
-              icon={editor?.icon}
-              fallback={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-              className="h-[15px] w-[15px]"
-            />
-          }
-          onSelect={() => openSiteInEditor(editor, site.path, words.fileManager)}
-        >
-          {editor ? `Open in ${editor.name}` : "Open in editor"}
-        </MenuItem>
+        {canOpenOnThisScreen() && (
+          <MenuItem
+            icon={
+              <AppIcon
+                icon={editor?.icon}
+                fallback={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+                className="h-[15px] w-[15px]"
+              />
+            }
+            onSelect={() => openSiteInEditor(editor, site.path, words.fileManager)}
+          >
+            {editor ? `Open in ${editor.name}` : "Open in editor"}
+          </MenuItem>
+        )}
         <MenuItem
           icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
           onSelect={() => {

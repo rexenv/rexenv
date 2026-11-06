@@ -5,7 +5,7 @@ import { IncognitoIcon } from "@/components/common/IncognitoIcon";
 import { MenuItem } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
 import type { ButtonProps } from "@/components/ui/button";
-import { openExternal } from "@/lib/ipc";
+import { canOpenOnThisScreen, openExternal } from "@/lib/ipc";
 import { toastBackendError } from "@/lib/toast";
 import { openUrlIn, useBrowsers, usePreferredBrowser } from "@/lib/useBrowser";
 import { openSiteInEditor, useEditors, usePreferredEditor } from "@/lib/useEditor";
@@ -150,7 +150,7 @@ export function useEditorMenu(path: string): ReactNode | undefined {
   const editors = useEditors();
   const current = usePreferredEditor();
   const words = usePlatformWords();
-  if (editors.length < 2) return undefined;
+  if (!canOpenOnThisScreen() || editors.length < 2) return undefined;
   return editors.map((e) => (
     <MenuItem
       key={e.id}
@@ -180,7 +180,7 @@ export function useEditorMenu(path: string): ReactNode | undefined {
  */
 export function useTerminalMenu(siteId: string, asset?: TerminalAsset): ReactNode | undefined {
   const terminals = useTerminalApps();
-  if (terminals.length === 0) return undefined;
+  if (!canOpenOnThisScreen() || terminals.length === 0) return undefined;
   return terminals.map((t) => (
     <MenuItem
       key={t.id}

@@ -4595,9 +4595,14 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
 - [x] Over the tunnel: New site → Existing folder → **Choose folder…** lists the SERVER's home; it
   walks into `rexenv/Sites/`, a symlink out of home (`ln -s /etc ~/out`) answers with the sentence,
   and **Choose this folder** fills the form. Databases → Import → the `.sql` picker shows `.sql` files
-  only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor
-  and "Show in folder" actions answer with the no-screen sentence (they are still SHOWN — the TODO row
-  "The web UI still shows desktop actions").
+  only. A site's **Open** opens in YOUR browser (through `-D` or with the tunnel's port); the editor,
+  folder and "Show in folder" actions are NOT shown (ledger #949) — no folder icon on a Sites row, no
+  "Open in editor" in its menu, no "Open project folder" / editor tile on the site page (a non-WordPress
+  site's Terminal tile fills the last row), no folder icon beside the project path.
+  ✓ 7 Nov 2026 — the Dell, a debug build `--headless --web` (session 1, from a task) through `ssh -L`,
+  Playwright WebKit: Sites — 0 "Open folder" buttons beside 13 "Open database"; the row menu has
+  Duplicate and no editor item; `apw` (FrankenPHP) and `smoke1w` (WordPress) — no folder/editor tile,
+  no path icon, Terminal and Database present; no console error.
   ✓ 29 Oct 2026 — the 24.04 server VM (master `5a70d483`), a real `ssh -L` tunnel from the Mac, headless Chromium (Playwright): the picker listed `/home/ci` with both roots, `out/` → "rexenv's web picker lists only your home folder and your Sites folder", the chosen folder reached the form's inspection; Open popped a tab in the developer's browser; the row's folder icon and "Open in editor" → `open_external` refused with `NO_SCREEN`, shown as a toast. Not run: the `.sql` picker.
 - [x] **The Database Browser (ledger #933)**, with `-L 9444:127.0.0.1:9444 -L 9445:127.0.0.1:9445`
   added to the tunnel: Databases → Browse on MySQL shows Adminer INSIDE the panel, logged in; switch

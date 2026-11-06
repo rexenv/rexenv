@@ -33,6 +33,7 @@ import {
   liveSyncUnpair,
   onLiveSyncState,
   revealPath,
+  canOpenOnThisScreen,
   ipcInFlight,
   webviewNote,
 } from "@/lib/ipc";
@@ -838,7 +839,7 @@ function JobLog({ lines }: { lines: string[] }) {
 export function DownloadPluginButton() {
   const save = useMutation({
     mutationFn: liveSyncPluginZip,
-    onSuccess: (path) => toast.success(`Saved ${path} — upload it on the live site: Plugins → Add New → Upload Plugin`, { label: "Show", onClick: () => void revealPath(path) }),
+    onSuccess: (path) => toast.success(`Saved ${path} — upload it on the live site: Plugins → Add New → Upload Plugin`, canOpenOnThisScreen() ? { label: "Show", onClick: () => void revealPath(path) } : undefined),
     onError: toastBackendError,
   });
   return (

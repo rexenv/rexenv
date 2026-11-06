@@ -305,3 +305,18 @@ their full text as it stood is kept here.
   the desktop's `rex stop` stopped them all. INSTALL's "go back" no longer needs `rex stop` first (from the
   release after 0.9.6).
 
+
+## Reconcile of 7 Nov 2026
+
+### From “Phase 4+ (next era)”
+
+- [x] **The web UI still shows desktop actions** (found 29 Oct 2026, the 24.04 VM through a tunnel): the
+  Sites row's folder icon, "Open in editor", and the `revealPath` buttons in toasts (WordPressManager,
+  RepoPanel, LiveTab, SiteDetail) render over the web transport and answer with `NO_SCREEN` when
+  pressed. Honest, but an action that can only fail should not be offered: hide them when
+  `transport() === "web"` (or make the wrappers' callers ask one `canReveal()`), all call sites at once.
+  ✓ 7 Nov 2026 (#949): `canOpenOnThisScreen()` + `openPath` in `src/lib/ipc`; every opener's file asks it
+  (Sites, SiteDetail, SiteLogs, WordPressManager ×5 toasts, RepoPanel, LiveTab, open-in's menus, useEditor,
+  useTerminalApp), held by `desktop_only_openers_are_offered_only_with_a_screen`; RUN over the web on the Dell
+  (Playwright WebKit): no folder/editor action anywhere it looked, no console error.
+

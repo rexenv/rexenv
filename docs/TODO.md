@@ -528,12 +528,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
 
 ## Phase 4+ (next era)
 
-- [ ] **The web UI still shows desktop actions** (found 29 Oct 2026, the 24.04 VM through a tunnel): the
-  Sites row's folder icon, "Open in editor", and the `revealPath` buttons in toasts (WordPressManager,
-  RepoPanel, LiveTab, SiteDetail) render over the web transport and answer with `NO_SCREEN` when
-  pressed. Honest, but an action that can only fail should not be offered: hide them when
-  `transport() === "web"` (or make the wrappers' callers ask one `canReveal()`), all call sites at once.
-
 - [ ] **The web UI's sign-in — four hardening items owed before Phase 1b is called done** (security
   review of PR #10, 29 Oct 2026; the review's CONFIRMED port-squat, `[::1]`, header-timeout and CA-EKU
   findings were fixed the same day, #935/#934). Open: (1) **the cookie alone yields the CSRF value**

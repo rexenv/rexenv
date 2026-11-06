@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { getSetting, listEditors, openExternal, openInEditor } from "@/lib/ipc";
+import { canOpenOnThisScreen, getSetting, listEditors, openInEditor, openPath } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import type { EditorApp } from "@/types";
 
@@ -30,6 +30,8 @@ export function usePreferredEditor(): EditorApp | null {
  *  editor" entry point so they can't drift into different fallbacks.
  *  `fileManager` is the platform's word for it (`usePlatformWords().fileManager`). */
 export function openSiteInEditor(editor: EditorApp | null, path: string, fileManager: string): void {
+  // Callers hide the entry without a screen; this keeps a stray one from reaching `NO_SCREEN`.
+  if (!canOpenOnThisScreen()) return;
   if (editor) {
     openInEditor(editor.id, path).catch(toastBackendError);
     return;
@@ -37,5 +39,5 @@ export function openSiteInEditor(editor: EditorApp | null, path: string, fileMan
   toast.info(
     `No code editor found (VS Code, Cursor, PhpStorm, Zed, Sublime…) — opening the folder in ${fileManager} instead.`,
   );
-  void openExternal(path).catch(toastBackendError);
+  void openPath(path).catch(toastBackendError);
 }

@@ -39,7 +39,7 @@ import {
   tailLog,
 } from "@/lib/ipc";
 import type { RepoGitOp, RepoJobState, RepoKind, RepoStepState } from "@/types";
-import { revealPath } from "@/lib/ipc";
+import { canOpenOnThisScreen, revealPath } from "@/lib/ipc";
 import { cn } from "@/lib/utils";
 import { toast, toastBackendError } from "@/lib/toast";
 import { usePlatformWords } from "@/lib/usePlatformWords";
@@ -433,10 +433,10 @@ export function RepoPanel({
     const message = archive.versionMissing
       ? `${archive.fileName} saved to Downloads — ${NO_VERSION_NOTE}.`
       : `${archive.fileName} saved to Downloads`;
-    toast.success(message, {
+    toast.success(message, canOpenOnThisScreen() ? {
       label: words.reveal,
       onClick: () => void revealPath(archive.path).catch(toastBackendError),
-    });
+    } : undefined);
     qc.invalidateQueries({ queryKey: statusKey });
   }, [opJob, qc, statusKey, words.reveal]);
 

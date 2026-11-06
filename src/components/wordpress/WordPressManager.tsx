@@ -19,6 +19,7 @@ import {
   openExternal,
   pickSqlFile,
   revealPath,
+  canOpenOnThisScreen,
   wpCoreReinstall,
   wpCoreSwitchVersion,
   wpCoreVersions,
@@ -1202,10 +1203,10 @@ function ToolsPanel({
         paths.length === 1
           ? `Content exported to ${paths[0]}`
           : `Content exported to ${paths.length} files in Downloads`,
-        {
+        canOpenOnThisScreen() ? {
           label: words.reveal,
           onClick: () => void revealPath(paths[0]).catch(toastBackendError),
-        },
+        } : undefined,
       ),
     onError: (e) => toastBackendError(e),
   });
@@ -1249,10 +1250,10 @@ function ToolsPanel({
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
-      toast.success(`Database exported to ${path}`, {
+      toast.success(`Database exported to ${path}`, canOpenOnThisScreen() ? {
         label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
-      }),
+      } : undefined),
     onError: (e) => toastBackendError(e),
   });
   const working = coreUpdate.pending || coreReinstall.isPending;
@@ -1553,10 +1554,10 @@ function ImportDbDialog({ siteId, domain, onClose }: { siteId: string; domain: s
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
-      toast.success(`Database exported to ${path}`, {
+      toast.success(`Database exported to ${path}`, canOpenOnThisScreen() ? {
         label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
-      }),
+      } : undefined),
     onError: (e) => toastBackendError(e),
   });
   const doImport = useMutation({
@@ -1921,10 +1922,10 @@ function ResetSiteDialog({ siteId, domain, onClose }: { siteId: string; domain: 
   const dbExport = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
-      toast.success(`Database exported to ${path}`, {
+      toast.success(`Database exported to ${path}`, canOpenOnThisScreen() ? {
         label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
-      }),
+      } : undefined),
     onError: (e) => toastBackendError(e),
   });
   const reset = useMutation({
@@ -2032,10 +2033,10 @@ function CoreVersionSwitch({ siteId }: { siteId: string }) {
   const exportDb = useMutation({
     mutationFn: () => wpDbExport(siteId),
     onSuccess: (path) =>
-      toast.success(`Database exported to ${path}`, {
+      toast.success(`Database exported to ${path}`, canOpenOnThisScreen() ? {
         label: words.reveal,
         onClick: () => void revealPath(path).catch(toastBackendError),
-      }),
+      } : undefined),
     onError: (e) => toastBackendError(e),
   });
   const switchVersion = useMutation({
