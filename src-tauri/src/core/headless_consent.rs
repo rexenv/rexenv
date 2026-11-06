@@ -5,19 +5,23 @@
 //! `settings` tool refuse them (`settings_access`, ledger #203/#397), because the sentence beside
 //! the toggle IS the consent and a shell write would skip it. A headless server has no toggle, so
 //! issue #7's `rex mcp` could never be turned on there (T0). D7's answer: the administrator's own
-//! one-time step, `sudo rexenv --headless-setup`, asks the same two questions in a terminal with
+//! one-time step, `rexenv --headless-setup` (under `sudo` on Linux and macOS), asks the same two questions in a terminal with
 //! the SAME sentences — `mcp_server::ENABLE_CONSENT` and `AccessLevel::what_it_allows`, never a copy
 //! — or takes `--enable-mcp` / `--agent-access <level>` typed by that administrator for an
 //! unattended install. The flags ARE the consent.
 //!
 //! **Why only root reaches the write.** The threat the dial exists for is an agent widening its own
 //! access, and an agent runs as the user. So nothing the user's own processes can invoke writes these
-//! keys: `rex config` still refuses them, and the ONE caller of [`apply`] is the setup, after its
-//! `geteuid() == 0` check, in a child that has dropped to the user only to write the user's own
-//! database (`platform/linux/headless.rs`, ledger #920). There is no argv flag for "just write it".
+//! keys: `rex config` still refuses them, and the callers of [`apply`] are the three setups, one per
+//! OS, each behind a door the user's own processes cannot pass unseen (ledger #920): on Linux and
+//! macOS the `geteuid() == 0` check, the write in a child that has dropped to the user only to write
+//! the user's own database (`platform/linux/headless.rs`, `platform/macos/headless.rs`); on Windows
+//! the elevated token, since that setup runs AS the account (`platform/windows/headless.rs`) — an
+//! agent's unelevated process cannot get one without a UAC prompt the user would see. There is no
+//! argv flag for "just write it".
 //!
-//! Common code: the questions, the answers and the write are the same on every OS; only Linux has a
-//! headless setup yet (D3), and macOS and Windows refuse `--headless-setup` before any of this runs.
+//! Common code: the questions, the answers and the write are the same on every OS; each OS has its
+//! own setup since 6 Nov 2026 (T5 W2, M3).
 
 use crate::core::agent_access::{self, AccessLevel, Mode, DIAL_LABEL, LEVELS};
 use crate::error::Result;

@@ -364,12 +364,12 @@ the shipped UI toward one.
   user that a download is about to start. **The stale sentence is part of the change**:
   two other surfaces read "Blank PHP sites have no database", which was true of all of
   them and is now true of half.
-- **A control whose only outcome is an error is not rendered.** The New Site dialog
-  offers "From Git" for Laravel and Blank PHP and omits it for WordPress, because a
-  WordPress checkout without its database is not a site and the backend refuses it. The
-  refusal still exists (CLI and MCP reach the same code) — the UI simply does not draw a
-  button to walk into it. Same rule that removed the blueprint field from non-WordPress
-  types.
+- **A control whose only outcome is an error is not rendered.** The blueprint field is
+  drawn for WordPress only, because no other type has anything for a blueprint to do. The
+  New Site dialog used to omit "From Git" for WordPress by the same rule, while the backend
+  refused a WordPress clone; since 11 Aug 2026 (`d2e8d616`, git-site Stage 4) every type
+  can be cloned and the dialog offers it for all of them. When the refusal goes, the
+  missing control goes with it.
 - Unknowable state says so ("can't determine") instead of guessing.
 - **A capability that goes away is explained where it goes away, and the explanation
   never replaces the tool's own words.** Pinning the wp-cli command set (#228) means a

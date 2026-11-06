@@ -719,8 +719,8 @@ open in your browser or are not offered: the server has no screen.
 Sites are reached from the server itself (`curl https://demo.rex`) or through an SSH tunnel; a
 public address is a later phase. To undo: `sudo systemctl disable --now rexenv-headless.service`,
 `sudo rm /etc/systemd/system/rexenv-headless.service /etc/sudoers.d/rexenv-headless`,
-`sudo loginctl disable-linger <account>`. macOS and Windows have no headless mode yet
-(`--headless` and `--headless-setup` say so).
+`sudo loginctl disable-linger <account>`. macOS and Windows have their own headless setups since
+6 Nov 2026 — "Headless — a Mac that stays logged in" and "Headless — nobody logged on" above.
 
 ### Not in Linux v1
 
