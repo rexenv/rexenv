@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) 🚧 0.9.6 — DRAFTED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender green; waits on the owner's Publish
+## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
 **Run 42197342159, source `67e6fa93` (tag `v0.9.6`), 16 assets, the body the tag's verbatim.** The FIRST run
 (42192163104, on `e40d2d95`) lost only its macOS lane, in 0 s: "The configuration 'macos-14-arm64-us-default' is not
@@ -151,6 +151,18 @@ first. (2) `rex service restart php-7.4` on Windows says "PHP-FPM 7.4 restarted"
 applied there (0.9.5 the same); fixed on master for the next release.
 **Not run:** §M; the clean-Mac list; the Intel spot-run; the AppImages (hashed, not run); x86_64 Linux; the
 second-browser rows; a fresh PC's first Windows headless setup (a person's row).
+**Published by the owner 6 Nov 2026 12:16 UTC.** The tap's Update cask, Install scripts and Notify the website
+runs green; the cask reads `0.9.6` with the dmg's `a8a70b4f…` (= the release asset's API digest). `brew audit --cask
+--online` did not run: this Mac's Command Line Tools are outdated — a host problem, not the cask's. The six descriptors:
+dry runs first (all six green), then the six publishes one at a time, each approved (runs 42216658616 … 42216935527);
+`check-app-manifest.sh` all green for macOS (serial 27), `--windows` (serial 22) and the four `--linux` kinds (serial 13),
+each naming 0.9.6. **A trap in the check itself:** a zsh loop over `"--linux deb x86_64"` passes ONE word, the script
+falls through to the macOS document and prints macOS's green — run each `--linux <kind> <arch>` as separate words.
+apt: `Publish apt repository` run 42217108584 green (build-site: "v0.9.6 — 2 deb(s)", the Pages deployment "success"),
+but `rexenv.github.io/apt` kept serving the 29 Oct site — every Pages IP, the 0.9.6 deb 404 — for 27 minutes; a NEW
+run (42220589038) deployed the same, and the new site went live ~14 min after it (13:03 UTC). `check-apt-repo.sh` then
+good signature, amd64 and arm64 0.9.6. A Pages deployment reported "success" is not a site that serves it: the check is
+the verdict, and a lag past half an hour is worth a second run.
 
 ## A) ✅ 0.9.5 — PUBLISHED 29 Oct 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless and web), the setup.exe (Dell), Defender, the six descriptors and apt green; §M not run
 
