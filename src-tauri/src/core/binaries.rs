@@ -1598,7 +1598,11 @@ fn php_windows_sha256(version: &str) -> Option<&'static str> {
 /// texts for them (`license.txt` is PHP's; `readme-redist-bins.txt` covers php-src's own
 /// bundled code). Those assets are REPLACED IN PLACE under the same name, so a rebuild
 /// there turns this pin into a checksum failure — loud, and never different bytes. The
-/// gated copy in rexenv/runtimes `php-windows-legacy-1` is the record of what was pinned.
+/// gated copy in rexenv/runtimes is the record of what was pinned: `php-windows-legacy-1`
+/// the 21 Oct bytes, `php-windows-legacy-2` (6 Nov 2026, run 42143994884) the 25 Oct ones.
+/// rexenv/runtimes `check-php-windows.yml` downloads the three zips every day and opens an
+/// issue when they stop matching the hashes in [`php_windows_sha256`] on master — the
+/// warning this row lacked when the 25 Oct rebuild went unnoticed for eleven days.
 ///
 /// It happened within a day: all three assets were rebuilt on 25 Oct 2026 (no backport
 /// commit after 19 Oct; the publisher's release cleanup), and 0.9.5 on Windows could not

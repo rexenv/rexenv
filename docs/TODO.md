@@ -297,10 +297,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **Windows 7.4/8.0/8.1 re-pin: what reaches users** (opened 5 Nov 2026, from the row above). (1) Every 0.9.5
   Windows install still fails those three minors until a release carries the new pins — the signed
-  `manifest-windows.json` lists only 8.2–8.5, so no manifest publish can fix it without adding rows. (2) rexenv/runtimes'
-  `php-windows-legacy-1` (the record of what was pinned) still holds the 21 Oct bytes — refreshing it is a runtimes
-  publish, owner-approved. (3) Nothing tells us the next in-place rebuild before a user does: a scheduled `curl |
-  sha256sum` of the three URLs against the pins would.
+  `manifest-windows.json` lists only 8.2–8.5, so no manifest publish can fix it without adding rows. Open for (1) only.
+  ✓ (2) 6 Nov 2026, owner-approved: rexenv/runtimes `php-windows-legacy-2` mirrors the 25 Oct bytes (runtimes e6bf4f0,
+  run 42143994884 — sha, `zend_mm_safe_error_ex` export, `php -m` = php.net's, fixed memory-exhaustion path; immutable).
+  ✓ (3) runtimes `check-php-windows.yml` (daily 06:41 UTC) hashes the three zips against php-windows.yml's SET and
+  rexenv's `php_windows_sha256` on master, and opens one `php-windows-bytes` issue on drift; first run 42143989415:
+  all three match both.
 
 ## Ledger-driven proof backlog
 
