@@ -50,14 +50,22 @@ struct Streams(Mutex<HashMap<String, Stream>>);
 /// one (`web_rules::SIGN_IN_CODE_TTL`, `SESSION_IDLE`, `SESSION_MAX`).
 #[derive(Default)]
 struct Auth {
-    codes: Mutex<Vec<(String, std::time::Instant)>>,
+    codes: Mutex<Vec<(String, std::time::SystemTime)>>,
     sessions: Mutex<HashMap<String, Session>>,
 }
 
 struct Session {
     csrf: String,
-    started: std::time::Instant,
-    seen: std::time::Instant,
+    started: std::time::SystemTime,
+    seen: std::time::SystemTime,
+}
+
+/// Wall-clock age. `SystemTime`, never `Instant`: an `Instant` stands still while the machine sleeps,
+/// so a laptop server's 24 h session cap (and a 10-minute sign-in code) stretched by every closed lid
+/// (review of 7 Nov 2026). A clock set backwards reads as age 0 — a session is never killed by a
+/// timezone fix, and the owner setting their own clock back is not in this gate's threat model.
+fn age_of(t: std::time::SystemTime) -> Duration {
+    std::time::SystemTime::now().duration_since(t).unwrap_or_default()
 }
 
 impl Auth {
@@ -65,15 +73,15 @@ impl Auth {
     fn mint_code(&self) -> String {
         let code = random_hex();
         if let Ok(mut c) = self.codes.lock() {
-            c.retain(|(_, at)| rules::code_live(at.elapsed()));
-            c.push((code.clone(), std::time::Instant::now()));
+            c.retain(|(_, at)| rules::code_live(age_of(*at)));
+            c.push((code.clone(), std::time::SystemTime::now()));
         }
         code
     }
     /// Spend `code`: true once, for a live code this server minted. Compared in constant time.
     fn take_code(&self, code: &str) -> bool {
         let Ok(mut c) = self.codes.lock() else { return false };
-        c.retain(|(_, at)| rules::code_live(at.elapsed()));
+        c.retain(|(_, at)| rules::code_live(age_of(*at)));
         match c.iter().position(|(k, _)| rules::same_secret(k, code)) {
             Some(i) => {
                 c.swap_remove(i);
@@ -84,7 +92,7 @@ impl Auth {
     }
     fn start_session(&self) -> (String, String) {
         let (id, csrf) = (random_hex(), random_hex());
-        let now = std::time::Instant::now();
+        let now = std::time::SystemTime::now();
         if let Ok(mut s) = self.sessions.lock() {
             s.insert(id.clone(), Session { csrf: csrf.clone(), started: now, seen: now });
         }
@@ -93,9 +101,9 @@ impl Auth {
     /// The CSRF value of a LIVE session, marking it used; a session past its limits is removed.
     fn csrf_of(&self, id: &str) -> Option<String> {
         let mut s = self.sessions.lock().ok()?;
-        s.retain(|_, v| rules::session_live(v.started.elapsed(), v.seen.elapsed()));
+        s.retain(|_, v| rules::session_live(age_of(v.started), age_of(v.seen)));
         let session = s.get_mut(id)?;
-        session.seen = std::time::Instant::now();
+        session.seen = std::time::SystemTime::now();
         Some(session.csrf.clone())
     }
     fn end_session(&self, id: &str) {
@@ -272,21 +280,31 @@ async fn read_json(req: Request<Incoming>) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
+/// What reading a console body ended as. Two distinct failures, because they get two distinct
+/// sentences: until 7 Nov 2026 both were `None`, and a 5 MB upload whose connection dropped was told
+/// "larger than 256 MB" — the user then splits a dump that was never too big.
+enum ConsoleBody {
+    Whole(Bytes),
+    TooLarge,
+    /// The client (or its tunnel) went away before the declared body finished.
+    BrokeOff,
+}
+
 /// A request body read into ONE buffer, reserved up front from its declared length: `collect()` then
 /// `to_bytes()` kept every received chunk AND their concatenation alive at the end — each upload twice
-/// over (measured on the Dell, 7 Nov 2026: two 80 MB uploads peaked at 320 MB; ledger #951). `None`
-/// past `max`, or when the client breaks off.
-async fn read_into_one_buffer(mut body: Incoming, max: usize, declared: Option<u64>) -> Option<Bytes> {
+/// over (measured on the Dell, 7 Nov 2026: two 80 MB uploads peaked at 320 MB; ledger #951).
+async fn read_into_one_buffer(mut body: Incoming, max: usize, declared: Option<u64>) -> ConsoleBody {
     let mut buf = bytes::BytesMut::with_capacity(declared.map_or(0, |n| (n as usize).min(max)));
     while let Some(frame) = body.frame().await {
-        if let Ok(data) = frame.ok()?.into_data() {
+        let Ok(frame) = frame else { return ConsoleBody::BrokeOff };
+        if let Ok(data) = frame.into_data() {
             if buf.len() + data.len() > max {
-                return None;
+                return ConsoleBody::TooLarge;
             }
             buf.extend_from_slice(&data);
         }
     }
-    Some(buf.freeze())
+    ConsoleBody::Whole(buf.freeze())
 }
 
 fn header<'a>(req: &'a Request<Incoming>, name: &str) -> Option<&'a str> {
@@ -318,9 +336,22 @@ async fn handle_console(app: &AppHandle, auth: &Arc<Auth>, console: crate::core:
     // console has answered (`web_rules::MAX_CONCURRENT_CONSOLE_UPLOADS`).
     static UPLOAD_TURNS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(rules::MAX_CONCURRENT_CONSOLE_UPLOADS);
     let declared = header(&req, "content-length").and_then(|v| v.parse::<u64>().ok());
-    let _turn = if rules::console_upload_takes_a_turn(&method, declared) { UPLOAD_TURNS.acquire().await.ok() } else { None };
-    let Some(body) = read_into_one_buffer(req.into_body(), rules::MAX_CONSOLE_BODY, declared).await else {
-        return full(StatusCode::PAYLOAD_TOO_LARGE, "text/plain; charset=utf-8", "that upload is larger than the web UI takes (256 MB)");
+    // By the headers' body framing, NEVER the method: a GET declaring a 256 MB body is read like any
+    // other and skipped the turn entirely in the first version (review of 7 Nov 2026).
+    let chunked = header(&req, "transfer-encoding").is_some_and(|v| v.to_ascii_lowercase().contains("chunked"));
+    let _turn = if rules::console_upload_takes_a_turn(declared, chunked) { UPLOAD_TURNS.acquire().await.ok() } else { None };
+    let body = match read_into_one_buffer(req.into_body(), rules::MAX_CONSOLE_BODY, declared).await {
+        ConsoleBody::Whole(body) => body,
+        ConsoleBody::TooLarge => {
+            return full(StatusCode::PAYLOAD_TOO_LARGE, "text/plain; charset=utf-8", "that upload is larger than the web UI takes (256 MB)")
+        }
+        ConsoleBody::BrokeOff => {
+            return full(
+                StatusCode::BAD_REQUEST,
+                "text/plain; charset=utf-8",
+                "the upload ended before it finished — the connection dropped partway, nothing was imported. Try again.",
+            )
+        }
     };
     // The edge's port as the user set it (`core::edge_ports`); no guess before the state exists.
     let Some(state) = app.try_state::<crate::state::app::AppState>() else {

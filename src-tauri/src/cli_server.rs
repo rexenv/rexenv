@@ -2278,7 +2278,7 @@ pub fn hand_off_to_running_instance() -> bool {
     // stderr, not `log`: the logger belongs to the instance that owns the app
     // data, and this process is about to stop existing. A launch that vanishes
     // silently is indistinguishable from one that crashed.
-    eprintln!("{}", handoff_note(login, holder_is_headless(&buf[..n])));
+    eprintln!("{}", handoff_note(login, holder_headless(&buf[..n])));
     true
 }
 
@@ -2298,28 +2298,42 @@ fn handoff_is_login(args: &Value) -> bool {
     args.get("login").and_then(Value::as_bool) == Some(true)
 }
 
-/// What the exiting second copy prints (stderr) after a handoff.
-pub fn handoff_note(login: bool, headless: bool) -> &'static str {
-    if headless {
-        "rexenv is already running headless on this machine — it has no window to show.\n\
-         Drive it with `rex` (and `rex mcp`); this second copy has exited."
-    } else if login {
-        "rexenv is already running — handed this login launch to it (it runs Start all).\n\
-         This second copy has exited."
-    } else {
-        "rexenv is already running — brought its window to the front.\n\
-         (Its menu-bar icon is the one to use; this second copy has exited.)"
+/// What the exiting second copy prints (stderr) after a handoff. `headless` is the holder's ANSWER:
+/// `Some(true)` headless, `Some(false)` a desktop holder (it raised its window), `None` no readable
+/// answer — a busy holder past the read timeout. The `None` arm claims nothing: until the 7 Nov 2026
+/// review a timeout fell through to "brought its window to the front", resurfacing on a loaded
+/// headless PC the exact misreport `f431b87a` shipped to close.
+pub fn handoff_note(login: bool, headless: Option<bool>) -> &'static str {
+    match headless {
+        Some(true) => {
+            "rexenv is already running headless on this machine — it has no window to show.\n\
+             Drive it with `rex` (and `rex mcp`); this second copy has exited."
+        }
+        _ if login => {
+            "rexenv is already running — handed this login launch to it (it runs Start all).\n\
+             This second copy has exited."
+        }
+        Some(false) => {
+            "rexenv is already running — brought its window to the front.\n\
+             (Its menu-bar icon is the one to use; this second copy has exited.)"
+        }
+        None => {
+            "rexenv is already running, and this second copy has exited — but it did not answer in \
+             time to say more.\n\
+             If no window comes forward it may be running headless, or busy; `rex status` says."
+        }
     }
 }
 
-/// Whether the holder's answer to `app.open` says it runs headless — `false` for anything else,
-/// including an older holder's `{"ok":true,"data":null}` and an answer cut short.
-pub fn holder_is_headless(answer: &[u8]) -> bool {
-    std::str::from_utf8(answer)
+/// The holder's answer to `app.open`, read for the note: `Some(true)` when it says it runs headless,
+/// `Some(false)` for a parseable answer without that claim (an older holder's `{"ok":true,"data":null}`
+/// — those always raised their window), `None` for no answer at all (empty or cut short — a read
+/// timeout must never read as "it has a window").
+pub fn holder_headless(answer: &[u8]) -> Option<bool> {
+    let parsed = std::str::from_utf8(answer)
         .ok()
-        .and_then(|s| serde_json::from_str::<Value>(s.lines().next()?).ok())
-        .and_then(|v| v.get("data")?.get("headless")?.as_bool())
-        .unwrap_or(false)
+        .and_then(|s| serde_json::from_str::<Value>(s.lines().next()?).ok())?;
+    Some(parsed.get("data").and_then(|d| d.get("headless")).and_then(Value::as_bool).unwrap_or(false))
 }
 
 /// Spawn the listener at app startup, on the socket `claim_at_startup` already
@@ -2384,7 +2398,7 @@ pub fn claim_pipe_at_startup() -> PipeStartup {
             if let Some(answer) = crate::platform::hand_off_to_app_pipe(&dir, &handoff_request(login)) {
                 // The holder may be headless (`rexenv.exe --headless`, a boot task since 6 Nov 2026): read
                 // its answer, as the unix socket does, rather than assume a window to bring forward.
-                eprintln!("{}", handoff_note(login, holder_is_headless(&answer)));
+                eprintln!("{}", handoff_note(login, holder_headless(&answer)));
                 PipeStartup::AnotherInstanceRuns
             } else {
                 // Held a moment ago and gone now — this copy is the app.
@@ -2908,17 +2922,23 @@ mod tests {
     /// **A second launch says whether it was a login, and both transports say it the same way**
     /// (ledger #739). The unix socket and Windows' pipe send `handoff_request`'s bytes; the
     /// `app.open` arm reads them with `handoff_is_login`, so the round trip IS the contract.
-    /// A second launch reads the holder's answer: a headless holder is said to have no window, and
-    /// anything else — an older holder's `null`, a cut-short answer — keeps today's note.
+    /// A second launch reads the holder's answer: a headless holder is said to have no window, a
+    /// desktop holder (an older `null` answer included) keeps the window note — and NO answer (empty,
+    /// cut short, a 1.5 s pipe timeout on a busy holder) claims neither: the timeout used to fall
+    /// through to "brought its window to the front" on a PC with no desktop session (7 Nov 2026).
     #[test]
     fn a_launch_handed_to_a_headless_holder_says_so() {
-        assert!(holder_is_headless(b"{\"ok\":true,\"data\":{\"headless\":true}}\n"));
-        for other in [&b"{\"ok\":true,\"data\":{\"headless\":false}}\n"[..], b"{\"ok\":true,\"data\":null}\n", b"{\"ok\":true,\"da", b""] {
-            assert!(!holder_is_headless(other), "{:?}", String::from_utf8_lossy(other));
-        }
-        assert!(handoff_note(false, true).contains("headless") && !handoff_note(false, true).contains("window to the front"));
-        assert!(handoff_note(true, true).contains("headless"), "a headless holder wins over the login wording");
-        assert!(handoff_note(false, false).contains("window to the front"));
+        assert_eq!(holder_headless(b"{\"ok\":true,\"data\":{\"headless\":true}}\n"), Some(true));
+        assert_eq!(holder_headless(b"{\"ok\":true,\"data\":{\"headless\":false}}\n"), Some(false));
+        assert_eq!(holder_headless(b"{\"ok\":true,\"data\":null}\n"), Some(false), "an older desktop holder");
+        assert_eq!(holder_headless(b"{\"ok\":true,\"da"), None, "cut short says nothing");
+        assert_eq!(holder_headless(b""), None, "a timeout says nothing");
+        assert!(handoff_note(false, Some(true)).contains("headless") && !handoff_note(false, Some(true)).contains("window to the front"));
+        assert!(handoff_note(true, Some(true)).contains("headless"), "a headless holder wins over the login wording");
+        assert!(handoff_note(false, Some(false)).contains("window to the front"));
+        let unknown = handoff_note(false, None);
+        assert!(!unknown.contains("brought its window"), "no window claim without an answer: {unknown}");
+        assert!(unknown.contains("rex status"), "the unknown arm points somewhere: {unknown}");
         let src = crate::core::copy_scan::production_source(include_str!("cli_server.rs"));
         assert!(src.contains("Ok(json!({ \"headless\": crate::is_headless_launch() }))"), "the app.open arm says so");
     }
@@ -2941,8 +2961,8 @@ mod tests {
         assert!(src.contains("sock.write_all(handoff_request(login).as_bytes())"), "the unix handoff");
         assert!(src.contains("hand_off_to_app_pipe(&dir, &handoff_request(login))"), "the Windows handoff");
         // Both transports read the holder's answer for the note — Windows assumed a window until 7 Nov 2026.
-        assert_eq!(src.matches("handoff_note(login, holder_is_headless(").count(), 2, "the unix and the Windows note");
-        assert!(!src.contains("handoff_note(login, false)"), "a handoff that assumes the holder has a window");
+        assert_eq!(src.matches("handoff_note(login, holder_headless(").count(), 2, "the unix and the Windows note");
+        assert!(!src.contains("handoff_note(login, Some(false))"), "a handoff that assumes the holder has a window");
         let pipe = crate::core::copy_scan::production_source(include_str!("platform/windows/app_pipe.rs"));
         assert!(pipe.contains("pipe.write_all(request.as_bytes())"));
         assert!(!pipe.contains("app.open"), "the pipe builds its own request again");

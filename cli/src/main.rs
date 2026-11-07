@@ -4788,6 +4788,26 @@ fn cli_finding(cli: &Value, found: Option<&Path>) -> (bool, String) {
 
 #[cfg(test)]
 mod tests {
+    /// #953 — `plain()` IS `core::sites::plain_path`, held byte-for-byte: the crates are separate, so
+    /// the strip exists twice, and nothing but this test keeps a new prefix form (`\\?\Volume{…}`,
+    /// device paths) from being handled in one copy and not the other — which is #953's bug returning
+    /// through the drift (review of 7 Nov 2026).
+    #[test]
+    fn plain_matches_the_apps_plain_path_byte_for_byte() {
+        fn body(src: &str, signature: &str) -> String {
+            let start = src.find(signature).unwrap_or_else(|| panic!("{signature} is gone"));
+            let open = src[start..].find('{').expect("its body") + start;
+            let end = src[open..].find("\n}").expect("its end") + open;
+            src[open..end].replace(' ', "")
+        }
+        let ours = body(include_str!("main.rs"), "fn plain(p: PathBuf) -> PathBuf");
+        let theirs = body(
+            include_str!("../../src-tauri/src/core/sites.rs"),
+            "pub fn plain_path(p: PathBuf) -> PathBuf",
+        );
+        assert_eq!(ours, theirs, "rex's plain() drifted from core::sites::plain_path — change both");
+    }
+
     /// #953 — a path `rex` canonicalises reaches the app without Windows' verbatim prefix, at every
     /// place it canonicalises one the app will STORE or open (site move, relink, repo link, db import).
     #[test]

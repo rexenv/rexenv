@@ -141,11 +141,11 @@ pub fn next_instance(name: &str) -> std::io::Result<NamedPipeServer> {
 
 /// Send the instance holding the lock `request` — `cli_server::handoff_request`'s line, the same bytes the
 /// unix socket sends (show your window, or run login-start for a `--hidden` launch). `Some(answer)` when a
-/// holder was reached — the caller exits, and reads the answer for what to say (`holder_is_headless`: a
+/// holder was reached — the caller exits, and reads the answer for what to say (`holder_headless`: a
 /// headless holder has no window to bring forward); `None` when nobody is there any more (it died between
 /// the claim and now), and the caller starts. Best-effort past the connect, as on macOS: a wedged app that
-/// never answers still owns the stack, and its answer is empty. Until 7 Nov 2026 this returned a bare
-/// `bool` and dropped the answer, so a launch on a headless PC said it had brought a window forward.
+/// never answers still owns the stack, and its EMPTY answer reads as "no answer" — never as a holder with
+/// a window (a busy headless holder past the 1.5 s read timeout used to get the window note, 7 Nov 2026).
 pub fn hand_off(config_dir: &Path, request: &str) -> Option<Vec<u8>> {
     let name = pipe_name(&config_dir.to_string_lossy());
     let deadline = Instant::now() + Duration::from_secs(2);

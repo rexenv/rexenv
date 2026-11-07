@@ -67,10 +67,15 @@ pub const CONSOLE_UPLOAD_THRESHOLD: u64 = 1024 * 1024;
 // The bound the cap promises, checked when it compiles: two turns of the largest body, 512 MB.
 const _: () = assert!(MAX_CONCURRENT_CONSOLE_UPLOADS * MAX_CONSOLE_BODY <= 512 * 1024 * 1024);
 
-/// Whether a console request must wait for one of the upload turns: a body-carrying method whose
-/// declared length is over the threshold, or not declared (chunked — it could be anything).
-pub fn console_upload_takes_a_turn(method: &str, content_length: Option<u64>) -> bool {
-    !matches!(method, "GET" | "HEAD" | "OPTIONS") && content_length.map_or(true, |n| n > CONSOLE_UPLOAD_THRESHOLD)
+/// Whether a console request must wait for one of the upload turns: decided by the BODY the headers
+/// declare, never by the method. The first version exempted GET/HEAD/OPTIONS, and a GET carrying
+/// `Content-Length: 256 MB` (or a chunked body) was read into memory with no turn at all — 256
+/// connections of those is the 64 GB exhaustion the cap exists to stop (review of 7 Nov 2026). A
+/// request that declares no length and no chunked encoding HAS no body (that pair is HTTP's framing),
+/// so ordinary page loads still take no turn; a declared length is also the framing, so a body cannot
+/// outgrow the small-post exemption.
+pub fn console_upload_takes_a_turn(content_length: Option<u64>, chunked: bool) -> bool {
+    chunked || content_length.is_some_and(|n| n > CONSOLE_UPLOAD_THRESHOLD)
 }
 
 /// The largest `/ipc` body read. Commands carry paths and form values, never file contents.
@@ -85,7 +90,7 @@ pub const TRANSPORT_META: &str = r#"<meta name="rexenv-transport" content="web" 
 /// origins a browser does not have; `frame-ancestors 'none'` because nothing should frame the UI.
 pub const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; \
 img-src 'self' data: https://*.w.org; font-src 'self' data:; connect-src 'self'; \
-frame-src 'self' http://rexenv.localhost:9444 http://rexenv.localhost:9445 http://localhost:9444 http://127.0.0.1:9444 http://localhost:9445 http://127.0.0.1:9445; \
+frame-src 'self' http://rexenv.localhost:9444 http://rexenv.localhost:9445; \
 object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 
 // ── Auth (T7) ────────────────────────────────────────────────────────────────────────────────
@@ -452,15 +457,18 @@ pub fn sse_frame(kind: &str, data: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Only a real upload takes a turn: a GET, a small form post and an OPTIONS never wait; a large or
-    /// undeclared (chunked) body does.
+    /// Only a real body takes a turn — and the METHOD is not consulted: a GET declaring a 256 MB body
+    /// used to skip the turn entirely (review of 7 Nov 2026). No declared length and no chunked
+    /// encoding is no body at all.
     #[test]
     fn only_large_console_uploads_wait_for_a_turn() {
-        assert!(!console_upload_takes_a_turn("GET", None));
-        assert!(!console_upload_takes_a_turn("POST", Some(4096)));
-        assert!(!console_upload_takes_a_turn("POST", Some(CONSOLE_UPLOAD_THRESHOLD)));
-        assert!(console_upload_takes_a_turn("POST", Some(CONSOLE_UPLOAD_THRESHOLD + 1)));
-        assert!(console_upload_takes_a_turn("POST", None), "chunked: could be anything");
+        assert!(!console_upload_takes_a_turn(None, false), "a bodyless request (every page load)");
+        assert!(!console_upload_takes_a_turn(Some(4096), false));
+        assert!(!console_upload_takes_a_turn(Some(CONSOLE_UPLOAD_THRESHOLD), false));
+        assert!(console_upload_takes_a_turn(Some(CONSOLE_UPLOAD_THRESHOLD + 1), false));
+        assert!(console_upload_takes_a_turn(None, true), "chunked: could be anything");
+        assert!(console_upload_takes_a_turn(Some(CONSOLE_UPLOAD_THRESHOLD + 1), true), "a lying pair still waits");
+        assert!(console_upload_takes_a_turn(Some(256 * 1024 * 1024), false), "a GET-shaped declared body waits too");
     }
 
     /// The turn is taken before the body is read, and the proxy shares one copy across its sends.
@@ -471,6 +479,9 @@ mod tests {
         );
         let h = &server[server.find("async fn handle_console(").expect("handle_console")..];
         assert!(h.find("UPLOAD_TURNS.acquire()").expect("the turn") < h.find("read_into_one_buffer(").expect("the read"));
+        // The turn is decided by the declared body, never the method (review of 7 Nov 2026): the
+        // method-blind signature is the pin, so a `&method` cannot creep back into the decision.
+        assert!(h.contains("console_upload_takes_a_turn(declared, chunked)"), "the method-blind call:\n{h}");
         assert!(!h.contains(".collect().await"), "collect() + to_bytes() holds the chunks and their copy together");
         assert!(!h[..h.find("dbconsole_proxy::forward(").expect("forward")].contains(".to_vec()"), "the body copied before the proxy");
         let proxy = crate::core::copy_scan::production_source(
@@ -500,6 +511,10 @@ mod tests {
             let origin = format!("http://{WEB_HOST}:{port}");
             assert!(frame_src.split_whitespace().any(|s| s == origin), "{origin} missing from {frame_src}");
         }
+        // And ONLY there: the session cookie is host-only to `WEB_HOST` (#952), so a console frame on
+        // plain localhost has no cookie and can only render the 401 page — a dead allowance that
+        // misleads the next reader (review of 7 Nov 2026).
+        assert!(!frame_src.contains("http://localhost:") && !frame_src.contains("http://127.0.0.1:"), "{frame_src}");
     }
 
     /// A sign-in link is spent only on `rexenv.localhost` — on `localhost` it moves there, port kept, so
@@ -800,17 +815,15 @@ mod tests {
         let csp = console_csp("default-src 'self'; script-src 'nonce-abc'; frame-ancestors rexdb://localhost", "http://localhost:9443");
         assert_eq!(csp, "default-src 'self'; script-src 'nonce-abc'; frame-ancestors http://localhost:9443");
         assert_eq!(console_csp("", "http://localhost:9443"), "frame-ancestors http://localhost:9443");
-        // The page's own policy lets it frame exactly the console ports, and the page learns them.
+        // The page's own policy lets it frame exactly the console ports — on `WEB_HOST`, the one name
+        // a session exists on (#952): the plain-localhost entries became dead allowances once the
+        // cookie went host-only, and were dropped (review of 7 Nov 2026).
         for (_, port) in console_ports() {
-            for host in ["localhost", "127.0.0.1"] {
-                assert!(CSP.contains(&format!("http://{host}:{port}")), "{host}:{port}");
-            }
+            assert!(CSP.contains(&format!("http://{WEB_HOST}:{port}")), "{WEB_HOST}:{port}");
         }
         // Not `[::1]`: Chromium rejects an IPv6 literal as a CSP source ("invalid source", seen in
         // the container run) — over `[::1]` the app works and the consoles do not frame.
         assert!(!CSP.contains("[::1]"));
-        {
-        }
         assert_eq!(consoles_meta(), r#"<meta name="rexenv-consoles" content="adminer=9444,phpmyadmin=9445" />"#);
         let ts = include_str!("../../src/lib/dbconsole.ts");
         assert!(ts.contains(r#"meta[name="rexenv-consoles"]"#));

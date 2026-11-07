@@ -1777,7 +1777,7 @@ impl ServiceManager {
             &self.site_env,
             &self.site_aliases,
         )?;
-        let before = platform.supervisor().pids_named("nginx");
+        let before = our_nginx_pids(platform, &bins.nginx);
         let mut checks = checks;
         if services::reload_nginx(
             platform,
@@ -1792,19 +1792,33 @@ impl ServiceManager {
             // reality disagree, which the watchdog should be reconciling.
             log::warn!("nginx: nothing to reload — no master was running");
         } else if !before.is_empty() {
-            // The reload is APPLIED only when new workers exist (#955) — awaited by the caller, after the
-            // services lock is dropped, like every other readiness wait.
-            let platform_handle = crate::platform::current();
-            checks.push(ReadyCheck {
-                service: "nginx (the new config)".into(),
-                log: platform.paths().log_dir()?.join("nginx-error.log"),
-                tries: 20,
-                probe: Box::new(move || services::nginx_reloaded(&before, &platform_handle.supervisor().pids_named("nginx"))),
-                bin: None,
-            });
+            checks.push(self.nginx_generation_check(platform, before, bins.nginx.clone())?);
         }
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
         Ok(checks)
+    }
+
+    /// The #955 readiness check: a reload is APPLIED only when a worker pid that was not there
+    /// before exists — awaited by the caller, after the services lock is dropped, like every other
+    /// readiness wait. ONE builder for every place that reloads nginx: `apply_php_settings`' reload
+    /// returned with no check at all until the 7 Nov 2026 review (the first upload after a
+    /// `client_max_body_size` change still hit an old worker's old limit).
+    fn nginx_generation_check(
+        &self,
+        platform: &dyn Platform,
+        before: Vec<u32>,
+        nginx_bin: std::path::PathBuf,
+    ) -> Result<ReadyCheck> {
+        let platform_handle = crate::platform::current();
+        Ok(ReadyCheck {
+            service: "nginx (the new config)".into(),
+            log: platform.paths().log_dir()?.join("nginx-error.log"),
+            tries: 20,
+            probe: Box::new(move || {
+                services::nginx_reloaded(&before, &our_nginx_pids(platform_handle.as_ref(), &nginx_bin))
+            }),
+            bin: None,
+        })
     }
 
     /// Apply a changed per-version PHP settings map: swap in the new map, restart
@@ -1833,7 +1847,7 @@ impl ServiceManager {
         self.ensure_bins(platform).await?;
         // Restart only pools that were actually running; never start a new pool
         // as a side effect of a settings edit.
-        let checks = self.restart_php_pool(platform, minor).await?;
+        let mut checks = self.restart_php_pool(platform, minor).await?;
         // Nginx: regenerate with the new body limits + reload. Caddy routes are
         // untouched by ini settings — no edge reload needed.
         let bins = self.bins()?;
@@ -1846,6 +1860,7 @@ impl ServiceManager {
             &self.site_env,
             &self.site_aliases,
         )?;
+        let (before, nginx_bin) = (our_nginx_pids(platform, &bins.nginx), bins.nginx.clone());
         if services::reload_nginx(
             platform,
             &bins.nginx,
@@ -1858,6 +1873,10 @@ impl ServiceManager {
             // the next start picks it up — but it means the manager's view and
             // reality disagree, which the watchdog should be reconciling.
             log::warn!("nginx: nothing to reload — no master was running");
+        } else if !before.is_empty() {
+            // The same signalled-vs-applied race as the sites reload (#955): without this, the
+            // settings dialog answered before the new `client_max_body_size` served.
+            checks.push(self.nginx_generation_check(platform, before, nginx_bin)?);
         }
         Ok(checks)
     }
@@ -3122,6 +3141,28 @@ impl Drop for ServiceManager {
 /// lock), awaited by the caller AFTER dropping the lock — so a slow-starting
 /// service never parks the whole service manager (M4). Probes are pure port /
 /// socket checks and hold no reference to the manager.
+/// Every live pid that is OUR nginx: named `nginx` AND running the binary this stack spawned. The
+/// name alone matched Herd's or brew's nginx too, and a foreign worker respawning during the wait
+/// read as "reload applied" (#955 review follow-up, 7 Nov 2026). The command-line marker cannot
+/// identify a worker — macOS and Linux rewrite it to "nginx: worker process" — but the executable
+/// path survives the rewrite. Compared case-insensitively (Windows and APFS). An empty answer (no
+/// `pid_exe` on this platform, or nothing matching) makes the caller SKIP the generation wait rather
+/// than wait on pids that are not ours.
+fn our_nginx_pids(platform: &dyn Platform, nginx_bin: &std::path::Path) -> Vec<u32> {
+    let ours = nginx_bin.to_string_lossy();
+    platform
+        .supervisor()
+        .pids_named("nginx")
+        .into_iter()
+        .filter(|&pid| {
+            platform
+                .supervisor()
+                .pid_exe(pid)
+                .is_some_and(|exe| exe.to_string_lossy().eq_ignore_ascii_case(&ours))
+        })
+        .collect()
+}
+
 pub struct ReadyCheck {
     service: String,
     log: PathBuf,
