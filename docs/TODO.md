@@ -402,7 +402,8 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   relaunchers on the 15.8 VM (PUBLISH-TESTING §M 0.8.12 / §A 0.8.13).
 - [ ] **Release 5.4 — clean-Mac smoke test** (`docs/SMOKE-TEST.md`): cold runs on a clean
   macOS 15.6.1 VM (18 Sep 2026) and a clean 15.8 VM (23 Sep, 0.8.7) since the 10 Jul first
-  pass. Open for the file's own **"Still open on macOS"** list (reconciled 28 Sep 2026) —
+  pass. Open for the main body's own `- [ ]` rows (119 on 7 Nov 2026; SMOKE-TEST says how to list
+  them — the hand-written "Still open on macOS" summary was retired that day, three of its items stale) —
   including what the 23 Sep pass did not reach: multisite (convert included), tunnels, WordPress
   Manager, Git assets, the MCP parity steps — and the TLD v1 Done-when list
   (`docs/archive/TLD-FEATURE-REPORT.md`), which no recorded run names.

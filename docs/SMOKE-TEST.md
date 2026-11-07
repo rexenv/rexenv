@@ -31,46 +31,16 @@ fix had closed. Reconciled like the Windows and Linux sections: one row per step
 split into their own rows, every open row ending with **Open:** and what it waits for ("no run
 recorded" where nothing was found).
 
-**Still open on macOS, by section** (the rows say why):
-- *Onboarding / first run:* the :443 notice with another proxy on :443 · downloads moving while
-  a prompt is open (#567) · a dialog never freezing the window (#568, ◐) · a database dialog
-  after a Valet/Herd takeover (#569).
-- *Create flows:* WordPress "Log in as" · a PostgreSQL site's Database tab and size · the git
-  flows: private `git@` repo and the `https://` refusal, non-Laravel refusal, Retry after
-  relaunch, front-end assets built / skipped, WordPress and Bedrock from a repo, any PHP repo
-  (◐), the Repository tab on linked checkouts, delete of a cloned site · the typed-domain delete
-  confirm · Site Settings through the tab itself (◐).
-- *PHP:* 7.4 serving on macOS · the PHP update button's apply and REVERT (#351) and its eight
-  follow-on rows · the ini revert (◐, `1K` did not kill the pool) · the offline and positive
-  `serving` rows of PHP versions.
-- *Adminer:* the documented revert (FAILED 18 Sep — its TODO row).
-- *WordPress Manager / Git assets / Mail / Database / Sites:* zip upload, focus refresh,
-  WP_DEBUG, #375, #374, a premium update (#370) · Build zip 4 and 6 · an HTML mail's link (#697)
-  · Quick links → Database · the setup-incomplete count and the idle filter tab.
-- *Tunnels:* the stopped-share strip and stop page, sharing a stopped site, the live filter
-  (#371), an override site's content through the tunnel (◐), the refusals (stopped server, no
-  recorded backend port, "never busy"), the orphan WARN.
-- *Under load:* a large database copy (1 GB) must not raise "another local proxy answers port
-  443" while only rexenv listens, nor offer a kill command (#811, fixed, not yet re-run); a
-  Laravel row with no `.env` → Import database shows the refusal at once (#810).
-- *Import (PUBLISH-TESTING §G leftovers):* the Herd + Valet dedupe row ("also in Valet"), and a
-  multi-GB database inside an import batch (the bar keeps moving on the database job's phases);
-  the users' round of 23 Oct 2026 (PUBLISH-TESTING §N15–N17): a MariaDB Local source lands on
-  MariaDB, a newer source gets **Import anyway** — both owed a live run (no such source at hand).
-- *Menu bar / links / Settings / terminal:* the dock tile going away (◐), the 30 s hold (#437),
-  routes from a closed window, services up after a real login, the agent after a real login
-  (◐), a login launch with setup
-  unfinished, `rex status` with the app closed · all four "which app opens a link" rows (needs
-  two browsers) · the Sites-folder refusals, the WP-CLI pin card and its failure line.
-- *AI agents (MCP):* 3, 7, 8 (◐), 9, 11, 13, 14 (◐), 15 (◐), 18 (◐), 23 (◐), 26 (◐), 27–31,
-  32 (◐), 33 (◐), 37 (◐), 38–42, 43 (◐, Cursor), 44 (◐), 45.
-- *Self-update:* the card when current, offline (against #540), the Homebrew consent sentence,
-  permissions per macOS major.
-- *Robustness / PHP defaults:* sleep/wake, a silent cold-cache login (#175), DNS after Quit
-  (#46, ◐), Firefox fresh profile (#154) and typed `name.rex` (#706, ◐) · the ini placeholders
-  and a 200 MB upload (#694).
-- *Legacy tiers:* on 13 the MCP create refusing PostgreSQL, New Site never offering 8.0, Xdebug
-  on 8.1/8.2/8.4/8.5 (◐) · the whole list on a clean macOS 14 VM.
+**What is still open on macOS is the `- [ ]` rows themselves** — list them, never a summary of them:
+
+```sh
+awk '/^## Windows/{exit} /^[[:space:]]*- \[ \]/{print NR": "$0}' docs/SMOKE-TEST.md   # the main body (macOS)
+```
+
+119 on 7 Nov 2026. Until then this place held a hand-written "Still open on macOS, by section" list;
+the 7 Nov pass found three of its items already ticked in their rows (`rex status` with the app closed,
+sharing a stopped site, PHP 7.4 serving) — a restated list goes stale the day a row is run, the rows do
+not. The Windows and Linux sections below keep their own `- [ ]` rows the same way.
 
 **This file is half the release gate.** The other half is `docs/PUBLISH-TESTING.md`
 (§A0 artefact integrity, §A quarantine → Gatekeeper → launch, and the install/uninstall
