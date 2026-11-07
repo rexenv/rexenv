@@ -3389,6 +3389,21 @@ mod tests {
         assert!(wd.contains("help.free_command.filter(|_| named)"), "no command for an unnamed holder");
     }
 
+    /// #958 — the same rule at Start all's door: `verify_edge_wire` reads the FINE wire, answers an
+    /// unreadable (slow) edge with its own sentence before any foreign-proxy one, and offers a command
+    /// only for a NAMED holder. It offered `sudo kill …:443` for rexenv's own edge on a loaded boot.
+    #[test]
+    fn start_all_never_calls_a_slow_edge_a_foreign_proxy() {
+        let src = crate::core::copy_scan::production_source(include_str!("../commands/services.rs"));
+        let f = &src[src.find("async fn verify_edge_wire(").expect("verify_edge_wire")..];
+        let f = &f[..f.find("\n}\n").expect("its end")];
+        assert!(f.contains("core::proxy::edge_wire_reading("), "the fine reading, not the folded one:\n{f}");
+        let slow = f.find("WireReading::Unreadable").expect("a slow edge is told apart");
+        let foreign = f.find("answers port {https} in front").expect("the foreign sentence");
+        assert!(slow < foreign, "the slow sentence comes first");
+        assert!(f.contains("help.free_command.filter(|_| named)"), "no command for an unnamed holder");
+    }
+
     /// Ledger #635 — **a cached program is found through the binary cache's own naming, never a hand-joined file
     /// name**: `bin_dir/caddy-<v>/caddy` never exists on Windows, where the file is `caddy.exe`, so an adopting
     /// launch there left the resolved binaries empty and every reload after it failed "services not started". A

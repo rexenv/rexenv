@@ -258,9 +258,22 @@ async fn wait_for_starting_edge(state: &AppState, floor: std::time::Duration) ->
 /// the status truthfully (`edge-blocked` / `edge-unblocked` events).
 async fn verify_edge_wire(state: &AppState) -> Result<()> {
     let https = edge_ports(state).https;
-    let wire = core::proxy::edge_wire(core::adminer::ADMINER_HOST, https).await;
+    // The FINE reading (#958): `edge_wire` folds "someone else answered" and "nothing completed an
+    // exchange in time" into one Foreign, and on a loaded boot (the 15.8 VM, 7 Nov 2026, the edge's
+    // reload timing out at 10 s) Start all then told the user another proxy was in front and offered
+    // `sudo kill $(sudo lsof -t -iTCP:443 …)` — rexenv's OWN root edge. The watchdog stopped doing that
+    // in #811; this was the second door.
+    let reading = core::proxy::edge_wire_reading(core::adminer::ADMINER_HOST, https).await;
+    let wire = reading.wire();
     if wire == core::proxy::EdgeWire::Ours {
         return Ok(());
+    }
+    if reading == core::proxy::WireReading::Unreadable {
+        return Err(Error::Other(format!(
+            "services started, but rexenv's edge has not answered port {https} yet — the machine is \
+             very busy (a boot, a large copy). It usually clears by itself; rexenv re-checks \
+             automatically, and Start all again rebuilds the edge if it does not."
+        )));
     }
     // NOTHING is listening, and we just started the stack — so this is not a
     // foreign proxy, it is OUR OWN start not taking. Naming a holder here (the
@@ -280,13 +293,16 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
         .platform
         .supervisor()
         .port_conflict_help(https, false);
+    // Our own edge is always one of the listeners here, so a command for an UNNAMED holder is the
+    // blanket one that kills rexenv's edge with the rest — only a named holder gets a command (#811, #958).
+    let named = help.holder.is_some();
     let holder = help.holder.unwrap_or_else(|| "another local proxy".into());
     // "quit Herd" beats "quit that app" — name the application when we know it.
     let quit = help.app.map_or("that app".to_string(), |a| a.to_string());
     // Trailing "\n$ <cmd>" renders as a copyable command block in the UI toast
     // (lib/toast.ts toastBackendError) — supervisor-aware, so it QUITS a managed
     // app instead of killing a worker its supervisor would respawn.
-    let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
+    let fix = help.free_command.filter(|_| named).map(|c| format!("\n$ {c}")).unwrap_or_default();
     Err(Error::Other(format!(
         "services are running, but {holder} answers port {https} in front of rexenv — \
          sites cannot load until you quit {quit} (then Start all again, or just \

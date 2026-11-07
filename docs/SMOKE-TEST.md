@@ -2186,6 +2186,11 @@ hand can prove a spec entry became the item it describes.*
   self-repair was measured the same day; 2 Sep the fixed handoff ran live on a reproduced
   login race — `handed the resolver back to the agent (attempt 1)`, `rex status` reading
   `answering (agent…)`. **Open: the real-login timing, after the fix.**
+- [ ] **Start all on a busy machine never blames another proxy for rexenv's own edge (#811, #958):** right
+  after a boot (or during a 1 GB database copy), press Start all → if the edge is slow, the sentence says the
+  machine is busy and rexenv re-checks; it never says "another local proxy answers port 443" while only
+  rexenv's caddy listens, and never offers `sudo kill $(sudo lsof -t -iTCP:443 …)`. Before #958 it did, on the
+  15.8 VM's loaded boot (7 Nov 2026). **Open: the fixed build on a loaded machine.**
 - [ ] **The resolver goes back to the agent even after a slow boot (#956):** boot a loaded Mac (or the VM
   right after another VM's build), log in → within a few minutes `rex status` reads `answering (agent…)`
   and the log has "handed the resolver back to the agent (attempt N)" — N may be above 5. Before #956 a
