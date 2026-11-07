@@ -1892,6 +1892,12 @@ bloating the fast path:
   now and `stop_group` refuses pgid 0/1 on both unixes (ledger #733). Bisect tool when a
   runner dies without a log: `verify-ci.yml` with `bisect=true` runs the bar's stages as
   separate steps, whose logs survive.
+- **The Intel spot-run is a workflow, not a machine** (`.github/workflows/intel-spot-run.yml`, 7 Nov
+  2026): manual, on `macos-15-intel`, it builds the live examples and runs the x86_64 pin set (PHP's
+  seven minors, MySQL 8.4/8.0.44, nginx, Caddy, Mailpit, FrankenPHP, the bottles) — each binary
+  downloaded through the app's own `BinaryProvider` and RUN, one log per example plus every
+  downloaded binary's `file` line as an artifact. A fresh runner holds no developer data, so every
+  tier is safe there; a failure is read from its log, never assumed to be the architecture.
 - **`notices-check.py` on a fresh CI runner** fetches each target's lockfile closure once
   (`cargo fetch --locked --target …`, only when `$CI` is set) before its offline `cargo metadata`
   read: a runner that has built for one OS has no registry cache for the other two targets'

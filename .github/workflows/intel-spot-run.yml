@@ -1,0 +1,81 @@
+# The Intel spot-run (docs/TODO.md "Intel spot-run", docs/TESTING.md): the x86_64 pins — PHP's
+# seven minors, MySQL 8.4 and 8.0.44, nginx, Caddy, Mailpit, FrankenPHP, the Homebrew bottles —
+# were hashed from real downloads but never RUN on an Intel Mac. No physical Intel Mac is needed:
+# a GitHub-hosted Intel runner downloads each through the app's own BinaryProvider (the live
+# examples) and runs it. A fresh runner has no developer data, so every tier is safe here.
+#
+# Manual only. It changes nothing and publishes nothing; the per-example logs are an artifact.
+name: Intel spot-run (x86_64 pins, live examples)
+
+on:
+  workflow_dispatch:
+    inputs:
+      examples:
+        description: "Space-separated examples to run (default: the x86_64 pin set)"
+        required: false
+        default: "php_fetch php_versions_check php_fpm_serve nginx_fetch nginx_php_serve caddy_serve mailpit_check db_engine_serve db_version_switch_check frankenphp_fetch frankenphp_serve mariadb_bundle_check redis_bundle_check macos_floor_check"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  run:
+    runs-on: macos-15-intel
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: The machine
+        run: |
+          uname -m; sw_vers; sysctl -n machdep.cpu.brand_string
+          test "$(uname -m)" = x86_64
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      # tauri's build script wants dist/ to exist; the examples serve nothing from it.
+      - name: Frontend (for the build script)
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Install Rust
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Build the examples
+        run: cd src-tauri && cargo build --examples 2>&1 | tail -5
+      - name: Run each example (keeps going; the summary is the verdict)
+        env:
+          EXAMPLES: ${{ inputs.examples }}
+        run: |
+          set +e
+          mkdir -p logs
+          pass=0; fail=0; : > summary.txt
+          for ex in $EXAMPLES; do
+            start=$(date +%s)
+            (cd src-tauri && timeout 900 ./target/debug/examples/"$ex") > "logs/$ex.log" 2>&1
+            code=$?
+            took=$(( $(date +%s) - start ))
+            if [ $code -eq 0 ]; then pass=$((pass+1)); v=PASS; else fail=$((fail+1)); v="FAIL($code)"; fi
+            printf '%-28s %-9s %4ss  %s\n' "$ex" "$v" "$took" "$(tail -1 "logs/$ex.log" | cut -c1-140)" | tee -a summary.txt
+          done
+          echo "passed $pass, failed $fail" | tee -a summary.txt
+          {
+            echo '### Intel spot-run'; echo '```'; cat summary.txt; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Every downloaded binary's architecture, as the kernel sees it.
+          find "$HOME/Library/Application Support/dev.rexenv.rexenv" -type f -perm +111 2>/dev/null \
+            | head -200 | xargs -I{} file {} 2>/dev/null | grep -E 'Mach-O' | sed 's|.*/bin/||' | sort -u > logs/arch.txt
+          grep -c arm64 logs/arch.txt | xargs echo "arm64-only binaries:" | tee -a summary.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: intel-spot-run-logs
+          path: |
+            logs/
+            summary.txt
