@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.7 — DRAFTED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender; Publish is the owner's
+## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green
 
 **Run 42377911543, source `2e92c00b` (tag `v0.9.7`), every lane green first time, 16 assets, the body the tag's verbatim.**
 setup.exe `f4c8662f…`, zip `6ee179f2…`, arm64 deb `afde5086…`, dmg `6be8274e…`; each passed its `.sha256`. `verify-full`:
@@ -130,7 +130,15 @@ by exact pid, 0.9.7 relaunched in the GUI session → `rexenv 0.9.7 (Linux · AR
 FRESH FrankenPHP download through the app** (no 1.13.3 cache there) → `frankenphp-1.13.3/frankenphp` `73bd5e8b…` (the
 mirror's) with `licenses/` (COPYRIGHT-musl, LICENSE-caddy, LICENSE-frankenphp, PHP-3.01) beside it, the site serving
 PHP 8.5.12 on FrankenPHP — the download 0.9.6 refused with "checksum mismatch" (#957).
-**Not run:** §M (it needs the published descriptors); the 24.04 server.
+**Published by the owner 7 Nov 2026 15:13 UTC.** The tap's Update cask ran on the publish: cask `0.9.7`, sha256
+`6be8274e…` equal to the dmg's digest. The six descriptors (runtimes runs 42386302105, 42386344695, 42386385153,
+42386411713, 42386465282, 42386505328, each approved) → `check-app-manifest.sh` all green: macOS serial 28, Windows 23,
+Linux deb/AppImage × x86_64/aarch64 14, every one signed and naming 0.9.7 (the Linux form is `--linux <kind> <arch>`,
+the flag FIRST — a version as the first argument silently checks the macOS document). apt (run 42386644159) →
+`check-apt-repo.sh` all green, amd64 and arm64 0.9.7 at once. winget: rendered from the published setup.exe,
+`winget validate` on the Dell succeeded, microsoft/winget-pkgs#474252 (0.9.6's #473110 merged that morning; the fork's
+master could not be synced — the token lacks `workflow` scope — so the branch is cut from the fork's own master).
+**Not run:** §M (0.9.6 → 0.9.7 in-app on each OS); the 24.04 server.
 
 ## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M on all three
 
