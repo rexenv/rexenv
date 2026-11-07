@@ -42,8 +42,11 @@ jobs:
       # tauri's build script wants dist/ to exist; the examples serve nothing from it.
       - name: Frontend (for the build script)
         run: pnpm install --frozen-lockfile && pnpm build
+      # Both Mac targets, as verify-ci adds them: a build script compiles a universal helper, and the
+      # first run (42325096609) died on E0463 "can't find crate for core" for aarch64-apple-darwin.
+      # The examples themselves are built for the host — x86_64 here.
       - name: Install Rust
-        run: rustup toolchain install
+        run: rustup toolchain install && rustup target add aarch64-apple-darwin x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
