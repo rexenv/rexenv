@@ -320,3 +320,19 @@ their full text as it stood is kept here.
   useTerminalApp), held by `desktop_only_openers_are_offered_only_with_a_screen`; RUN over the web on the Dell
   (Playwright WebKit): no folder/editor action anywhere it looked, no console error.
 
+
+## Reconcile of 7 Nov 2026
+
+### From “Release gates (human, scripted — see the docs named)”
+
+- [x] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
+  from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
+  Intel machine. No physical Mac is needed: a GitHub-hosted Intel macOS runner (15.7.9) was
+  already used on 29 Sep 2026 (SMOKE-TEST). This row also carries the floor's run half (the folded
+  "both slices" row).
+  ✓ 7 Nov 2026: `.github/workflows/intel-spot-run.yml` on `macos-15-intel`, run 42329020012 — 14 of 14 live
+  examples PASS (seven PHP minors, php-fpm, nginx, Caddy, Mailpit, MySQL 8.4 + 8.0.44 x86_64, PostgreSQL,
+  FrankenPHP, the MariaDB and Redis bottle bundles, `macos_floor_check` on both arches); 192 downloaded
+  Mach-O files, all x86_64 (PORTS.md). Two runs before it died on the workflow itself (missing aarch64
+  target; no `timeout(1)` on macOS), fixed in the file.
+

@@ -416,11 +416,6 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `scripts/tunnel-measure.sh`): kill -9 death-path timings, wifi-blip recovery,
   the banner→authoritative-DNS gap; plus Bedrock "Log in as" landing in wp-admin
   live, and the first real Radicle-layout link (flagged UNVERIFIED in code, #95).
-- [ ] **Intel spot-run**: x86_64 bottle digests + MySQL 8.0.44 x86_64 were hashed
-  from real downloads but never RUN (PORTS.md caveat) — run-verify on the next
-  Intel machine. No physical Mac is needed: a GitHub-hosted Intel macOS runner (15.7.9) was
-  already used on 29 Sep 2026 (SMOKE-TEST). This row also carries the floor's run half (the folded
-  "both slices" row).
 - [ ] **In-app verifies owed** (CLI passthroughs whose service-touching half the
   example harness guard-blocks; fold into the next deep test): `php
   install/uninstall`, `php settings set`, `db versions --set`, `site

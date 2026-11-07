@@ -75,7 +75,9 @@ jobs:
           # Every downloaded binary's architecture, as the kernel sees it.
           find "$HOME/Library/Application Support/dev.rexenv.rexenv" -type f -perm +111 2>/dev/null \
             | head -200 | xargs -I{} file {} 2>/dev/null | grep -E 'Mach-O' | sed 's|.*/bin/||' | sort -u > logs/arch.txt
-          grep -c arm64 logs/arch.txt | xargs echo "arm64-only binaries:" | tee -a summary.txt
+          # grep -c exits 1 on a count of 0 — the good answer — so it must not end the step (run 42329020012).
+          echo "arm64-only binaries: $(grep -c arm64 logs/arch.txt || true)" | tee -a summary.txt
+          [ "$fail" -eq 0 ]
       - uses: actions/upload-artifact@v4
         if: always()
         with:
