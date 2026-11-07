@@ -138,6 +138,8 @@ async fn main() -> ExitCode {
     push_single(&mut targets, "windows", "nginx", binaries::pins().nginx, Arch::X86_64);
     push_single(&mut targets, "windows", "mailpit", binaries::pins().mailpit, Arch::X86_64);
     push_single(&mut targets, "windows", "cloudflared", binaries::pins().cloudflared, Arch::X86_64);
+    push_single(&mut targets, "windows", "frankenphp", binaries::pins().frankenphp, Arch::X86_64);
+    push_single(&mut targets, "windows", "httpd", binaries::httpd_version_on("windows"), Arch::X86_64);
     for v in binaries::pins().php_versions {
         push_single(&mut targets, "windows", "php", v, Arch::X86_64);
     }
@@ -189,8 +191,59 @@ async fn main() -> ExitCode {
         .build()
         .expect("client");
 
-    // 2+3. Probe each URL; digest the small ones.
+    // 2a. **Every GitHub release asset against GitHub's OWN digest, whatever its size** (#957). The
+    //     re-hash below skips anything over the cap, and that is exactly where upstream's in-place
+    //     replacement of FrankenPHP 1.13.3 (26 Oct 2026, ~100 MB binaries) sat unseen for twelve days
+    //     until a user-shaped run failed its pin. The release API reports each asset's sha256 for free;
+    //     one request per tag. `GITHUB_TOKEN` lifts the anonymous rate limit when set.
     let mut failures: Vec<String> = Vec::new();
+    let mut api_checked = 0u32;
+    {
+        let token = std::env::var("GITHUB_TOKEN").ok().filter(|t| !t.is_empty());
+        let mut releases: std::collections::HashMap<String, Option<serde_json::Value>> = std::collections::HashMap::new();
+        for t in &targets {
+            let Some((repo, tag, name)) = github_release_asset(&t.url) else { continue };
+            let Checksum::Sha256(pinned) = &t.checksum else { continue };
+            let key = format!("{repo}@{tag}");
+            if !releases.contains_key(&key) {
+                let mut req = client.get(format!("https://api.github.com/repos/{repo}/releases/tags/{tag}"))
+                    .header("Accept", "application/vnd.github+json");
+                if let Some(tok) = &token {
+                    req = req.header("Authorization", format!("Bearer {tok}"));
+                }
+                let v = match req.send().await {
+                    Ok(r) if r.status().is_success() => r.json::<serde_json::Value>().await.ok(),
+                    Ok(r) => {
+                        failures.push(format!("{} → the release API answered {} for {key}", t.label, r.status()));
+                        None
+                    }
+                    Err(e) => {
+                        failures.push(format!("{} → the release API: {e}", t.label));
+                        None
+                    }
+                };
+                releases.insert(key.clone(), v);
+            }
+            let Some(Some(rel)) = releases.get(&key) else { continue };
+            let digest = rel["assets"].as_array().and_then(|a| {
+                a.iter().find(|x| x["name"].as_str() == Some(name.as_str())).and_then(|x| x["digest"].as_str().map(str::to_string))
+            });
+            match digest {
+                Some(d) if d.eq_ignore_ascii_case(&format!("sha256:{pinned}")) => api_checked += 1,
+                Some(d) => failures.push(format!(
+                    "{} → GitHub reports {d} for {name}, the pin is sha256:{}… — the asset was REPLACED upstream \
+                     (the #957 class): mirror it on rexenv/runtimes, never just re-pin",
+                    t.label,
+                    &pinned[..16]
+                )),
+                // Older releases predate the API's digest field; the re-hash below still covers small ones.
+                None => {}
+            }
+        }
+        println!("  — GitHub release assets checked against GitHub's own digest: {api_checked}");
+    }
+
+    // 2+3. Probe each URL; digest the small ones.
     let mut skipped: Vec<String> = Vec::new();
     let mut digested = 0u32;
     for t in &targets {
@@ -339,6 +392,11 @@ async fn main() -> ExitCode {
     }
 
     checks.is(
+        &format!("GitHub digest floor ({api_checked} assets ≥ 20)"),
+        api_checked >= 20,
+        "almost no GitHub asset was compared with its API digest — the #957 check went vacuous",
+    );
+    checks.is(
         &format!("every pinned URL answers ({} targets)", targets.len()),
         failures.is_empty(),
         &failures.join("\n      "),
@@ -359,4 +417,14 @@ async fn main() -> ExitCode {
         println!("      {s}");
     }
     checks.verdict()
+}
+
+/// `(owner/repo, tag, asset name)` of a GitHub release download URL, or `None` for any other host.
+fn github_release_asset(url: &str) -> Option<(String, String, String)> {
+    let rest = url.strip_prefix("https://github.com/")?;
+    let mut parts = rest.splitn(6, '/');
+    let (owner, repo, releases, download, tag, name) =
+        (parts.next()?, parts.next()?, parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+    (releases == "releases" && download == "download" && !name.contains('/'))
+        .then(|| (format!("{owner}/{repo}"), tag.to_string(), name.to_string()))
 }

@@ -920,6 +920,11 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   **Since 12 Sep 2026 it sweeps the Windows x64 set too** (port W2): 104 targets, 88
   re-hashed. It proves the Windows URLs answer and the sub-cap bytes match — not that
   anything runs on Windows, which no layer on this Mac can show.
+  **Since 7 Nov 2026 it compares every GitHub release asset with GitHub's OWN digest** (#957), whatever
+  its size — one release-API request per tag, `GITHUB_TOKEN` honoured — and fails naming the asset as
+  REPLACED upstream. The re-hash skips anything over the cap, and that is where upstream's in-place
+  rebuild of FrankenPHP 1.13.3's macOS arm64 and Linux binaries (~100 MB) sat unseen for twelve days.
+  First run: 100 assets matched, every URL answered (Windows FrankenPHP and httpd joined the list).
   **Since 23 Sep 2026 it enumerates EVERY tier's pin set** (`PinSet::ALL_TIERS`, deduped by
   label — 130 targets, 23 Sep 2026): the Legacy13/14 rows a macOS 13/14 host resolves are probed and hashed from a
   standard host, which is the only place a sweep runs. `legacy_pins_check` (network tier) is
