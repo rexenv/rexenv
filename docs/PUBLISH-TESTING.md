@@ -103,6 +103,35 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) ✅ 0.9.7 — DRAFTED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender; Publish is the owner's
+
+**Run 42377911543, source `2e92c00b` (tag `v0.9.7`), every lane green first time, 16 assets, the body the tag's verbatim.**
+setup.exe `f4c8662f…`, zip `6ee179f2…`, arm64 deb `afde5086…`, dmg `6be8274e…`; each passed its `.sha256`. `verify-full`:
+verify green (windows-check and linux-check ran) and the sandbox tier green; its wk-checks lost the vite server mid-run
+(`livetab.js` / `uireview.js` "could not connect" — the server, not a page) and re-ran ALL PASS on a fresh vite.
+What 0.9.7 changes: FrankenPHP for Apple silicon and Linux from the runtimes mirror (#957), the moved-docroot prefix on
+Windows (#953), reloads waiting for nginx's new workers (#955), the DNS handoff that never gives up (#956), Start all's
+kill advice (#958), leaves with an AKI (#954), the desktop adopting a headless stack on Windows (#948), the web UI's
+sign-in, cookie host, desktop actions and console uploads (#949–#952).
+**Defender ✅ on the Dell, signatures `1.463.176.0`:** "found no threats" for the setup.exe AND the zip, exit 0.
+**Windows ✅ on the Dell, over the installed 0.9.6:** `setup.exe /S` from the desktop session → exit 0, the exe 0.9.7;
+**40/40 service pids KEPT** across the swap; launched → `rexenv 0.9.7 (Windows · x64)`, "adopted 9", DNS on the agent;
+`apw`, `fpw` (FrankenPHP), `conv71w`, `smoke1w`, `w7check`, `gitw` 200; a fresh site moved → stored plain, GETs 1–3 200
+(#953, #955).
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in EACH slice;
+`minos 13.0` both; `codesign --verify --deep --strict` valid; Info.plist `0.9.7`.
+**§A ✅ on the 15.8 VM, from the PUBLISHED 0.9.6, stack started first:** `conv71`, `gitp`, `wtp`, `l14vm`, `sm763`, `php74`,
+`smoke-pg`, `smoke1` 200; app quit; the new app over `/Applications` (ditto to a temp, `mv`) with a synthetic quarantine →
+the Gatekeeper sheet ("rexenv" Not Opened, `Done` / `Move to Bin`) → Done (System Events, by name) → no app process;
+`xattr -rd` → `rexenv 0.9.7 … from 2e92c00`, "the resolver agent is running 0.9.6 67e6fa9 but this build is 0.9.7" →
+kickstarted, "adopted 8"; **7/7 masters KEPT**; the eight sites 200. A FrankenPHP site → PHP 8.5.12 on FrankenPHP.
+**Linux ✅ on the 22.04 arm64 VM (now 192.168.64.7), over the installed 0.9.6:** `dpkg -i` → 0.9.7; the 0.9.6 app ended
+by exact pid, 0.9.7 relaunched in the GUI session → `rexenv 0.9.7 (Linux · ARM64)`, DNS on the agent, the stack up; **a
+FRESH FrankenPHP download through the app** (no 1.13.3 cache there) → `frankenphp-1.13.3/frankenphp` `73bd5e8b…` (the
+mirror's) with `licenses/` (COPYRIGHT-musl, LICENSE-caddy, LICENSE-frankenphp, PHP-3.01) beside it, the site serving
+PHP 8.5.12 on FrankenPHP — the download 0.9.6 refused with "checksum mismatch" (#957).
+**Not run:** §M (it needs the published descriptors); the 24.04 server.
+
 ## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M on all three
 
 **Run 42197342159, source `67e6fa93` (tag `v0.9.6`), 16 assets, the body the tag's verbatim.** The FIRST run
