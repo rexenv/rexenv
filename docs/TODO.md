@@ -291,12 +291,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
-- [ ] **The first request after `site move` fails once on Windows** (found 7 Nov 2026 by #953's run on the
-  Dell): with the fix in, `rex site move` returns, the first GET answers 404 "No input file specified." (or
-  no connection) and the next ones 200 — the command returns before nginx's reload has taken effect. Measure
-  where (`move_site_docroot` awaits `ReadyCheck`s — which, and do they cover the reload?) before changing it;
-  macOS/Linux unmeasured.
-
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 

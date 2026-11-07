@@ -336,3 +336,17 @@ their full text as it stood is kept here.
   Mach-O files, all x86_64 (PORTS.md). Two runs before it died on the workflow itself (missing aarch64
   target; no `timeout(1)` on macOS), fixed in the file.
 
+
+## Reconcile of 7 Nov 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **The first request after `site move` fails once on Windows** (found 7 Nov 2026 by #953's run on the
+  Dell): with the fix in, `rex site move` returns, the first GET answers 404 "No input file specified." (or
+  no connection) and the next ones 200 — the command returns before nginx's reload has taken effect. Measure
+  where (`move_site_docroot` awaits `ReadyCheck`s — which, and do they cover the reload?) before changing it;
+  macOS/Linux unmeasured.
+  ✓ 7 Nov 2026 (#955): measured — no check covered the reload (`nginx -s reload` returns once the master is told);
+  fixed — `ServiceManager::reload` waits, outside the lock, for a new nginx worker generation; RUN on the Dell: a
+  fresh site moved, GETs 1–3 all 200.
+

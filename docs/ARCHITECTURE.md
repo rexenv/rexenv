@@ -922,7 +922,11 @@ Live-proven end to end by `site_stop_start_check`.
   the lock and return `ReadyCheck` probes; commands `await_ready(checks)` AFTER dropping
   it (concurrent, named-service errors — M3). Same two-phase shape as `prepare_edge`.
   Status polls use `try_lock` with a cached-snapshot fallback (`state/app.rs`) so a long
-  start/stop never blocks the UI.
+  start/stop never blocks the UI. **A reload is a readiness wait too (#955):** `nginx -s reload` (the reload
+  event on Windows) returns once the master is TOLD; `ServiceManager::reload` takes nginx's pids before the
+  reload and returns a check that passes when a new worker generation exists, so a command that reloads
+  (a site move, a create, a domain change) answers only once the new config serves — before, the first
+  request after `rex site move` was served by the old workers from the old root.
 - **Prefetch-before-lock invariant (download manager):** any command that can resolve a
   binary while holding the services lock MUST prefetch the needed binaries FIRST
   (unlocked), via the download hub (`core/downloads.rs` — plan → `prefetch` → then lock,

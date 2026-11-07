@@ -1777,6 +1777,8 @@ impl ServiceManager {
             &self.site_env,
             &self.site_aliases,
         )?;
+        let before = platform.supervisor().pids_named("nginx");
+        let mut checks = checks;
         if services::reload_nginx(
             platform,
             &bins.nginx,
@@ -1789,6 +1791,17 @@ impl ServiceManager {
             // the next start picks it up — but it means the manager's view and
             // reality disagree, which the watchdog should be reconciling.
             log::warn!("nginx: nothing to reload — no master was running");
+        } else if !before.is_empty() {
+            // The reload is APPLIED only when new workers exist (#955) — awaited by the caller, after the
+            // services lock is dropped, like every other readiness wait.
+            let platform_handle = crate::platform::current();
+            checks.push(ReadyCheck {
+                service: "nginx (the new config)".into(),
+                log: platform.paths().log_dir()?.join("nginx-error.log"),
+                tries: 20,
+                probe: Box::new(move || services::nginx_reloaded(&before, &platform_handle.supervisor().pids_named("nginx"))),
+                bin: None,
+            });
         }
         proxy::reload(platform, &bins.caddy, &cfg.caddyfile, force)?;
         Ok(checks)

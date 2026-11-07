@@ -894,6 +894,17 @@ pub enum ReloadOutcome {
 /// process command line — the same positive-identification discipline as
 /// adoption and the port gate. A foreign nginx on this port is never signalled;
 /// if one is there and none of it is ours, that is reported, not signalled.
+/// Whether nginx has started a NEW generation of workers since `before` was taken — the sign a reload
+/// was APPLIED, not merely signalled (#955). `nginx -s reload` (and the reload event on Windows) returns as
+/// soon as the master is told; the master then re-reads the config and starts fresh workers, and until
+/// it does, requests are served by the old ones with the old config. Measured on the Dell 7 Nov 2026:
+/// right after `rex site move` the first GET answered 404 "No input file specified." from the OLD root,
+/// the next one 200. By NAME (`pids_named`), not by our marker: a worker's command line is rewritten to
+/// "nginx: worker process" on macOS and Linux, and a new pid of that name is all this needs.
+pub fn nginx_reloaded(before: &[u32], now: &[u32]) -> bool {
+    now.iter().any(|pid| !before.contains(pid))
+}
+
 pub fn reload_nginx(
     platform: &dyn Platform,
     nginx_bin: &Path,
@@ -972,6 +983,29 @@ pub fn nginx_running(port: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #955 — a reload counts as applied only once a pid that was not there before has appeared.
+    #[test]
+    fn a_reload_is_applied_when_new_workers_exist() {
+        assert!(!nginx_reloaded(&[10, 11, 12], &[10, 11, 12]), "the old generation only");
+        assert!(!nginx_reloaded(&[10, 11, 12], &[10]), "old workers exiting is not the new config");
+        assert!(nginx_reloaded(&[10, 11, 12], &[10, 11, 12, 40]), "a new worker beside the old ones");
+        assert!(nginx_reloaded(&[10, 11], &[10, 41]));
+    }
+
+    /// The pids are taken BEFORE the reload is sent, and the wait is a `ReadyCheck` the caller awaits
+    /// after dropping the services lock — never a wait under it (the locking rule).
+    #[test]
+    fn the_reload_waits_for_the_new_generation_outside_the_lock() {
+        let src = include_str!("service_manager.rs");
+        let f = &src[src.find("    ) -> Result<Vec<ReadyCheck>> {\n        let checks = self.reconcile_overrides(").expect("ServiceManager::reload")..];
+        let f = &f[..f.find("\n    }\n").expect("its end")];
+        let before = f.find("let before = platform.supervisor().pids_named(\"nginx\");").expect("pids taken");
+        let reload = f.find("services::reload_nginx(").expect("the reload");
+        assert!(before < reload, "the pids must be taken before the reload is sent");
+        assert!(f.contains("services::nginx_reloaded(&before,") && f.contains("checks.push(ReadyCheck {"), "{f}");
+        assert!(!f.contains("sleep("), "no wait inside reload — it holds the services lock");
+    }
 
     /// Every path in the nginx config is forward-slashed (the Dell measurement on
     /// `nginx_path`). Plant: `display()` for the docroot lets the backslash through.
