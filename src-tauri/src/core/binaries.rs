@@ -974,7 +974,18 @@ const CLOUDFLARED_2026_6_1_MAC_AMD64_SHA256: &str = "d7a66b525fe76820da6e5406611
 // versions, `vcs.modified=false`; digests from full downloads, equal to SHA256SUMS.
 // (`frankenphp-1.13.2-1` exists and passed parity, but stamped `vcs.modified=true`; it
 // is not pinned.)
-const FRANKENPHP_1_13_3_MAC_ARM64_SHA256: &str = "53f69626e8d7c656dfafdbbf65825b24d0e72ff55e71e520e06b988c8e3ced62";
+// **MIRRORED since 7 Nov 2026 (#957):** upstream REPLACED `frankenphp-mac-arm64` and both Linux binaries
+// on the v1.13.3 release in place on 26 Oct 2026 (rebuilt by main's workflow from the same tag commit
+// ae3d5b94; the arm64 pin 53f69626… became 7cffdb2f…), so every Apple-silicon Mac and Linux machine
+// without a cached copy met "checksum mismatch … the upstream file changed" on its first FrankenPHP site
+// (found on the 15.8 VM, 7 Nov 2026) — the Windows zip's 24 Oct story again. They are served from
+// `rexenv/runtimes` [`FRANKENPHP_UPSTREAM_MIRROR_TAG`] (immutable, gated by `frankenphp-upstream.yml`:
+// pinned digest == GitHub's, php/frankenphp provenance verified, run on macos-15 / ubuntu-22.04 /
+// ubuntu-22.04-arm), and as their distributor rexenv ships their licences beside them.
+const FRANKENPHP_1_13_3_MAC_ARM64_SHA256: &str = "7cffdb2f25e7e6206dba907cdfdd2fabc44876aaec1a2a4783e588f7b953d7b8";
+const FRANKENPHP_1_13_3_LICENSES_MAC_ARM64_SHA256: &str = "d34ca413d9fcd7ceb72a88d9b264e02eda9029f37e00bf2178450a9a33c19c78";
+/// The `rexenv/runtimes` release mirroring upstream's macOS arm64 and Linux FrankenPHP binaries.
+pub(crate) const FRANKENPHP_UPSTREAM_MIRROR_TAG: &str = "frankenphp-1.13.3-2";
 const FRANKENPHP_1_13_3_MAC_AMD64_SHA256: &str = "8d2a9d26541852c1056401d020dc4e88c86724200cef23936141feb837c8db32";
 const FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256: &str = "62cdbb9c03eb75c981372240815436161f12aab088b5d952697fd02800cb6d6b";
 /// The `rexenv/runtimes` release serving the Intel Mac FrankenPHP.
@@ -1758,8 +1769,12 @@ const CLOUDFLARED_2026_6_1_LINUX_AMD64_SHA256: &str = "5861a10a438fe8ddcfebb3b83
 const CLOUDFLARED_2026_6_1_LINUX_ARM64_SHA256: &str = "59816ce9b16db71f5bc2a86d59b3632a96c8c3ee934bde2bc8641ee83a6070eb";
 // 1.13.3: API `digest` equal to full downloads, attested like the macOS arm64 (static.yaml,
 // refs/tags/v1.13.3, ae3d5b94). Built for the baseline CPU — 1.13.2's died with SIGILL without SHA-NI.
-const FRANKENPHP_1_13_3_LINUX_X86_64_SHA256: &str = "d802c743a5b1020371a4e788b5a98a435ffa6e5588bead55286b29ef6ce9327a";
-const FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256: &str = "49f09d389ab7b9e4511001ad670fd8952055f37976ea20ca63d113bf2f5ff802";
+// Mirrored with the macOS arm64 binary (#957, [`FRANKENPHP_UPSTREAM_MIRROR_TAG`]): upstream replaced both on 26 Oct
+// 2026 (d802c743… → f88db997…, 49f09d38… → 73bd5e8b…).
+const FRANKENPHP_1_13_3_LINUX_X86_64_SHA256: &str = "f88db9972ddac5e4c097c8b703e585255e181411687e5a1f79ca4b6328526e0b";
+const FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256: &str = "73bd5e8b82cb48e52c49ec124f1eba03bfa5608365c770372606ec4846fb929e";
+const FRANKENPHP_1_13_3_LICENSES_LINUX_X86_64_SHA256: &str = "8fcfb481ef9b6bd87930c4dc465b201a30c932a918c289becf398456ea9a97aa";
+const FRANKENPHP_1_13_3_LICENSES_LINUX_AARCH64_SHA256: &str = "a93f24e91ea4b572b6161d5649a3c991b5773611db3558c295fdf98554c5f9af";
 
 /// Where a Linux PHP comes from: our release for the versions we build, static-php.dev otherwise.
 fn php_linux_url(kind: &str, version: &str, arch: Arch) -> String {
@@ -2642,12 +2657,17 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             FRANKENPHP_1_13_3_LICENSES_WINDOWS_SHA256,
             format!("licenses-frankenphp-{version}-windows.tar.gz"),
         ),
-        // Only the Intel Mac binary is ours (arm64 and Linux are upstream's, and owe nothing
-        // here), so there is no arm64 licence digest to pin.
+        // Linux: upstream's binaries, mirrored (#957) — we distribute them, so their licences ride along.
+        ("frankenphp", "1.13.3") if url.contains("frankenphp-linux-") => (
+            FRANKENPHP_1_13_3_LICENSES_LINUX_AARCH64_SHA256,
+            FRANKENPHP_1_13_3_LICENSES_LINUX_X86_64_SHA256,
+            format!("licenses-frankenphp-{version}-linux-{}.tar.gz", linux_arch(arch)),
+        ),
+        // macOS: Intel is ours; arm64 is upstream's, mirrored since #957 — both distributed by rexenv.
         ("frankenphp", "1.13.3") => (
-            "",
+            FRANKENPHP_1_13_3_LICENSES_MAC_ARM64_SHA256,
             FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256,
-            format!("licenses-frankenphp-{version}-mac-x86_64.tar.gz"),
+            format!("licenses-frankenphp-{version}-mac-{}.tar.gz", match arch { Arch::Arm64 => "arm64", Arch::X86_64 => "x86_64" }),
         ),
         ("nginx", "1.30.4") => (
             NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
@@ -3025,10 +3045,10 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             member: "bin/postgres", // primary binary within the extracted tree
         }),
         ("frankenphp", "macos", "1.13.3") => Some(BinarySpec {
-            // One static binary per arch (raw, not an archive). arm64 is upstream's asset;
-            // x86_64 is ours, because upstream stopped publishing one (see the pins).
+            // One static binary per arch (raw, not an archive). arm64 is upstream's asset, mirrored
+            // (#957); x86_64 is ours, because upstream stopped publishing one (see the pins).
             url: match arch {
-                Arch::Arm64 => format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-mac-arm64"),
+                Arch::Arm64 => format!("{RUNTIMES_RELEASE_BASE}/{FRANKENPHP_UPSTREAM_MIRROR_TAG}/frankenphp-mac-arm64"),
                 Arch::X86_64 => format!("{RUNTIMES_RELEASE_BASE}/{FRANKENPHP_MAC_X86_64_TAG}/frankenphp-mac-x86_64"),
             },
             checksum: Checksum::Sha256(pick(
@@ -3217,7 +3237,8 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             member: "bin/postgres",
         }),
         ("frankenphp", "linux", "1.13.3") => Some(BinarySpec {
-            url: format!("https://github.com/php/frankenphp/releases/download/v{version}/frankenphp-linux-{}", linux_arch(arch)),
+            // Upstream's static musl binaries, mirrored (#957) — the pin above says why.
+            url: format!("{RUNTIMES_RELEASE_BASE}/{FRANKENPHP_UPSTREAM_MIRROR_TAG}/frankenphp-linux-{}", linux_arch(arch)),
             checksum: Checksum::Sha256(pick(arch, FRANKENPHP_1_13_3_LINUX_AARCH64_SHA256, FRANKENPHP_1_13_3_LINUX_X86_64_SHA256)),
             archive: Archive::Raw,
             member: "frankenphp",
@@ -7723,8 +7744,9 @@ mod tests {
     #[test]
     fn manifest_pins_frankenphp_as_raw_binary() {
         let arm = manifest("frankenphp", FRANKENPHP_VERSION, "macos", Arch::Arm64).unwrap();
-        assert!(arm.url.ends_with("v1.13.3/frankenphp-mac-arm64"), "{}", arm.url);
-        assert!(!is_self_distributed(&arm.url), "arm64 is upstream's asset");
+        // #957: upstream replaced the asset in place on 26 Oct 2026 — mirrored, immutable.
+        assert!(arm.url.ends_with(&format!("/{FRANKENPHP_UPSTREAM_MIRROR_TAG}/frankenphp-mac-arm64")), "{}", arm.url);
+        assert!(is_self_distributed(&arm.url), "the arm64 binary is served (mirrored) by rexenv");
         assert_eq!(arm.archive, Archive::Raw);
         assert_eq!(arm.member, "frankenphp");
         assert!(matches!(arm.checksum, Checksum::Sha256(_)));
@@ -7739,7 +7761,17 @@ mod tests {
             .unwrap()
             .expect("we distribute it, so we owe its licences");
         assert!(lic.url.ends_with(&format!("/{FRANKENPHP_MAC_X86_64_TAG}/licenses-frankenphp-{FRANKENPHP_VERSION}-mac-x86_64.tar.gz")), "{}", lic.url);
-        assert!(licenses_spec(&arm.url, "frankenphp", FRANKENPHP_VERSION, Arch::Arm64).unwrap().is_none());
+        let arm_lic = licenses_spec(&arm.url, "frankenphp", FRANKENPHP_VERSION, Arch::Arm64)
+            .unwrap()
+            .expect("mirrored, so we owe its licences too");
+        assert!(arm_lic.url.ends_with(&format!("/{FRANKENPHP_UPSTREAM_MIRROR_TAG}/licenses-frankenphp-{FRANKENPHP_VERSION}-mac-arm64.tar.gz")), "{}", arm_lic.url);
+        // Linux: both arches mirrored, each with its own licences.
+        for (arch, name) in [(Arch::X86_64, "x86_64"), (Arch::Arm64, "aarch64")] {
+            let l = manifest("frankenphp", FRANKENPHP_VERSION, "linux", arch).unwrap();
+            assert!(l.url.ends_with(&format!("/{FRANKENPHP_UPSTREAM_MIRROR_TAG}/frankenphp-linux-{name}")), "{}", l.url);
+            let lic = licenses_spec(&l.url, "frankenphp", FRANKENPHP_VERSION, arch).unwrap().expect("Linux licences");
+            assert!(lic.url.ends_with(&format!("licenses-frankenphp-{FRANKENPHP_VERSION}-linux-{name}.tar.gz")), "{}", lic.url);
+        }
     }
 
     #[test]

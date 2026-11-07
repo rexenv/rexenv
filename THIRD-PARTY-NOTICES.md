@@ -234,6 +234,22 @@ site then refused with "checksum mismatch". Since that day rexenv re-hosts the e
 | Pinned in | `core/binaries.rs` (`FRANKENPHP_1_13_3_WIN_AMD64_SHA256`, `FRANKENPHP_WINDOWS_TAG`) |
 | Licence | FrankenPHP **MIT**; Caddy v2.11.7 **Apache-2.0**; the embedded PHP **PHP License 3.01**; the bundled DLLs (OpenSSL 3, ICU 77, libpq, libsodium, SQLite, libssh2, nghttp2, brotli, enchant, glib) as upstream's `readme-redist-bins.txt` lists them — all in `licenses-frankenphp-1.13.3-windows.tar.gz` in the same release |
 
+## FrankenPHP 1.13.3 for macOS arm64 and Linux — upstream's builds, MIRRORED (downloaded at runtime, distributed BY US)
+
+Not built by rexenv — mirrored, for the Windows zip's reason two days later: php/frankenphp REPLACED
+`frankenphp-mac-arm64`, `frankenphp-linux-x86_64` and `frankenphp-linux-aarch64` on its v1.13.3 release
+in place on 26 Oct 2026 (rebuilt from the same tag commit), and every fresh download against rexenv's
+pins then refused with "checksum mismatch" (found 7 Nov 2026). Since that day rexenv re-hosts the exact
+bytes (ledger #957).
+
+| | |
+|---|---|
+| Artifacts | `frankenphp-mac-arm64` `7cffdb2f…`, `frankenphp-linux-x86_64` `f88db997…`, `frankenphp-linux-aarch64` `73bd5e8b…` — bytes unchanged, each equal to GitHub's digest at mirror time |
+| Mirrored by | `rexenv/runtimes` (public), `.github/workflows/frankenphp-upstream.yml` — php/frankenphp build provenance verified; run on macos-15, ubuntu-22.04 and ubuntu-22.04-arm (`frankenphp version`, embedded PHP 8.5.12, `hash('sha256')`, the macOS build's VCS stamp = the tag commit, unmodified) |
+| Release | `frankenphp-1.13.3-2` — immutable, never re-uploaded; a re-mirror is the next build number |
+| Pinned in | `core/binaries.rs` (`FRANKENPHP_1_13_3_MAC_ARM64_SHA256`, `FRANKENPHP_1_13_3_LINUX_*_SHA256`, `FRANKENPHP_UPSTREAM_MIRROR_TAG`) |
+| Licence | FrankenPHP **MIT**; Caddy v2.11.7 **Apache-2.0**; the embedded PHP 8.5.12 and its static libraries as static-php-cli lists them for this release and commit (the same set as rexenv's Intel build, `frankenphp-1.13.3-1`); on Linux musl's **MIT** COPYRIGHT — in `licenses-frankenphp-1.13.3-<os>.tar.gz` beside each binary |
+
 ## OpenLiteSpeed 1.9.3 — rexenv's own build (downloaded at runtime, distributed BY US)
 
 Built and hosted since 4 Oct 2026 for macOS AND Linux: upstream publishes Linux tarballs
