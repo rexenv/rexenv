@@ -2133,14 +2133,15 @@ fn spawn_update_poller(app: tauri::AppHandle) {
 
 fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
     use tauri::Manager;
-    const ATTEMPTS: u32 = 5;
-    const BETWEEN: std::time::Duration = std::time::Duration::from_secs(20);
+    // The first five attempts are quick; after them the app keeps trying on a backoff
+    // (`core::dns::handoff_delay`) instead of giving up for good (#956).
+    const QUICK_ATTEMPTS: u32 = 5;
     const PROBE_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
-    const PROBE_TRIES: u32 = 24; // ~6s, comfortably past a cold agent's bind
+    let probe_tries = (core::dns::HANDOFF_PROBE_WINDOW.as_millis() / PROBE_EVERY.as_millis()) as u32;
 
     tauri::async_runtime::spawn(async move {
-        for attempt in 1..=ATTEMPTS {
-            tokio::time::sleep(BETWEEN).await;
+        for attempt in 1.. {
+            tokio::time::sleep(core::dns::handoff_delay(attempt)).await;
 
             let Some(dns) = app.try_state::<state::app::DnsState>() else {
                 return;
@@ -2177,7 +2178,7 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
             }
 
             let mut handed_off = false;
-            for _ in 0..PROBE_TRIES {
+            for _ in 0..probe_tries {
                 tokio::time::sleep(PROBE_EVERY).await;
                 if core::dns::answers_as_ours(port) {
                     handed_off = true;
@@ -2216,11 +2217,13 @@ fn spawn_dns_handoff(app: tauri::AppHandle, port: u16) {
                     return;
                 }
             }
+            if attempt == QUICK_ATTEMPTS {
+                log::warn!(
+                    "dns: the resolver agent did not take the port in {QUICK_ATTEMPTS} attempts — serving \
+                     in-process and trying again on a backoff, up to every 5 minutes"
+                );
+            }
         }
-        log::warn!(
-            "dns: the resolver agent never took the port after {ATTEMPTS} handoff attempts — \
-             staying in-process (sites will stop resolving shortly after the app quits)"
-        );
     });
 }
 

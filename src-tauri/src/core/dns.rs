@@ -269,6 +269,25 @@ impl Drop for DnsService {
 /// retry every 10s — when the old holder quits, the agent takes over seamlessly
 /// (the handoff that motivates the agent in the first place). Output goes to the
 /// agent log via launchd's Standard{Out,Err}Path.
+/// How often the agent retries a bind it lost. The app's handoff probe must outlast it
+/// (`HANDOFF_PROBE_WINDOW`), or an agent that is merely between two tries looks dead.
+pub const AGENT_REBIND_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// How long the app waits, after releasing the port, for the agent to take it: longer than one full
+/// [`AGENT_REBIND_EVERY`] cycle, so the agent's OWN retry lands inside it even when the kickstart's cold
+/// start is slow. It was 6 s: on a loaded boot (the 15.8 VM, 7 Nov 2026, load 30–100, trustd at half a
+/// core) the kicked agent took longer, every one of the five attempts missed, and the app stayed
+/// in-process for good — `.rex` would stop resolving once it quit (#956).
+pub const HANDOFF_PROBE_WINDOW: std::time::Duration = std::time::Duration::from_secs(12);
+
+/// The wait before handoff attempt `attempt` (1-based): 20 s for the first five, then doubling to a
+/// 5-minute cap — and never a last one. Five quick tries used to be all: a boot slow enough to miss
+/// them all left the app holding the port until it quit (#956).
+pub fn handoff_delay(attempt: u32) -> std::time::Duration {
+    let secs = if attempt <= 5 { 20 } else { (20u64 << (attempt - 5).min(5)).min(300) };
+    std::time::Duration::from_secs(secs)
+}
+
 pub fn run_agent() -> i32 {
     let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
         Ok(rt) => rt,
@@ -292,7 +311,7 @@ pub fn run_agent() -> i32 {
                     );
                 }
             }
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(AGENT_REBIND_EVERY).await;
         }
     })
 }
@@ -993,6 +1012,21 @@ pub fn port_bound(port: u16) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    /// #956 — the handoff probe outlasts one agent rebind cycle, and the attempts never run out: five
+    /// quick ones, then a doubling backoff capped at five minutes.
+    #[test]
+    fn the_handoff_outlasts_the_agents_retry_and_never_gives_up() {
+        assert!(HANDOFF_PROBE_WINDOW > AGENT_REBIND_EVERY, "the agent's own retry must land inside the window");
+        let secs: Vec<u64> = (1..=14).map(|a| handoff_delay(a).as_secs()).collect();
+        assert_eq!(secs, vec![20, 20, 20, 20, 20, 40, 80, 160, 300, 300, 300, 300, 300, 300]);
+        assert_eq!(handoff_delay(u32::MAX).as_secs(), 300, "no overflow, no end");
+        let lib = include_str!("../lib.rs");
+        let f = &lib[lib.find("fn spawn_dns_handoff(").expect("the handoff")..];
+        let f = &f[..f.find("\n}\n").expect("its end")];
+        assert!(f.contains("for attempt in 1.. {"), "an unbounded loop — a slow boot must not end the handoff:\n{f}");
+        assert!(f.contains("core::dns::HANDOFF_PROBE_WINDOW"), "the probe window is the shared constant");
+    }
     /// Ledger #769 — **the repair command is the ONE verb that re-applies a working route**: it goes
     /// through `core::dns::repair_resolver` (install / re-apply / unchanged), never straight to
     /// `ensure_resolver`, which leaves a working route alone by design — and the CLI and MCP arms run

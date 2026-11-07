@@ -621,8 +621,13 @@ Live-proven end to end by `site_stop_start_check`.
   leg 4). The watchdog's own fallback into in-process
   mode spawns the same handoff (it was the second door, and had none until 3 Sep
   2026). The release AWAITS the aborted task, so the port is free when the agent is
-  kicked, not "soon". Bounded (5 attempts) and loud
-  on giving up. A longer startup wait was rejected: it is a guess that taxes every launch
+  kicked, not "soon". ~~Bounded (5 attempts) and loud on giving up.~~ **Since #956 it never gives
+  up:** five attempts 20 s apart, then a doubling backoff capped at 5 minutes, for as long as the app
+  is in-process; and each probe lasts 12 s, longer than the agent's own 10 s rebind cadence
+  (`core::dns::HANDOFF_PROBE_WINDOW` > `AGENT_REBIND_EVERY`), so the agent's own retry lands inside
+  it even when the kickstart's cold start is slow. The bounded version was measured failing on a
+  loaded boot (the 15.8 VM, 7 Nov 2026: load 30–100, trustd at half a core — all five 6 s probes
+  missed and the log said "staying in-process"). A longer startup wait was rejected: it is a guess that taxes every launch
   and still loses on a slow one — the race is not something to win, it is something to
   undo.
 - Health watchdog (`lib.rs`), mode-aware and **bounded to 3 attempts**: Agent → wire

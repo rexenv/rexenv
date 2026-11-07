@@ -2216,6 +2216,11 @@ hand can prove a spec entry became the item it describes.*
   self-repair was measured the same day; 2 Sep the fixed handoff ran live on a reproduced
   login race — `handed the resolver back to the agent (attempt 1)`, `rex status` reading
   `answering (agent…)`. **Open: the real-login timing, after the fix.**
+- [ ] **The resolver goes back to the agent even after a slow boot (#956):** boot a loaded Mac (or the VM
+  right after another VM's build), log in → within a few minutes `rex status` reads `answering (agent…)`
+  and the log has "handed the resolver back to the agent (attempt N)" — N may be above 5. Before #956 a
+  boot slow enough to miss five 6 s probes left `answering (in-process…)` for the session (measured on the
+  15.8 VM, 7 Nov 2026). **Open: the fixed build through a loaded boot.**
 - [ ] On a machine where first-run setup is NOT finished (no `/etc/resolver/rex`, or the
   CA untrusted for this user), a LOGIN launch **does** show the window. A silent tray
   there would hide the only screen that fixes it. **Open: no run recorded** (the rule is
