@@ -59,9 +59,10 @@ jobs:
           set +e
           mkdir -p logs
           pass=0; fail=0; : > summary.txt
+          # macOS has no `timeout`; perl's alarm survives the exec and ends a hung example at 15 min.
           for ex in $EXAMPLES; do
             start=$(date +%s)
-            (cd src-tauri && timeout 900 ./target/debug/examples/"$ex") > "logs/$ex.log" 2>&1
+            (cd src-tauri && perl -e 'alarm 900; exec @ARGV' ./target/debug/examples/"$ex") > "logs/$ex.log" 2>&1
             code=$?
             took=$(( $(date +%s) - start ))
             if [ $code -eq 0 ]; then pass=$((pass+1)); v=PASS; else fail=$((fail+1)); v="FAIL($code)"; fi
