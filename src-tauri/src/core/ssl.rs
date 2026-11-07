@@ -256,6 +256,14 @@ pub fn generate_site_cert_for(
     params.is_ca = IsCa::ExplicitNoCa;
     params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    // **The leaf names its issuer's KEY, not only its name** (Authority Key Identifier, RFC 5280 §4.2.1.1;
+    // ledger #954). Every rexenv install's CA has the same subject (`CN=rexenv Local CA, O=rexenv`), so a
+    // machine that trusts two of them — its own desktop's and a server's downloaded copy (T9) — gives a
+    // verifier two issuers by name for every leaf. Chromium's path builder tries both; NSS's `vfychain`
+    // took the first and failed "invalid signature" (the Ubuntu VM, 7 Nov 2026). The identifier comes from
+    // the STORED CA's own SKI (`from_ca_cert_pem` reads it as pre-specified), so it matches on CAs made by
+    // any earlier version.
+    params.use_authority_key_identifier_extension = true;
     // Leaf lifetime must stay ≤398 days or Safari/WebKit rejects it — see LEAF_VALIDITY_DAYS.
     let (not_before, not_after) = leaf_validity_window();
     params.not_before = not_before;
@@ -902,6 +910,44 @@ mod tests {
         let nb = time::OffsetDateTime::parse(&info.not_before, rfc).unwrap();
         let na = time::OffsetDateTime::parse(&info.not_after, rfc).unwrap();
         assert!(na > nb);
+    }
+
+    /// #954 — a leaf's Authority Key Identifier is its CA's STORED Subject Key Identifier, whatever
+    /// method made that CA: a CA with an odd pre-specified SKI gets leaves naming exactly it, and a CA
+    /// this version generates gets leaves naming its own.
+    #[test]
+    fn a_leaf_names_its_issuers_stored_key_identifier() {
+        fn ski_aki(pem: &str) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
+            use x509_parser::extensions::ParsedExtension;
+            let (_, p) = x509_parser::pem::parse_x509_pem(pem.as_bytes()).unwrap();
+            let (_, c) = x509_parser::parse_x509_certificate(&p.contents).unwrap();
+            let (mut ski, mut aki) = (None, None);
+            for e in c.extensions() {
+                match e.parsed_extension() {
+                    ParsedExtension::SubjectKeyIdentifier(k) => ski = Some(k.0.to_vec()),
+                    ParsedExtension::AuthorityKeyIdentifier(a) => aki = a.key_identifier.as_ref().map(|k| k.0.to_vec()),
+                    _ => {}
+                }
+            }
+            (ski, aki)
+        }
+        let leaf_of = |cert_pem: String, key_pem: String| {
+            let ca = LocalCa { cert_pem, key_pem, cert_path: PathBuf::new(), key_path: PathBuf::new() };
+            generate_site_cert_for(&ca, "shop.rex", &[]).unwrap().0
+        };
+        // A CA as this version makes it.
+        let (ca_cert, ca_key) = generate_ca().unwrap();
+        let (ca_ski, _) = ski_aki(&ca_cert);
+        let (_, aki) = ski_aki(&leaf_of(ca_cert, ca_key));
+        assert!(ca_ski.is_some() && aki == ca_ski, "leaf AKI {aki:?} != CA SKI {ca_ski:?}");
+        // A CA whose SKI no current method would compute (an older or foreign one).
+        let key = KeyPair::generate().unwrap();
+        let mut p = CertificateParams::new(Vec::new()).unwrap();
+        p.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        p.key_identifier_method = rcgen::KeyIdMethod::PreSpecified(vec![0xAB; 20]);
+        let odd = p.self_signed(&key).unwrap().pem();
+        let (_, aki) = ski_aki(&leaf_of(odd, key.serialize_pem()));
+        assert_eq!(aki, Some(vec![0xAB; 20]), "the leaf must name the STORED identifier");
     }
 
     #[test]

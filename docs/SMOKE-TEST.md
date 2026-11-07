@@ -4665,6 +4665,26 @@ Run on the VM, headless, with the browser on ANOTHER machine through `ssh -L 944
   opens over https with no warning. Remove the CA after.
   ◐ 28 Oct 2026 — the cloud container: the card and the download; no OS's steps.
   ◐ 29 Oct 2026 — the 24.04 server VM through the tunnel: the card, the download (`openssl`: `CN=rexenv Local CA`, Name Constraints critical `Permitted: DNS:rex`, IPv4 and IPv6 excluded, EKU `TLS Web Server Authentication`, no key); no OS's trust steps on a real browser machine.
+  ◐ 7 Nov 2026 — real client machines, the CA from each server's own `ca_download`, sites through `ssh -D`
+  with DNS resolved on the server:
+  **Linux ✓** (the 22.04 VM against the Dell): the block's `certutil -d sql:$HOME/.pki/nssdb …` verbatim,
+  then NSS `vfychain -u 1` on the Dell's leaves "Chain is good!"; real Chromium (snap, its own NSS db,
+  `--proxy-server=socks5://…`) opened `https://apw.rex/` ("ok frankenphp") — before the import
+  `ERR_CERT_AUTHORITY_INVALID`. **Found:** with this machine's OWN rexenv CA also trusted (same subject,
+  newer) NSS picked it and failed `-8182 invalid signature` — Chromium did not (it tries both); fixed by
+  #954 (leaves carry an Authority Key Identifier), the AKI-vs-no-AKI pair measured in NSS.
+  **Windows ◐** (the Dell against the 22.04 VM): before → curl.exe (schannel) TLS failure (35); trusted in
+  the MACHINE Root store from an elevated console (the block's `certutil -user` raises a confirmation no
+  program may answer — PLATFORMS §7) → `gitl.rex` and `conv71l.rex` 200 through SOCKS; removed → 35 again.
+  The Dell's own same-subject CA in its user store did not confuse schannel. Owed: the user-store
+  command and Edge/Chrome — a person at the desktop.
+  **macOS ◐** (the 15.8 VM against the Dell): SOCKS reached the Dell's `apw.rex` from Safari's networking
+  (`URLSession`, `-1202` untrusted before any import — the route is right). The block's command needs the
+  login password in SecurityAgent and, from Terminal, a TCC "access your Downloads folder" prompt — both
+  refuse synthetic input, and `sudo` cannot set trust settings either since macOS 11. The words now say
+  Terminal may ask. Trap: a refused `add-trusted-cert` still IMPORTS the certificate (untrusted) — delete
+  it after. Owed: the command at the Mac's desktop, then Safari.
+  Not run on any OS: the refused other-name certificate (L0 `the_downloaded_ca_is_limited_to_the_servers_endings` / #934).
 
 ### The edge off 80/443 (`edge_http_port` / `edge_https_port`, `docs/PLAN-headless-web.md` T2, ledger #914–#919)
 

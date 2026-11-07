@@ -222,6 +222,15 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
   definition it loaded at login. An `open`/Finder launch is not affected. Linux's twin is `KillMode`.
 - **Legacy tiers**: 13 and 14 resolve older pins (`PinSet::for_tier`); a feature that needs a
   newer binary says so in the tier's words (`needs_newer_os`).
+- **Trusting a root needs the person, even as root** (measured on the 15.8 VM, 7 Nov 2026, T9):
+  `security add-trusted-cert` over SSH fails "no user interaction was possible", `sudo … -d -k
+  System.keychain` fails the same way (macOS 11+ guards trust settings with user authorization), the
+  password sheet (SecurityAgent) and Terminal's TCC "access your Downloads folder" prompt both refuse
+  synthetic clicks and keys. A REFUSED `add-trusted-cert` still IMPORTS the certificate, untrusted — delete
+  it after a failed run (`security delete-certificate -Z <sha1>`).
+- **Every rexenv CA has the same subject** — on a machine that trusts two (its own and a server's copy), a
+  verifier choosing an issuer by NAME can pick the wrong one; leaves carry an Authority Key Identifier
+  since #954 (NSS failed without it; Chromium and schannel did not).
 - Mechanism detail: `docs/ARCHITECTURE.md` (written against macOS), `docs/INSTALL.md` § macOS.
 
 ## 7. Windows — the traps
