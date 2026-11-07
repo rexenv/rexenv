@@ -353,6 +353,9 @@ first:
   the row is about ONE unexplained failure, and clean runs cannot explain it — they only
   narrow how often it happens. The capture instrumentation is what would settle it, and it
   has still never fired.
+  **7 Nov 2026 — ten more on Windows** (the Dell, a release build of the example, the stack stopped):
+  10 of 10 exit 0, "ALL GOOD", 118–140 s each — sixteen consecutive passes across two OSes, the capture
+  never fired. Still one unexplained failure on a Mac, still nothing to fix without it.
   **15 Aug 2026 — a recurrence now captures itself.** The original sighting produced no
   evidence because the assert printed only "not deactivated" and the panic then leaked
   mysqld into the next run. The example now dumps deactivate's own stdout, the parsed
