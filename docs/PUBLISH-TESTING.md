@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green
+## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov
 
 **Run 42377911543, source `2e92c00b` (tag `v0.9.7`), every lane green first time, 16 assets, the body the tag's verbatim.**
 setup.exe `f4c8662f…`, zip `6ee179f2…`, arm64 deb `afde5086…`, dmg `6be8274e…`; each passed its `.sha256`. `verify-full`:
@@ -138,7 +138,31 @@ the flag FIRST — a version as the first argument silently checks the macOS doc
 `check-apt-repo.sh` all green, amd64 and arm64 0.9.7 at once. winget: rendered from the published setup.exe,
 `winget validate` on the Dell succeeded, microsoft/winget-pkgs#474252 (0.9.6's #473110 merged that morning; the fork's
 master could not be synced — the token lacks `workflow` scope — so the branch is cut from the fork's own master).
-**Not run:** §M (0.9.6 → 0.9.7 in-app on each OS); the 24.04 server.
+**§M — the update itself, 0.9.6 → 0.9.7 in-app, 8 Nov 2026, on macOS and Linux (each machine rolled back to the
+PUBLISHED 0.9.6 first; the stack kept running throughout):**
+- **Ubuntu 22.04 arm64 VM (192.168.64.7):** the running 0.9.7 ended by exact pid → `apt-get install --allow-downgrades`
+  the 0.9.6 deb (sha256 `e8e303d4…`) → launched from GNOME's search (`app-gnome-rexenv-1932.scope`) → "the resolver
+  agent is running 0.9.7 … this build is 0.9.6 — kickstarting it", "adopted 7", "0.9.7 can be installed (serial 14,
+  17057768 bytes)" in the same second → `Updates ready` → Settings → Updates (`rexenv 0.9.6 → 0.9.7 · 16.3 MB`) →
+  Install → the polkit prompt ("rexenv needs administrator permission to install the update it downloaded — the new
+  rexenv package"), password typed blind → `swapped to 0.9.7 (RenamePair)`, `dpkg-query` 0.9.7 → the dialog → OK →
+  **back as 0.9.7 in 0 s** ("swept 1 leftover(s)", "rexenv is now 0.9.7 (updated from 0.9.6)", "adopted 7"); caddy,
+  mysqld, mailpit, both php-fpm masters and nginx **identical pids before and after**; `conv71l`, `gitl`, `try.gitl`,
+  `l16lx` 200. `guard`, `l14lx`, `lm`, `lv`, `live-sync` 404 and `wtl`, `feature-x.wtl` 403 are the folders the
+  16 Oct `rsync --delete` emptied, as at 0.9.6's §M.
+- **macOS 15.8 VM (192.168.64.6, boot load under 2 this time):** the official 0.9.6 `.app.tar.gz` (`4bd821c8…`) swapped
+  in over ssh (`rm -rf` → `mv`, no quarantine) → `open` → "0.9.7 can be installed (serial 28, 32834859 bytes)"; `rex
+  start` for the full stack (MySQL, PostgreSQL, PHP-FPM 7.4/8.3/8.4, nginx, Caddy, Mailpit); `rex status`'s first
+  line read `DNS DOWN (in-process …)` for the seconds the downgraded app kickstarted the 0.9.7 agent, then `answering
+  (agent, udp 15353)`; the update line `2 pending — Adminer 6.3.0, rexenv 0.9.7` → `Updates ready` → Install (System
+  Events `click at`, the button found by position) → `swapped to 0.9.7 (AtomicSwap)` **7 s** after the press → OK →
+  **back as 0.9.7 in 3 s**, "swept 1 leftover(s)", "adopted 8"; every pid in `rex status` identical; 8/8 sites
+  (`conv71`, `gitp`, `wtp`, `l14vm`, `sm763`, `php74`, `smoke-pg`, `smoke1`) 200; `rex status`'s update line now only
+  Adminer; no new crash report (the VM's "restarted because of a problem" sheet is its shutdown panic, 7 Nov).
+- **Windows — NOT run:** the Dell answered on neither path that morning (no SSH host on the LAN /22 but the Mac;
+  `w10.rex.bd` "websocket: bad handshake", the tunnel's origin down). Owed when the Dell is back.
+
+**Not run:** §M on Windows (the Dell offline, above); the 24.04 server.
 
 ## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M on all three
 
