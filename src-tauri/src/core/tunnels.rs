@@ -529,6 +529,12 @@ pub fn sweep_startup(conn: &rusqlite::Connection, platform: &dyn Platform) -> u3
             );
             let _ = platform.supervisor().stop(row.pid);
             killed += 1;
+        } else if row.pid != PID_PENDING {
+            // The share was already gone — the tunnel guard stopped it when the
+            // app died, or cloudflared exited on its own while nothing watched.
+            // Neither writes to rexenv.log (the guard runs before any logger),
+            // so without THIS line the share's start line never closes (#430).
+            log::info!("{}", share_ended_unseen_line(&row.domain, row.pid));
         }
         if let Err(e) = crate::core::wp_tunnel::disable(std::path::Path::new(&row.docroot)) {
             log::warn!("tunnels: could not remove the mu-plugin for {}: {e}", row.domain);
@@ -714,6 +720,22 @@ pub fn share_stopped_line(domain: &str, pid: u32, ran_for: Duration) -> String {
     )
 }
 
+/// The closing line for a share that ended while no rexenv was running to say
+/// so: the app died (killed, crashed, a dev rebuild), and the tunnel guard —
+/// a separate process with no logger — stopped cloudflared, or cloudflared
+/// exited by itself. The launch sweep finds its record with a dead pid and
+/// writes this, so every start line in `rexenv.log` still gets an end. Found
+/// 10 Nov 2026: `mstest.rex` (1 Sep) and `bl.rex` (5 Sep) had start lines and
+/// nothing after them, which reads as "still public" — the very reading that
+/// made the 27 Aug share look unbidden.
+pub fn share_ended_unseen_line(domain: &str, pid: u32) -> String {
+    format!(
+        "tunnels: the share of {domain} (pid {pid}) had already ended when rexenv last stopped — \
+         the tunnel guard or cloudflared itself ended it, unlogged; its record is cleared and \
+         nothing is public"
+    )
+}
+
 /// Coarse, human-readable duration for the log ("47s", "3m 12s", "2h 05m").
 /// Sub-second precision would be noise in a line about how long something was
 /// exposed to the internet.
@@ -761,6 +783,31 @@ mod tests {
                  \"still public\", and that reading needs both halves to be identifiable: {stop}"
             );
         }
+    }
+
+    /// The third way a share ends — while no app runs to log it — closes its
+    /// start line at the next launch, and the sweep is what writes it.
+    #[test]
+    fn a_share_that_ended_unseen_gets_its_closing_line_at_the_next_launch() {
+        let line = share_ended_unseen_line("bl.rex", 4350);
+        for fact in ["bl.rex", "4350", "nothing is public"] {
+            assert!(line.contains(fact), "the unseen-end line drops {fact}: {line}");
+        }
+        let src = crate::core::copy_scan::production_source(include_str!("tunnels.rs"));
+        let sweep = src
+            .split("pub fn sweep_startup(")
+            .nth(1)
+            .and_then(|b| b.split("pub fn host_header_domain(").next())
+            .expect("sweep_startup");
+        let dead_branch = sweep.split("} else if row.pid != PID_PENDING {").nth(1).expect(
+            "sweep_startup no longer has a branch for a recorded share whose pid is dead — \
+             the case a killed app leaves behind (#430)",
+        );
+        assert!(
+            dead_branch.split("wp_tunnel::disable").next().unwrap().contains("share_ended_unseen_line"),
+            "a share the tunnel guard ended is cleared without a line, so its start line in \
+             rexenv.log never closes — mstest.rex 1 Sep and bl.rex 5 Sep 2026 (#430)"
+        );
     }
 
     #[test]

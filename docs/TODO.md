@@ -268,6 +268,12 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
     cleanup time, and a per-domain file you must already suspect. What was missing is the
     line at START, which is the one a reader finds without knowing anything — hence the fix
     above rather than the "no trail at all" the row asserted.
+  - **10 Nov 2026 — a second log hole, closed.** The dev Mac's `rexenv.log` had 30 share
+    start lines and 29 ends: `mstest.rex` (1 Sep) and `bl.rex` (5 Sep) never closed. Both
+    times the app was killed and relaunched; the tunnel guard stopped cloudflared without
+    a logger and the launch sweep cleared the dead-pid record in silence. The sweep now
+    writes the closing line (#430). Every other start since 30 Aug has its end — no
+    unbidden share has recurred.
   - [ ] The diagnosis itself stays open: nothing yet explains a share running that no
     session started. With the start line in place, a recurrence is answerable from
     `rexenv.log` alone — which is what makes waiting for one reasonable instead of guessing.
@@ -285,6 +291,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 - [ ] **Radicle-hosted repos are unverified** — same code path as the Bedrock clone that
   was verified and found broken, no live project to hand.
+  **10 Nov 2026:** Radicle is Roots' paid starter kit — there is no public repo
+  (`gh repo view roots/radicle` does not resolve) — so the proof needs a licence or a user
+  who has one; nothing here can run it.
 - [ ] **Why that `rex` instance went deaf was never diagnosed** — the evidence died with
   the pid. Reproduce before blaming App Translocation.
 

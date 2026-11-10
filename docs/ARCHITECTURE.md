@@ -3316,6 +3316,13 @@ IPC surface — which is how a reader ends up designing against a system with on
     think to open once you already know which domain to suspect — which is the question.
     The start line goes AFTER the registry insert, so the log never claims an exposure a
     failed start never created.
+    A fifth way a share ends had no line until 10 Nov 2026: the app is killed (a crash, a
+    dev rebuild), and the tunnel guard — a separate process with no logger — stops
+    cloudflared, or cloudflared exits while nothing watches. The next launch's
+    `sweep_startup` finds the record with a dead pid and now writes the closing line
+    (`share_ended_unseen_line`); before, it cleared the row in silence, and `mstest.rex`
+    (1 Sep) and `bl.rex` (5 Sep) were left with start lines that read "still public".
+    The sweep is in `core/`, so the line is the same on all three OSes.
   - **Share health is its own tri-state** (Live / Unverified / Broken) probed via
     bounded HEADs of the public URL: any non-530 answer proves the path, 530×3 =
     Broken (sticky — only an HTTP answer clears it), transport errors are
