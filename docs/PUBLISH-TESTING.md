@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov
+## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov · the 24.04 server 10 Nov
 
 **Run 42377911543, source `2e92c00b` (tag `v0.9.7`), every lane green first time, 16 assets, the body the tag's verbatim.**
 setup.exe `f4c8662f…`, zip `6ee179f2…`, arm64 deb `afde5086…`, dmg `6be8274e…`; each passed its `.sha256`. `verify-full`:
@@ -162,7 +162,19 @@ PUBLISHED 0.9.6 first; the stack kept running throughout):**
 - **Windows — NOT run:** the Dell answered on neither path that morning (no SSH host on the LAN /22 but the Mac;
   `w10.rex.bd` "websocket: bad handshake", the tunnel's origin down). Owed when the Dell is back.
 
-**Not run:** §M on Windows (the Dell offline, above); the 24.04 server.
+**Linux headless + web ✅ on the 24.04 server VM (`rexenv-vps`, 192.168.64.9), 10 Nov 2026, through the apt repo itself:**
+`apt-get update` (rexenv.github.io/apt stable, arm64) → `apt-get install rexenv` 0.9.6 → 0.9.7, `needrestart` restarted
+`rexenv-headless.service` → `rex 0.9.7 (2e92c00) · app rexenv 0.9.7 (2e92c00)`; caddy, mysqld, mailpit, php-fpm and
+nginx masters **5/5 pids KEPT**; `demo.rex` 200 before and after. The web UI (#949–#952) was off on this box, so
+`rexenv --headless-setup --user ci --enable-mcp --agent-access read --enable-web` → the unit `rexenv --headless --web`,
+restarted; `rex web url` → `http://rexenv.localhost:9443/?t=…` ("works once, for ten minutes"). curl, with
+rexenv.localhost resolved to 127.0.0.1: the link → 200 and the meta-refresh page (`content="0;url=/"`), the cookie
+`rexenv_web` host-only on `rexenv.localhost`, HttpOnly; **the same link again → 403** "that sign-in link was used
+already, is older than ten minutes, or is not this server's"; `/` and `/api/status` with the cookie 200, without 401;
+an old-form `http://localhost:9443/?t=<fresh>` → 303 to the same token on `rexenv.localhost`, which signs in (200 +
+cookie). The CSP's `frame-src` still lists the `localhost`/`127.0.0.1` console origins — the 7 Nov review's fix
+(`62dd7326`) ships in 0.9.8. The web UI was left on.
+**Not run:** §M on Windows (the Dell offline, above).
 
 ## A) ✅ 0.9.6 — PUBLISHED 6 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM + the 24.04 server, headless), the setup.exe (Dell), Defender, the six descriptors and apt green; §M on all three
 

@@ -350,3 +350,15 @@ their full text as it stood is kept here.
   fixed — `ServiceManager::reload` waits, outside the lock, for a new nginx worker generation; RUN on the Dell: a
   fresh site moved, GETs 1–3 all 200.
 
+
+## Reconcile of 10 Nov 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **winget: 0.9.6 PR 473110 waits for a moderator** — ✓ MERGED 7 Nov 2026 (`gh pr view 473110` → MERGED), and
+  0.9.7's https://github.com/microsoft/winget-pkgs/pull/474252 MERGED 7 Nov 2026 17:28 UTC: winget offers 0.9.7. — RELEASING step 9's winget manifest was missed at 0.9.6's
+  publish (found by the 7 Nov 2026 reconcile) and run the same day: `./scripts/winget-manifest.sh 0.9.6` (sha256
+  `11C24E94…0323`, equal to the release asset's API digest), `winget validate` on the Dell → "Manifest validation
+  succeeded", https://github.com/microsoft/winget-pkgs/pull/473110 opened (owner's go). Nothing to do from here but
+  watch it merge.
+
