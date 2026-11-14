@@ -6,6 +6,12 @@ month's evidence log (`docs/archive/SHIPPED-2026-07.md`, `-08.md`, `-09.md`, `-1
 `reconcile-todo` skill. Tick an item in the commit that does the work, with a one-line
 ✓ evidence note. `scripts/todo-reconcile.py --count` prints the open/ticked tally.
 
+**Reconciled 15 Nov 2026** (HEAD `cb7e2426`, v0.9.7 + 20 commits): 2 ticked blocks moved to
+`docs/archive/SHIPPED-2026-11.md` (Now 2 — the Sites list and site page, `docs/PLAN-sites-ux.md` T1–T6, ledger
+#959–#968; the "Start & …" real-app runs, T7, #969). One stale PLAN header corrected (`PLAN-sites-ux.md` still said
+"BEING BUILT" and pointed at the row that moved). Shapes 1–4: not hunted in this pass — the 31 open rows were not
+re-read against the tree. Open after the pass: 31 rows.
+
 **Reconciled 7 Nov 2026, after 0.9.6** (HEAD `d93d3130`, v0.9.6 + 4 commits): the script found nothing ticked; the
 judgement pass found — shape 1 (open only on paper) 2: winget PR 437674 MERGED 30 Oct 2026 (as 0.9.5), and the Windows
 7.4/8.0/8.1 re-pin reached users in 0.9.6 (both ticked and moved); shape 3 (narrative inside an open row) 2: the two
@@ -168,31 +174,6 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   in use by python.exe (pid 6832, …) … `Stop-Process -Id 6832`") — there the holder ran as the same user.
   Not diagnosed: whether the port gate cannot see a root-owned listener from the user's process, or the
   IPv4/IPv6 split passes it. The shadow-bind family (Herd on 127.0.0.1:443) — same shape, different holder.
-
-- [x] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
-  2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). ✓ macOS run 14 Nov 2026 on the 15.8 VM — a real Start all inside the click, the
-  password prompt mid-click (cancelled and approved), every slot state; it found and fixed a stack-up answer read
-  from a mock-only field. ✓ Windows (the Dell) and Linux (the Ubuntu VM) run the same day, and a real :443
-  conflict on macOS — evidence in the SMOKE row. The site PAGE's two buttons and a conflict then run on Windows and Linux too;
-  one landing unseen (Linux, the page's Start & Magic Login — Firefox showed its Troubleshoot-Mode dialog).
-
-- [x] **Sites list and site page — one home per action, and a way from one site to the next**
-  (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov
-  2026 (breadcrumb popover, the tab kept; ledger #959–#960, `wk-checks/siteswitch.js`; SMOKE "Switch from one
-  site to another" open per OS). ✓ T3 Mod+K from every route 14 Nov 2026 (⌘K / Ctrl+K from `PlatformWords`,
-  not taken from a terminal or over a dialog; ledger #961–#962, `wk-checks/sitekey.js`; SMOKE "Switch site with
-  the keyboard" open per OS). ✓ T1 the site page without its duplicates 14 Nov 2026 (Quick links gone, editor + ⋯
-  in the header, Site info on Overview; ledger #963, `wk-checks/siteactions.js`; SMOKE "Site page — one home per
-  action" open per OS). ✓ T4 the Sites row and header 14 Nov 2026 (three visible actions, quiet rows, `⋮` =
-  right-click, the view kept across a site visit; ledger #964–#965, `wk-checks/sitesrow.js`; SMOKE "Sites list —
-  the row and the header" open per OS). ✓ T5 pinned + recently opened 14 Nov 2026 (SQLite v46 `site_prefs`, one
-  order in `core::site_shortlist` for the switcher, the list, the sidebar and the tray; ledger #966–#968,
-  `wk-checks/sitepins.js`; SMOKE "Pinned and recently opened sites" open per OS). **Schema v46: a build with this
-  cannot be downgraded over** (the older app refuses the newer database, #593) — a release note. ◐ T6 14 Nov 2026: `linux-check` green; the built app run on the macOS 15.8 VM and the Ubuntu 22.04 VM
-  (evidence in the SMOKE rows; two real-webview findings fixed or reworded, `docs/PLATFORMS.md` §6). The Windows run followed the same evening on the
-  Dell (WebView2). A second and a third Linux run pressed every remaining row and ran the
-  web UI over a real tunnel (evidence in each SMOKE row). ✓ closed 14 Nov 2026 — the second-run rows ran on Linux
-  only; macOS and Windows carry their first runs.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need

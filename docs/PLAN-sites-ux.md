@@ -1,6 +1,7 @@
 # PLAN — Sites list and site page: one place for each action, and a way from one site to the next
 
-**Status:** ACCEPTED 14 Nov 2026, BEING BUILT — the owner read the plan and said to build all of it, one task at
+**Status:** BUILT 14–15 Nov 2026 (T1–T7), run on macOS, Windows and Linux — open: the owner's review of D1–D7.
+The owner read the plan and said to build all of it, one task at
 a time; D1–D7 (§6) are taken as recommended on that word (no row was ruled on its own — each stays the owner's to
 reverse at review). **T2 built 14 Nov 2026** (ledger #959–#960, `wk-checks/siteswitch.js`, WebKit only — the
 SMOKE row is open on all three OSes). **T3 built 14 Nov 2026** (ledger #961–#962, `wk-checks/sitekey.js` under
@@ -20,8 +21,8 @@ keys, the chord over a dialog, Mod+↵, extra-domain search, the Opened sort, pi
 site — and ran the web UI over a real tunnel. It found a focus ring invisible on the light theme (fixed). A third
 run closed the last two: revert-then-delete from the site page on a site connected for it (config restored
 byte-identical, their database untouched), and scroll restore with the window shrunk. Nothing of this plan is
-open on Linux; macOS and Windows have their own first runs and not the second-run rows. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
-"Sites list and site page" row in `docs/TODO.md` (Now).
+open on Linux; macOS and Windows have their own first runs and not the second-run rows. The facts in §2 were read from the tree at `919e4a40`. The
+"Sites list and site page" row closed 14 Nov 2026 and moved to `docs/archive/SHIPPED-2026-11.md` (reconcile, 15 Nov).
 
 ---
 

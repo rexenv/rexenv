@@ -362,3 +362,33 @@ their full text as it stood is kept here.
   succeeded", https://github.com/microsoft/winget-pkgs/pull/473110 opened (owner's go). Nothing to do from here but
   watch it merge.
 
+
+## Reconcile of 15 Nov 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
+  2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). ✓ macOS run 14 Nov 2026 on the 15.8 VM — a real Start all inside the click, the
+  password prompt mid-click (cancelled and approved), every slot state; it found and fixed a stack-up answer read
+  from a mock-only field. ✓ Windows (the Dell) and Linux (the Ubuntu VM) run the same day, and a real :443
+  conflict on macOS — evidence in the SMOKE row. The site PAGE's two buttons and a conflict then run on Windows and Linux too;
+  one landing unseen (Linux, the page's Start & Magic Login — Firefox showed its Troubleshoot-Mode dialog).
+
+- [x] **Sites list and site page — one home per action, and a way from one site to the next**
+  (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov
+  2026 (breadcrumb popover, the tab kept; ledger #959–#960, `wk-checks/siteswitch.js`; SMOKE "Switch from one
+  site to another" open per OS). ✓ T3 Mod+K from every route 14 Nov 2026 (⌘K / Ctrl+K from `PlatformWords`,
+  not taken from a terminal or over a dialog; ledger #961–#962, `wk-checks/sitekey.js`; SMOKE "Switch site with
+  the keyboard" open per OS). ✓ T1 the site page without its duplicates 14 Nov 2026 (Quick links gone, editor + ⋯
+  in the header, Site info on Overview; ledger #963, `wk-checks/siteactions.js`; SMOKE "Site page — one home per
+  action" open per OS). ✓ T4 the Sites row and header 14 Nov 2026 (three visible actions, quiet rows, `⋮` =
+  right-click, the view kept across a site visit; ledger #964–#965, `wk-checks/sitesrow.js`; SMOKE "Sites list —
+  the row and the header" open per OS). ✓ T5 pinned + recently opened 14 Nov 2026 (SQLite v46 `site_prefs`, one
+  order in `core::site_shortlist` for the switcher, the list, the sidebar and the tray; ledger #966–#968,
+  `wk-checks/sitepins.js`; SMOKE "Pinned and recently opened sites" open per OS). **Schema v46: a build with this
+  cannot be downgraded over** (the older app refuses the newer database, #593) — a release note. ◐ T6 14 Nov 2026: `linux-check` green; the built app run on the macOS 15.8 VM and the Ubuntu 22.04 VM
+  (evidence in the SMOKE rows; two real-webview findings fixed or reworded, `docs/PLATFORMS.md` §6). The Windows run followed the same evening on the
+  Dell (WebView2). A second and a third Linux run pressed every remaining row and ran the
+  web UI over a real tunnel (evidence in each SMOKE row). ✓ closed 14 Nov 2026 — the second-run rows ran on Linux
+  only; macOS and Windows carry their first runs.
+
