@@ -156,6 +156,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
+  2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). Open: SMOKE "Services off — Start & …"
+  on macOS, Windows and Linux — a real Start all inside the click, the macOS password prompt in the middle of
+  it, a real port conflict.
+
 - [x] **Sites list and site page — one home per action, and a way from one site to the next**
   (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov
   2026 (breadcrumb popover, the tab kept; ledger #959–#960, `wk-checks/siteswitch.js`; SMOKE "Switch from one

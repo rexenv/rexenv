@@ -25,6 +25,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { useSiteUrl } from "@/lib/siteUrl";
 import { useModKey } from "@/lib/useModKey";
+import { useEdgeUp, useServeFirst } from "@/lib/useServeFirst";
 import { usePinSite, useSiteShortlist } from "@/lib/useSiteShortlist";
 import { openWpAdmin } from "@/lib/wpAdmin";
 import { useSitesListState, type SitesSort, type SitesStatusFilter, type SitesTypeFilter } from "@/lib/sitesListState";
@@ -293,6 +294,15 @@ export function SiteRow({
   // The URL answers something only while the stack serves it — or when the user
   // stopped THIS site, whose URL shows rexenv's own "stopped" page.
   const urlAnswers = status === "running" || !!stoppedByUser;
+  // **Nothing serves this site and the user did not stop it: rexenv's services
+  // are what is missing.** The browser and Magic Login actions then become
+  // "Start & …" — they start the services and do what they said (`useServeFirst`)
+  // instead of being dead buttons that say "Start all first".
+  const serve = useServeFirst();
+  const needsStack = site.provisioned && status !== "running" && !stoppedByUser;
+  const startingThis = serve.startingId === site.id;
+  // For a site the user stopped: is the stack itself off too?
+  const edgeUp = useEdgeUp();
   // **A normal site is quiet.** Provisioned, serving, not stopped by the user:
   // the row says so with a dot, and spends its words on the rows that are not.
   const quiet = site.provisioned && status === "running" && !stoppedByUser;
@@ -300,10 +310,10 @@ export function SiteRow({
     ? "You stopped this site — it answers \"site stopped\" and nothing else is affected. Start it from the row menu."
     : status === "running"
       ? "Serving: the edge is up and so is this site's own upstream"
-      : "Not serving — rexenv's services are stopped (Start all in the footer)";
+      : "Not serving — rexenv's services are off. The browser and WordPress icons on this row start them first.";
   const openSiteUrl = () => {
-    if (!urlAnswers) {
-      toast.info(`Nothing is serving ${url} — Start all first`);
+    if (needsStack) {
+      void serve.ensure(site).then((ok) => { if (ok) void openExternal(url).catch(toastBackendError); });
       return;
     }
     void openExternal(url).catch(toastBackendError);
@@ -510,10 +520,21 @@ export function SiteRow({
              stopped-nesses keep their two sentences (DESIGN.md): the fix is a
              button in this row's menu for one and Start all for the other. */
           <span title={statusTitle} data-probe="status-words" className="flex-none">
+            {/* "Services off", not "Stopped": beside "Stopped by you" the bare
+                word read as the same thing, and a "Stop site" item under a row
+                that already said Stopped made no sense (owner, 14 Nov 2026). */}
             <StatusPill
-              status={status}
+              status={startingThis ? "starting" : status}
               className="min-w-[92px]"
-              label={stoppedByUser ? "Stopped by you" : undefined}
+              label={
+                startingThis
+                  ? "Starting…"
+                  : stoppedByUser
+                    ? "Stopped by you"
+                    : status !== "running"
+                      ? "Services off"
+                      : undefined
+              }
             />
           </span>
         )
@@ -598,8 +619,8 @@ export function SiteRow({
             stopped" page, which is worth a look (DESIGN.md, two stopped-nesses). */}
         <span
           title={
-            !urlAnswers
-              ? `Nothing is serving ${url} — Start all first`
+            needsStack
+              ? `Start rexenv's services and open ${url}`
               : browser
                 ? `Open ${url} in ${browser.name}`
                 : `Open ${url}`
@@ -609,8 +630,9 @@ export function SiteRow({
             variant="ghost"
             size="icon"
             aria-label="Open in browser"
-            disabled={!urlAnswers}
-            onClick={() => void openExternal(url).catch(toastBackendError)}
+            data-starts-services={needsStack ? "" : undefined}
+            disabled={serve.busy || (!urlAnswers && !needsStack)}
+            onClick={openSiteUrl}
           >
             {/* Icon of the browser the click really uses — no chevron here:
                 choosing a different browser for one link lives on the site page. */}
@@ -622,24 +644,29 @@ export function SiteRow({
           {isWordpress && (
             <span
               title={
-                status !== "running" || stoppedByUser
-                  ? "Magic Login needs the site serving — start it first"
-                  : "Magic Login — sign in to this site's WordPress admin"
+                stoppedByUser
+                  ? "You stopped this site — start it first (row menu), then sign in"
+                  : needsStack
+                    ? "Start rexenv's services and sign in to this site's WordPress admin"
+                    : "Magic Login — sign in to this site's WordPress admin"
               }
             >
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label="Magic Login"
-                // A sign-in link for a site that is not answering opens an error
-                // page: an action that can only fail is not offered.
-                disabled={status !== "running" || !!stoppedByUser || signingIn}
+                data-starts-services={needsStack ? "" : undefined}
+                // A site the USER stopped is not started behind their back: there
+                // the sign-in stays off, and says why. With the services off it
+                // starts them first — the tooltip says so before the click.
+                disabled={!!stoppedByUser || signingIn || serve.busy || (status !== "running" && !needsStack)}
                 onClick={() => {
                   setSigningIn(true);
-                  void openWpAdmin(site, url)
+                  void (needsStack ? serve.ensure(site) : Promise.resolve(true))
+                    .then((ok) => (ok ? openWpAdmin(site, url) : undefined))
                     .catch(toastBackendError)
                     .finally(() => setSigningIn(false));
                 }}
+                aria-label="Magic Login"
               >
                 <WordPressIcon className="h-4 w-4 text-rex-accent-blue" />
               </Button>
@@ -690,24 +717,41 @@ export function SiteRow({
           {onToggleEnabled && (
             /* The row's own lifecycle, and the copy has to keep it apart from the
                footer's "Stop all": this stops ONE site's serving surface — the
-               shared web server and PHP pool keep running for the others. */
+               shared web server and PHP pool keep running for the others.
+
+               ONE slot, four states (owner, 14 Nov 2026). With rexenv's services
+               off the row already reads "Services off", and "Stop site" under it
+               was an offer to stop something that is not running; "Start site"
+               there recorded the switch and served nothing. So with the services
+               off the slot starts them — and, for a site the user had stopped,
+               starts the site too, in the words that say both. */
             <MenuItem
               icon={
-                stoppedByUser ? (
+                stoppedByUser || needsStack ? (
                   <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
                 ) : (
                   <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
                 )
               }
-              onSelect={() => onToggleEnabled(!!stoppedByUser)}
+              disabled={serve.busy}
+              onSelect={() => {
+                if (needsStack) void serve.startStack();
+                else if (stoppedByUser && edgeUp === false)
+                  void serve.startStack().then((ok) => { if (ok) onToggleEnabled(true); });
+                else onToggleEnabled(!!stoppedByUser);
+              }}
             >
               {togglePending
                 ? stoppedByUser
                   ? "Starting…"
                   : "Stopping…"
-                : stoppedByUser
-                  ? "Start site"
-                  : "Stop site"}
+                : needsStack
+                  ? "Start services"
+                  : stoppedByUser
+                    ? edgeUp === false
+                      ? "Start site and services"
+                      : "Start site"
+                    : "Stop site"}
             </MenuItem>
           )}
           {onPin && (

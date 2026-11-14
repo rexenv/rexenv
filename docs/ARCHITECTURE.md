@@ -99,7 +99,11 @@ module also carries a `//!` doc header stating its job. Quick inventory:
   sidebar and the tray's Sites submenu all render that answer rather than sorting for
   themselves (four surfaces, one of them Rust: the only way they agree). Opening a
   site's page records the open, fire-and-forget. A scratch site is never pinned: the
-  reaper removes it when it expires whatever is said about it (#966, #968)
+  reaper removes it when it expires whatever is said about it (#966, #968).
+  **With rexenv's services off**, a site's Open in browser and Magic Login become
+  "Start & …": `lib/useServeFirst.ts` runs `start_services`, polls `sites_serving`
+  until that site answers, and only then opens — one start at a time app-wide, a
+  failed start opens nothing, a site the user stopped is never started (#969)
 
 ## 2. Request & TLS topology
 

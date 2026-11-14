@@ -38,6 +38,7 @@ import {
   mockMarkSiteOpened,
   mockSetSitePinned,
   mockSiteShortlist,
+  mockStartServices,
   mockSitesServingView,
   mockSitesView,
 } from "@/lib/mock";
@@ -2130,7 +2131,7 @@ export async function stopDatabase(key: string): Promise<void> {
 
 /** Start the shared stack (MySQL + php-fpm + nginx + Caddy). */
 export async function startServices(): Promise<void> {
-  if (!isTauri()) return;
+  if (!isTauri()) return mockStartServices();
   await invoke("start_services");
 }
 

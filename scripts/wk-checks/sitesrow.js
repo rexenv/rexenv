@@ -18,8 +18,9 @@
 //  2. A normal row is quiet: no status words, no lock. Exactly the exception rows speak —
 //     "Stopped by you", "Stopped" (stack), the one insecure site's open lock.
 //  3. Magic Login is on WordPress rows only (the slot held on the others, so the columns
-//     line up); disabled where the site is not serving. Open in browser is disabled where
-//     nothing answers, and LIVE on a site the user stopped (rexenv's own stopped page).
+//     line up); OFF on a site the user stopped. Where nothing serves the site, both actions
+//     are live and SAY they start rexenv's services first (`servefirst.js`); the browser
+//     action is plain and live on a site the user stopped (rexenv's own stopped page).
 //  4. Pressing a row action — by pointer or by Enter — does not also open the site.
 //  5. `⋮` and a right-click open the SAME menu; the right-click opens it at the pointer.
 //     The menu reaches the site page's tabs (Database → that site's Database tab).
@@ -89,7 +90,7 @@ const fails = [];
       pills: document.querySelectorAll("[data-site-row] .rounded-full.border").length,
     };
   });
-  if (q.words.join("|") !== "3:Stopped|m9:Stopped by you") fails.push(`2: the rows that speak are [${q.words}] — expected the stack-stopped one and the one stopped by the user, only`);
+  if (q.words.join("|") !== "3:Services off|m9:Stopped by you") fails.push(`2: the rows that speak are [${q.words}] — expected the one nothing serves ("Services off") and the one stopped by the user, only`);
   if (q.locks.join() !== "m13") fails.push(`2: locks on [${q.locks}] — expected the one insecure site (m13) only`);
   if (/Running|Stopped/.test(q.normalText)) fails.push(`2: a normal row still says its status in words ("${q.normalText}")`);
   if (q.dots.m0 !== "running" || q.dots.m9 !== "stopped" || q.dots.s3 !== "stopped") fails.push(`2: dots ${JSON.stringify(q.dots)}`);
@@ -100,7 +101,8 @@ const fails = [];
       const row = document.querySelector(`[data-site-row="${id}"]`);
       const b = row.querySelector('button[aria-label="Open in browser"]');
       const ml = row.querySelector('button[aria-label="Magic Login"]');
-      return { browser: !!b && !b.disabled, magic: ml ? !ml.disabled : null, x: b.getBoundingClientRect().left };
+      return { browser: !!b && !b.disabled, magic: ml ? !ml.disabled : null, x: b.getBoundingClientRect().left,
+        browserStarts: b.hasAttribute("data-starts-services"), magicStarts: !!ml && ml.hasAttribute("data-starts-services") };
     };
     return { wp: of("m0"), laravel: of("2"), php: of("4"), byUser: of("m9"), stack: of("3") };
   });
@@ -109,8 +111,12 @@ const fails = [];
   if (Math.abs(a.wp.x - a.laravel.x) > 0.5 || Math.abs(a.wp.x - a.php.x) > 0.5) fails.push(`3: the action columns do not line up across site types (${a.wp.x} / ${a.laravel.x} / ${a.php.x})`);
   if (a.byUser.magic !== false) fails.push("3: Magic Login is live on a site the user stopped");
   if (!a.byUser.browser) fails.push("3: Open in browser is disabled on a site the user stopped — its URL shows rexenv's stopped page");
-  if (a.stack.browser) fails.push("3: Open in browser is live on a site nothing is serving");
-  if (a.stack.magic !== false) fails.push("3: Magic Login is live on a site nothing is serving");
+  // A site nothing serves (and the user did not stop): both actions are LIVE and SAY they start
+  // rexenv's services first — since 14 Nov 2026 (`servefirst.js` proves what the click does).
+  // Before that they were disabled with "Start all first": never a plain link to a dead URL.
+  if (!a.stack.browser || !a.stack.browserStarts) fails.push("3: on a site nothing serves the browser action is dead, or does not say it starts the services");
+  if (a.stack.magic !== true || !a.stack.magicStarts) fails.push("3: on a site nothing serves Magic Login is dead, or does not say it starts the services");
+  if (a.wp.browserStarts || a.wp.magicStarts || a.byUser.browserStarts) fails.push("3: an action says it starts the services on a serving or user-stopped site");
 
   // ── 4 ────────────────────────────────────────────────────────────────────────────
   await page.click('[data-site-row="m0"] button[aria-label="Open in browser"]');

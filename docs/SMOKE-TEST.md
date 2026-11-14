@@ -999,6 +999,24 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   (the first run highlighted `pg.rex`); Tab then ↓ ↓ put a **clear brand-coloured ring** round the
   focused row (`l14vm`).
 
+## Services off — "Start & …" (14 Nov 2026 — `docs/PLAN-sites-ux.md` T7)
+With rexenv's services stopped, a site's actions start them first and say so (ledger #969,
+`wk-checks/servefirst.js`). Begin with **Stop all**.
+- [ ] Sites list: every row reads **Services off** (not "Stopped"). A row's menu leads with
+  **Start services** — there is no "Stop site". A site you had stopped reads **Stopped by you**
+  and offers **Start site and services**.
+- [ ] Open a WordPress site: the buttons read **Start & open** and **Start & Magic Login**, the
+  pill **Services off**, no chevron beside them. Press **Start & Magic Login** once: the pill
+  turns to "Starting…", the services start (on macOS the password prompt may appear here), and
+  the browser opens **signed in to wp-admin** — not an error page, and not before the site is up.
+  The buttons read Open in browser / Magic Login again.
+- [ ] Stop all again; on the list press a row's **browser icon**: the same, ending on the site.
+- [ ] With another program holding :443 (or the password prompt cancelled): **nothing opens**,
+  the toast is Start all's own error, the button still offers the start.
+- [ ] A site you stopped (services on or off): **Magic Login is off** with "You stopped this
+  site…"; Open in browser shows rexenv's stopped page and starts nothing.
+  Open on macOS, Windows and Linux.
+
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
 WebKit, the Rust tests the order and the storage — the TRAY and a restart are this row's).

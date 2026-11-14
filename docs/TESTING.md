@@ -691,6 +691,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (14 Nov 2026): `servefirst.js`** (#969) — "Start & …": with the services off a click
+  starts them once and opens only after the site serves; a failed start opens nothing; a
+  user-stopped site is never started; the menu slot's four states. The dev page gained a mock
+  STACK (`rex-mock-stack`: `down` → Start all moves it to `up`; `fail` → Start all throws) —
+  before it nothing could render "services off" over the mock list, so no check could have seen
+  a "Stop site" under a stopped row. `window.open` is recorded WITH the start count, because
+  "it opened" and "it opened after the start" are different claims. **What it cannot see:** a
+  real Start all (its time, a macOS password prompt in the middle of the click) — SMOKE.
 - **Pinned + recently opened (14 Nov 2026, #966–#968) — which layer holds what.** L0, on any
   host: `core::site_shortlist` (the order; a scratch site refused a pin; the tray's order),
   `state::store::a_pin_and_an_open_each_write_only_their_own_column`, `state::db::v46_…` (the

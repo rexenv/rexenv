@@ -89,6 +89,7 @@ import {
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
 import { magicLoginUrl, openWpAdmin } from "@/lib/wpAdmin";
+import { useEdgeUp, useServeFirst } from "@/lib/useServeFirst";
 import { useEdgeHttpsPort, useSiteUrl } from "@/lib/siteUrl";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
@@ -447,13 +448,27 @@ function SiteHeader({
   const browserMenu = useBrowserMenu(url);
   const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
   const [adminBusy, setAdminBusy] = useState(false);
+  // Nothing serves this site and the user did not stop it: rexenv's services
+  // are what is missing, and the two buttons become "Start & …" — the same rule
+  // as the Sites row (`useServeFirst`).
+  const serve = useServeFirst();
+  const stoppedByUser = site.enabled === false;
+  const needsStack = site.provisioned && status !== "running" && !stoppedByUser;
+  const startingThis = serve.startingId === site.id;
+  const edgeUp = useEdgeUp();
   const onOpenAdmin = async () => {
     setAdminBusy(true);
     try {
+      // Sign in only once the site answers: a failed start opens nothing.
+      if (needsStack && !(await serve.ensure(site))) return;
       await openWpAdmin(site, url);
     } finally {
       setAdminBusy(false);
     }
+  };
+  const onOpenSite = async () => {
+    if (needsStack && !(await serve.ensure(site))) return;
+    await openExternal(url).catch(toastBackendError);
   };
   return (
     <div
@@ -487,8 +502,16 @@ function SiteHeader({
               </span>
               <span data-status-pill className="flex-none">
                 <StatusPill
-                  status={status}
-                  label={site.enabled === false ? "Stopped by you" : undefined}
+                  status={startingThis ? "starting" : status}
+                  label={
+                    startingThis
+                      ? "Starting…"
+                      : stoppedByUser
+                        ? "Stopped by you"
+                        : needsStack
+                          ? "Services off"
+                          : undefined
+                  }
                 />
               </span>
             </div>
@@ -511,27 +534,35 @@ function SiteHeader({
           </div>
         </div>
         <div data-site-actions className="flex flex-none items-center gap-[9px]">
-          {/* Same rule as the list row: nothing answers a URL the stack is not
-              serving, so the button is disabled with the why — unless the user
-              stopped THIS site, whose URL shows rexenv's own stopped page. */}
+          {/* Same rule as the list row. Nothing answers a URL the stack is not
+              serving — so with rexenv's services off the button SAYS it starts
+              them ("Start & open") and opens only once the site answers. It was
+              disabled with "Start all first" until 14 Nov 2026: honest, and a
+              dead end. The other-browser chevron is withheld meanwhile (it would
+              open a URL nothing serves). A site the user stopped opens as before:
+              its URL shows rexenv's own stopped page. */}
           <SplitButton
-            disabled={status !== "running" && site.enabled !== false}
+            disabled={serve.busy}
             title={
-              status !== "running" && site.enabled !== false
-                ? `Nothing is serving ${url} — Start all first`
+              needsStack
+                ? `Start rexenv's services, then open ${url}`
                 : // The label stays "Open in browser"; WHICH browser is the icon
                   // and this sentence (the Quick links tile used to spell it).
                   browser
                   ? `Open ${url} in ${browser.name}`
                   : `Open ${url}`
             }
-            onClick={() => void openExternal(url).catch(toastBackendError)}
-            menu={browserMenu}
+            onClick={() => void onOpenSite()}
+            menu={needsStack ? undefined : browserMenu}
             menuWidth={BROWSER_MENU_WIDTH}
             chevronLabel="Open this site in another browser"
           >
             <PreferredBrowserIcon className="h-[15px] w-[15px]" />
-            <OpenInBrowserLabel />
+            {needsStack ? (
+              <span data-starts-services>{startingThis ? "Starting services…" : "Start & open"}</span>
+            ) : (
+              <OpenInBrowserLabel />
+            )}
           </SplitButton>
           {/* The editor — the one action the Quick links card held that existed
               nowhere else on the page, and the one used most after the browser.
@@ -552,16 +583,34 @@ function SiteHeader({
             </SplitButton>
           )}
           {isWordpress && (
+            /* People press this without pressing Start all first (owner, 14 Nov
+               2026): it then showed an error and opened a browser on "can't
+               connect". With the services off it now says "Start & Magic Login"
+               and does both. A site the USER stopped is not started behind their
+               back — there it is off, and says why. */
             <SplitButton
               variant="primary"
-              disabled={adminBusy}
+              disabled={adminBusy || serve.busy || stoppedByUser}
+              title={
+                stoppedByUser
+                  ? "You stopped this site — start it first (⋯ → Start site), then sign in"
+                  : needsStack
+                    ? "Start rexenv's services, then sign in to this site's WordPress admin"
+                    : undefined
+              }
               onClick={onOpenAdmin}
-              menu={adminMenu}
+              menu={needsStack || stoppedByUser ? undefined : adminMenu}
               menuWidth={BROWSER_MENU_WIDTH}
               chevronLabel="Sign in through another browser"
             >
               <WordPressIcon className="h-[15px] w-[15px]" />
-              {adminBusy ? "Signing in…" : "Magic Login"}
+              {needsStack ? (
+                <span data-starts-services>
+                  {startingThis ? "Starting services…" : "Start & Magic Login"}
+                </span>
+              ) : (
+                <>{adminBusy ? "Signing in…" : "Magic Login"}</>
+              )}
             </SplitButton>
           )}
           {/* Everything else a site can have done to it, so nothing needs a trip
@@ -585,24 +634,36 @@ function SiteHeader({
             {onToggleEnabled && (
               /* The copy keeps it apart from the footer's "Stop all": this stops
                  ONE site — the shared web server and PHP pool keep running. */
+              /* One slot, four states — the Sites row's, word for word. */
               <MenuItem
                 icon={
-                  site.enabled === false ? (
+                  stoppedByUser || needsStack ? (
                     <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
                   ) : (
                     <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
                   )
                 }
-                disabled={togglePending}
-                onSelect={() => onToggleEnabled(site.enabled === false)}
+                disabled={togglePending || serve.busy}
+                onSelect={() => {
+                  if (needsStack) void serve.startStack();
+                  else if (stoppedByUser && edgeUp === false)
+                    void serve.startStack().then((ok) => {
+                      if (ok) onToggleEnabled(true);
+                    });
+                  else onToggleEnabled(stoppedByUser);
+                }}
               >
                 {togglePending
-                  ? site.enabled === false
+                  ? stoppedByUser
                     ? "Starting…"
                     : "Stopping…"
-                  : site.enabled === false
-                    ? "Start site"
-                    : "Stop site"}
+                  : needsStack
+                    ? "Start services"
+                    : stoppedByUser
+                      ? edgeUp === false
+                        ? "Start site and services"
+                        : "Start site"
+                      : "Stop site"}
               </MenuItem>
             )}
             {onPin && (

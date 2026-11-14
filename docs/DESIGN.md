@@ -152,6 +152,27 @@ the shipped UI toward one.
   agent view carries `stopped`, and the CLI's `stop` output says every time that
   this is not `rex stop`, because the two are one argument apart and the mistake
   is otherwise silent.
+- **A control that needs rexenv's services says "Start &" — and then does both.**
+  *(Amends the rule below, 14 Nov 2026.)* With the services off, Open in browser and
+  Magic Login are no longer disabled with "Start all first": the site page's buttons
+  read **Start & open** / **Start & Magic Login**, the row's icons say it in their
+  tooltip, and the click starts the services, waits until THAT site answers, and only
+  then opens (`useServeFirst`, ledger #969). The owner's report: people press Magic
+  Login without pressing Start all, and got an error toast and a browser on "can't
+  connect" — the site page's button had never been gated at all, while the row's was a
+  dead icon. What still holds from the rule below: **nothing opens a URL nothing
+  serves** — a failed start (a busy port, a cancelled password prompt) shows Start
+  all's own error and opens nothing. Two limits: the start is always SAID before the
+  click (seven services, and on macOS possibly a password prompt, are not a side
+  effect of "Magic Login"), and **a site the user stopped is never started by it** —
+  there Magic Login is off and says why. The pill says **Services off**, not
+  "Stopped": beside "Stopped by you" the bare word read as the same thing.
+- **One lifecycle slot, four states.** The row menu's and the site page's first item
+  is: services on + site on → *Stop site*; services on + stopped by you → *Start
+  site*; services off + site on → *Start services*; services off + stopped by you →
+  *Start site and services*. It was Stop site / Start site in every state: under a
+  row that read "Stopped", "Stop site" offered to stop what was not running, and
+  "Start site" with the services off recorded the switch and served nothing.
 - **A link the stack is not serving is not offered.** The row's and the site page's
   "Open in browser" are disabled while nothing answers the site's URL, with the why
   ("Nothing is serving https://x.rex — Start all first"): on the clean VM (18 Sep 2026)

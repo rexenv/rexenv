@@ -8,7 +8,8 @@ import { isScratch, siteTypeMeta } from "@/lib/siteType";
 import { useSiteUrl } from "@/lib/siteUrl";
 import { useModKey } from "@/lib/useModKey";
 import { groupByShortlist, useSiteShortlist } from "@/lib/useSiteShortlist";
-import { toast, toastBackendError } from "@/lib/toast";
+import { toastBackendError } from "@/lib/toast";
+import { useServeFirst } from "@/lib/useServeFirst";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import type { Site } from "@/types";
 
@@ -147,13 +148,14 @@ export function SiteSwitcherPanel({
     setCursorId(flat[(at + by + flat.length) % flat.length].id);
   };
 
+  const serve = useServeFirst();
   const openSiteUrl = (site: Site) => {
-    // The Sites row's rule, not a second one: nothing answers a URL the stack is
-    // not serving, unless the user stopped THIS site (its URL shows rexenv's own
-    // stopped page). The key says why instead of opening "can't connect".
+    // The Sites row's rule, not a second one: a site the user stopped opens its
+    // own stopped page; a site nothing serves gets rexenv's services started
+    // first — and the footer's hint says so while that is the case.
     const url = siteUrlOf(site.domain);
     if (!servingOf.get(site.domain) && site.enabled !== false) {
-      toast.info(`Nothing is serving ${url} — Start all first`);
+      void serve.ensure(site).then((ok) => { if (ok) void openExternal(url).catch(toastBackendError); });
       return;
     }
     void openExternal(url).catch(toastBackendError);
@@ -284,7 +286,12 @@ export function SiteSwitcherPanel({
       >
         <span>↑↓ move</span>
         <span>↵ open</span>
-        <span>{mod.label}↵ in browser</span>
+        <span>
+          {mod.label}↵{" "}
+          {cursor && !servingOf.get(cursor.domain) && cursor.enabled !== false
+            ? "start & open"
+            : "in browser"}
+        </span>
         <span className="ml-auto">esc</span>
       </div>
     </div>

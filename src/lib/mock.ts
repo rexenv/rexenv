@@ -271,9 +271,33 @@ export const mockSitesServing: SiteServing[] = mockSites.map((s) => ({
   serving: s.status === "running",
 }));
 
+/** The dev page's STACK, for the checks of "Start & …": `localStorage["rex-mock-stack"]`
+ *  = `down` (nothing serves, the edge is off), `fail` (the same, and Start all
+ *  throws a port conflict), `up` or absent (as the fixtures say). `mockStartServices`
+ *  moves `down` to `up`, as a real Start all does, and counts its calls. */
+function mockStack(): string | null {
+  try {
+    return window.localStorage.getItem("rex-mock-stack");
+  } catch {
+    return null;
+  }
+}
+export async function mockStartServices(): Promise<void> {
+  const w = window as unknown as { __rexStarts?: number };
+  w.__rexStarts = (w.__rexStarts ?? 0) + 1;
+  await new Promise((r) => setTimeout(r, 400));
+  if (mockStack() === "fail")
+    throw "Port 443 is in use by nginx (pid 412) — stop it first:\n$ sudo brew services stop nginx";
+  if (mockStack() === "down") window.localStorage.setItem("rex-mock-stack", "up");
+}
+
 /** `mockSitesServing` over whichever list `mockSitesView` is serving. */
 export function mockSitesServingView(): SiteServing[] {
-  return mockSitesView().map((s) => ({ domain: s.domain, serving: s.status === "running" }));
+  const off = mockStack() === "down" || mockStack() === "fail";
+  return mockSitesView().map((s) => ({
+    domain: s.domain,
+    serving: !off && s.status === "running" && s.enabled !== false,
+  }));
 }
 
 export const mockServices: ServiceInfo[] = [
@@ -294,7 +318,14 @@ export function mockServicesView(): ServiceInfo[] {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  return mockServices.map((s) =>
+  // Only when a check SET the stack: the edge follows it. Unset, the fixture's
+  // own rows stand (other checks read them as written).
+  const stack = mockStack();
+  const rows =
+    stack === null
+      ? mockServices
+      : mockServices.map((s) => (s.isRouter ? { ...s, running: stack === "up" } : s));
+  return rows.map((s) =>
     s.running && busy.some((m) => s.name === `PHP-FPM ${m}`)
       ? { ...s, busyNote: "all 10 workers busy — requests are queuing" }
       : s,
