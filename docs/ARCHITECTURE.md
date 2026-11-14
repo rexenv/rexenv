@@ -2157,6 +2157,16 @@ honest footer —
   the way out that keeps Local running: Router Mode → localhost. Quitting Local also
   stops the per-site database a Local import reads. The MCP `site_status` edge-blocked
   verdict names the same holder instead of "can't identify" (#588).
+  **An installed edge daemon does not excuse the edge from the gate** (#970, 15 Nov 2026):
+  `prepare_edge` gates the HTTPS port whenever no edge of ours could be the holder — no live
+  admin socket AND no process under the OS supervisor. It used to skip the gate for any
+  installed daemon, so on macOS and Linux (where one is always installed after the first
+  start) a foreign `:443` holder cost a password prompt and then a toast about a busy
+  machine (macOS: the edge up on IPv6 alone) or an admin socket that never came up (Linux:
+  `bind: address already in use`); Windows, with no daemon, always named the port. A ROOT
+  holder is still not named there — unprivileged `lsof`/`ss` has no pid for it — but the
+  error carries the port and the sudo command that finds it. `rex doctor` lists a holder of
+  80/443 under Ports while no edge of ours is up (with one up, the wire probe judges them).
   **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another

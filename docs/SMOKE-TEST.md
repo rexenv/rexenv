@@ -1037,7 +1037,10 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   meanwhile → **Safari opened nothing**; the toast was Start all's own ("services started, but
   rexenv's edge has not answered port 443 yet…"), the row back to **Services off** with the offer
   intact. The holder killed, the same click signed in to wp-admin. *(What Start all SAID there is
-  its own, older problem — the TODO row "Start all under a foreign :443 holder".)*
+  its own, older problem — fixed 15 Nov 2026, ledger #970: re-run on the same VM with `rex start`,
+  the answer is "port 443/tcp (needed by Caddy (HTTPS)) is already in use. To free it, run … `$ sudo
+  kill $(sudo lsof -t -iTCP:443 -sTCP:LISTEN)`", with NO password prompt and no edge started; `rex
+  doctor` lists the port under Ports.)*
   ✓ **Windows** 14 Nov 2026 — the Dell (Win 10 22H2, WebView2), this tree's debug exe at 85c902b5
   over 0.9.7's data (13 sites, services stopped; database backed up and put back). Every row
   **Services off** with live Chrome and WordPress icons; a row's menu led with **Start services**.
@@ -1069,6 +1072,12 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   11/11 serving and Firefox launched — but onto its own "Open Firefox in Troubleshoot Mode?" dialog
   (the run had killed Firefox several times), so **the landing on the Dashboard was not seen** for
   this button on Linux. The row's icon, which calls the same function, was seen there earlier.
+  ✓ **Both closed, 15 Nov 2026** (the same VM, a debug build with #970). The landing: Firefox
+  started first and its Troubleshoot dialog answered, services off, `conv71l`'s page **Start &
+  Magic Login** → the polkit prompt → Firefox on **Dashboard ‹ conv71l — WordPress**. The conflict:
+  a root `python3` on `0.0.0.0:443`, `rex start` → "port 443/tcp (needed by Caddy (HTTPS)) is
+  already in use … `$ sudo fuser -k 443/tcp`", **no polkit prompt**, Caddy idle; `rex doctor` →
+  "✗ Ports port 443 … held by an unknown process". Holder gone → started, doctor clean.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in

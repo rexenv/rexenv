@@ -1,6 +1,7 @@
 # PLAN — Sites list and site page: one place for each action, and a way from one site to the next
 
 **Status:** BUILT 14–15 Nov 2026 (T1–T7), run on macOS, Windows and Linux — open: the owner's review of D1–D7.
+The one landing left unseen on 14 Nov (Linux, the page's Start & Magic Login) was seen on 15 Nov; what that run found in Start all itself is ledger #970.
 The owner read the plan and said to build all of it, one task at
 a time; D1–D7 (§6) are taken as recommended on that word (no row was ruled on its own — each stays the owner's to
 reverse at review). **T2 built 14 Nov 2026** (ledger #959–#960, `wk-checks/siteswitch.js`, WebKit only — the

@@ -162,18 +162,23 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **Start all under a foreign :443 holder says the machine is busy, and `rex doctor` sees no holder** (found 14
-  Nov 2026 on the macOS 15.8 VM while running the "Start & …" conflict row). With a ROOT `python3` server holding
-  IPv4 `*:443` (rexenv's edge then came up on the IPv6 wildcard only — `lsof` showed `caddy … IPv6 *:443`), Start
-  all's toast read "services started, but rexenv's edge has not answered port 443 yet — the machine is very busy
-  (a boot, a large copy)…", `health.log` said `[edge-blocked]`, and `rex doctor` printed "Ports: no foreign holders
-  on rexenv ports". Nothing named the holder or a fix, which the port rule promises (`core/ports::ensure_free`).
-  **Linux, same day (Ubuntu 22.04 VM):** a root `python3` on `0.0.0.0:443` → the toast was "the Caddy edge daemon
-  was installed but its admin socket never came up — check …/caddy-start.log"; the log's last line says `listen
-  tcp :443: bind: address already in use`, and again no holder is named. **Windows names it** (the Dell: "already
-  in use by python.exe (pid 6832, …) … `Stop-Process -Id 6832`") — there the holder ran as the same user.
-  Not diagnosed: whether the port gate cannot see a root-owned listener from the user's process, or the
-  IPv4/IPv6 split passes it. The shadow-bind family (Herd on 127.0.0.1:443) — same shape, different holder.
+- [x] **Start all under a foreign :443 holder says the machine is busy, and `rex doctor` sees no holder** ✓ 15 Nov
+  2026 — ledger #970. The cause was neither guess in the row (a root listener the gate cannot see; the IPv4/IPv6
+  split): `prepare_edge` SKIPPED the port gate whenever the edge daemon was installed, which on macOS and Linux
+  is always. It now gates the port when no edge of ours could be the holder (no live admin socket, no supervised
+  process), and `rex doctor` lists 80/443 under Ports while no edge of ours is up. L0
+  `prepare_edge_gates_the_port_under_an_installed_daemon_that_runs_no_edge` (planted); run on the macOS 15.8 VM
+  and the Ubuntu 22.04 VM with a root `python3` on :443 — the port error and its sudo command, no password
+  prompt, no edge started; holder gone → started. Windows never skipped the gate (the Dell named `python.exe`,
+  14 Nov). A root holder is not named on macOS/Linux — unprivileged `lsof`/`ss` has no pid for it.
+
+- [ ] **A foreign holder that takes :443 while a boot-started edge is ALIVE is still called a busy machine**
+  (the remainder of #970, NOT reproduced — read off the code, 15 Nov 2026). The gate added in #970 runs only
+  when no edge of ours is up. If the holder binds IPv4 `*:443` before the LaunchDaemon's caddy at boot, the edge
+  is alive on IPv6 alone, its admin socket answers, `prepare_edge` reloads it and returns — and `verify_edge_wire`
+  reads the holder's non-TLS answer as `Unreadable` → "the machine is very busy". An unprivileged tell exists:
+  our marker answers on `[::1]` and not on `127.0.0.1`. Reproduce first (a root holder started before the edge
+  on the macOS VM), then decide.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need

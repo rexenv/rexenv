@@ -2067,6 +2067,10 @@ where
             // (running services); 80/443 are judged by the wire probe above
             // (the root edge's binary lives outside the user marker); the DNS
             // UDP port is judged by dns_status.
+            // …while an edge of ours is up. With none, a holder of 80/443 is what the next
+            // Start all will be refused over, and "no foreign holders" beside it was false
+            // (a root `python3` on :443, the 15.8 VM, 14 Nov 2026 — ledger #970).
+            let edge_is_up = caddy_running || crate::core::proxy::admin_alive(state.platform.as_ref());
             let marker = state
                 .platform
                 .paths()
@@ -2076,8 +2080,7 @@ where
             let mut port_conflicts = Vec::new();
             for req in crate::core::ports::ports_for(edge.http, edge.https) {
                 if matches!(req.proto, crate::core::ports::Proto::Udp)
-                    || req.port == edge.https
-                    || req.port == edge.http
+                    || (edge_is_up && (req.port == edge.https || req.port == edge.http))
                     || crate::core::ports::is_free(&*state.platform, req.port, req.proto)
                     || (!marker.is_empty()
                         && state.platform.supervisor().owned_master(req.port, &marker).is_some())

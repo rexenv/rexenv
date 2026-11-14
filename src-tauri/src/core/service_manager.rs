@@ -990,6 +990,16 @@ impl ServiceManager {
         // restarts it anyway. The stack guard still holds for a live-check example (ledger #927).
         if platform.edge().is_installed() {
             proxy::guard_live_edge(platform)?;
+            // "Ours is what holds :443" is true only while the supervisor RUNS an edge. With no
+            // supervised process and no live admin socket, whatever holds the port is somebody
+            // else's — and the reinstall below cannot free it: the edge came up on the IPv6
+            // wildcard alone (macOS) or died on `bind: address already in use` (Linux), and Start
+            // all blamed a busy machine / an admin socket that never came up, naming no holder
+            // (a root `python3` on :443, the 15.8 and Ubuntu VMs, 14 Nov 2026 — Windows, which has
+            // no daemon and so always took the gate below, named it). Ledger #970.
+            if !alive && platform.edge().supervised_process_age().is_none() {
+                ports::ensure_free(platform, self.ports.https, ports::Proto::Tcp, "Caddy (HTTPS)")?;
+            }
         } else {
             // Clear a leftover REXENV edge (its admin socket + :443) so our start isn't
             // blocked (§7.3). Ownership-gated to our own edge — a foreign Caddy on the
@@ -3652,6 +3662,21 @@ mod tests {
         paths: TestPaths,
         edge: TestEdge,
         privileges: Box<dyn PrivilegeManager>,
+        supervisor: NoTables,
+    }
+    /// A supervisor with no socket tables and no owned processes: the port gate's trial bind is
+    /// the whole answer (the trait's defaults).
+    struct NoTables;
+    impl ProcessSupervisor for NoTables {
+        fn spawn(&self, _: &Path, _: &[String]) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn spawn_logged(&self, _: &Path, _: &[String], _: &Path) -> Result<std::process::Child> {
+            unimplemented!()
+        }
+        fn stop(&self, _: u32) -> Result<()> {
+            unimplemented!()
+        }
     }
     /// The trait's default port rule (below 1024 needs elevation, as on macOS).
     struct UnixPortRule;
@@ -3691,8 +3716,15 @@ mod tests {
     struct TestEdge {
         installed: bool,
         enabled: bool,
+        /// The supervisor's running edge process, if any. An installed edge has one by default
+        /// here, so `prepare_edge`'s port gate (a probe of the REAL machine's port) stays unasked
+        /// in tests that are not about it.
+        age: Option<Duration>,
     }
     impl EdgeSupervisor for TestEdge {
+        fn supervised_process_age(&self) -> Option<Duration> {
+            self.age
+        }
         fn is_installed(&self) -> bool {
             self.installed
         }
@@ -3744,7 +3776,7 @@ mod tests {
             self.privileges.as_ref()
         }
         fn supervisor(&self) -> &dyn ProcessSupervisor {
-            unimplemented!()
+            &self.supervisor
         }
         fn autostart(&self) -> &dyn AutostartManager {
             unimplemented!()
@@ -3915,7 +3947,7 @@ mod tests {
         AdoptedTestPlatform {
             paths: TestPaths(dir),
             sup: ProbeSupervisor { ours },
-            edge: TestEdge { installed: false, enabled: false },
+            edge: TestEdge { installed: false, enabled: false, age: None },
         }
     }
 
@@ -4002,9 +4034,38 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         EdgeTestPlatform {
             paths: TestPaths(dir),
-            edge: TestEdge { installed, enabled },
+            edge: TestEdge { installed, enabled, age: installed.then(|| Duration::from_secs(60)) },
             privileges: Box::new(UnixPortRule),
+            supervisor: NoTables,
         }
+    }
+
+    /// Ledger #970 — an INSTALLED edge daemon is not a reason to skip the port gate. With no
+    /// supervised edge process and no live admin socket, a holder of the HTTPS port is somebody
+    /// else's: the start is refused with the port's own error, before any password prompt. While
+    /// the supervisor runs an edge, the holder may be that (wedged) edge and the reinstall stands.
+    #[test]
+    fn prepare_edge_gates_the_port_under_an_installed_daemon_that_runs_no_edge() {
+        let holder = std::net::TcpListener::bind("127.0.0.1:0").expect("a held port");
+        let https = holder.local_addr().unwrap().port();
+        let prepare = |name: &str, age: Option<Duration>| {
+            let mut platform = edge_test_platform(name, true, true);
+            platform.edge.age = age;
+            let mut mgr = ServiceManager::with_ports(Ports { https, ..Ports::default() });
+            mgr.set_bins_for_tests(PathBuf::from("/nonexistent/caddy"));
+            mgr.prepare_edge(&platform, PathBuf::from("/nonexistent/Caddyfile"))
+        };
+        let err = match prepare("gate-held", None) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("a foreign holder under an installed, not-running daemon must refuse the start"),
+        };
+        assert!(err.contains(&format!("port {https}/tcp (needed by Caddy (HTTPS)) is already in use")), "{err}");
+        assert!(
+            prepare("gate-supervised", Some(Duration::from_secs(5))).expect("prepare_edge").is_some(),
+            "a supervised edge may be the holder — its supervisor replaces it"
+        );
+        drop(holder);
+        assert!(prepare("gate-free", None).expect("prepare_edge").is_some(), "a free port is a start plan");
     }
 
     /// Ledger #790 — Stop all asks the FACT (daemon installed + enabled), not only the handle.
@@ -4057,7 +4118,7 @@ mod tests {
         let src = include_str!("service_manager.rs");
         let f = &src[src.find("    pub fn prepare_edge(").expect("prepare_edge")..];
         let f = &f[..f.find("\n    }\n").expect("its end")];
-        let branch = f.find("if platform.edge().is_installed() {\n            proxy::guard_live_edge(platform)?;\n        } else {")
+        let branch = f.find("if platform.edge().is_installed() {\n            proxy::guard_live_edge(platform)?;\n")
             .expect("the daemon branch guards and does not stop");
         let stop = f.find("proxy::recover_stale_edge(").expect("the no-daemon branch still clears a leftover");
         assert!(stop > branch, "the admin stop must sit inside the no-daemon branch");
