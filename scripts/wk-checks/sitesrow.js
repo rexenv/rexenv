@@ -140,6 +140,14 @@ const fails = [];
   await page.mouse.click(px, py, { button: "right" });
   await page.waitForTimeout(250);
   const byRight = await menuItems();
+  // Found on the real app, not here: WKWebView selects the word under a right-click, so the
+  // menu opened beside a highlighted "pg.rex". Playwright's WebKit does not select — all this
+  // leg can hold is the rule that prevents it.
+  const selectable = await page.evaluate(() => {
+    const cs = getComputedStyle(document.querySelector('[data-site-row="m1"]'));
+    return cs.webkitUserSelect || cs.userSelect;
+  });
+  if (selectable !== "none") fails.push(`5: the row's text is selectable (user-select: ${selectable}) — a right-click in WKWebView highlights the word under it`);
   if (!byDots) fails.push("5: ⋮ opened no menu");
   if (!byRight) fails.push("5: a right-click opened no menu");
   if (byDots && byRight) {

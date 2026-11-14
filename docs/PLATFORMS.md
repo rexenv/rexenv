@@ -158,6 +158,16 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 
 ## 6. macOS — the traps
 
+- **WKWebView does things to a page that Playwright's WebKit does not** — two met on the 15.8 VM
+  on 14 Nov 2026, in one run, after every WebKit check was green (`docs/PLAN-sites-ux.md` T6):
+  (1) a **right-click selects the word under the pointer** before `contextmenu` fires, so a custom
+  context menu opens beside highlighted text — the Sites row is `select-none` for it; (2) a click
+  on the **title-bar strip** (a `drag-region`, whose mousedown starts a window drag) does not move
+  the focus, so a shortcut that depends on "focus left the terminal" is not released by clicking
+  the site header. Neither is a WebKit rendering difference a `wk-check` can see: the first is
+  AppKit's context-click behaviour, the second is the app shell's own drag handler. A UI change
+  that adds a right-click or a focus-dependent shortcut gets a look in the built app.
+
 - **With nobody logged in, an AppKit app never finishes launching** (measured on the 15.8 VM,
   6 Nov 2026, `docs/PLAN-headless-web.md` §2b). A LaunchDaemon starting rexenv at the login window
   got a live process parked in `-[NSApplication run]` with no tokio thread — Tauri's `setup` never

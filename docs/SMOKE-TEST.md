@@ -866,7 +866,15 @@ The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #9
 - [ ] Type part of a domain, then of an extra domain (a site with `+1`): the site is found. ↑ ↓
   move, Enter opens, Esc closes and the next Tab continues from the site name.
 - [ ] "Sites" in the same line goes to the list.
-  Open on macOS, Windows and Linux.
+  ✓ **macOS** 14 Nov 2026 — the 15.8 UTM VM (WKWebView), this tree's debug bundle at 0fc5f663 over the VM's 0.9.7 data (9 sites, stack stopped; the database backed up first and put back after — the run migrated it to v46): from `smoke1`'s **WordPress** tab the site name opened the list
+  with the cursor in its box, the current site ticked, a dot per site; typing `smoke-lv` + Enter
+  opened that Laravel site on **Overview**, with no WordPress or Live tab. The Database-kept leg ran
+  through ⌘K (next section). Not pressed: the extra-domain search (no site there has one).
+  ◐ **Linux** 14 Nov 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug binary at 0fc5f663 (built in the `linux-check` image, `devUrl` dropped) run beside the installed 0.9.7 deb over its data — 11 sites, the stack RUNNING; the database backed up first and put back after: the breadcrumb `Sites / [W] wtl ▾` drawn; the list (opened by
+  Ctrl+K there, not by the click) showed Pinned · Recent · All sites with green dots and the
+  current site ticked. The click on the site name itself, and the WordPress → non-WordPress leg,
+  were not pressed on Linux.
+  Open on Windows.
 
 ## Site page — one home per action (14 Nov 2026 — `docs/PLAN-sites-ux.md` T1)
 The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/siteactions.js`).
@@ -883,7 +891,21 @@ The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/
 - [ ] The domain under the name has a copy icon; no `:443` after it (it appears only when the edge
   is on another port).
 - [ ] A browser whose icon the app cannot read (rare): the button says **Open in <its name>**.
-  Open on macOS, Windows and Linux. Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
+  ◐ **macOS** 14 Nov 2026 — the 15.8 UTM VM (WKWebView), this tree's debug bundle at 0fc5f663 over the VM's 0.9.7 data (9 sites, stack stopped; the database backed up first and put back after — the run migrated it to v46): SEEN on `wtp` (WordPress) and `smoke-lv.rex` (Laravel): no Quick
+  links card; header Open in browser · Editor · (Magic Login) · ⋯; PHP and Web server one select
+  each; Site info beside Paths with the copy icon; the domain's copy icon, no `:443`; "Config path"
+  on the WordPress site and "URL" on the Laravel one. The editor button read **Editor** — that VM
+  has no code editor installed, which is the honest fallback. NOT pressed there: ⋯ → Stop /
+  Duplicate / Delete, and the delete of a connected site — still open on macOS.
+  ◐ **Linux** 14 Nov 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug binary at 0fc5f663 (built in the `linux-check` image, `devUrl` dropped) run beside the installed 0.9.7 deb over its data — 11 sites, the stack RUNNING; the database backed up first and put back after: SEEN on `wtl`, `lm` and `lv`: no Quick links; header Open in
+  browser (Firefox's icon, with its chevron) · Editor · ⋯; one select each for PHP and server;
+  Site info beside Paths. **⋯ → Stop site** on `lm`: its row then read **Stopped by you** (grey
+  dot, WordPress icon greyed, browser icon live) and the header counted Running 10 / Stopped 1;
+  `rex site start lm.rex` brought it back. ⋯ listed Stop site · Pin to sidebar · Duplicate · Delete.
+  NOT pressed: Duplicate, Delete. (No Magic Login button on those sites: their live `wp-info` says
+  not-WordPress on that VM — the folders are bare — while the ROW shows the WordPress icon from the
+  recorded type, as the row's WordPress icon always did.)
+  Open on Windows. Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
 
 ## Sites list — the row and the header (14 Nov 2026 — `docs/PLAN-sites-ux.md` T4)
 A quiet row with three actions, one menu two ways, a view that survives (ledger #964, #965,
@@ -907,7 +929,26 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   the app: the list opens on **All**.
 - [ ] Press **/**: the cursor is in the filter. Tab to a row, **↓ ↑** move between rows, **Enter**
   opens, **⌘↵** (Ctrl+↵ on Windows and Linux) opens it in the browser.
-  Open on macOS, Windows and Linux.
+  ◐ **macOS** 14 Nov 2026 — the 15.8 UTM VM (WKWebView), this tree's debug bundle at 0fc5f663 over the VM's 0.9.7 data (9 sites, stack stopped; the database backed up first and put back after — the run migrated it to v46): every row drew its three icons with no hover (Safari's, WordPress
+  on the six WordPress rows with the gap held on the Laravel and Blank PHP ones, the editor glyph);
+  with the stack stopped every row said **Stopped** and `smoke-lv.rex` **Stopped by you**, its
+  browser icon the only live one; a **right-click** opened OUR menu at the pointer (not WebKit's
+  Reload/Inspect), listing Stop site · Pin to sidebar · WordPress · Database · Terminal · Logs · Open
+  folder · Rename · Duplicate · Copy domain · Delete, and flipped above the pointer near the
+  window's foot; "All" / "All types" without a number, Running 0 / Stopped 9 with. **Found here:**
+  the right-click HIGHLIGHTED the word under it (`pg.rex`) — WKWebView selects on a context click,
+  Playwright's WebKit does not; the row is `select-none` since (`sitesrow.js` leg 5 holds the
+  rule; the fix itself has not been seen on the VM). NOT pressed: the three actions with the stack
+  running (Magic Login from a row), the view surviving a site visit, `/` ↓ ↑ Enter, a green dot.
+  ◐ **Linux** 14 Nov 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug binary at 0fc5f663 (built in the `linux-check` image, `devUrl` dropped) run beside the installed 0.9.7 deb over its data — 11 sites, the stack RUNNING; the database backed up first and put back after: with the stack running, every row a **green dot and no status
+  word, no lock**; the three icons on every row with no hover (Firefox, WordPress on the seven
+  WordPress rows with the gap held on the others, the editor glyph); `· external` as muted text and
+  the worktree chips where they belong; "All" tabs without a number. A **right-click** opened OUR
+  menu (it flipped above the pointer), not WebKitGTK's. The one stopped site was the one row that
+  spoke (above). NOT pressed: a row's three actions themselves, the view surviving a site visit,
+  `/` ↓ ↑ Enter. Seen while there, and older than this work: with a menu open, a click elsewhere
+  closes it AND lands on what is under the pointer (it opened `lv`).
+  Open on Windows.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
@@ -927,7 +968,21 @@ WebKit, the Rust tests the order and the storage — the TRAY and a restart are 
 - [ ] Pin a site, then **delete** it: it is gone from the sidebar, and a new site made with the same
   domain is not pinned.
 - [ ] Pin seven sites: the sidebar shows five and "…and 2 more pinned".
-  Open on macOS, Windows and Linux (the tray is each OS's own: menu bar / notification area / the
+  ✓ **macOS** 14 Nov 2026 — the 15.8 UTM VM (WKWebView), this tree's debug bundle at 0fc5f663 over the VM's 0.9.7 data (9 sites, stack stopped; the database backed up first and put back after — the run migrated it to v46): nothing pinned → no heading, nothing under Sites. Pinned
+  `conv71` then `smoke-pg.rex` from the row menu: a **Pinned 2** group (by name) over **All sites
+  7**, both under Sites in the sidebar; `site_prefs` held exactly those two rows. **Quit and
+  reopened**: both still pinned. Opened `wtp`, `smoke1`, `smoke-lv.rex`: the switcher read Pinned
+  (conv71, smoke-pg.rex) · Recent (smoke-lv.rex, smoke1, wtp — newest first, no pinned site) · All
+  sites. The **menu-bar Sites submenu** (read through System Events): conv71.rex, smoke-pg.rex, then
+  the rest, and "…and 1 more — open rexenv". Not pressed: the Opened sort, a scratch site's menu,
+  pin → delete, seven pins.
+  ✓ **Linux** 14 Nov 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug binary at 0fc5f663 (built in the `linux-check` image, `devUrl` dropped) run beside the installed 0.9.7 deb over its data — 11 sites, the stack RUNNING; the database backed up first and put back after: pinned `l14lx` from a right-click → **Pinned 1** over **All sites
+  10**, `l14lx` under Sites in the sidebar, the toast "l14lx pinned — it is in the sidebar now."
+  Opened `wtl`, `lm`, `lv`: the switcher's Recent followed. **The GNOME tray's Sites submenu**
+  (seen): l14lx.rex, then lv.rex, lm.rex, wtl.rex, then conv71l.rex, l16lx.rex, live-sync.rex… —
+  pinned, recent newest-first, the rest. **App killed and started again**: `l14lx` still pinned,
+  the list on All. Not pressed: the Opened sort, a scratch site, pin → delete, seven pins.
+  Open on Windows (the tray is each OS's own: menu bar / notification area / the
   desktop's indicator).
 
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
@@ -938,11 +993,20 @@ use Ctrl+K — their sections).
   nothing** here (in a text field it is macOS's delete-to-end-of-line).
 - [ ] On a site's **Logs** tab, ⌘K → another site → its **Logs** tab.
 - [ ] On a site's **Terminal** tab, click into the shell and press ⌘K: the terminal clears (or does
-  what your shell does) — **the switcher does not open**. Click the page header, ⌘K: it opens.
+  what your shell does) — **the switcher does not open**. Click the page BELOW the title bar (the
+  tab bar, the terminal's toolbar), ⌘K: it opens. *(A click on the title-bar strip — the site name
+  and its buttons' row — is a window drag and does not take the focus out of the shell; the first
+  wording of this row said "click the page header", and on the real app that did nothing.)*
 - [ ] Open **New site**, press ⌘K: nothing opens over the dialog.
 - [ ] The list's last line reads `⌘↵ in browser`; ⌘↵ on a running site opens it in the browser and
   the app stays where it was.
-  Open on macOS.
+  ✓ **macOS** 14 Nov 2026 — the 15.8 UTM VM (WKWebView), this tree's debug bundle at 0fc5f663 over the VM's 0.9.7 data (9 sites, stack stopped; the database backed up first and put back after — the run migrated it to v46): on `wtp`'s **Database** tab ⌘K opened the switcher mid-window,
+  `smoke1` + Enter landed on `smoke1`'s **Database** tab; the last line read `⌘↵ in browser` (the
+  real `PlatformWords`). In `smoke-lv.rex`'s **Terminal** — a live shell, `echo hello-from-shell`
+  answered — ⌘K opened nothing; after a click on the terminal's toolbar it opened. **Found here:** a
+  click on the title-bar strip leaves the focus in the shell (the row above was reworded). Not
+  pressed: ⌘K over the New site dialog, ⌘↵ (the stack was stopped — nothing to open), Ctrl+K.
+  *(Linux's ✓ is in the Linux section; Windows is open — the Dell was offline.)*
 
 ## Site header at a narrow window (27 Oct 2026)
 Nothing overlaps and the name stays readable: when the title and the buttons cannot share a line,
@@ -4823,5 +4887,9 @@ Result: 5 / 5 pass (28 Oct 2026, arm64; x86_64 not run).  Issues found: none in 
   last line reads `Ctrl+↵ in browser` and the site name's hover says `Ctrl+K` — **never ⌘**, a key
   this keyboard does not have. In the **Terminal** tab Ctrl+K reaches the shell (bash: deletes to the end of the line) and no switcher opens. **Tell:**
   WebKitGTK or GNOME keeping Ctrl+K for itself and the page never seeing it.
-  Open on Linux (the Ubuntu 22.04 VM).
+  ✓ **Linux** 14 Nov 2026 — the Ubuntu 22.04 arm64 UTM VM (GNOME, WebKitGTK), this tree's debug binary at 0fc5f663 (built in the `linux-check` image, `devUrl` dropped) run beside the installed 0.9.7 deb over its data — 11 sites, the stack RUNNING; the database backed up first and put back after: **Ctrl+K** on `wtl`'s Overview opened the switcher mid-window
+  (WebKitGTK and GNOME both let the key through), its last line `Ctrl+↵ in browser`, no ⌘ anywhere;
+  on `wtl`'s **Database** tab Ctrl+K → `lm.rex` → Enter landed on `lm`'s **Database** tab
+  (phpMyAdmin loaded there). In `lm`'s **Terminal** — a live bash, `echo hi-linux` answered — Ctrl+K
+  opened nothing. Not pressed: Ctrl+K over a dialog, Ctrl+↵.
 

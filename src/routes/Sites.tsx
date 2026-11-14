@@ -333,7 +333,12 @@ export function SiteRow({
           next?.focus();
         }
       }}
-      className="group flex h-11 cursor-pointer items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
+      // `select-none`: a right-click in WKWebView SELECTS the word under the
+      // pointer before the menu opens — on the real app (macOS 15.8 VM, 14 Nov
+      // 2026) the row's menu came up beside a highlighted "pg.rex". Playwright's
+      // WebKit does not do it, so no check saw it. The domain is still one menu
+      // item away (Copy domain).
+      className="group flex h-11 cursor-pointer select-none items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
     >
       {/* The status, as a dot — for every row, in one column. The WORDS appear
           only where they say something (further right): 25 "Running" pills told
