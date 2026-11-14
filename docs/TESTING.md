@@ -691,6 +691,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (14 Nov 2026): `siteactions.js`** (#963) — the site page COUNTS its controls: browser,
+  editor, Magic Login and Open folder once each on Overview, no Quick links, no second door to a
+  tab; the value of PHP/server once; ⋯ = Stop site · Duplicate · Delete; a confirmed delete
+  leaves for the list. A count, because "the duplicate is gone" is a claim a returning tile would
+  falsify silently. `openin.js` changed with it: the tiles it measured are gone, so it now holds
+  the two names that had to survive them (the editor's button, the browser's name with no icon).
+  **What it cannot see:** the real delete and revert (the dev page's `deleteSite` is a no-op) —
+  the L0/L1 proofs of those are unchanged, and the SMOKE row presses them from the site page.
 - **Check (14 Nov 2026): `sitekey.js`** (#962) — Mod+K, every key leg under BOTH sets of words
   (`rex-mock-os=windows` answers the modifier as a Windows/Linux build does): the OS's chord
   opens, the other's does not; not over a dialog, not from a terminal, not a second list; the

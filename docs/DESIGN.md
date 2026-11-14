@@ -188,6 +188,23 @@ the shipped UI toward one.
   Overview, so a typed URL gets the same answer (ledger #959, #960). Its search
   matches what the Sites filter matches (name, domain, extra domains): two boxes
   that disagree about whether a site exists is the plugin filter's defect again.
+- **One home per action on the site page: the header acts, the tabs navigate, a
+  card shows facts.** The header is Open in browser · the editor · Magic Login · `⋯`
+  (Stop/Start site, Duplicate, Delete). Counted on 14 Nov 2026 (owner: "what is on
+  the page many times, remove"): of the six Quick-links tiles, five repeated
+  something on the same screen — browser and Magic Login (the header), Database and
+  Terminal (the tab bar), Open folder (the path row's icon) — and the sixth, the
+  editor, existed nowhere else; PHP version and web server were each a large value
+  beside a select showing that value. The card is gone, the editor is a header
+  button, each select is the value. What had to survive the tiles: the browser's
+  NAME on the button when its icon cannot be read (`OpenInBrowserLabel` — the tile
+  used to spell it), and the editor's name (its button IS the name). What moved in:
+  Duplicate and Delete, which could be reached only from the Sites list, share ONE
+  flow with it (`useSiteActions` — a connected site is reverted before it is
+  deleted, on both screens). What stayed out of `⋯` on purpose: Rename (its home on
+  this page is Settings → Site name) and Open folder (the path row). "Site info"
+  left Settings for Overview: it held nothing to set. `wk-checks/siteactions.js`
+  COUNTS the controls, so a tile that comes back is red (ledger #963).
 - **A shortcut answers one modifier, names the one it answers, and leaves the shell
   its keys.** Mod+K opens the site switcher from every route: ⌘K on macOS, Ctrl+K on
   Windows and Linux, the label from `PlatformWords` — a "⌘" typed into TSX names a
@@ -538,9 +555,9 @@ the shipped UI toward one.
   the tile says "Open in Chrome" only when a browser is actually resolved.
 - **One icon per kind of hand-off, on every surface.** EVERY control that opens a
   URL in the browser wears `PreferredBrowserIcon` (`components/ui/open-in.tsx`) —
-  the site header and quick tile, the Sites row, a network sub-site's Visit, the
+  the site header, the Sites row, a network sub-site's Visit, the
   tunnel's public URL, Open Mailpit, Adminer's Open in browser, Change domain's Open
-  site — and EVERY magic login wears `WordPressIcon`: the header and tile, a
+  site — and EVERY magic login wears `WordPressIcon`: the header, a
   sub-site's Magic Login, One-click admin login, and a user's Log in. Until 13 Sep
   2026 the header showed the browser while the Network tab, Tunnels, Mailpit and
   Adminer showed a generic arrow or globe and three logins a door; the owner asked
@@ -549,17 +566,19 @@ the shipped UI toward one.
   log's Open file opens the default app, not a browser. Guarded by
   `open_in_browser_and_magic_login_wear_one_icon_everywhere`.
 - **A chevron appears only when there is something to choose between.**
-  `SplitButton`/`QuickTile` drop the chevron entirely when the menu is empty
+  `SplitButton` drops the chevron entirely when the menu is empty
   (`useBrowserMenu`/`useEditorMenu` return undefined below two apps) — a control
   that opens a one-item menu can't change anything, and the seam it adds reads as
   a promise the machine can't keep. The terminal chevron (`useTerminalMenu`) is
   the exception that states the rule: its menu is not "the same action, elsewhere"
   but a DIFFERENT destination — the plain click opens rexenv's built-in Terminal
   tab, the menu opens the folder in the user's own terminal app — so one entry is
-  already a choice, and it shows. The two halves are SIBLING buttons: a nested
+  already a choice, and it shows (a plugin/theme row's terminal button, and the
+  Terminal tab's own toolbar; the site's Quick-links tile that also carried it
+  went on 14 Nov 2026). The two halves are SIBLING buttons: a nested
   `<button>` is invalid HTML and WKWebView drops the inner click. **Every chevron
   carries a visible SEAM** — the divider is the affordance, not decoration: the
-  quick-link tiles shipped without one and read as a single wide button with an
+  quick-link tiles (removed 14 Nov 2026) shipped without one and read as a single wide button with an
   arrow glued to it, so "what happens if I click there" had no answer (reported
   11 Aug). Bordered variants collapse their facing borders into the seam;
   `primary` draws no border at all and needs its own divider. `openin.js` asserts

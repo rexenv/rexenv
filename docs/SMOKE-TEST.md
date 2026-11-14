@@ -868,6 +868,23 @@ The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #9
 - [ ] "Sites" in the same line goes to the list.
   Open on macOS, Windows and Linux.
 
+## Site page — one home per action (14 Nov 2026 — `docs/PLAN-sites-ux.md` T1)
+The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/siteactions.js`).
+- [ ] A **WordPress** site's Overview: **no Quick links card**. The header holds **Open in browser**
+  (your browser's icon), **your editor by name** (its icon), **Magic Login**, **⋯**. Each opens what
+  it says. PHP version and Web server are a select each — the value is not written a second time
+  beside it. A **Site info** card (type, database name with a copy icon, engine, multisite) sits
+  beside Paths; **Settings** no longer has it.
+- [ ] **⋯ → Stop site**: the pill reads "Stopped by you", the menu now offers **Start site**; start
+  it again. **⋯ → Duplicate**: New site opens with "<name> copy"; cancel. **⋯ → Delete** on a
+  throwaway site: the same confirm as the list's; confirmed, the app is back on the Sites list and
+  the site is gone. On a site whose database rexenv connected (Database tab → connected), the
+  dialog offers **revert, then delete** first — as it does from the list.
+- [ ] The domain under the name has a copy icon; no `:443` after it (it appears only when the edge
+  is on another port).
+- [ ] A browser whose icon the app cannot read (rare): the button says **Open in <its name>**.
+  Open on macOS, Windows and Linux. Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
+
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
 ⌘K opens the same list from every screen (ledger #962, `wk-checks/sitekey.js`; Windows and Linux
 use Ctrl+K — their sections).
@@ -888,10 +905,10 @@ the buttons go to the line below (ledger #925, `wk-checks/detailheader.js`). Fou
 WebView2, so the row is the real webview on each OS.
 - [ ] At the smallest window (980px, and narrower if the OS allows), open a site whose name has
   **no space or hyphen** (e.g. `smoke1w`), and a **WordPress** site with a longer name. The name is
-  WHOLE and on one line; the **Running** pill beside it; the buttons (Stop site, Open in browser,
-  Magic Login) on the line below, nothing on top of anything. At the default size (1180px) it is
+  WHOLE and on one line; the **Running** pill beside it; the buttons (Open in browser, the editor,
+  Magic Login, `⋯` — since 14 Nov 2026; the ✓ runs below saw Stop site / Open in browser / Magic Login) on the line below, nothing on top of anything. At the default size (1180px) it is
   one row, as before. Only a name longer than the whole row is cut with `…`, its hover the full name.
-  **Tells:** the pill over Stop site; the name on two lines; a short name cut to a letter or two
+  **Tells:** the pill over a button; the name on two lines; a short name cut to a letter or two
   (the first fix did that on the Dell: `smoke1w` → "S").
   ✓ **Windows** 27 Oct 2026 — the Dell (Win 10 22H2, WebView2), this tree's release `rexenv.exe` at
   e2b00a41 (cargo-xwin, run beside the installed 0.9.3): at ~945 px `smoke1w` and `live-sync` whole
@@ -1820,8 +1837,9 @@ site with a REAL plugin, which is the part the fixtures cannot buy.
   page behind it must be inert (WebKit suspends the calling frame — `confirm()`'s
   blocking contract).
   ✓ 18 Sep 2026 (clean UTM VM, macOS 15.6.1 arm64, build 39610cc7 + self-update to 0.7.2).
-- [ ] Overview → Quick links → **Database** opens THIS site's Database tab, not the engines
-  screen (8 Aug). **Open: no run recorded.**
+- [ ] ~~Overview → Quick links → **Database** opens THIS site's Database tab~~ — the Quick links card
+  was removed 14 Nov 2026 (`docs/PLAN-sites-ux.md` T1); the **Database** tab is the one door, and the
+  row "Site page — one home per action" covers it. Never run.
 - [ ] **MySQL writes no binary log** (ledger #858, 14 Oct 2026 — a user's Mac held 60 GB of
   `binlog.*`). With MySQL running: `<app data>/mysql/data` holds no `binlog.index` and no
   `binlog.NNNNNN`; `mysql --no-defaults -h127.0.0.1 -P13306 -uroot -e "SHOW VARIABLES LIKE 'log_bin'"`
@@ -2261,7 +2279,7 @@ L1 `browser_detect_check`, L2 `openin.js`); the rows are what a human must see.*
 - [ ] **Safari's row has no private icon.** Safari has no private-window command
   line; a row that offered one would open an ordinary, recorded window.
   **Open: needs a Mac with two browsers** (L2 `openin.js` asserts the absence).
-- [ ] The same two targets work from the Quick-links **Browser** tile and from the
+- [ ] The same two targets work from the site header's **Open in browser** chevron and from the
   **Magic Login** chevron — a magic link opened privately signs you in there
   without touching the session in your normal window. **Open: no run recorded.**
 

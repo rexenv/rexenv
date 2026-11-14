@@ -26,6 +26,7 @@ const CHECKS = [
   "detailheader.js",
   "siteswitch.js",
   "sitekey.js",
+  "siteactions.js",
   "domains.js",
   "tldconsent.js",
   "tunnelhealth.js",

@@ -29,6 +29,19 @@ export function PreferredBrowserIcon({ className = "h-4 w-4" }: { className?: st
   return <AppIcon icon={browser?.icon} fallback={<Globe className={className} />} className={className} />;
 }
 
+/** The words on the site page's browser button: "Open in browser" beside the
+ *  browser's own icon — and, when that icon cannot be read, the browser's NAME.
+ *
+ *  Which browser the click uses must be on the button one way or the other. The
+ *  icon says it; a Quick links tile used to spell it too ("Open in Google
+ *  Chrome"), and that tile is gone (14 Nov 2026). Without this, a browser whose
+ *  bundle icon is unreadable would leave a globe and the word "browser" — the
+ *  generic control this app replaced on 13 Sep 2026. */
+export function OpenInBrowserLabel(): string {
+  const browser = usePreferredBrowser();
+  return browser && !browser.icon ? `Open in ${browser.name}` : "Open in browser";
+}
+
 /** Width for a chevron menu built by {@link useBrowserMenu}. Wider than the
  *  `SplitButton` default because a row here carries an icon, a name, the
  *  `default` tag AND the private target — at the default width the names of the

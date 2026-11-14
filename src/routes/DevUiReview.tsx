@@ -89,14 +89,13 @@ import { Mail as MailScreen } from "@/routes/Mail";
 import { OnboardingDone } from "@/routes/Onboarding";
 import { SiteProvisionCard } from "@/components/sites/SiteProvisionCard";
 import { AgentsMcpCard } from "@/components/mcp/AgentsMcpCard";
-import { QuickTile } from "@/routes/SiteDetail";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { AppIcon } from "@/components/ui/app-icon";
 import { SplitButton } from "@/components/ui/split-button";
-import { BROWSER_MENU_WIDTH, OpenInBrowserSplit, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, OpenInBrowserLabel, OpenInBrowserSplit, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { usePreferredEditor } from "@/lib/useEditor";
-import { Code, ExternalLink, Globe } from "lucide-react";
+import { Code, ExternalLink } from "lucide-react";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
 import { toast } from "@/lib/toast";
@@ -894,8 +893,8 @@ function mockEditors(): EditorApp[] {
 }
 
 /** The "which app opens this" surfaces: the header split button and the two
- *  Quick-links tiles that grew a chevron. Rendered from the SHIPPING
- *  components (`SplitButton`, `QuickTile`, `useBrowserMenu`) — a stand-in
+ *  editor's (in the header too, since the Quick-links tiles went). Rendered from
+ *  the SHIPPING components (`SplitButton`, `useBrowserMenu`) — a stand-in
  *  would prove the harness, not the app. */
 function OpenInView() {
   const site = fixtureSite();
@@ -918,7 +917,7 @@ function OpenInView() {
             fallback={<ExternalLink className="h-[15px] w-[15px]" strokeWidth={1.8} />}
             className="h-[15px] w-[15px]"
           />
-          Open in browser
+          <OpenInBrowserLabel />
         </SplitButton>
         <SplitButton
           variant="primary"
@@ -930,34 +929,16 @@ function OpenInView() {
           <WordPressIcon className="h-[15px] w-[15px]" />
           Magic Login
         </SplitButton>
-      </div>
-      <div data-probe="tiles" className="grid grid-cols-2 gap-[9px] rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-        <QuickTile
-          icon={<AppIcon icon={browser?.icon} fallback={<Globe className="h-4 w-4" />} />}
-          iconColor="text-rex-text-muted"
-          label={browser ? `Open in ${browser.name}` : "Browser"}
-          onClick={() => {}}
-          menu={browserMenu}
-          menuWidth={BROWSER_MENU_WIDTH}
-          menuLabel="Open this site in another browser"
-        />
-        <QuickTile
-          icon={<WordPressIcon className="h-4 w-4" />}
-          iconColor="text-rex-accent-blue"
-          label="Magic Login"
-          onClick={() => {}}
-          menu={browserMenu}
-          menuWidth={BROWSER_MENU_WIDTH}
-          menuLabel="Sign in through another browser"
-        />
-        <QuickTile
-          icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
-          iconColor="text-rex-text-muted"
-          label={editor ? `Open in ${editor.name}` : "Open in editor"}
+        {/* The editor's place since the Quick links card went (14 Nov 2026):
+            the site header, the same split shape, the button NAMING the editor. */}
+        <SplitButton
           onClick={() => {}}
           menu={editorMenu}
-          menuLabel="Open this project in another editor"
-        />
+          chevronLabel="Open this project in another editor"
+        >
+          <AppIcon icon={editor?.icon} fallback={<Code className="h-[15px] w-[15px]" />} className="h-[15px] w-[15px]" />
+          {editor ? editor.name : "Editor"}
+        </SplitButton>
       </div>
       {/* The database console's control (Databases row + the AdminerFrame bar):
           the SAME shape — icon, label, chevron, private rows — for a url that

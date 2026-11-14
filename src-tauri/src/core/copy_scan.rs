@@ -992,11 +992,12 @@ const LINK = "https://example.test/a//b";
         let wordpress = "WordPressIcon";
         // (file, a needle unique to the control, the icon it must wear)
         let controls = [
-            ("routes/SiteDetail.tsx", "            Open in browser", browser),
+            // The header's label is a component since 14 Nov 2026 (`OpenInBrowserLabel`:
+            // "Open in browser", or the browser's name when its icon is unreadable). The
+            // two Quick-links tiles this list also held went with that card.
+            ("routes/SiteDetail.tsx", "<OpenInBrowserLabel />", browser),
             ("routes/SiteDetail.tsx", "Open site\n", browser),
-            ("routes/SiteDetail.tsx", "label={browser ? `Open in ${browser.name}`", browser),
             ("routes/SiteDetail.tsx", "{adminBusy ? \"Signing in…\" : \"Magic Login\"}", wordpress),
-            ("routes/SiteDetail.tsx", "label=\"Magic Login\"", wordpress),
             ("routes/Sites.tsx", "aria-label=\"Open in browser\"", browser),
             ("components/wordpress/WordPressManager.tsx", "        Visit\n", browser),
             ("components/wordpress/WordPressManager.tsx", "{signingIn ? \"Signing in…\" : \"Magic Login\"}", wordpress),

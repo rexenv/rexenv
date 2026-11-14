@@ -10,14 +10,14 @@ import { TopBar } from "@/components/shell/TopBar";
 import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { SITE_ENABLED_KEY, useAllSitesEnabled, useSiteEnabled } from "@/lib/useSiteEnabled";
 import { usePendingVariables } from "@/lib/usePendingVariables";
-import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
-import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { isScratch, siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
+import { useSiteActions } from "@/components/sites/useSiteActions";
 import { Button } from "@/components/ui/button";
-import { allSiteDomains, defaultTld, listSites, resolverDrift, deleteSite, renameSite, openExternal, openPath, canOpenOnThisScreen, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, rewriteRevert, keepSite, scratchPackages, onScratchReaped, agentActivity, worktreeRelations } from "@/lib/ipc";
+import { allSiteDomains, defaultTld, listSites, resolverDrift, openExternal, openPath, canOpenOnThisScreen, getSitesServing, sitesResources, siteProvisionActive, siteProvisionCancel, siteProvisionRetry, scanValetImport, dbImportRecords, keepSite, scratchPackages, onScratchReaped, agentActivity, worktreeRelations } from "@/lib/ipc";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePlatformWords } from "@/lib/usePlatformWords";
 import { usePreferredBrowser } from "@/lib/useBrowser";
@@ -752,37 +752,6 @@ export function Sites() {
   const stoppedCount = switchable.filter((s) => s.enabled === false).length;
   const servedCount = switchable.length - stoppedCount;
 
-  const remove = useMutation({
-    mutationFn: (site: Site) => deleteSite(site.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toastBackendError(e),
-  });
-
-  // D2's default leg for a CONNECTED site: revert the connection change,
-  // then delete. If the revert can't run cleanly (file edited since, backup
-  // missing), stop and say so — never delete on the back of a revert that
-  // didn't happen.
-  const revertThenRemove = useMutation({
-    mutationFn: async (site: Site) => {
-      const out = await rewriteRevert(site.id, false);
-      if (out.status === "reverted" || out.status === "noRewrite") {
-        await deleteSite(site.id);
-        return null;
-      }
-      return out.message;
-    },
-    onSuccess: (blocked, site) => {
-      if (blocked) {
-        toast.info(
-          `${site.domain} was not deleted — ${blocked} Resolve it on the site's Database tab, or delete without reverting.`,
-        );
-      }
-      void qc.invalidateQueries({ queryKey: ["sites"] });
-      void qc.invalidateQueries({ queryKey: ["db-import-records"] });
-    },
-    onError: (e) => toastBackendError(e),
-  });
-
   // Streamed provision job (New Site / Retry) — re-adopted here so a create
   // started in the dialog survives closing it. The banner shows while
   // running and stays FROZEN after a failure/cancel (the row also carries
@@ -820,19 +789,9 @@ export function Sites() {
     if (q.data !== undefined) provisioningOf.set(domain, q.data?.status === "running");
   });
 
-  const rename = useMutation({
-    mutationFn: ({ id, name }: { id: string; name: string }) => renameSite(id, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sites"] }),
-    onError: (e) => toastBackendError(e),
-  });
-
-  // In-app modals (WKWebView doesn't support window.confirm/prompt reliably).
-  const [renameTarget, setRenameTarget] = useState<Site | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Site | null>(null);
-
-  // "Duplicate" opens New Site prefilled with this site's setup (type/PHP/server);
-  // the user picks a fresh domain. A byte-for-byte clone would need a backend copy.
-  const [dupSource, setDupSource] = useState<Site | null>(null);
+  // Rename / Duplicate / Delete — the dialogs and their mutations are shared with
+  // the site page (`useSiteActions`), so the two screens cannot drift.
+  const actions = useSiteActions({ onDuplicateStarted: prov.start });
 
   const running = sites.filter((s) => statusOf(s) === "running").length;
 
@@ -1149,11 +1108,11 @@ export function Sites() {
                 reapFailure={reapFailures.get(site.id) || undefined}
                 provisioning={site.provisioned ? false : provisioningOf.get(site.domain)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
-                onDelete={() => setDeleteTarget(site)}
+                onDelete={() => actions.remove(site)}
                 onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
                 onOpenWordpress={() => navigate(`/sites/${site.id}/wordpress`)}
-                onRename={() => setRenameTarget(site)}
-                onDuplicate={() => setDupSource(site)}
+                onRename={() => actions.rename(site)}
+                onDuplicate={() => actions.duplicate(site)}
                 onRetry={() => retry.mutate(site)}
                 onKeep={isScratch(site) ? () => setKeepTarget(site) : undefined}
                 stoppedByUser={site.enabled === false}
@@ -1188,38 +1147,8 @@ export function Sites() {
           })()
         )}
       </div>
-      {(showNew || dupSource) && (
-        <NewSiteDialog
-          initial={
-            dupSource
-              ? {
-                  name: `${dupSource.name} copy`,
-                  siteType: dupSource.type,
-                  phpVersion: dupSource.phpVersion,
-                  webServer: dupSource.webServer,
-                }
-              : undefined
-          }
-          onClose={() => {
-            setShowNew(false);
-            setDupSource(null);
-          }}
-          onStarted={prov.start}
-        />
-      )}
-      {renameTarget && (
-        <PromptDialog
-          title="Rename site"
-          label="Display name"
-          initialValue={renameTarget.name}
-          submitLabel="Rename"
-          onSubmit={(name) => {
-            if (name !== renameTarget.name) rename.mutate({ id: renameTarget.id, name });
-            setRenameTarget(null);
-          }}
-          onCancel={() => setRenameTarget(null)}
-        />
-      )}
+      {showNew && <NewSiteDialog onClose={() => setShowNew(false)} onStarted={prov.start} />}
+      {actions.dialogs}
       {keepTarget && (
         <KeepSiteDialog
           site={keepTarget}
@@ -1228,22 +1157,6 @@ export function Sites() {
             setKeepTarget(null);
           }}
           onCancel={() => setKeepTarget(null)}
-        />
-      )}
-      {deleteTarget && (
-        <DeleteSiteDialog
-          site={deleteTarget}
-          removesFolder={worktreeRows.some((w) => w.siteId === deleteTarget.id && w.removesFolder)}
-          dbState={dbStates.get(deleteTarget.id)}
-          onPlainDelete={() => {
-            remove.mutate(deleteTarget);
-            setDeleteTarget(null);
-          }}
-          onRevertThenDelete={() => {
-            revertThenRemove.mutate(deleteTarget);
-            setDeleteTarget(null);
-          }}
-          onCancel={() => setDeleteTarget(null)}
         />
       )}
     </>

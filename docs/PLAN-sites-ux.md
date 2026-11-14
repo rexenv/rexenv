@@ -5,7 +5,8 @@ a time; D1–D7 (§6) are taken as recommended on that word (no row was ruled on
 reverse at review). **T2 built 14 Nov 2026** (ledger #959–#960, `wk-checks/siteswitch.js`, WebKit only — the
 SMOKE row is open on all three OSes). **T3 built 14 Nov 2026** (ledger #961–#962, `wk-checks/sitekey.js` under
 macOS and Windows words, the L0 words test on all three; the SMOKE rows per OS are open — no build has run on the
-Dell or the Ubuntu VM yet). T1, T4, T5, T6 open. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
+Dell or the Ubuntu VM yet). **T1 built 14 Nov 2026** (ledger #963, `wk-checks/siteactions.js`; SMOKE row open per OS).
+T4, T5, T6 open. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
 "Sites list and site page" row in `docs/TODO.md` (Now).
 
 ---
@@ -143,8 +144,11 @@ Sites / [W] ea ▾
 
 - **Open in editor moves into the header**, as a split button with the editor menu the tile had
   (`useEditorMenu`). Hidden over the web UI, as today (`canOpenOnThisScreen`).
-- **`⋯` menu** — everything the list row's menu has, so nothing needs the list: Start/Stop site, Open folder,
-  Open in an external terminal (the Terminal tile's menu), Rename, Duplicate, Copy domain, Delete.
+- **`⋯` menu** — what the page did not already have a home for: Start/Stop site, Duplicate, Delete.
+  **Built narrower than first drafted**, by the plan's own rule: Rename already lives on this page (Settings →
+  Site name), Open folder is the path row's icon, Copy domain is the icon beside the domain, and the external
+  terminal list is on the Terminal tab's toolbar — putting any of them in `⋯` would have added the duplicates
+  this task removes.
 - **Stop site** leaves the button row for the `⋯` menu (D3). It is the least-used of the four and the one the
   header wraps for at 945 px (the Dell, 27 Oct 2026).
 - The domain gets a copy icon. The `:443` suffix stays only when the edge port is not 443 — on the default it
@@ -273,7 +277,7 @@ D2 and D7; T5 needs D5 and D6.
 
 | # | Task | Done when |
 |---|---|---|
-| T1 | **Site page: one home per action.** Delete Quick links; Editor split button and `⋯` menu in the header; PHP and server as the select alone; "Site info" to Overview (D4); Stop site per D3. Correct DESIGN.md's stale "opens on Running" paragraph. | Each action in §2.2's table appears once. Header measured at 945 px with `smoke1w`-shaped and long names: nothing overlaps, the name truncates. Rename, Duplicate, Copy domain, Delete work from the site page. Web UI: no editor/folder control rendered. |
+| T1 ✓ | **Site page: one home per action.** Delete Quick links; Editor split button and `⋯` menu in the header; PHP and server as the select alone; "Site info" to Overview (D4); Stop site per D3. Correct DESIGN.md's stale "opens on Running" paragraph. | Each action in §2.2's table appears once. Header measured at 945 px with `smoke1w`-shaped and long names: nothing overlaps, the name truncates. Rename, Duplicate, Copy domain, Delete work from the site page. Web UI: no editor/folder control rendered. |
 | T2 ✓ | **`SiteSwitcher` + breadcrumb.** The popover, search over name/domain/extra domains, keys, the tab-keeping rule as a pure function. | *(Built: the tree has no TypeScript unit runner, so the rule is proven through the page — `siteswitch.js` legs 2–3; a site whose folder is a checkout is not in the fixture.)* Unit test: the tab rule for every tab × (WordPress, Laravel, Blank PHP, repository or not). wk-check: open, type, Enter lands on the target's same tab; 25 + scratch rows all reachable by scroll; focus returns to the trigger on Esc. |
 | T3 ✓ | **Mod+K from every route.** Global listener, not taken inside the Terminal tab or while a dialog is open; label from `PlatformWords`. | Runs on macOS, Windows and Linux builds: the shortcut opens the switcher on Sites, Mail, Settings and a site's Logs tab; in the Terminal tab Ctrl+K reaches the shell. L0 test that all three `PlatformWords` carry the label. |
 | T4 | **Sites row and header.** Three visible actions, `⋮` + right-click menu, status dot, exception-only lock and chips, `7.4 · nginx`, header per §3.4, list state kept across a site visit, list keys. | wk-check at 945 / 1100 / 1440 with the production-shaped fixture: no row overflows, actions visible at all three. `badges` wk-check green (Setting up / setup incomplete / unknown). Filter → open site → back shows the same filter, sort, search and scroll. Counts rule still holds (existing test). |

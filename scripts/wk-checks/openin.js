@@ -1,5 +1,11 @@
-// WebKit check: the "which app opens this" surfaces — the header split button
-// and the Browser/editor Quick-links tiles (`/dev/ui-review?view=openin`).
+// WebKit check: the "which app opens this" surfaces — the site header's split
+// buttons: browser, Magic Login and the editor (`/dev/ui-review?view=openin`).
+//
+// Until 14 Nov 2026 the browser and the editor also had a Quick-links tile each,
+// and it was the TILE that spelled the app's name ("Open in Google Chrome"). The
+// tiles went (five of the six repeated something on the same screen), so the two
+// names now have to survive in the header: the editor's button is its name, and
+// the browser's button says the browser's name whenever its icon cannot be read.
 //
 // Why WebKit and not Chrome: the chevron half is a SIBLING <button> because a
 // nested one is invalid HTML and WKWebView silently drops the inner click —
@@ -21,12 +27,13 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
   await page.goto(url(), { waitUntil: "networkidle" });
   await page.waitForTimeout(500);
 
-  // The button must name the browser the click resolves to (the system default
-  // here, since no preference is stored) — "Browser" alone was the whole bug.
-  if ((await page.getByText("Open in Google Chrome", { exact: false }).count()) === 0)
-    fails.push("tile does not name the resolved browser");
-  if ((await page.getByText("Open in VS Code", { exact: false }).count()) === 0)
-    fails.push("tile does not name the resolved editor");
+  // With its icon readable the browser button is the icon + "Open in browser";
+  // the editor's button is the resolved editor's own name ("Editor" alone would
+  // be the generic control). Leg 3 holds the browser's name for the no-icon case.
+  if ((await page.locator('[data-probe="header"]').getByText("Open in browser", { exact: true }).count()) !== 1)
+    fails.push("the header's browser button does not read \"Open in browser\" beside a readable icon");
+  if ((await page.locator('[data-probe="header"]').getByText("VS Code", { exact: true }).count()) !== 1)
+    fails.push("the header's editor button does not name the resolved editor");
 
   // Icons must be REAL decoded images, not just present <img> tags: a broken
   // data URI still renders an element, and naturalWidth is what separates them.
@@ -45,10 +52,10 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
   }
 
   const chevrons = () => page.getByRole("button", { name: /another browser|another editor/ });
-  // 2 header (browser + Magic Login) + 3 tiles (browser, Magic Login, editor)
+  // 3 header (browser + Magic Login + editor)
   // + 1 database console (`OpenInBrowserSplit`, the Databases row's control).
-  if ((await chevrons().count()) !== 6)
-    fails.push(`expected 6 chevrons, saw ${await chevrons().count()}`);
+  if ((await chevrons().count()) !== 4)
+    fails.push(`expected 4 chevrons, saw ${await chevrons().count()}`);
 
   // The console control is the app-wide shape, not a third spelling: its
   // primary half goes through `open_external` (the backend applies the
@@ -63,7 +70,7 @@ const url = (q) => `${BASE}/dev/ui-review?view=openin${q ?? ""}`;
 
   // EVERY chevron must carry a visible seam. Without it the arrow reads as
   // decoration on one wide button and "click there for what?" has no answer —
-  // reported on the tiles, whose bordered neighbour made the header look fine.
+  // reported on the (since removed) tiles, whose bordered neighbour made the header look fine.
   // `primary` needs its own divider: that variant draws no border at all.
   const seams = await page.evaluate(() =>
     [...document.querySelectorAll("button")]

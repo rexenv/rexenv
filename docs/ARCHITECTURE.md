@@ -87,7 +87,10 @@ module also carries a `//!` doc header stating its job. Quick inventory:
   — a site page's tab is `/sites/:id/:tab`, and WHICH tab renders is decided by
   `resolveSiteTab` (`components/sites/SiteSwitcher.tsx`) from what that site offers,
   never by the URL alone: the page's breadcrumb switches site and keeps the tab
-  (`docs/PLAN-sites-ux.md`, ledger #959)
+  (`docs/PLAN-sites-ux.md`, ledger #959). The site page's header is its action bar
+  (browser, editor, Magic Login, `⋯` = Stop/Start site · Duplicate · Delete); Rename,
+  Duplicate and Delete run through `components/sites/useSiteActions.tsx` on the Sites
+  list and the site page alike (#963)
 
 ## 2. Request & TLS topology
 
@@ -2194,7 +2197,7 @@ words (the browser shell's mock and two dev review pages excepted).
 
 - **The browser preference is applied in the BACKEND, inside `open_external`** —
   not by the UI. Links are opened from about a dozen call sites (site header,
-  quick tiles, Sites rows, Tunnels, Mail, Adminer, magic login, WordPress
+  Sites rows, Tunnels, Mail, Adminer, magic login, WordPress
   plugin/theme rows…); a UI-side rule would mean the next call site anyone adds
   silently opens in the system default. Non-`http(s)` targets (docroots, log
   files) keep going to the OS handler unchanged — on macOS. **On Windows the handler is narrower**
@@ -3938,8 +3941,9 @@ typed into it: that shell may be mid-`composer install`, and the keystrokes woul
 gone to composer.
 
 The same folder can also be opened in the user's OWN terminal app
-(`terminal_open_external`), from three places: the site's quick tile, each
-plugin/theme row, and the Terminal tab's own toolbar — where it is a plain
+(`terminal_open_external`), from two places — each
+plugin/theme row, and the Terminal tab's own toolbar (a third, the site's Quick-links
+tile, went with that card on 14 Nov 2026) — where it is a plain
 "Open in terminal" list rather than a split button, because there is no
 OS-level default terminal for a plain click to stand behind (the way the
 `https` handler backs "Open in browser"). It resolves the directory through exactly the

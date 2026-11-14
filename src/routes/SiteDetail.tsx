@@ -7,19 +7,17 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  ChevronDown,
   ChevronRight,
   Code,
   Copy,
-  Database,
   FolderOpen,
   LayoutGrid,
   Loader2,
   Lock,
   LockOpen,
+  MoreHorizontal,
   Play,
   Square,
-  TerminalSquare,
   Trash2,
 } from "lucide-react";
 import { TopBar } from "@/components/shell/TopBar";
@@ -29,10 +27,10 @@ import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { openSiteInEditor, usePreferredEditor } from "@/lib/useEditor";
 import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
-import { PreferredBrowserIcon } from "@/components/ui/open-in";
-import { Menu } from "@/components/ui/menu";
+import { OpenInBrowserLabel, PreferredBrowserIcon } from "@/components/ui/open-in";
+import { Menu, MenuItem, MenuSeparator } from "@/components/ui/menu";
 import { SplitButton } from "@/components/ui/split-button";
-import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu, useTerminalMenu } from "@/components/ui/open-in";
+import { BROWSER_MENU_WIDTH, useBrowserMenu, useEditorMenu } from "@/components/ui/open-in";
 import { StatusPill } from "@/components/common/StatusPill";
 import { useSiteEnabled } from "@/lib/useSiteEnabled";
 import { StartStopToggle } from "@/components/common/StartStopToggle";
@@ -47,6 +45,7 @@ import { CoreFilesBanner } from "@/components/wordpress/CoreFilesBanner";
 import { WorktreeOfLine } from "@/components/sites/WorktreeOfLine";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
+import { useSiteActions } from "@/components/sites/useSiteActions";
 import { SiteBreadcrumb, resolveSiteTab, type SiteTabKey } from "@/components/sites/SiteSwitcher";
 import { ResolverConsentFor } from "@/routes/Import";
 import { siteTypeMeta } from "@/lib/siteType";
@@ -86,7 +85,7 @@ import {
   type TerminalAsset,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
-import { useSiteUrl } from "@/lib/siteUrl";
+import { useEdgeHttpsPort, useSiteUrl } from "@/lib/siteUrl";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
 /** One-click "Open admin": open a magic auto-login link for the site's primary
@@ -161,6 +160,13 @@ export function SiteDetail() {
   });
 
   const toggle = useSiteEnabled();
+  // Duplicate and Delete from the site's own page (they were reachable only from
+  // the Sites list). A started duplicate is shown by the list, which adopts the
+  // job; a deleted site has no page to stay on.
+  const actions = useSiteActions({
+    onDuplicateStarted: () => navigate("/sites"),
+    onDeleted: () => navigate("/sites"),
+  });
 
   // Displayed status is this site's live *serving* state, not sites.status — serving
   // only when the edge is up AND its own upstream (php-fpm pool or FrankenPHP backend)
@@ -302,6 +308,8 @@ export function SiteDetail() {
         isWordpress={isWordpress}
         status={isServing ? "running" : "stopped"}
         tab={active}
+        onDuplicate={() => actions.duplicate(site)}
+        onDelete={() => actions.remove(site)}
         togglePending={toggle.isPending}
         onToggleEnabled={
           site.provisioned ? (enabled) => toggle.mutate({ site, enabled }) : undefined
@@ -386,10 +394,6 @@ export function SiteDetail() {
                 });
                 if (ok) switchServer.mutate(srv);
               }}
-              // THIS site's database, like every other tile here — the engines
-              // screen is a different question and lives in the sidebar.
-              onDatabase={() => navigate(`/sites/${site.id}/database`)}
-              onTerminal={() => navigate(`/sites/${site.id}/terminal`)}
               onViewLogs={() => navigate(`/sites/${site.id}/logs`)}
             />
           )}
@@ -406,6 +410,7 @@ export function SiteDetail() {
           {active === "settings" && <SettingsTab site={site} />}
         </div>
       </div>
+      {actions.dialogs}
     </>
   );
 }
@@ -416,6 +421,8 @@ function SiteHeader({
   status,
   tab,
   onToggleEnabled,
+  onDuplicate,
+  onDelete,
   togglePending,
 }: {
   site: Site;
@@ -426,12 +433,18 @@ function SiteHeader({
   /** Start or stop THIS site (v44) — absent while its setup is unfinished,
    *  which is Retry's job, not this button's. */
   onToggleEnabled?: (enabled: boolean) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
   togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
   const words = usePlatformWords();
   const siteUrlOf = useSiteUrl();
   const url = siteUrlOf(site.domain);
+  const edgePort = useEdgeHttpsPort();
+  const browser = usePreferredBrowser();
+  const editor = usePreferredEditor();
+  const editorMenu = useEditorMenu(site.path);
   // The button wears the icon of the browser the click will ACTUALLY use —
   // `PreferredBrowserIcon`, the one component every open-in-browser control shares.
   const browserMenu = useBrowserMenu(url);
@@ -484,46 +497,23 @@ function SiteHeader({
             </div>
             <div className="mt-1 flex items-center gap-2 font-mono text-[0.78125rem] text-rex-text-muted">
               <span
+                data-site-domain
                 className="truncate"
                 title={`Typing it into ${words.searchingBrowsers}? Add a slash — ${site.domain}/ — or they search for it instead.`}
               >
                 {site.domain}
               </span>
-              <span className="flex-none text-[0.6875rem] text-rex-text-muted">· :443</span>
+              <CopyButton value={site.domain} />
+              {/* The port is said only when it is not the one every https URL
+                  implies: `· :443` was the same four characters on every site. */}
+              {edgePort !== 443 && (
+                <span className="flex-none text-[0.6875rem] text-rex-text-muted">· :{edgePort}</span>
+              )}
             </div>
             <WorktreeOfLine siteId={site.id} />
           </div>
         </div>
         <div data-site-actions className="flex flex-none items-center gap-[9px]">
-          {onToggleEnabled && (
-            /* Deliberately NOT a primary button: stopping a site is a normal,
-               reversible thing to do to one site, and the loud button on this
-               page belongs to the action people came for. The label says
-               "site" so it can never read as the footer's Stop all. */
-            <Button
-              variant="ghost"
-              disabled={togglePending}
-              title={
-                site.enabled === false
-                  ? "Serve this site again"
-                  : "Stop serving this site — your other sites and rexenv's services keep running"
-              }
-              onClick={() => onToggleEnabled(site.enabled === false)}
-            >
-              {site.enabled === false ? (
-                <Play className="h-[15px] w-[15px]" strokeWidth={1.8} />
-              ) : (
-                <Square className="h-[15px] w-[15px]" strokeWidth={1.8} />
-              )}
-              {togglePending
-                ? site.enabled === false
-                  ? "Starting…"
-                  : "Stopping…"
-                : site.enabled === false
-                  ? "Start site"
-                  : "Stop site"}
-            </Button>
-          )}
           {/* Same rule as the list row: nothing answers a URL the stack is not
               serving, so the button is disabled with the why — unless the user
               stopped THIS site, whose URL shows rexenv's own stopped page. */}
@@ -532,7 +522,11 @@ function SiteHeader({
             title={
               status !== "running" && site.enabled !== false
                 ? `Nothing is serving ${url} — Start all first`
-                : undefined
+                : // The label stays "Open in browser"; WHICH browser is the icon
+                  // and this sentence (the Quick links tile used to spell it).
+                  browser
+                  ? `Open ${url} in ${browser.name}`
+                  : `Open ${url}`
             }
             onClick={() => void openExternal(url).catch(toastBackendError)}
             menu={browserMenu}
@@ -540,8 +534,26 @@ function SiteHeader({
             chevronLabel="Open this site in another browser"
           >
             <PreferredBrowserIcon className="h-[15px] w-[15px]" />
-            Open in browser
+            <OpenInBrowserLabel />
           </SplitButton>
+          {/* The editor — the one action the Quick links card held that existed
+              nowhere else on the page, and the one used most after the browser.
+              It opens on the SERVER's screen, so it is not offered over the web. */}
+          {canOpenOnThisScreen() && (
+            <SplitButton
+              title={editor ? `Open this project in ${editor.name}` : "Open this project in your editor"}
+              onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
+              menu={editorMenu}
+              chevronLabel="Open this project in another editor"
+            >
+              <AppIcon
+                icon={editor?.icon}
+                fallback={<Code className="h-[15px] w-[15px]" strokeWidth={1.8} />}
+                className="h-[15px] w-[15px]"
+              />
+              <span data-site-editor>{editor ? editor.name : "Editor"}</span>
+            </SplitButton>
+          )}
           {isWordpress && (
             <SplitButton
               variant="primary"
@@ -555,6 +567,62 @@ function SiteHeader({
               {adminBusy ? "Signing in…" : "Magic Login"}
             </SplitButton>
           )}
+          {/* Everything else a site can have done to it, so nothing needs a trip
+              back to the list. Stop site lives here, not as a button of its own
+              (ruling D3): it is the least-used of the four and the one the row
+              wrapped for. Rename is NOT here — its home on this page is Settings →
+              Site name — and neither is Open folder (the Site card's path row). */}
+          <Menu
+            trigger={
+              <button
+                type="button"
+                aria-label="More actions"
+                title="More actions"
+                data-site-more
+                className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-rex-border bg-rex-surface-1 text-rex-text-muted transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2 hover:text-rex-text"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </button>
+            }
+          >
+            {onToggleEnabled && (
+              /* The copy keeps it apart from the footer's "Stop all": this stops
+                 ONE site — the shared web server and PHP pool keep running. */
+              <MenuItem
+                icon={
+                  site.enabled === false ? (
+                    <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                  ) : (
+                    <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                  )
+                }
+                disabled={togglePending}
+                onSelect={() => onToggleEnabled(site.enabled === false)}
+              >
+                {togglePending
+                  ? site.enabled === false
+                    ? "Starting…"
+                    : "Stopping…"
+                  : site.enabled === false
+                    ? "Start site"
+                    : "Stop site"}
+              </MenuItem>
+            )}
+            <MenuItem
+              icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              onSelect={onDuplicate}
+            >
+              Duplicate
+            </MenuItem>
+            <MenuSeparator />
+            <MenuItem
+              icon={<Trash2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              danger
+              onSelect={onDelete}
+            >
+              Delete
+            </MenuItem>
+          </Menu>
         </div>
       </div>
     </div>
@@ -570,8 +638,6 @@ function Overview({
   switchServerPending,
   onPhp,
   onServer,
-  onDatabase,
-  onTerminal,
   onViewLogs,
 }: {
   site: Site;
@@ -583,8 +649,6 @@ function Overview({
   switchServerPending: boolean;
   onPhp: (v: string) => void;
   onServer: (s: WebServer) => void;
-  onDatabase: () => void;
-  onTerminal: () => void;
   onViewLogs: () => void;
 }) {
   const siteUrlOf = useSiteUrl();
@@ -600,21 +664,12 @@ function Overview({
     enabled: onFrankenphp,
     staleTime: Infinity,
   });
-  const editor = usePreferredEditor();
   const words = usePlatformWords();
   // Joined with the OS's separator, not a literal slash: this rendered
   // `C:\Users\…\shop.rex/wp-config.php` on Windows (seen on the Dell, 19 Sep
   // 2026). A hardcoded `/` is a path spelled the macOS way even though nothing
   // about it reads as a macOS word.
   const wpConfig = `${site.path}${words.pathSep}wp-config.php`;
-  const editorMenu = useEditorMenu(site.path);
-  const terminalMenu = useTerminalMenu(site.id);
-  // Editor and folder open on the SERVER's screen — not offered over the web (`canOpenOnThisScreen`).
-  const screen = canOpenOnThisScreen();
-  const browser = usePreferredBrowser();
-  const browserMenu = useBrowserMenu(url);
-  const adminMenu = useBrowserMenu(() => magicLoginUrl(site, url));
-  const serverLabel = SERVERS.find((s) => s.value === site.webServer)?.name ?? site.webServer;
   const serverNote = SERVERS.find((s) => s.value === site.webServer)?.note;
   // The switch offers what core would ACCEPT (the New Site dialog's rule, ledger #643): a
   // server with no pin on this OS is absent, not listed-then-refused. The site's current
@@ -649,9 +704,8 @@ function Overview({
         {isWordpress && <CoreFilesBanner siteId={site.id} />}
         <div className="grid grid-cols-3 gap-[14px]">
           <EnvMini label="PHP version">
-            <span className="font-mono text-[1.125rem] font-semibold text-rex-text">
-              {onFrankenphp ? (embeddedPhp ?? site.phpVersion) : site.phpVersion}
-            </span>
+            {/* The select IS the value: it used to sit beside the same number in
+                large type, the one fact twice in one box. */}
             {onFrankenphp ? (
               <>
                 <select
@@ -686,9 +740,6 @@ function Overview({
             )}
           </EnvMini>
           <EnvMini label="Web server">
-            <span className="text-[0.9375rem] font-semibold capitalize text-rex-text">
-              {serverLabel}
-            </span>
             <select
               value={site.webServer}
               disabled={switchServerPending}
@@ -731,6 +782,12 @@ function Overview({
         </div>
       </div>
 
+      {/* Paths beside the site's read-only facts. The second card was "Quick
+          links": six tiles, five of which repeated something on this same screen
+          (browser and Magic Login in the header, Database and Terminal in the tab
+          bar, the folder on the path row) — the sixth, the editor, moved to the
+          header (14 Nov 2026). The facts came from Settings → "Site info", which
+          held no setting. */}
       <div className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] gap-[14px]">
         <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
           <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
@@ -745,77 +802,7 @@ function Overview({
             )}
           </div>
         </div>
-
-        <div className="min-w-0 rounded-xl border border-rex-border-subtle bg-rex-surface-1 p-[18px]">
-          <div className="mb-[14px] font-mono text-[0.625rem] uppercase tracking-[0.13em] text-rex-text-muted">
-            Quick links
-          </div>
-          <div className="grid grid-cols-2 gap-[9px]">
-            {/* Same rule as the header: no link the stack is not serving,
-                unless the user stopped THIS site (its URL shows rexenv's page). */}
-            <QuickTile
-              icon={<PreferredBrowserIcon />}
-              iconColor="text-rex-text-muted"
-              label={browser ? `Open in ${browser.name}` : "Browser"}
-              disabled={!isServing && site.enabled !== false}
-              title={!isServing && site.enabled !== false ? `Nothing is serving ${url} — Start all first` : undefined}
-              onClick={() => void openExternal(url).catch(toastBackendError)}
-              menu={browserMenu}
-              menuWidth={BROWSER_MENU_WIDTH}
-              menuLabel="Open this site in another browser"
-            />
-            {isWordpress && (
-              <QuickTile
-                icon={<WordPressIcon className="h-4 w-4" />}
-                iconColor="text-rex-accent-blue"
-                label="Magic Login"
-                onClick={() => void openWpAdmin(site, url)}
-                menu={adminMenu}
-                menuWidth={BROWSER_MENU_WIDTH}
-                menuLabel="Sign in through another browser"
-              />
-            )}
-            {screen && (
-              <QuickTile
-                icon={<AppIcon icon={editor?.icon} fallback={<Code className="h-4 w-4" />} />}
-                iconColor="text-rex-text-muted"
-                label={editor ? `Open in ${editor.name}` : "Open in editor"}
-                onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
-                menu={editorMenu}
-                menuLabel="Open this project in another editor"
-              />
-            )}
-            <QuickTile
-              icon={<Database className="h-4 w-4" />}
-              iconColor="text-rex-text-muted"
-              label="Database"
-              onClick={onDatabase}
-            />
-            <QuickTile
-              icon={<TerminalSquare className="h-4 w-4" />}
-              iconColor="text-brand-tint"
-              label="Terminal"
-              onClick={onTerminal}
-              menu={terminalMenu}
-              menuLabel="Open this folder in one of your own terminals"
-              // Over the web the editor and folder tiles are gone (no screen to open them on):
-              // without Magic Login that leaves three tiles, so Terminal fills the last row.
-              span2={!screen && !isWordpress}
-            />
-            {screen && (
-              <QuickTile
-                icon={<FolderOpen className="h-4 w-4" />}
-                iconColor="text-rex-text-muted"
-                label="Open project folder"
-                onClick={() => void openPath(site.path).catch(toastBackendError)}
-                // Keeps the 2-col grid full: WordPress adds Magic Login (odd tile
-                // count), so the folder tile fills the trailing slot instead of
-                // spanning and leaving a hole beside Terminal.
-                span2={!isWordpress}
-              />
-            )}
-          </div>
-        </div>
+        <SiteInfoCard site={site} />
       </div>
 
       <RecentLogs siteId={site.id} serving={isServing} onViewAll={onViewLogs} />
@@ -861,6 +848,45 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
     <div className="flex items-baseline justify-between gap-4">
       <div className="flex-none text-[0.75rem] text-rex-text-muted">{label}</div>
       <div className="min-w-0 text-right text-[0.8125rem] text-rex-text-bright">{children}</div>
+    </div>
+  );
+}
+
+/** The site's read-only facts — on Overview, where facts are read. It sat in
+ *  Settings until 14 Nov 2026, the one card there that held nothing to set. */
+function SiteInfoCard({ site }: { site: Site }) {
+  // The Sites row's rule, word for word: a Blank PHP site has a database only
+  // when it was made with a starter one. (This card said "no database" for
+  // every Blank PHP site, starter database or not, while it lived in Settings.)
+  const hasDb = site.type !== "php" || !!site.starterDb;
+  return (
+    <div data-site-info className="min-w-0 [&>div]:h-full">
+      <SettingsCard label="Site info">
+        <div className="flex max-w-[560px] flex-col gap-3">
+          <InfoRow label="Type">{TYPE_LABELS[site.type] ?? site.type}</InfoRow>
+          <InfoRow label="Database name">
+            {hasDb ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="truncate font-mono text-[0.78125rem]">{site.dbName}</span>
+                <CopyButton value={site.dbName} />
+              </span>
+            ) : (
+              <span className="text-rex-text-muted">— (no database)</span>
+            )}
+          </InfoRow>
+          {hasDb && (
+            <InfoRow label="Database engine">
+              <span className="font-mono text-[0.78125rem]">
+                {engineLabel(site.dbEngine)}
+                <span className="ml-2 text-rex-text-muted">
+                  127.0.0.1:{enginePort(site.dbEngine)}
+                </span>
+              </span>
+            </InfoRow>
+          )}
+          <InfoRow label="Multisite">{MULTISITE_LABELS[site.multisite] ?? site.multisite}</InfoRow>
+        </div>
+      </SettingsCard>
     </div>
   );
 }
@@ -978,7 +1004,6 @@ function SettingsTab({ site }: { site: Site }) {
 
   const trimmed = name.trim();
   const dirty = trimmed.length > 0 && trimmed !== site.name;
-  const hasDb = site.type !== "php";
 
   const days = cert?.daysLeft ?? 0;
   const expiryTone =
@@ -1072,32 +1097,6 @@ function SettingsTab({ site }: { site: Site }) {
       </SettingsCard>
         </div>
         <div className="flex flex-col gap-[14px]">
-          <SettingsCard label="Site info">
-        <div className="flex max-w-[560px] flex-col gap-3">
-          <InfoRow label="Type">{TYPE_LABELS[site.type] ?? site.type}</InfoRow>
-          <InfoRow label="Database name">
-            {hasDb ? (
-              <span className="inline-flex items-center gap-1.5">
-                <span className="truncate font-mono text-[0.78125rem]">{site.dbName}</span>
-                <CopyButton value={site.dbName} />
-              </span>
-            ) : (
-              <span className="text-rex-text-muted">— (no database)</span>
-            )}
-          </InfoRow>
-          {hasDb && (
-            <InfoRow label="Database engine">
-              <span className="font-mono text-[0.78125rem]">
-                {engineLabel(site.dbEngine)}
-                <span className="ml-2 text-rex-text-muted">
-                  127.0.0.1:{enginePort(site.dbEngine)}
-                </span>
-              </span>
-            </InfoRow>
-          )}
-          <InfoRow label="Multisite">{MULTISITE_LABELS[site.multisite] ?? site.multisite}</InfoRow>
-        </div>
-      </SettingsCard>
           <SettingsCard label="HTTPS certificate">
         {certLoading ? (
           <div className="text-[0.78125rem] text-rex-text-muted">Reading certificate…</div>
@@ -1811,73 +1810,6 @@ function CopyButton({ value }: { value: string }) {
     >
       {copied ? <Check className="h-3.5 w-3.5 text-brand" /> : <Copy className="h-3.5 w-3.5" />}
     </IconBtn>
-  );
-}
-
-/** A tile in the Quick-links grid: colored icon + label. */
-/** A quick-link tile. With `menu`, the tile grows a chevron that opens it —
- *  as a SIBLING button, not a nested one: a `<button>` inside a `<button>` is
- *  invalid HTML and WebKit drops the inner click, so the frame moved to the
- *  wrapper and the label became its own button. */
-export function QuickTile({
-  icon,
-  iconColor,
-  label,
-  onClick,
-  span2,
-  menu,
-  menuLabel,
-  menuWidth = 210,
-  disabled,
-  title,
-}: {
-  icon: React.ReactNode;
-  iconColor: string;
-  label: string;
-  onClick?: () => void;
-  span2?: boolean;
-  /** The tile does nothing right now, and `title` says why (a disabled
-   *  button swallows hover, so the why sits on the tile itself). */
-  disabled?: boolean;
-  title?: string;
-  menu?: React.ReactNode;
-  menuLabel?: string;
-  menuWidth?: number;
-}) {
-  return (
-    <div
-      title={title}
-      className={cn(
-        "flex min-w-0 items-stretch rounded-[10px] border border-rex-border-subtle bg-rex-well text-[0.78125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2",
-        span2 && "col-span-2",
-        disabled && "opacity-50 hover:border-rex-border-subtle hover:bg-rex-well",
-      )}
-    >
-      <button
-        onClick={onClick}
-        disabled={disabled}
-        className="flex min-w-0 flex-1 items-center gap-[9px] rounded-[10px] px-[11px] py-[10px] text-left disabled:cursor-default"
-      >
-        <span className={cn("flex flex-none", iconColor)}>{icon}</span>
-        <span className="truncate">{label}</span>
-      </button>
-      {menu && (
-        <Menu align="right" width={menuWidth} trigger={
-          <button
-            aria-label={menuLabel}
-            title={menuLabel}
-            // The SEAM is the affordance: without a divider the chevron reads
-            // as decoration on one wide button, and "what happens if I click
-            // there" has no answer. Same seam the header split button gets.
-            className="flex h-full flex-none items-center rounded-r-[10px] border-l border-rex-border-subtle px-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover hover:text-rex-text"
-          >
-            <ChevronDown className="h-[13px] w-[13px]" strokeWidth={2} />
-          </button>
-        }>
-          {menu}
-        </Menu>
-      )}
-    </div>
   );
 }
 

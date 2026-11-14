@@ -161,7 +161,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   2026 (breadcrumb popover, the tab kept; ledger #959–#960, `wk-checks/siteswitch.js`; SMOKE "Switch from one
   site to another" open per OS). ✓ T3 Mod+K from every route 14 Nov 2026 (⌘K / Ctrl+K from `PlatformWords`,
   not taken from a terminal or over a dialog; ledger #961–#962, `wk-checks/sitekey.js`; SMOKE "Switch site with
-  the keyboard" open per OS). Open: T1 the site page without its duplicates, T4 the
+  the keyboard" open per OS). ✓ T1 the site page without its duplicates 14 Nov 2026 (Quick links gone, editor + ⋯
+  in the header, Site info on Overview; ledger #963, `wk-checks/siteactions.js`; SMOKE "Site page — one home per
+  action" open per OS). Open: T4 the
   Sites row and header, T5 pinned + recently opened, T6 the per-OS runs.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
