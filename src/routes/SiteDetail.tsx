@@ -80,11 +80,11 @@ import {
   siteCertInfo,
   tailLog,
   tldPolicy,
-  wpAdminLoginUrl,
   wpInfo,
   type TerminalAsset,
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
+import { magicLoginUrl, openWpAdmin } from "@/lib/wpAdmin";
 import { useEdgeHttpsPort, useSiteUrl } from "@/lib/siteUrl";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
@@ -92,34 +92,6 @@ import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
  *  administrator (lands on /wp-admin/). If the link can't be issued — services
  *  stopped, no admin user, tools missing — say so and fall back to the plain
  *  WordPress login page. */
-async function openWpAdmin(site: Pick<Site, "id" | "domain">, url: string) {
-  await openExternal(await magicLoginUrl(site, url));
-}
-
-/** The url "Magic Login" should open, minted per click (the token is one-time,
- *  so it can't be computed ahead and parked in a menu). Shared with the chevron
- *  beside the button so BOTH paths get the same fallback — the failure the
- *  fallback covers (services stopped, no admin user, tools missing) doesn't
- *  care which browser the user picked. */
-async function magicLoginUrl(site: Pick<Site, "id" | "domain">, url: string): Promise<string> {
-  try {
-    return await wpAdminLoginUrl(site.id);
-  } catch (e) {
-    toast.error(`Auto-login unavailable — opening the WordPress login page instead.\n${String(e)}`);
-    return `${url}/wp-admin/`;
-  }
-}
-
-/** Web servers with real backends — labels only; the switch is refused in core where a
- *  server does not ship (OpenLiteSpeed on Windows). */
-/** `name` heads the Web server card AND is the select's option; `label` names the
- *  server in the switch confirm, which has room; `note` is said under the select.
- *  A native select is as wide as its LONGEST option, and the card is a third of the
- *  row: the long label pushed the select out of the card (OpenLiteSpeed, 16 Oct
- *  2026), and `max-w-full` on the select did not hold in a user's WKWebView — the
- *  select ran under the SSL card on an Nginx site (issue #8, 27 Oct 2026). So no
- *  option is long; the width never depends on the engine shrinking a select
- *  (ledger #924). */
 const SERVERS: { value: WebServer; name: string; label: string; note?: string }[] = [
   { value: "nginx", name: "Nginx", label: "Nginx" },
   { value: "frankenphp", name: "FrankenPHP", label: "FrankenPHP" },

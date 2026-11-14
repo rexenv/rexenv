@@ -691,6 +691,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (14 Nov 2026): `sitesrow.js`** (#964, #965) — the Sites list over 27 production-shaped
+  sites at three widths: row actions visible with no hover, quiet normal rows, the menu equal
+  from `⋮` and right-click, the header's counts, the view kept across a site visit, the keys.
+  Its first green was not trusted: five plants, and one (the row answering a key pressed on one
+  of its own buttons) PASSED — the check had no keyboard leg for a row action, so it gained one.
+  `mockSitesView` gained `wponly` for the one-type header. **What it cannot see:** that WebView2
+  and WebKitGTK deliver `contextmenu` and suppress their own menu — SMOKE.
 - **Check (14 Nov 2026): `siteactions.js`** (#963) — the site page COUNTS its controls: browser,
   editor, Magic Login and Open folder once each on Overview, no Quick links, no second door to a
   tab; the value of PHP/server once; ⋯ = Stop site · Duplicate · Delete; a confirmed delete

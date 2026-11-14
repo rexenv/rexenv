@@ -999,6 +999,8 @@ const LINK = "https://example.test/a//b";
             ("routes/SiteDetail.tsx", "Open site\n", browser),
             ("routes/SiteDetail.tsx", "{adminBusy ? \"Signing in…\" : \"Magic Login\"}", wordpress),
             ("routes/Sites.tsx", "aria-label=\"Open in browser\"", browser),
+            // The row grew its own Magic Login on 14 Nov 2026 (it had none at all).
+            ("routes/Sites.tsx", "aria-label=\"Magic Login\"", wordpress),
             ("components/wordpress/WordPressManager.tsx", "        Visit\n", browser),
             ("components/wordpress/WordPressManager.tsx", "{signingIn ? \"Signing in…\" : \"Magic Login\"}", wordpress),
             // The button, not the dialog sentence that mentions it.

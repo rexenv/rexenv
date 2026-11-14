@@ -90,7 +90,9 @@ module also carries a `//!` doc header stating its job. Quick inventory:
   (`docs/PLAN-sites-ux.md`, ledger #959). The site page's header is its action bar
   (browser, editor, Magic Login, `⋯` = Stop/Start site · Duplicate · Delete); Rename,
   Duplicate and Delete run through `components/sites/useSiteActions.tsx` on the Sites
-  list and the site page alike (#963)
+  list and the site page alike (#963). The Sites list's VIEW (status and type filter,
+  search, sort, scroll) lives in `lib/sitesListState.ts`, outside the route, so a visit
+  to a site does not reset it — in memory only: a new launch opens on All (#965)
 
 ## 2. Request & TLS topology
 
@@ -414,8 +416,8 @@ setup never finished, so one half-built site cannot fail the action for the rest
 It performs no scratch promotion, because a bulk action is not a decision about
 any one site.
 
-Reachable from the Sites row menu and the site page, the Sites page's "All sites"
-menu, `rex site start|stop <domain>` (`--all` for every site), and
+Reachable from the Sites row menu (also its right-click) and the site page's `⋯`, the
+Sites page's bulk `⋯` menu (it read "All sites ▾" until 14 Nov 2026), `rex site start|stop <domain>` (`--all` for every site), and
 `site_configure {action: "enabled"}` / `stack {action: "start_sites"|"stop_sites"}`
 (`manage`, not `system`: no service is touched and no password dialog comes) (existing `manage` scope —
 through the MECHANISM, never the Tauri command, which promotes a scratch site).

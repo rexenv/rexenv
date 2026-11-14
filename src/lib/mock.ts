@@ -160,13 +160,15 @@ export const mockSites: Site[] = [
  * insecure one, and two agent scratch sites. A tidy fixture is the one that
  * hid the Sites header's overflow (16 Oct 2026). */
 export function mockSitesView(): Site[] {
-  let many = false;
+  let mode: string | null = null;
   try {
-    many = window.localStorage.getItem("rex-mock-sites") === "many";
+    mode = window.localStorage.getItem("rex-mock-sites");
   } catch {
     // No storage (a private window): the plain four.
   }
-  if (!many) return mockSites;
+  // `wponly`: the many list with every non-WordPress site left out — the user
+  // with one kind of site, whom a type filter has nothing to offer.
+  if (mode !== "many" && mode !== "wponly") return mockSites;
   const names = [
     "bl", "bs", "bs2", "doctor", "ea", "ealite", "eapro", "hisab-counter", "hridoy", "lm",
     "lms", "MS Test", "MSD", "nx", "nxpro", "px", "sandbox", "shop", "wpdev",
@@ -206,7 +208,8 @@ export function mockSitesView(): Site[] {
     agentClient: "claude-code",
     expiresAt: "2099-01-01 00:00:00",
   }) as Site);
-  return [...mockSites, ...extra, ...scratch];
+  const all = [...mockSites, ...extra, ...scratch];
+  return mode === "wponly" ? all.filter((x) => x.type === "wordpress") : all;
 }
 
 // Mirrors each mock site's own status so the browser preview shows per-site

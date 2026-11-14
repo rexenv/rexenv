@@ -540,8 +540,7 @@ function ProvisionHost() {
           status="stopped"
           onOpen={() => {}}
           onDelete={() => {}}
-          onOpenDatabase={() => {}}
-          onOpenWordpress={() => {}}
+          onOpenTab={() => {}}
           onRename={() => {}}
           onDuplicate={() => {}}
           onRetry={() => void siteProvisionRetry(INCOMPLETE_SITE.id).then(prov.start)}

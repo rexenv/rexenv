@@ -205,6 +205,35 @@ the shipped UI toward one.
   this page is Settings → Site name) and Open folder (the path row). "Site info"
   left Settings for Overview: it held nothing to set. `wk-checks/siteactions.js`
   COUNTS the controls, so a tile that comes back is red (ledger #963).
+- **A Sites row is quiet when the site is fine, and always offers the three things
+  people open a site for.** Status is a dot for every row; the WORDS appear only
+  where they say something — "Stopped by you", "Stopped" (the stack), "Setting up",
+  "setup incomplete". The lock is drawn only for a site that is NOT secured; PHP and
+  server are one muted text; a chip is kept for a state that asks something of the
+  user (`DB imported`, a scratch site's TTL, `source moved`) while a settled fact is
+  muted text (`· external`) or lives on the site page (`DB connected`). **What it
+  replaced** (owner, 14 Nov 2026 — "what is on the page many times, remove; what is
+  needed most, straight from the list"): every row drew a lock and a "Running" pill
+  — 50 marks on 25 healthy sites, among which the one stopped site did not stand
+  out — and the row's quick actions were `opacity-0` until hover and out of layout
+  below `lg`, so a narrow window offered a site nothing but `⋮`, with Magic Login
+  not on the row at all. Now **Open in browser · Magic Login · the editor** are
+  visible at every width with no hover, each under the rules above (a link nothing
+  serves is not offered; a stopped-by-you site still opens its stopped page; a
+  sign-in to a site that is not answering is not offered). Everything else is ONE
+  menu with two ways in — `⋮` and a right-click — so the two cannot list different
+  things; it also reaches the site page's tabs. The Magic Login slot is held on a
+  non-WordPress row so the columns line up (ledger #964).
+- **The number on a filter tab is what clicking it shows — and "All" needs none.**
+  The Sites subtitle is where the totals are said; the "All" tabs repeated it (the
+  owner's screenshot had "25" on screen five times). A type the user has no site of
+  is not a tab, and with one type there is no type filter. The bulk start/stop menu
+  is `⋯`: it read "All sites ▾" beside the "All" tab, in the words of the site
+  page's link back to the list.
+- **The list's view outlives a visit to a site** — filter, type, search, sort and
+  scroll. It was route state and reset on every return: filter to "lms", open one,
+  come back to all 25 at the top. In memory only, so a new launch still opens on All
+  (ledger #965).
 - **A shortcut answers one modifier, names the one it answers, and leaves the shell
   its keys.** Mod+K opens the site switcher from every route: ⌘K on macOS, Ctrl+K on
   Windows and Linux, the label from `PlatformWords` — a "⌘" typed into TSX names a

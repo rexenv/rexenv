@@ -57,6 +57,7 @@ export function TopBar({
               strokeWidth={1.9}
             />
             <input {...TECH_INPUT}
+              data-topbar-search
               type="text"
               placeholder={searchPlaceholder ?? "Search…"}
               value={onSearchChange ? searchValue ?? "" : undefined}

@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, Lock, LockOpen, Trash2, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, ChevronDown, GitBranch } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, LockOpen, Trash2, LayoutGrid, TerminalSquare, ScrollText, MoreHorizontal, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, GitBranch } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -24,6 +24,9 @@ import { usePreferredBrowser } from "@/lib/useBrowser";
 import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { useSiteUrl } from "@/lib/siteUrl";
+import { useModKey } from "@/lib/useModKey";
+import { openWpAdmin } from "@/lib/wpAdmin";
+import { useSitesListState, type SitesSort, type SitesStatusFilter, type SitesTypeFilter } from "@/lib/sitesListState";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, DriftedTakeover, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
@@ -111,33 +114,11 @@ function SiteMetrics({ res }: { res?: SiteResources }) {
  *  a short form and the full name rides the tooltip. */
 const SERVER_BADGE: Partial<Record<string, string>> = { openlitespeed: "litespeed" };
 
-function Badge({
-  children,
-  className,
-  title,
-}: {
-  children: React.ReactNode;
-  className?: string;
-  title?: string;
-}) {
-  return (
-    <span
-      title={title}
-      className={cn(
-        "flex-none rounded-[6px] border border-rex-border-strong bg-rex-surface-1 px-[7px] py-[3px] font-mono text-[0.65625rem] text-rex-text-bright",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-type Filter = "all" | "running" | "stopped";
+type Filter = SitesStatusFilter;
 /** The second axis: what KIND of site. `all` plus the three `SiteType`s, which
  *  is the same set the row avatars already colour — a filter that invented its
  *  own vocabulary for the letters on screen would be a third thing to learn. */
-type TypeFilter = "all" | SiteType;
+type TypeFilter = SitesTypeFilter;
 
 const TYPE_LABEL: Record<TypeFilter, string> = {
   all: "All types",
@@ -145,7 +126,7 @@ const TYPE_LABEL: Record<TypeFilter, string> = {
   laravel: "Laravel",
   php: "Blank PHP",
 };
-type Sort = "name" | "status" | "recent";
+type Sort = SitesSort;
 
 const SORT_LABEL: Record<Sort, string> = {
   name: "Name",
@@ -174,7 +155,9 @@ function FilterTabs<K extends string>({
 }: {
   value: K;
   onChange: (f: K) => void;
-  counts: Record<K, number>;
+  /** A tab with no entry shows no number — the "All" tabs, whose count is the
+   *  page's own subtitle and was on screen five times (14 Nov 2026). */
+  counts: Partial<Record<K, number>>;
   tabs: { key: K; label: string }[];
 }) {
   return (
@@ -182,6 +165,7 @@ function FilterTabs<K extends string>({
       {tabs.map((t) => (
         <button
           key={t.key}
+          data-filter-tab={t.key}
           onClick={() => onChange(t.key)}
           className={cn(
             "flex h-7 items-center gap-1.5 rounded-[7px] px-[11px] text-[0.78125rem] font-medium transition-colors",
@@ -191,7 +175,9 @@ function FilterTabs<K extends string>({
           )}
         >
           {t.label}
-          <span className="font-mono text-[0.65625rem]">{counts[t.key]}</span>
+          {counts[t.key] !== undefined && (
+            <span className="font-mono text-[0.65625rem]">{counts[t.key]}</span>
+          )}
         </button>
       ))}
     </div>
@@ -219,8 +205,7 @@ export function SiteRow({
   dbState,
   onOpen,
   onDelete,
-  onOpenDatabase,
-  onOpenWordpress,
+  onOpenTab,
   onRename,
   onDuplicate,
   onRetry,
@@ -249,8 +234,9 @@ export function SiteRow({
   worktreeBranch?: string;
   onOpen: () => void;
   onDelete: () => void;
-  onOpenDatabase: () => void;
-  onOpenWordpress: () => void;
+  /** Open one of the site page's tabs (Database, Terminal, Logs, WordPress) —
+   *  the row's menu is a way to them, the page is where they are. */
+  onOpenTab: (tab: "database" | "terminal" | "logs" | "wordpress") => void;
   onRename: () => void;
   onDuplicate: () => void;
   onRetry?: () => void;
@@ -284,23 +270,79 @@ export function SiteRow({
   const ttl = scratch ? expiryLabel(site.expiresAt) : null;
   const pkg = scratch ? packages?.[0] : undefined;
   const [copied, setCopied] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const editor = usePreferredEditor();
   const words = usePlatformWords();
   const browser = usePreferredBrowser();
+  const mod = useModKey();
+  const rowRef = useRef<HTMLDivElement>(null);
+  const screen = canOpenOnThisScreen();
+  const isWordpress = site.type === "wordpress";
+  const hasDb = !(site.type === "php" && !site.starterDb);
+  // The URL answers something only while the stack serves it — or when the user
+  // stopped THIS site, whose URL shows rexenv's own "stopped" page.
+  const urlAnswers = status === "running" || !!stoppedByUser;
+  // **A normal site is quiet.** Provisioned, serving, not stopped by the user:
+  // the row says so with a dot, and spends its words on the rows that are not.
+  const quiet = site.provisioned && status === "running" && !stoppedByUser;
+  const statusTitle = stoppedByUser
+    ? "You stopped this site — it answers \"site stopped\" and nothing else is affected. Start it from the row menu."
+    : status === "running"
+      ? "Serving: the edge is up and so is this site's own upstream"
+      : "Not serving — rexenv's services are stopped (Start all in the footer)";
+  const openSiteUrl = () => {
+    if (!urlAnswers) {
+      toast.info(`Nothing is serving ${url} — Start all first`);
+      return;
+    }
+    void openExternal(url).catch(toastBackendError);
+  };
   return (
     <div
+      ref={rowRef}
       role="button"
       tabIndex={0}
+      data-site-row={site.id}
       aria-label={`Open ${site.name}`}
       onClick={onOpen}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        // Only the row's own keys: a key pressed on one of its buttons is that
+        // button's, and must not also open the site.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" && mod.pressed(e)) {
+          e.preventDefault();
+          openSiteUrl();
+        } else if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onOpen();
+        } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          const rows = [...document.querySelectorAll<HTMLElement>("[data-site-row]")];
+          const next = rows[rows.indexOf(e.currentTarget) + (e.key === "ArrowDown" ? 1 : -1)];
+          next?.focus();
         }
       }}
       className="group flex h-11 cursor-pointer items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
     >
+      {/* The status, as a dot — for every row, in one column. The WORDS appear
+          only where they say something (further right): 25 "Running" pills told
+          the user nothing and hid the one site that was not (14 Nov 2026). */}
+      <span
+        data-site-dot={
+          !site.provisioned ? "setup" : status === "running" && !stoppedByUser ? "running" : "stopped"
+        }
+        title={site.provisioned ? statusTitle : undefined}
+        className="flex w-[9px] flex-none items-center justify-center"
+      >
+        {site.provisioned && (
+          <span
+            className={cn(
+              "h-[8px] w-[8px] rounded-full",
+              status === "running" && !stoppedByUser ? "bg-status-running" : "bg-status-stopped",
+            )}
+          />
+        )}
+      </span>
       <div
         className="flex h-[26px] w-[26px] flex-none items-center justify-center rounded-[7px] border text-[0.6875rem] font-bold"
         style={{ background: t.bg, color: t.color, borderColor: t.border }}
@@ -333,79 +375,21 @@ export function SiteRow({
               +{extraDomains.length}
             </span>
           )}
+          {site.docrootManaged === false && (
+            /* The folder is the user's own — served in place and never deleted with
+               the site. True for a linked folder and for one moved out of the sites
+               folder, which is why it reads "external" rather than "linked". A
+               settled fact, so it is muted text beside the domain, not a chip: a
+               chip is for a state that asks something of the user. */
+            <span
+              data-probe="external"
+              className="flex-none"
+              title={`Served from your own folder (${site.path}) — deleting the site leaves it in place`}
+            >
+              · external
+            </span>
+          )}
         </div>
-      </div>
-      {/* Quick actions reserve ~140px even while invisible (opacity). Below
-          lg they disappear from LAYOUT too — every action still exists in
-          the row menu — so badge-heavy rows fit narrow windows (§C1.2). */}
-      <div
-        className="ml-1 hidden items-center gap-px opacity-0 transition-opacity group-hover:opacity-100 lg:flex"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* A site the STACK is not serving has nothing at its URL — the browser
-            would answer "can't connect" (the clean-VM run, 18 Sep 2026). The
-            button says so instead of opening it. A site stopped BY THE USER is
-            different: the edge is up and answers rexenv's own "this site is
-            stopped" page, which is worth a look (DESIGN.md, two stopped-nesses). */}
-        <span
-          title={
-            status !== "running" && !stoppedByUser
-              ? `Nothing is serving ${url} — Start all first`
-              : browser
-                ? `Open ${url} in ${browser.name}`
-                : `Open ${url}`
-          }
-        >
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Open in browser"
-          disabled={status !== "running" && !stoppedByUser}
-          onClick={() => void openExternal(url).catch(toastBackendError)}
-        >
-          {/* Icon of the browser the click really uses — no chevron here: the
-              row already reserves a fixed width for its quick actions, and a
-              per-row menu next to a per-row menu is noise (§C1.2). Choosing a
-              different browser for one link lives on the site page. */}
-          <PreferredBrowserIcon />
-        </Button>
-        </span>
-        {canOpenOnThisScreen() && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Open folder"
-            title="Reveal site folder"
-            onClick={() => void openPath(site.path).catch(toastBackendError)}
-          >
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Open database"
-          title={
-            site.type === "php" && !site.starterDb
-              ? "This Blank PHP site has no database"
-              : "Open database"
-          }
-          disabled={site.type === "php" && !site.starterDb}
-          onClick={onOpenDatabase}
-        >
-          <Database className="h-4 w-4" />
-        </Button>
-        {site.type === "wordpress" && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Manage WordPress"
-            title="Manage WordPress"
-            onClick={onOpenWordpress}
-          >
-            <WordPressIcon className="h-4 w-4" />
-          </Button>
-        )}
       </div>
       <div className="flex-1" />
       {/* Metrics reserve a fixed 168px column for cross-row alignment; below
@@ -424,21 +408,6 @@ export function SiteRow({
           <SiteMetrics res={resources} />
         </div>
       )}
-      <span
-        title={site.ssl ? "SSL · trusted" : "No SSL"}
-        className="flex flex-none items-center"
-        style={{ color: site.ssl ? "var(--rex-lock-secure)" : "var(--rex-lock-insecure)" }}
-      >
-        {site.ssl ? (
-          <Lock className="h-3.5 w-3.5" strokeWidth={1.8} />
-        ) : (
-          <LockOpen className="h-3.5 w-3.5" strokeWidth={1.8} />
-        )}
-      </span>
-      <Badge>{site.phpVersion}</Badge>
-      <Badge className="w-[84px] truncate text-center" title={site.webServer}>
-        {SERVER_BADGE[site.webServer] ?? site.webServer}
-      </Badge>
       {worktreeBranch && (
         <span
           className="flex max-w-[160px] flex-none items-center gap-1 truncate whitespace-nowrap rounded-full border border-rex-accent-blue-border bg-rex-accent-blue-bg px-2 py-1 font-mono text-[0.625rem] text-rex-accent-blue"
@@ -447,37 +416,19 @@ export function SiteRow({
           <GitBranch className="h-3 w-3 flex-none" /> {worktreeBranch}
         </span>
       )}
-      {site.docrootManaged === false && (
-        /* The folder is the user's own — served in place and never deleted with
-           the site. True for a linked folder and for one moved out of the sites
-           folder, which is why it reads "external" rather than "linked". */
-        <span
-          className="flex-none whitespace-nowrap rounded-full border border-rex-border-strong bg-rex-surface-2 px-2 py-1 font-mono text-[0.625rem] text-rex-text-muted"
-          title={`Served from your own folder (${site.path}) — deleting the site leaves it in place`}
-        >
-          external
-        </span>
-      )}
       {dbState === "imported" && (
         /* Renders the SAME serialized fact as the SiteDetail summary
            (DbImportRecord, whose "connected" value only the rewrite job's
            verification can write) — the badge and the summary cannot
-           disagree, because neither computes anything. */
+           disagree, because neither computes anything. The CONNECTED state has
+           no chip here any more: it is settled, asks nothing, and is on the
+           site's Database tab in full. This one asks for a decision. */
         <span
+          data-probe="db-imported"
           className="flex-none whitespace-nowrap rounded-full border border-status-warning-border bg-status-warning-bg px-2 py-1 font-mono text-[0.625rem] text-status-warning-bright"
           title="A copy of this site's database is on rexenv's engine, but the site isn't connected to it yet — its Database tab says what the site reads now and switches it over."
         >
           DB imported
-        </span>
-      )}
-      {dbState === "connected" && (
-        /* Wording matches what was PROVEN: the rewritten settings sign in to
-           the rexenv copy — not "the site is now using this database". */
-        <span
-          className="flex-none whitespace-nowrap rounded-full border border-status-running-border bg-status-running-bg px-2 py-1 font-mono text-[0.625rem] text-status-running-bright"
-          title="This site's connection settings were rewritten and verified: they sign in to the rexenv copy (see the site's Database tab)."
-        >
-          DB connected
         </span>
       )}
       {scratch && site.agentClient && (
@@ -534,22 +485,18 @@ export function SiteRow({
         </span>
       )}
       {site.provisioned ? (
-        <span
-          title={
-            stoppedByUser
-              ? "You stopped this site — it answers \"site stopped\" and nothing else is affected. Start it from the row menu."
-              : status === "running"
-                ? "Serving: the edge is up and so is this site's own upstream"
-                : "Not serving — rexenv's services are stopped (Start all in the footer)"
-          }
-          className="flex-none"
-        >
-          <StatusPill
-            status={status}
-            className="min-w-[92px]"
-            label={stoppedByUser ? "Stopped by you" : undefined}
-          />
-        </span>
+        !quiet && (
+          /* The status in WORDS, only when it is not "serving". The two
+             stopped-nesses keep their two sentences (DESIGN.md): the fix is a
+             button in this row's menu for one and Start all for the other. */
+          <span title={statusTitle} data-probe="status-words" className="flex-none">
+            <StatusPill
+              status={status}
+              className="min-w-[92px]"
+              label={stoppedByUser ? "Stopped by you" : undefined}
+            />
+          </span>
+        )
       ) : provisioning ? (
         /* The job is still RUNNING: the backend persists the row at job start
            with provisioned=false, so without this branch a site being made
@@ -591,96 +538,226 @@ export function SiteRow({
           </Button>
         </div>
       )}
+      {/* The lock is drawn only when the site is NOT secured: on 25 secured
+          sites it was 25 identical marks. */}
+      {!site.ssl && (
+        <span
+          data-probe="insecure"
+          title="No SSL — this site is served without a certificate"
+          className="flex flex-none items-center"
+        >
+          {/* The colour sits ON the icon: it is a graphic (WCAG 1.4.11, 3:1), and
+              on the wrapping span the contrast guard read it as text colour. */}
+          <LockOpen className="h-3.5 w-3.5" strokeWidth={1.8} style={{ color: "var(--rex-lock-insecure)" }} />
+        </span>
+      )}
+      {/* PHP and server as one quiet text in a fixed column (they were two
+          bordered boxes per row). Below lg the column yields: the site page has
+          both, and the three actions matter more than a version number. */}
+      <span
+        data-probe="stack"
+        title={`PHP ${site.phpVersion} · ${site.webServer}`}
+        className="hidden w-[104px] flex-none truncate font-mono text-[0.6875rem] text-rex-text-muted lg:block"
+      >
+        {site.phpVersion} · {SERVER_BADGE[site.webServer] ?? site.webServer}
+      </span>
+      {/* **The three things people open a site for, always on the row** — at
+          every width, with no hover (ruling D7). They were `opacity-0` until
+          hover and gone from layout below `lg`, so a narrow window offered a
+          site nothing but its `⋮` menu, and Magic Login was not on the row at
+          all. Everything else is in the menu (and on a right-click). */}
+      <div
+        data-site-row-actions
+        className="flex flex-none items-center gap-px"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* A site the STACK is not serving has nothing at its URL — the browser
+            would answer "can't connect" (the clean-VM run, 18 Sep 2026). The
+            button says so instead of opening it. A site stopped BY THE USER is
+            different: the edge is up and answers rexenv's own "this site is
+            stopped" page, which is worth a look (DESIGN.md, two stopped-nesses). */}
+        <span
+          title={
+            !urlAnswers
+              ? `Nothing is serving ${url} — Start all first`
+              : browser
+                ? `Open ${url} in ${browser.name}`
+                : `Open ${url}`
+          }
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open in browser"
+            disabled={!urlAnswers}
+            onClick={() => void openExternal(url).catch(toastBackendError)}
+          >
+            {/* Icon of the browser the click really uses — no chevron here:
+                choosing a different browser for one link lives on the site page. */}
+            <PreferredBrowserIcon />
+          </Button>
+        </span>
+        {/* The slot is held on a non-WordPress row so the columns line up. */}
+        <span className="flex w-8 flex-none justify-center">
+          {isWordpress && (
+            <span
+              title={
+                status !== "running" || stoppedByUser
+                  ? "Magic Login needs the site serving — start it first"
+                  : "Magic Login — sign in to this site's WordPress admin"
+              }
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Magic Login"
+                // A sign-in link for a site that is not answering opens an error
+                // page: an action that can only fail is not offered.
+                disabled={status !== "running" || !!stoppedByUser || signingIn}
+                onClick={() => {
+                  setSigningIn(true);
+                  void openWpAdmin(site, url)
+                    .catch(toastBackendError)
+                    .finally(() => setSigningIn(false));
+                }}
+              >
+                <WordPressIcon className="h-4 w-4 text-rex-accent-blue" />
+              </Button>
+            </span>
+          )}
+        </span>
+        {screen && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={editor ? `Open in ${editor.name}` : "Open in editor"}
+            title={editor ? `Open in ${editor.name}` : "Open in editor"}
+            onClick={() => openSiteInEditor(editor, site.path, words.fileManager)}
+          >
+            <AppIcon
+              icon={editor?.icon}
+              fallback={<Code className="h-4 w-4" strokeWidth={1.7} />}
+              className="h-4 w-4"
+            />
+          </Button>
+        )}
+      </div>
       <div className="flex-none" onClick={(e) => e.stopPropagation()}>
         <Menu
-        trigger={
-          <button
-            type="button"
-            aria-label="More actions"
-            className="flex h-7 w-7 items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
-          >
-            <MoreVertical className="h-4 w-4" />
-          </button>
-        }
-      >
-        {onKeep && (
-          /* Adoption, and the only door an agent does not have. Above Rename
-             because for a scratch site it is the decision the user came for —
-             and renaming would adopt it anyway (#214), which is a surprise
-             rather than a choice. */
-          <MenuItem
-            icon={<PinIcon className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-            onSelect={onKeep}
-          >
-            Keep this site
-          </MenuItem>
-        )}
-        {onToggleEnabled && (
-          /* The row's own lifecycle, and the copy has to keep it apart from the
-             footer's "Stop all": this stops ONE site's serving surface — the
-             shared web server and PHP pool keep running for the others. */
-          <MenuItem
-            icon={
-              stoppedByUser ? (
-                <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
-              ) : (
-                <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
-              )
-            }
-            onSelect={() => onToggleEnabled(!!stoppedByUser)}
-          >
-            {togglePending
-              ? stoppedByUser
-                ? "Starting…"
-                : "Stopping…"
-              : stoppedByUser
-                ? "Start site"
-                : "Stop site"}
-          </MenuItem>
-        )}
-        <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onRename}>
-          Rename
-        </MenuItem>
-        <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onDuplicate}>
-          Duplicate
-        </MenuItem>
-        {canOpenOnThisScreen() && (
-          <MenuItem
-            icon={
-              <AppIcon
-                icon={editor?.icon}
-                fallback={<Code className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-                className="h-[15px] w-[15px]"
-              />
-            }
-            onSelect={() => openSiteInEditor(editor, site.path, words.fileManager)}
-          >
-            {editor ? `Open in ${editor.name}` : "Open in editor"}
-          </MenuItem>
-        )}
-        <MenuItem
-          icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-          onSelect={() => {
-            void navigator.clipboard?.writeText(site.domain);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          }}
+          contextTarget={rowRef}
+          trigger={
+            <button
+              type="button"
+              aria-label="More actions"
+              className="flex h-7 w-7 items-center justify-center rounded-[7px] text-rex-text-muted transition-colors hover:bg-rex-hover-strong hover:text-rex-text"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          }
         >
-          {copied ? "Copied!" : "Copy domain"}
-        </MenuItem>
-        <MenuSeparator />
-        <MenuItem
-          icon={<Trash2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
-          danger
-          onSelect={onDelete}
-        >
-          Delete
-        </MenuItem>
+          {onKeep && (
+            /* Adoption, and the only door an agent does not have. Above Rename
+               because for a scratch site it is the decision the user came for —
+               and renaming would adopt it anyway (#214), which is a surprise
+               rather than a choice. */
+            <MenuItem
+              icon={<PinIcon className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              onSelect={onKeep}
+            >
+              Keep this site
+            </MenuItem>
+          )}
+          {onToggleEnabled && (
+            /* The row's own lifecycle, and the copy has to keep it apart from the
+               footer's "Stop all": this stops ONE site's serving surface — the
+               shared web server and PHP pool keep running for the others. */
+            <MenuItem
+              icon={
+                stoppedByUser ? (
+                  <Play className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                ) : (
+                  <Square className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                )
+              }
+              onSelect={() => onToggleEnabled(!!stoppedByUser)}
+            >
+              {togglePending
+                ? stoppedByUser
+                  ? "Starting…"
+                  : "Stopping…"
+                : stoppedByUser
+                  ? "Start site"
+                  : "Stop site"}
+            </MenuItem>
+          )}
+          {(onKeep || onToggleEnabled) && <MenuSeparator />}
+          {/* The site page's tabs, one step from the list. */}
+          {isWordpress && (
+            <MenuItem
+              icon={<LayoutGrid className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              onSelect={() => onOpenTab("wordpress")}
+            >
+              WordPress
+            </MenuItem>
+          )}
+          <MenuItem
+            icon={<Database className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            disabled={!hasDb}
+            onSelect={() => onOpenTab("database")}
+          >
+            {hasDb ? "Database" : "Database (this site has none)"}
+          </MenuItem>
+          <MenuItem
+            icon={<TerminalSquare className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            onSelect={() => onOpenTab("terminal")}
+          >
+            Terminal
+          </MenuItem>
+          <MenuItem
+            icon={<ScrollText className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            onSelect={() => onOpenTab("logs")}
+          >
+            Logs
+          </MenuItem>
+          {screen && (
+            <MenuItem
+              icon={<FolderOpen className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+              onSelect={() => void openPath(site.path).catch(toastBackendError)}
+            >
+              Open folder
+            </MenuItem>
+          )}
+          <MenuSeparator />
+          <MenuItem icon={<Pencil className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onRename}>
+            Rename
+          </MenuItem>
+          <MenuItem icon={<Copy className="h-[15px] w-[15px]" strokeWidth={1.7} />} onSelect={onDuplicate}>
+            Duplicate
+          </MenuItem>
+          <MenuItem
+            icon={<Link className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            onSelect={() => {
+              void navigator.clipboard?.writeText(site.domain);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            }}
+          >
+            {copied ? "Copied!" : "Copy domain"}
+          </MenuItem>
+          <MenuSeparator />
+          <MenuItem
+            icon={<Trash2 className="h-[15px] w-[15px]" strokeWidth={1.7} />}
+            danger
+            onSelect={onDelete}
+          >
+            Delete
+          </MenuItem>
         </Menu>
       </div>
     </div>
   );
 }
+
 
 export function Sites() {
   const qc = useQueryClient();
@@ -693,10 +770,13 @@ export function Sites() {
   });
   const navigate = useNavigate();
   const [showNew, setShowNew] = useState(false);
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [sort, setSort] = useState<Sort>("name");
+  // The view lives OUTSIDE the route (`useSitesListState`): it used to be
+  // `useState` here and reset on every return from a site page.
+  const view = useSitesListState();
+  const { query, filter, typeFilter, sort } = view;
+  const setQuery = (query: string) => view.set({ query });
+  const setFilter = (filter: Filter) => view.set({ filter });
+  const setTypeFilter = (typeFilter: TypeFilter) => view.set({ typeFilter });
   const { data: worktreeRows = [] } = useQuery({ queryKey: ["sites", "worktree-relations"], queryFn: worktreeRelations });
   const worktreeBranchOf = new Map(worktreeRows.map((w) => [w.siteId, w.askedBranch]));
   const { data: sites = [], isLoading } = useQuery({
@@ -807,8 +887,7 @@ export function Sites() {
   // every number is exactly what clicking that tab would show.
   const inType = sites.filter((s) => typeFilter === "all" || s.type === typeFilter);
   const runningInType = inType.filter((s) => statusOf(s) === "running").length;
-  const counts: Record<Filter, number> = {
-    all: inType.length,
+  const counts: Partial<Record<Filter, number>> = {
     running: runningInType,
     stopped: inType.length - runningInType,
   };
@@ -818,12 +897,47 @@ export function Sites() {
     if (filter === "stopped") return st !== "running";
     return true;
   });
-  const typeCounts: Record<TypeFilter, number> = {
-    all: inStatus.length,
+  const typeCounts: Partial<Record<TypeFilter, number>> = {
     wordpress: inStatus.filter((s) => s.type === "wordpress").length,
     laravel: inStatus.filter((s) => s.type === "laravel").length,
     php: inStatus.filter((s) => s.type === "php").length,
   };
+
+  // The type filter offers the types the user HAS, and nothing when they have
+  // one: a person with 25 WordPress sites was shown "Laravel 0 · Blank PHP 0".
+  // Over ALL sites, not the filtered ones — a type must not vanish from the
+  // control because the status tab beside it emptied it. A type chosen earlier
+  // and since deleted away stays listed, so the filter can always be seen.
+  const typesPresent = (["wordpress", "laravel", "php"] as SiteType[]).filter(
+    (k) => k === typeFilter || sites.some((s) => s.type === k),
+  );
+
+  // The scroll position survives a visit to a site, like the filter. Restored
+  // once, after the rows exist to scroll to; saved as the list moves.
+  const listRef = useRef<HTMLDivElement>(null);
+  const restored = useRef(false);
+  useLayoutEffect(() => {
+    if (restored.current || isLoading || sites.length === 0) return;
+    restored.current = true;
+    if (listRef.current) listRef.current.scrollTop = useSitesListState.getState().scrollTop;
+  }, [isLoading, sites.length]);
+
+  // `/` puts the cursor in the filter — unless a key is already going somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el?.closest?.('input, textarea, select, [contenteditable="true"], .xterm')) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      const box = document.querySelector<HTMLInputElement>("[data-topbar-search]");
+      if (!box) return;
+      e.preventDefault();
+      box.focus();
+      box.select();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Filter (segmented) → search (name/domain) → sort.
   const visible = useMemo(() => {
@@ -928,6 +1042,8 @@ export function Sites() {
 
   const headerActions = (
     <>
+      <SortButton value={sort} onCycle={() => view.set({ sort: SORT_CYCLE[sort] })} />
+      {newSiteButton}
       {/* The Sites page's OWN bulk switch, and the copy has to keep it
           apart from the footer's "Stop all": that one stops rexenv's
           services (machine-wide), this one stops the SITES and leaves the
@@ -943,11 +1059,15 @@ export function Sites() {
         trigger={
           <button
             type="button"
-            className="flex h-[34px] items-center gap-[7px] whitespace-nowrap rounded-[9px] border border-rex-border bg-rex-surface-1 px-3 text-[0.8125rem] text-rex-text-bright transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2"
+            data-sites-bulk
+            aria-label="Start or stop all sites"
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-rex-border bg-rex-surface-1 text-rex-text-muted transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2 hover:text-rex-text"
             title="Start or stop every site — rexenv's services keep running"
           >
-            All sites
-            <ChevronDown className="h-3.5 w-3.5 text-rex-text-muted" strokeWidth={1.8} />
+            {/* It read "All sites ▾" — beside the "All" filter tab, and the same
+                two words as the site page's link back to this list, which did
+                something else. The menu's own items name what they do. */}
+            <MoreHorizontal className="h-4 w-4" />
           </button>
         }
       >
@@ -974,8 +1094,6 @@ export function Sites() {
         </MenuItem>
       </Menu>
       </div>
-      <SortButton value={sort} onCycle={() => setSort((s) => SORT_CYCLE[s])} />
-      {newSiteButton}
     </>
   );
 
@@ -1008,25 +1126,26 @@ export function Sites() {
                 { key: "stopped", label: "Stopped" },
               ]}
             />
-            <FilterTabs
-              value={typeFilter}
-              onChange={setTypeFilter}
-              counts={typeCounts}
-              tabs={(["all", "wordpress", "laravel", "php"] as TypeFilter[]).map((k) => ({
-                key: k,
-                label: TYPE_LABEL[k],
-              }))}
-            />
-          </div>
-          <div className="ml-auto flex items-center gap-3 pl-3">
-            <div className="hidden items-center gap-[18px] pr-2 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted xl:flex">
-              <span className="w-[118px]">Stack</span>
-              <span className="w-[88px]">Status</span>
-            </div>
+            {typesPresent.length > 1 && (
+              <FilterTabs
+                value={typeFilter}
+                onChange={setTypeFilter}
+                counts={typeCounts}
+                tabs={(["all", ...typesPresent] as TypeFilter[]).map((k) => ({
+                  key: k,
+                  label: TYPE_LABEL[k],
+                }))}
+              />
+            )}
           </div>
         </div>
       )}
-      <div className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]">
+      <div
+        ref={listRef}
+        data-sites-list
+        onScroll={(e) => view.set({ scrollTop: e.currentTarget.scrollTop })}
+        className="min-h-0 flex-1 overflow-auto px-[18px] pb-[18px]"
+      >
         <ResolverDriftBanner />
         <ReapBanner />
         <ImportBanner />
@@ -1084,11 +1203,7 @@ export function Sites() {
                 them (Running) can be chosen for the user on first load. */}
             <button
               className="mt-1 text-[0.78125rem] text-brand-tint underline decoration-dotted"
-              onClick={() => {
-                setFilter("all");
-                setTypeFilter("all");
-                setQuery("");
-              }}
+              onClick={() => view.reset()}
             >
               Show all sites
             </button>
@@ -1109,8 +1224,7 @@ export function Sites() {
                 provisioning={site.provisioned ? false : provisioningOf.get(site.domain)}
                 onOpen={() => navigate(`/sites/${site.id}`)}
                 onDelete={() => actions.remove(site)}
-                onOpenDatabase={() => navigate(`/sites/${site.id}/database`)}
-                onOpenWordpress={() => navigate(`/sites/${site.id}/wordpress`)}
+                onOpenTab={(tab) => navigate(`/sites/${site.id}/${tab}`)}
                 onRename={() => actions.rename(site)}
                 onDuplicate={() => actions.duplicate(site)}
                 onRetry={() => retry.mutate(site)}

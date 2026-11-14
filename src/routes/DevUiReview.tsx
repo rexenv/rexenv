@@ -380,8 +380,7 @@ function SitesScaleView() {
           dbState={r.dbState}
           onOpen={noop}
           onDelete={noop}
-          onOpenDatabase={noop}
-          onOpenWordpress={noop}
+          onOpenTab={noop}
           onRename={noop}
           onDuplicate={noop}
           onRetry={noop}
@@ -527,8 +526,7 @@ function ScratchView() {
           reapFailure={r.reapFailure}
           onOpen={noop}
           onDelete={noop}
-          onOpenDatabase={noop}
-          onOpenWordpress={noop}
+          onOpenTab={noop}
           onRename={noop}
           onDuplicate={noop}
           onRetry={noop}
@@ -634,8 +632,7 @@ function BadgesView() {
           provisioning={r.provisioning}
           onOpen={noop}
           onDelete={noop}
-          onOpenDatabase={noop}
-          onOpenWordpress={noop}
+          onOpenTab={noop}
           onRename={noop}
           onDuplicate={noop}
           onRetry={noop}

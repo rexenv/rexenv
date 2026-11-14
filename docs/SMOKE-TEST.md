@@ -885,6 +885,30 @@ The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/
 - [ ] A browser whose icon the app cannot read (rare): the button says **Open in <its name>**.
   Open on macOS, Windows and Linux. Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
 
+## Sites list — the row and the header (14 Nov 2026 — `docs/PLAN-sites-ux.md` T4)
+A quiet row with three actions, one menu two ways, a view that survives (ledger #964, #965,
+`wk-checks/sitesrow.js`). Use a list of 10+ sites.
+- [ ] Every row shows **three icons without hovering** — your browser, WordPress (on WordPress
+  sites; a gap on the others, so the columns line up), your editor — at the smallest window too.
+  Each does what it says: the site in the browser; signed in to wp-admin; the folder in the editor.
+  Clicking one does **not** also open the site's page.
+- [ ] A serving site's row has a **green dot and no status word, no lock**. Stop one (row menu →
+  Stop site): its dot goes grey and the row now says **Stopped by you**; its browser icon still
+  works (rexenv's stopped page), its WordPress icon is greyed. **Stop all** in the footer: every
+  row says **Stopped**, browser and WordPress icons greyed with "Start all first".
+- [ ] **Right-click** a row: the same menu as its **⋮**, at the pointer — not the webview's own
+  Reload/Inspect menu. Menu → **Database** opens that site's Database tab; **Terminal**, **Logs**
+  likewise.
+- [ ] Header: "All" and "All types" carry no number; **Running N / Stopped N** do. With only
+  WordPress sites there is no type filter at all. The **⋯** button holds Start all sites / Stop all
+  sites.
+- [ ] Choose **Stopped**, type in the filter, change the sort, scroll down; open a site; come back
+  (the breadcrumb's "Sites"): filter, text, sort and scroll are as you left them. Quit and reopen
+  the app: the list opens on **All**.
+- [ ] Press **/**: the cursor is in the filter. Tab to a row, **↓ ↑** move between rows, **Enter**
+  opens, **⌘↵** (Ctrl+↵ on Windows and Linux) opens it in the browser.
+  Open on macOS, Windows and Linux.
+
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
 ⌘K opens the same list from every screen (ledger #962, `wk-checks/sitekey.js`; Windows and Linux
 use Ctrl+K — their sections).

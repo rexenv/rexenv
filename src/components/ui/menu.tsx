@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -16,20 +17,29 @@ const MenuCtx = createContext<{ close: () => void }>({ close: () => {} });
  * A lightweight dropdown menu. The popover is portaled to <body> and
  * fixed-positioned from the trigger rect, so it never gets clipped by an
  * ancestor's `overflow: hidden`. Closes on outside-click, Escape, scroll, resize.
+ *
+ * With `contextTarget`, a RIGHT-CLICK anywhere on that element opens the same
+ * menu at the pointer — one menu with two ways in, so a row's `⋮` and its
+ * context menu can never list different things (the Sites row, 14 Nov 2026).
  */
 export function Menu({
   trigger,
   children,
   width = 186,
   align = "right",
+  contextTarget,
 }: {
   trigger: ReactNode;
   children: ReactNode;
   width?: number;
   align?: "left" | "right";
+  /** An element whose right-click opens this menu at the pointer. */
+  contextTarget?: RefObject<HTMLElement | null>;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
+  // Where a right-click landed; null when the menu was opened from its trigger.
+  const [point, setPoint] = useState<{ x: number; y: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -49,12 +59,30 @@ export function Menu({
     const r = wrapRef.current?.getBoundingClientRect();
     const h = menuRef.current?.offsetHeight ?? 0;
     if (!r || !h) return;
-    let top = r.bottom + 6;
-    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - 6 - h);
-    let left = align === "right" ? r.right - width : r.left;
+    // From a right-click the anchor is the pointer, a zero-size rect.
+    const a = point
+      ? { top: point.y, bottom: point.y, left: point.x, right: point.x + width }
+      : r;
+    let top = a.bottom + (point ? 2 : 6);
+    if (top + h > window.innerHeight - 8) top = Math.max(8, a.top - (point ? 2 : 6) - h);
+    let left = point ? a.left : align === "right" ? a.right - width : a.left;
     left = Math.min(Math.max(8, left), window.innerWidth - width - 8);
     setPos({ top, left });
-  }, [open, align, width]);
+  }, [open, align, width, point]);
+
+  useEffect(() => {
+    const el = contextTarget?.current;
+    if (!el) return;
+    const onContext = (e: MouseEvent) => {
+      // The webview's own menu (Reload, Inspect Element) is not this row's.
+      e.preventDefault();
+      setPoint({ x: e.clientX, y: e.clientY });
+      setPos({ top: e.clientY + 2, left: e.clientX });
+      setOpen(true);
+    };
+    el.addEventListener("contextmenu", onContext);
+    return () => el.removeEventListener("contextmenu", onContext);
+  }, [contextTarget]);
 
   useEffect(() => {
     if (!open) return;
@@ -84,6 +112,7 @@ export function Menu({
       ref={wrapRef}
       className="relative inline-flex"
       onClick={() => {
+        setPoint(null);
         if (!open) place();
         setOpen((o) => !o);
       }}
@@ -96,6 +125,7 @@ export function Menu({
               ref={menuRef}
               onClick={(e) => e.stopPropagation()}
               style={{ position: "fixed", top: pos.top, left: pos.left, width }}
+              role="menu"
               className="z-[60] rounded-[11px] border border-rex-border-strong bg-rex-surface-2 p-[5px] shadow-menu"
             >
               {children}
