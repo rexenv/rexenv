@@ -8,14 +8,14 @@ macOS and Windows words, the L0 words test on all three; the SMOKE rows per OS a
 Dell or the Ubuntu VM yet). **T1 built 14 Nov 2026** (ledger #963, `wk-checks/siteactions.js`; SMOKE row open per OS).
 **T4 built 14 Nov 2026** (ledger #964–#965, `wk-checks/sitesrow.js`; SMOKE row open per OS; the "Recently opened"
 sort came with T5). **T5 built 14 Nov 2026** (ledger #966–#968: the order and the storage L0 on any host, the
-window's surfaces `wk-checks/sitepins.js`; the tray and a restart are SMOKE rows, open per OS). **T6 — macOS and Linux
-run 14 Nov 2026, Windows open.** `linux-check` green (both crates, Ubuntu 22.04 container). The built app was
+window's surfaces `wk-checks/sitepins.js`; the tray and a restart are SMOKE rows, open per OS). **T6 — run on all three OSes, 14 Nov
+2026** (the Dell came online that evening; its evidence is in each SMOKE row). `linux-check` green (both crates, Ubuntu 22.04 container). The built app was
 driven on the macOS 15.8 VM (WKWebView) and the Ubuntu 22.04 VM (WebKitGTK, stack running) — the evidence is in
 each SMOKE row; both VMs' databases were backed up first and put back (the run migrates to v46, which 0.9.7 would
 refuse). The runs found two things no WebKit check could: WKWebView selects the word under a right-click (the row
 is `select-none` now), and a click on the title-bar strip does not release the terminal's focus (a SMOKE row said
-it would). **Not run: Windows — the Dell was off the LAN and its tunnel answered "bad handshake".** Also unpressed
-on any real app: Duplicate/Delete from the site page, a row's three actions (Magic Login), the list view surviving
+it would). Still unpressed
+on any real app, on any OS: Duplicate/Delete from the site page, a row's three actions (Magic Login), the list view surviving
 a visit, the keys on the list. Those rows stay open in SMOKE. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
 "Sites list and site page" row in `docs/TODO.md` (Now).
 
@@ -295,7 +295,7 @@ D2 and D7; T5 needs D5 and D6.
 | T3 ✓ | **Mod+K from every route.** Global listener, not taken inside the Terminal tab or while a dialog is open; label from `PlatformWords`. | Runs on macOS, Windows and Linux builds: the shortcut opens the switcher on Sites, Mail, Settings and a site's Logs tab; in the Terminal tab Ctrl+K reaches the shell. L0 test that all three `PlatformWords` carry the label. |
 | T4 ✓ | **Sites row and header.** Three visible actions, `⋮` + right-click menu, status dot, exception-only lock and chips, `7.4 · nginx`, header per §3.4, list state kept across a site visit, list keys. | wk-check at 945 / 1100 / 1440 with the production-shaped fixture: no row overflows, actions visible at all three. `badges` wk-check green (Setting up / setup incomplete / unknown). Filter → open site → back shows the same filter, sort, search and scroll. Counts rule still holds (existing test). |
 | T5 ✓ | **Pinned and recently opened.** Migration, `core/` functions, thin commands, IPC wrappers; pin in both menus; switcher order; "Pinned" group; sidebar entries (D6); sort mode; tray order. | L0: migration on a populated DB keeps every row; ordering function tested. Pin survives an app restart; the web UI and the desktop window show the same pins. Tray submenu lists pinned first on each OS that has a tray. A deleted site leaves no pin behind. |
-| T6 ◐ | **Per-OS runs and docs close-out.** *(macOS + Linux run; Windows open.)* | SMOKE-TEST rows run on the Mac, the Dell and the Ubuntu VM; ledger rows name the OS each proof came from. |
+| T6 ✓ | **Per-OS runs and docs close-out.** *(macOS, Linux and Windows run; the unpressed rows stay open in SMOKE.)* | SMOKE-TEST rows run on the Mac, the Dell and the Ubuntu VM; ledger rows name the OS each proof came from. |
 
 Suggested order: T2 → T3 (the owner's headline ask, and independent of the rest), then T1, T4, T5, T6.
 

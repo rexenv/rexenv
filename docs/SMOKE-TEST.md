@@ -874,7 +874,9 @@ The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #9
   Ctrl+K there, not by the click) showed Pinned · Recent · All sites with green dots and the
   current site ticked. The click on the site name itself, and the WordPress → non-WordPress leg,
   were not pressed on Linux.
-  Open on Windows.
+  ◐ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: the breadcrumb drawn on every site page; from `smoke1w`'s
+  **WordPress** tab, Ctrl+K → `apw.rex` (Blank PHP) opened **Overview** with no WordPress or Live
+  tab. The click on the site name itself was not pressed on Windows (the list was opened by Ctrl+K).
 
 ## Site page — one home per action (14 Nov 2026 — `docs/PLAN-sites-ux.md` T1)
 The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/siteactions.js`).
@@ -905,7 +907,13 @@ The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/
   NOT pressed: Duplicate, Delete. (No Magic Login button on those sites: their live `wp-info` says
   not-WordPress on that VM — the folders are bare — while the ROW shows the WordPress icon from the
   recorded type, as the row's WordPress icon always did.)
-  Open on Windows. Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
+  ◐ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: SEEN on `l14w`, `smoke1w` (WordPress) and `apw` (Blank PHP,
+  FrankenPHP): no Quick links; header Open in browser (Chrome's icon) · **Visual Studio Code** (its
+  own icon, with the chevron) · Magic Login · ⋯ — on the WordPress sites the four went to the line
+  below the name at that window width, the name whole; one select each (the FrankenPHP site's PHP
+  select disabled with its sentence, the version not written twice); Site info beside Paths, with
+  `C:\Users\…` paths and "— (no database)" on the Blank PHP site. NOT pressed: anything in ⋯.
+  Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
 
 ## Sites list — the row and the header (14 Nov 2026 — `docs/PLAN-sites-ux.md` T4)
 A quiet row with three actions, one menu two ways, a view that survives (ledger #964, #965,
@@ -948,7 +956,12 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   spoke (above). NOT pressed: a row's three actions themselves, the view surviving a site visit,
   `/` ↓ ↑ Enter. Seen while there, and older than this work: with a menu open, a click elsewhere
   closes it AND lands on what is under the pointer (it opened `lv`).
-  Open on Windows.
+  ◐ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: three icons on every row with no hover (Chrome, WordPress on the
+  nine WordPress rows with the gap held on the four Blank PHP ones, VS Code's own icon); **the open
+  lock on exactly the two sites without a certificate** (`runall-1720.rex`, `runall-14864.rex`) and
+  on no other row; "Stopped" on every row (the stack was stopped); `· external` and the worktree
+  chip in place. A **right-click** opened OUR menu at the pointer, not WebView2's, and selected no
+  text. NOT pressed: the three actions, the view surviving a site visit, `/` ↓ ↑ Enter, a green dot.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
@@ -982,7 +995,13 @@ WebKit, the Rust tests the order and the storage — the TRAY and a restart are 
   (seen): l14lx.rex, then lv.rex, lm.rex, wtl.rex, then conv71l.rex, l16lx.rex, live-sync.rex… —
   pinned, recent newest-first, the rest. **App killed and started again**: `l14lx` still pinned,
   the list on All. Not pressed: the Opened sort, a scratch site, pin → delete, seven pins.
-  Open on Windows (the tray is each OS's own: menu bar / notification area / the
+  ✓ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: pinned `conv71w` from a right-click → **Pinned 1** over **All
+  sites 12** and `conv71w` under Sites in the sidebar. Opened `l14w`, `smoke1w`, `apw`. `site_prefs`
+  then held `conv71w.rex | pinned 1 | never opened` and the three opens with `pinned 0` — each fact
+  in its own column. **App killed and started again**: still pinned. **The notification-area menu's
+  Sites submenu** (seen): conv71w.rex, then apw.rex, smoke1w.rex, l14w.rex, then the rest, and
+  "…and 5 more — open rexenv". Not pressed: the Opened sort, a scratch site, pin → delete, seven
+  pins. (The tray is each OS's own: menu bar / notification area / the
   desktop's indicator).
 
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
@@ -4149,7 +4168,11 @@ Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.
   this keyboard does not have. In the **Terminal** tab Ctrl+K reaches the shell (PowerShell: nothing
   visible; a readline shell: deletes to the end of the line) and no switcher opens. **Tell:**
   WebView2 keeping Ctrl+K for itself and the page never seeing it.
-  Open on Windows (the Dell).
+  ✓ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: **Ctrl+K** on `l14w`'s **Database** tab opened the switcher
+  (WebView2 hands the key to the page), its last line `Ctrl+↵ in browser`; `smoke1w` + Enter landed
+  on `smoke1w`'s **Database** tab. In `apw`'s **Terminal** — a live PowerShell, `echo hi-win`
+  answered — Ctrl+K went to the shell (it printed `^K`) and no switcher opened. Not pressed: Ctrl+K
+  over a dialog, Ctrl+↵.
 
 ## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 

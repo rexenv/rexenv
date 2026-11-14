@@ -156,6 +156,19 @@ Walk it while DESIGNING, not after. Say the answers out loud in the plan or the 
 
 ---
 
+## 5a. A test build run beside the installed app takes over the DNS agent — on every OS
+
+Seen three times in one day (14 Nov 2026, `docs/PLAN-sites-ux.md` T6): a dev build launched from
+its own folder (`~/t6/rexenv`, `C:\Users\dell\t6\rexenv.exe`) re-registered the per-user DNS
+agent to ITS path — the systemd user unit on Linux, the `\rexenv\dns-agent` logon task on
+Windows — and started the agent from there. That is the app doing its job (the agent is "this
+binary"), and the installed app points it back at its next launch. But a test folder deleted
+BEFORE that leaves the agent's task naming a file that no longer exists. So a run beside the
+installed app ends in this order: stop the test build and its agent, put the database back,
+**launch the installed app once**, read the unit/task's path, and only then delete the folder.
+The same run migrates the database forward (v46 that day), which the installed app refuses —
+back it up first, with its `-wal` and `-shm`.
+
 ## 6. macOS — the traps
 
 - **WKWebView does things to a page that Playwright's WebKit does not** — two met on the 15.8 VM
