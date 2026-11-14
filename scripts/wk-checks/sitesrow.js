@@ -242,6 +242,16 @@ const fails = [];
   await page.keyboard.press("ArrowUp");
   const focused = await page.evaluate(() => document.activeElement?.getAttribute("data-site-row"));
   if (focused !== ids[1]) fails.push(`8: ↓ ↓ ↑ from the first row is on ${focused}, expected ${ids[1]}`);
+  // The ring is the only thing that says which row Enter will open, so it must be SEEN: it
+  // was `ring-white/15`, invisible on the light theme (found on the real app, not here).
+  const ring = await page.evaluate(() => {
+    // Tailwind's ring is one layer of a multi-layer box-shadow (the first is a white
+    // zero-width offset): the ring is visible if ANY layer is a non-white, opaque-enough colour.
+    const shadow = getComputedStyle(document.activeElement).boxShadow || "";
+    const layers = [...shadow.matchAll(/rgba?\(([^)]+)\)/g)].map((m) => m[1].split(",").map((x) => parseFloat(x)));
+    return { shadow, seen: layers.some((p) => !(p[0] > 240 && p[1] > 240 && p[2] > 240) && (p.length > 3 ? p[3] : 1) >= 0.5) };
+  });
+  if (!ring.seen) fails.push(`8: the keyboard-focused row's ring is not visible on a light surface (box-shadow: ${ring.shadow})`);
   await page.keyboard.press("Enter");
   await page.waitForTimeout(400);
   if (!page.url().endsWith(`/sites/${ids[1]}`)) fails.push(`8: Enter on the focused row went to ${page.url()}`);

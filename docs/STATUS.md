@@ -7,48 +7,48 @@ App version **0.9.7** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 ### Now — actionable code/test work — 12
 
 - `TODO.md:159` Sites list and site page — one home per action, and a way from one site to the next
-- `TODO.md:176` One update channel — open for the three SMOKE rows live per OS
-- `TODO.md:186` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
-- `TODO.md:203` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
-- `TODO.md:253` PostgreSQL self-build for macOS 13/14
-- `TODO.md:259` Windows: PHP's own curl has no CA bundle
-- `TODO.md:262` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
-- `TODO.md:265` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:298` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:309` Radicle-hosted repos are unverified
-- `TODO.md:314` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:317` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:178` One update channel — open for the three SMOKE rows live per OS
+- `TODO.md:188` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
+- `TODO.md:205` macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real def…
+- `TODO.md:255` PostgreSQL self-build for macOS 13/14
+- `TODO.md:261` Windows: PHP's own curl has no CA bundle
+- `TODO.md:264` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
+- `TODO.md:267` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:300` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:311` Radicle-hosted repos are unverified
+- `TODO.md:316` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:319` Windows `setup.exe /S` over a running app + agent sometimes exits 2
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:340` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:342` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 9
 
-- `TODO.md:413` The in-app update's remaining human rows (macOS)
-- `TODO.md:423` Release 5.4 — clean-Mac smoke test
-- `TODO.md:430` Tunnel probe session
-- `TODO.md:434` In-app verifies owed
-- `TODO.md:452` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:464` The live pool swap is still L3
-- `TODO.md:468` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:476` Install WordPress into an empty LINKED folder
-- `TODO.md:483` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:415` The in-app update's remaining human rows (macOS)
+- `TODO.md:425` Release 5.4 — clean-Mac smoke test
+- `TODO.md:432` Tunnel probe session
+- `TODO.md:436` In-app verifies owed
+- `TODO.md:454` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:466` The live pool swap is still L3
+- `TODO.md:470` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:478` Install WordPress into an empty LINKED folder
+- `TODO.md:485` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:490` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:529` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:540` Xdebug on PHP 8.0
-- `TODO.md:545` SMAppService privileged helper
-- `TODO.md:547` Developer ID signing + notarization
+- `TODO.md:492` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:531` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:542` Xdebug on PHP 8.0
+- `TODO.md:547` SMAppService privileged helper
+- `TODO.md:549` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 4
 
-- `TODO.md:552` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
-- `TODO.md:565` Headless rexenv on a VPS — open: the rest of Phase 1b
-- `TODO.md:579` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
-- `TODO.md:586` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:554` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
+- `TODO.md:567` Headless rexenv on a VPS — open: the rest of Phase 1b
+- `TODO.md:581` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
+- `TODO.md:588` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

@@ -14,9 +14,11 @@ driven on the macOS 15.8 VM (WKWebView) and the Ubuntu 22.04 VM (WebKitGTK, stac
 each SMOKE row; both VMs' databases were backed up first and put back (the run migrates to v46, which 0.9.7 would
 refuse). The runs found two things no WebKit check could: WKWebView selects the word under a right-click (the row
 is `select-none` now), and a click on the title-bar strip does not release the terminal's focus (a SMOKE row said
-it would). Still unpressed
-on any real app, on any OS: Duplicate/Delete from the site page, a row's three actions (Magic Login), the list view surviving
-a visit, the keys on the list. Those rows stay open in SMOKE. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
+it would). A second Linux run the same day pressed what
+was left — Duplicate/Delete from the site page, a row's browser and Magic Login, the view across a visit, the list's
+keys, the chord over a dialog, Mod+↵, extra-domain search, the Opened sort, pin → delete, seven pins, a scratch
+site — and ran the web UI over a real tunnel. It found a focus ring invisible on the light theme (fixed). Left
+open: revert-then-delete from the site page (no machine has a connected site), scroll restore on a real app. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
 "Sites list and site page" row in `docs/TODO.md` (Now).
 
 ---

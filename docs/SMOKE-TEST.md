@@ -877,6 +877,8 @@ The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #9
   ◐ **Windows** 14 Nov 2026 — the Dell (Windows 10 22H2, WebView2), this tree's debug `rexenv.exe` at a5bd18fe (cargo-xwin, `devUrl` dropped) run from its own folder over the installed 0.9.7's data — 13 sites, the stack stopped; the database backed up first and put back after: the breadcrumb drawn on every site page; from `smoke1w`'s
   **WordPress** tab, Ctrl+K → `apw.rex` (Blank PHP) opened **Overview** with no WordPress or Live
   tab. The click on the site name itself was not pressed on Windows (the list was opened by Ctrl+K).
+  ✓ **Linux, second run** 14 Nov 2026 — the Ubuntu 22.04 VM, the debug binary at 0d4997cd over 0.9.7's data, stack running (database backed up and put back): an **extra domain** (`alt-lv.rex`, added to `lv.rex` for the run) typed into the switcher
+  found `lv`, and the list row showed `lv.rex +1`.
 
 ## Site page — one home per action (14 Nov 2026 — `docs/PLAN-sites-ux.md` T1)
 The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/siteactions.js`).
@@ -914,6 +916,17 @@ The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/
   select disabled with its sentence, the version not written twice); Site info beside Paths, with
   `C:\Users\…` paths and "— (no database)" on the Blank PHP site. NOT pressed: anything in ⋯.
   Over the web UI (`rexenv --web`): **no editor button**, no folder icon.
+  ✓ **Linux, second run** 14 Nov 2026 — the Ubuntu 22.04 VM, the debug binary at 0d4997cd over 0.9.7's data, stack running (database backed up and put back): on a throwaway `t6del.rex`: **⋯ → Duplicate** opened New site at step 2 with "t6del copy" /
+  `t6del-copy.rex` (cancelled); **⋯ → Delete** opened the confirm naming the site, Delete site dead
+  until `t6del.rex` was typed, then the app was back on the Sites list, `rex site list` and the
+  Sites folder no longer had it. ⋯ on a pinned site read **Unpin**.
+  ✓ **The web UI** — the same build as `rexenv --headless --web`, reached from the Mac through a
+  real `ssh -L 9443` tunnel with Playwright WebKit (the page marked `rexenv-transport: web`, the
+  VM's 11 real sites): a row's actions were **Open in browser and Magic Login only — no editor**;
+  the row menu had **no Open folder**; the site header **Open in browser · Magic Login · ⋯, no
+  editor button**, no folder icon on the path row.
+  Still open on every OS: **revert, then delete** from the site page for a site whose database
+  rexenv connected — no test machine has such a site; the flow is the list's own (`useSiteActions`).
 
 ## Sites list — the row and the header (14 Nov 2026 — `docs/PLAN-sites-ux.md` T4)
 A quiet row with three actions, one menu two ways, a view that survives (ledger #964, #965,
@@ -962,6 +975,18 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   on no other row; "Stopped" on every row (the stack was stopped); `· external` and the worktree
   chip in place. A **right-click** opened OUR menu at the pointer, not WebView2's, and selected no
   text. NOT pressed: the three actions, the view surviving a site visit, `/` ↓ ↑ Enter, a green dot.
+  ✓ **Linux, second run** 14 Nov 2026 — the Ubuntu 22.04 VM, the debug binary at 0d4997cd over 0.9.7's data, stack running (database backed up and put back): a row's **browser icon** opened `conv71l` in Firefox and its **WordPress icon** landed on
+  "Dashboard ‹ conv71l — WordPress" signed in, the app staying on the list both times. **Running** +
+  `l1` in the filter + sort **Status** → opened `l14lx` → "Sites" in the breadcrumb: the same tab,
+  text, sort and two rows. **`/`** put the cursor in the filter; Tab reached a row, **↓** moved,
+  **Enter** opened `wtl · feature-x`. Sort **Opened**: the two sites opened that day led, the rest
+  by name. **Found here:** the keyboard-focused row showed NO ring — `ring-white/15` is invisible on
+  the light theme — so ↓ ↑ moved a focus nobody could see; the ring is the brand colour since, and
+  `sitesrow.js` leg 8 holds it. Also: the "AGENT SCRATCH" label
+  broke onto two lines; fixed. Scroll kept across a visit was not pressed (the list fit the window).
+  ✓ **macOS, second run** 14 Nov 2026 — the 15.8 VM, the debug bundle with both fixes in it (database backed up and put back): a **right-click on a row's domain text** opened the menu with **no word highlighted**
+  (the first run highlighted `pg.rex`); Tab then ↓ ↓ put a **clear brand-coloured ring** round the
+  focused row (`l14vm`).
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
@@ -1003,6 +1028,11 @@ WebKit, the Rust tests the order and the storage — the TRAY and a restart are 
   "…and 5 more — open rexenv". Not pressed: the Opened sort, a scratch site, pin → delete, seven
   pins. (The tray is each OS's own: menu bar / notification area / the
   desktop's indicator).
+  ✓ **Linux, second run** 14 Nov 2026 — the Ubuntu 22.04 VM, the debug binary at 0d4997cd over 0.9.7's data, stack running (database backed up and put back): pinned `t6del`, deleted it from its own page: gone from the sidebar, and `site_prefs` held
+  no row for it and no orphan. Seven pins (written into the database for the run): the sidebar
+  showed five and **"…and 2 more pinned"**, the list's Pinned group all seven. A **scratch** site
+  (`origin` set to `agent` for the run): its menu led with **Keep this site** and had **no Pin**.
+  Not pressed: Keep-then-pin, and core's refusal through the real IPC (the UI never sends it — L0).
 
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
 ⌘K opens the same list from every screen (ledger #962, `wk-checks/sitekey.js`; Windows and Linux
@@ -1025,7 +1055,8 @@ use Ctrl+K — their sections).
   answered — ⌘K opened nothing; after a click on the terminal's toolbar it opened. **Found here:** a
   click on the title-bar strip leaves the focus in the shell (the row above was reworded). Not
   pressed: ⌘K over the New site dialog, ⌘↵ (the stack was stopped — nothing to open), Ctrl+K.
-  *(Linux's ✓ is in the Linux section; Windows is open — the Dell was offline.)*
+  ✓ **macOS, second run** 14 Nov 2026 — the 15.8 VM, the debug bundle with both fixes in it (database backed up and put back): **⌘K over the open New site dialog** opened nothing and the dialog stayed.
+  *(Linux's and Windows' ✓ are in their sections.)*
 
 ## Site header at a narrow window (27 Oct 2026)
 Nothing overlaps and the name stays readable: when the title and the buttons cannot share a line,
@@ -4914,5 +4945,9 @@ Result: 5 / 5 pass (28 Oct 2026, arm64; x86_64 not run).  Issues found: none in 
   (WebKitGTK and GNOME both let the key through), its last line `Ctrl+↵ in browser`, no ⌘ anywhere;
   on `wtl`'s **Database** tab Ctrl+K → `lm.rex` → Enter landed on `lm`'s **Database** tab
   (phpMyAdmin loaded there). In `lm`'s **Terminal** — a live bash, `echo hi-linux` answered — Ctrl+K
-  opened nothing. Not pressed: Ctrl+K over a dialog, Ctrl+↵.
+  opened nothing.
+  ✓ Second run, same day: **Ctrl+K over the open New site dialog** opened nothing and the dialog
+  stayed; **Ctrl+↵** on `lv` in the switcher opened Firefox while the app stayed where it was.
+  ✓ **The web UI** (the `ssh -L` run above): BOTH **Ctrl+K** and **⌘K** opened the switcher, the
+  footer read `Ctrl/⌘ ↵ in browser` and the breadcrumb's title `Ctrl/⌘ K`; Ctrl+⌘+K opened nothing.
 

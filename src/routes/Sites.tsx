@@ -333,12 +333,16 @@ export function SiteRow({
           next?.focus();
         }
       }}
+      // The focus ring is the brand colour: it was `ring-white/15`, which is
+      // invisible on the light theme — found on the real app (Ubuntu VM, 14 Nov
+      // 2026) the first time the rows were walked with ↓ ↑, where the ring is
+      // the only thing that says which row Enter will open.
       // `select-none`: a right-click in WKWebView SELECTS the word under the
       // pointer before the menu opens — on the real app (macOS 15.8 VM, 14 Nov
       // 2026) the row's menu came up beside a highlighted "pg.rex". Playwright's
       // WebKit does not do it, so no check saw it. The domain is still one menu
       // item away (Copy domain).
-      className="group flex h-11 cursor-pointer select-none items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-white/15"
+      className="group flex h-11 cursor-pointer select-none items-center gap-[11px] rounded-[9px] pl-3 pr-2 transition-colors hover:bg-rex-surface-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
     >
       {/* The status, as a dot — for every row, in one column. The WORDS appear
           only where they say something (further right): 25 "Running" pills told
@@ -1377,7 +1381,9 @@ export function ScratchGroupHeading({ count, tight }: { count: number; tight?: b
   return (
     <div className={cn("flex items-center gap-2 px-3 pb-1 pt-5", tight && "pt-1")}>
       <Bot className="h-3.5 w-3.5 flex-none text-rex-text-dim" strokeWidth={1.8} />
-      <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
+      {/* flex-none + nowrap: the description beside it is the part that gives
+          way. Without them the label broke into "AGENT / SCRATCH" (Ubuntu VM). */}
+      <span className="flex-none whitespace-nowrap font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
         Agent scratch
       </span>
       <span className="font-mono text-[0.625rem] text-rex-text-muted">{count}</span>

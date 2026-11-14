@@ -170,8 +170,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `wk-checks/sitepins.js`; SMOKE "Pinned and recently opened sites" open per OS). **Schema v46: a build with this
   cannot be downgraded over** (the older app refuses the newer database, #593) — a release note. ◐ T6 14 Nov 2026: `linux-check` green; the built app run on the macOS 15.8 VM and the Ubuntu 22.04 VM
   (evidence in the SMOKE rows; two real-webview findings fixed or reworded, `docs/PLATFORMS.md` §6). The Windows run followed the same evening on the
-  Dell (WebView2). **Open, on any OS:** Duplicate/Delete from the site page, a row's three actions
-  with the stack running, the list view across a site visit, the list's keys.
+  Dell (WebView2). A second Linux run pressed the rest and ran the web UI over
+  a real tunnel. **Still open:** revert-then-delete from the site page for a connected site (no test machine has
+  one), and scroll restore on a real app. Both real-app fixes (no selection on right-click, the focus ring) were
+  seen on the macOS VM.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
