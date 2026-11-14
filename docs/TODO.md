@@ -156,6 +156,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
+- [ ] **Sites list and site page — one home per action, and a way from one site to the next**
+  (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). Open: T2 the site switcher
+  (breadcrumb popover, the tab kept), T3 Mod+K from every route, T1 the site page without its duplicates, T4 the
+  Sites row and header, T5 pinned + recently opened, T6 the per-OS runs.
+
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need
   a published `manifest.json` naming a PHP patch newer than the pin — no run has met one yet (0.9.6's §M, 6 Nov 2026,
