@@ -156,10 +156,20 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 
 ## Now — actionable code/test work
 
-- [ ] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
+- [ ] **Start all under a foreign :443 holder says the machine is busy, and `rex doctor` sees no holder** (found 14
+  Nov 2026 on the macOS 15.8 VM while running the "Start & …" conflict row). With a ROOT `python3` server holding
+  IPv4 `*:443` (rexenv's edge then came up on the IPv6 wildcard only — `lsof` showed `caddy … IPv6 *:443`), Start
+  all's toast read "services started, but rexenv's edge has not answered port 443 yet — the machine is very busy
+  (a boot, a large copy)…", `health.log` said `[edge-blocked]`, and `rex doctor` printed "Ports: no foreign holders
+  on rexenv ports". Nothing named the holder or a fix, which the port rule promises (`core/ports::ensure_free`).
+  Not diagnosed: whether the port gate cannot see a root-owned listener from the user's process, or the
+  IPv4/IPv6 split passes it. The shadow-bind family (Herd on 127.0.0.1:443) — same shape, different holder.
+
+- [x] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
   2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). ✓ macOS run 14 Nov 2026 on the 15.8 VM — a real Start all inside the click, the
   password prompt mid-click (cancelled and approved), every slot state; it found and fixed a stack-up answer read
-  from a mock-only field. Open: the same SMOKE row on Windows and Linux, and a real :443 conflict.
+  from a mock-only field. ✓ Windows (the Dell) and Linux (the Ubuntu VM) run the same day, and a real :443
+  conflict on macOS — evidence in the SMOKE row. Left unrun: the site PAGE's two buttons on Windows/Linux.
 
 - [x] **Sites list and site page — one home per action, and a way from one site to the next**
   (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov

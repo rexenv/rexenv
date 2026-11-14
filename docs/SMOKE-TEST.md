@@ -1032,8 +1032,28 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   site and services" — `useStackUp` (then `useEdgeUp`) asked the service list for a row flagged
   `isRouter`, a field ONLY the dev mock carried; the real backend never sends it. The WebKit
   check had passed on a fixture production does not match. Re-run on the fixed build: "Start site".
-  Not run: a real port conflict on :443.
-  Open on Windows and Linux.
+  ✓ **A real :443 conflict** (same VM, later that day): after Stop all, a root `python3` HTTP server
+  held IPv4 `*:443`. **Start & Magic Login** → pill "Starting…", every other row's actions off
+  meanwhile → **Safari opened nothing**; the toast was Start all's own ("services started, but
+  rexenv's edge has not answered port 443 yet…"), the row back to **Services off** with the offer
+  intact. The holder killed, the same click signed in to wp-admin. *(What Start all SAID there is
+  its own, older problem — the TODO row "Start all under a foreign :443 holder".)*
+  ✓ **Windows** 14 Nov 2026 — the Dell (Win 10 22H2, WebView2), this tree's debug exe at 85c902b5
+  over 0.9.7's data (13 sites, services stopped; database backed up and put back). Every row
+  **Services off** with live Chrome and WordPress icons; a row's menu led with **Start services**.
+  `smoke1w`'s **WordPress icon**: "Starting…", the other rows' actions off, 9/9 with **no UAC
+  prompt**, then Chrome on **Dashboard ‹ smoke1w — WordPress**, signed in. `w7check` stopped by
+  `rex site stop`: **Stopped by you**, WordPress icon off; menu **Start site** with the services
+  on, **Start site and services** after `rex stop` — pressed: 13/13 serving, no browser.
+  ✓ **Linux** 14 Nov 2026 — the Ubuntu 22.04 VM (WebKitGTK), the debug binary at 85c902b5 run in a
+  user scope (so pkexec has its polkit agent) over 0.9.7's data, 11 sites. After Stop all: every
+  row **Services off**, menu **Start services**. `conv71l`'s **WordPress icon** → "Starting…" and
+  the **polkit prompt inside the click**; CANCELLED → "Administrator permission was cancelled…",
+  nothing opened, the offer back; authenticated → 7/7 in ~8 s, Firefox on **Dashboard ‹ conv71l —
+  WordPress**. `lm` stopped: **Start site** with the services on, **Start site and services** with
+  them off — pressed, authenticated: 11/11 serving, `lm` among them, no browser.
+  Not run on Windows or Linux: the site PAGE's "Start & open" / "Start & Magic Login" buttons (the
+  row's icons and menu were) and a :443 conflict.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
