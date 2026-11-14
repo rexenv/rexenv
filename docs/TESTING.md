@@ -697,7 +697,11 @@ it can:
   STACK (`rex-mock-stack`: `down` → Start all moves it to `up`; `fail` → Start all throws) —
   before it nothing could render "services off" over the mock list, so no check could have seen
   a "Stop site" under a stopped row. `window.open` is recorded WITH the start count, because
-  "it opened" and "it opened after the start" are different claims. **What it cannot see:** a
+  "it opened" and "it opened after the start" are different claims. **The mock lied once, the same
+  day:** the first "is the stack up" read `isRouter` off the service list — a field the mock had and
+  `services_status` never sends — so the check was green and the real app wrong (a stopped-by-you
+  site offered "Start site and services" with 8/8 running; seen on the macOS VM). A hook that reads
+  a field gets that field looked up in the Rust DTO, not in `mock.ts`. **What it cannot see:** a
   real Start all (its time, a macOS password prompt in the middle of the click) — SMOKE.
 - **Pinned + recently opened (14 Nov 2026, #966–#968) — which layer holds what.** L0, on any
   host: `core::site_shortlist` (the order; a scratch site refused a pin; the tray's order),

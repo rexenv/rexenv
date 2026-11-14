@@ -25,7 +25,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { useSiteUrl } from "@/lib/siteUrl";
 import { useModKey } from "@/lib/useModKey";
-import { useEdgeUp, useServeFirst } from "@/lib/useServeFirst";
+import { useStackUp, useServeFirst } from "@/lib/useServeFirst";
 import { usePinSite, useSiteShortlist } from "@/lib/useSiteShortlist";
 import { openWpAdmin } from "@/lib/wpAdmin";
 import { useSitesListState, type SitesSort, type SitesStatusFilter, type SitesTypeFilter } from "@/lib/sitesListState";
@@ -302,7 +302,7 @@ export function SiteRow({
   const needsStack = site.provisioned && status !== "running" && !stoppedByUser;
   const startingThis = serve.startingId === site.id;
   // For a site the user stopped: is the stack itself off too?
-  const edgeUp = useEdgeUp();
+  const stackUp = useStackUp();
   // **A normal site is quiet.** Provisioned, serving, not stopped by the user:
   // the row says so with a dot, and spends its words on the rows that are not.
   const quiet = site.provisioned && status === "running" && !stoppedByUser;
@@ -736,7 +736,7 @@ export function SiteRow({
               disabled={serve.busy}
               onSelect={() => {
                 if (needsStack) void serve.startStack();
-                else if (stoppedByUser && edgeUp === false)
+                else if (stoppedByUser && stackUp === false)
                   void serve.startStack().then((ok) => { if (ok) onToggleEnabled(true); });
                 else onToggleEnabled(!!stoppedByUser);
               }}
@@ -748,7 +748,7 @@ export function SiteRow({
                 : needsStack
                   ? "Start services"
                   : stoppedByUser
-                    ? edgeUp === false
+                    ? stackUp === false
                       ? "Start site and services"
                       : "Start site"
                     : "Stop site"}

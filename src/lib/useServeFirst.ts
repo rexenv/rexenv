@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { getSitesServing, servicesStatus, startServices } from "@/lib/ipc";
+import { getGlobalStatus, getSitesServing, startServices } from "@/lib/ipc";
 import { toast, toastBackendError } from "@/lib/toast";
 import type { Site } from "@/types";
 
@@ -82,10 +82,29 @@ export function useServeFirst() {
   return { ensure, startStack, startingId, busy: startingId !== null };
 }
 
-/** Is the edge (the router every site is reached through) running? `undefined`
- *  until the first answer. It tells "rexenv's services are off" from "the user
- *  stopped this one site" for a site that is not serving. */
-export function useEdgeUp(): boolean | undefined {
-  const { data } = useQuery({ queryKey: ["services"], queryFn: servicesStatus, refetchInterval: 2000 });
-  return data ? !!data.find((s) => s.isRouter)?.running : undefined;
+/** Are rexenv's services up? `undefined` until the first answers. It tells
+ *  "the services are off" from "the user stopped this one site" for a site that
+ *  is not serving — the question the lifecycle slot's wording turns on.
+ *
+ *  Answered from what the backend REALLY reports: some site is serving (the
+ *  backend's own `sites_serving`), or every service is running (`global_status`).
+ *  The first version asked the service list for the row flagged `isRouter` — a
+ *  field only the dev mock carried. The real backend never sends it, so on the
+ *  real app this was `false` for a running stack, and a stopped-by-you site
+ *  offered "Start site and services" with all eight services up (found on the
+ *  macOS VM, 14 Nov 2026, the first time the built app was driven). The WebKit
+ *  check had passed: its fixture had the field production does not. */
+export function useStackUp(): boolean | undefined {
+  const { data: serving } = useQuery({
+    queryKey: ["sites-serving"],
+    queryFn: getSitesServing,
+    refetchInterval: 2000,
+  });
+  const { data: status } = useQuery({
+    queryKey: ["global-status"],
+    queryFn: getGlobalStatus,
+    refetchInterval: 2000,
+  });
+  if (!serving || !status) return undefined;
+  return serving.some((s) => s.serving) || status.summary === "all";
 }

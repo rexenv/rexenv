@@ -1015,7 +1015,25 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   the toast is Start all's own error, the button still offers the start.
 - [ ] A site you stopped (services on or off): **Magic Login is off** with "You stopped this
   site…"; Open in browser shows rexenv's stopped page and starts nothing.
-  Open on macOS, Windows and Linux.
+  ✓ **macOS** 14 Nov 2026 — the 15.8 VM (WKWebView), the debug bundle of this tree over 0.9.7's data
+  (9 sites; the database backed up first). After **Stop all**: eight rows **Services off** with live
+  browser and WordPress icons, the user-stopped one **Stopped by you** with its WordPress icon off;
+  a row's menu led with **Start services**, the user-stopped site's with **Start site and
+  services**. Site page: Services off · **Start & open** · **Start & Magic Login**, ⋯ → Start
+  services. **Start & Magic Login**: pill "Starting…", both buttons "Starting services…", the
+  admin **password prompt inside the click**. Prompt CANCELLED → Start all's own toast
+  ("Administrator permission was cancelled…"), Safari opened nothing, the offer back. Prompt
+  approved → 8/8 in ~16 s, then Safari on **Dashboard ‹ Live Subdomain — WordPress**, signed in; the
+  buttons plain again. A row's **browser icon** with the services off → the prompt → `smoke1` in
+  Safari; the user-stopped `wtp` was NOT started by it. On the user-stopped `wtp` (services on):
+  Magic Login faded and a click opened nothing; Open in browser showed the stopped page (503).
+  **Start site and services** → the prompt → 8/8 and `wtp` serving, no browser.
+  **Found here, fixed:** with all eight services running, the user-stopped site's menu read "Start
+  site and services" — `useStackUp` (then `useEdgeUp`) asked the service list for a row flagged
+  `isRouter`, a field ONLY the dev mock carried; the real backend never sends it. The WebKit
+  check had passed on a fixture production does not match. Re-run on the fixed build: "Start site".
+  Not run: a real port conflict on :443.
+  Open on Windows and Linux.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in

@@ -17,7 +17,6 @@ import {
   mockAppInfo,
   mockPlatformWordsView,
   mockDatabases,
-  mockGlobalStatus,
   mockAddSiteDomain,
   mockAllSiteDomains,
   mockMailDetail,
@@ -37,6 +36,7 @@ import {
   mockServicesView,
   mockMarkSiteOpened,
   mockSetSitePinned,
+  mockGlobalStatusView,
   mockSiteShortlist,
   mockStartServices,
   mockSitesServingView,
@@ -197,7 +197,7 @@ export async function startupNotices(): Promise<StartupNotice[]> {
 
 /** Live global status for the sidebar footer. Mock fallback outside Tauri. */
 export async function getGlobalStatus(): Promise<GlobalStatus> {
-  if (!isTauri()) return mockGlobalStatus;
+  if (!isTauri()) return mockGlobalStatusView();
   return invoke<GlobalStatus>("global_status");
 }
 

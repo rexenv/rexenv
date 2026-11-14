@@ -291,6 +291,15 @@ export async function mockStartServices(): Promise<void> {
   if (mockStack() === "down") window.localStorage.setItem("rex-mock-stack", "up");
 }
 
+/** `mockGlobalStatus`, following the mock stack when a check set one. */
+export function mockGlobalStatusView(): GlobalStatus {
+  const stack = mockStack();
+  if (stack === "down" || stack === "fail")
+    return { ...mockGlobalStatus, summary: "stopped", running: 0 };
+  if (stack === "up") return { ...mockGlobalStatus, summary: "all", running: mockGlobalStatus.total };
+  return mockGlobalStatus;
+}
+
 /** `mockSitesServing` over whichever list `mockSitesView` is serving. */
 export function mockSitesServingView(): SiteServing[] {
   const off = mockStack() === "down" || mockStack() === "fail";
@@ -318,14 +327,10 @@ export function mockServicesView(): ServiceInfo[] {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  // Only when a check SET the stack: the edge follows it. Unset, the fixture's
-  // own rows stand (other checks read them as written).
-  const stack = mockStack();
-  const rows =
-    stack === null
-      ? mockServices
-      : mockServices.map((s) => (s.isRouter ? { ...s, running: stack === "up" } : s));
-  return rows.map((s) =>
+  // No row is flagged as "the edge": the real backend sends no such field
+  // (`isRouter` above is the mock's alone — a check that leaned on it passed
+  // while the real app was wrong; see `useStackUp`).
+  return mockServices.map((s) =>
     s.running && busy.some((m) => s.name === `PHP-FPM ${m}`)
       ? { ...s, busyNote: "all 10 workers busy — requests are queuing" }
       : s,

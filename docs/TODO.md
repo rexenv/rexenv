@@ -157,9 +157,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 ## Now — actionable code/test work
 
 - [ ] **Services off: "Start & …" — the real-app runs** (`docs/PLAN-sites-ux.md` T7, ledger #969). Built 14 Nov
-  2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). Open: SMOKE "Services off — Start & …"
-  on macOS, Windows and Linux — a real Start all inside the click, the macOS password prompt in the middle of
-  it, a real port conflict.
+  2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). ✓ macOS run 14 Nov 2026 on the 15.8 VM — a real Start all inside the click, the
+  password prompt mid-click (cancelled and approved), every slot state; it found and fixed a stack-up answer read
+  from a mock-only field. Open: the same SMOKE row on Windows and Linux, and a real :443 conflict.
 
 - [x] **Sites list and site page — one home per action, and a way from one site to the next**
   (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov

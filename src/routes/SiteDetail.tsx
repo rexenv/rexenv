@@ -89,7 +89,7 @@ import {
 } from "@/lib/ipc";
 import { toast } from "@/lib/toast";
 import { magicLoginUrl, openWpAdmin } from "@/lib/wpAdmin";
-import { useEdgeUp, useServeFirst } from "@/lib/useServeFirst";
+import { useStackUp, useServeFirst } from "@/lib/useServeFirst";
 import { useEdgeHttpsPort, useSiteUrl } from "@/lib/siteUrl";
 import type { DomainChange, EnvVar, Site, WebServer } from "@/types";
 
@@ -455,7 +455,7 @@ function SiteHeader({
   const stoppedByUser = site.enabled === false;
   const needsStack = site.provisioned && status !== "running" && !stoppedByUser;
   const startingThis = serve.startingId === site.id;
-  const edgeUp = useEdgeUp();
+  const stackUp = useStackUp();
   const onOpenAdmin = async () => {
     setAdminBusy(true);
     try {
@@ -646,7 +646,7 @@ function SiteHeader({
                 disabled={togglePending || serve.busy}
                 onSelect={() => {
                   if (needsStack) void serve.startStack();
-                  else if (stoppedByUser && edgeUp === false)
+                  else if (stoppedByUser && stackUp === false)
                     void serve.startStack().then((ok) => {
                       if (ok) onToggleEnabled(true);
                     });
@@ -660,7 +660,7 @@ function SiteHeader({
                   : needsStack
                     ? "Start services"
                     : stoppedByUser
-                      ? edgeUp === false
+                      ? stackUp === false
                         ? "Start site and services"
                         : "Start site"
                       : "Stop site"}
