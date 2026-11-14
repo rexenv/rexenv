@@ -925,8 +925,16 @@ The header acts, the tabs navigate, a card shows facts (ledger #963, `wk-checks/
   VM's 11 real sites): a row's actions were **Open in browser and Magic Login only — no editor**;
   the row menu had **no Open folder**; the site header **Open in browser · Magic Login · ⋯, no
   editor button**, no folder icon on the path row.
-  Still open on every OS: **revert, then delete** from the site page for a site whose database
-  rexenv connected — no test machine has such a site; the flow is the list's own (`useSiteActions`).
+  ✓ **Revert, then delete from the site page** — Linux, third run, 14 Nov 2026 (the same VM and
+  build). A real connected site was MADE for it: a second `mysqld` on `127.0.0.1:13399` as "their"
+  server (user `their`, a password), a copy of a WordPress site's files and database on it, the
+  folder linked as `t6conn.rex`; Database tab → **Import database** ("44 tables, 5.0 MB … copied
+  from MySQL 8.4.6 at 127.0.0.1:13399") → consent → **Apply and verify** → "Connected", `DB_HOST`
+  now `:13306`. Then the site page's **⋯ → Delete**: the two-option dialog (Revert, then delete /
+  Delete without reverting), both dead until the domain was typed. **Revert, then delete**: back
+  on the Sites list; `wp-config.php` byte-identical to before the rewrite (same sha256), the folder
+  still there (22 entries), the site gone, rexenv's copy `ext_wp` dropped, **their database
+  untouched** (44 tables on :13399), `db_imports` and `config_rewrites` empty.
 
 ## Sites list — the row and the header (14 Nov 2026 — `docs/PLAN-sites-ux.md` T4)
 A quiet row with three actions, one menu two ways, a view that survives (ledger #964, #965,
@@ -983,7 +991,10 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   by name. **Found here:** the keyboard-focused row showed NO ring — `ring-white/15` is invisible on
   the light theme — so ↓ ↑ moved a focus nobody could see; the ring is the brand colour since, and
   `sitesrow.js` leg 8 holds it. Also: the "AGENT SCRATCH" label
-  broke onto two lines; fixed. Scroll kept across a visit was not pressed (the list fit the window).
+  broke onto two lines; fixed.
+  ✓ **Scroll kept across a visit** — third run: the window shrunk until the 12-row list scrolled,
+  scrolled two rows down, a site opened, "Sites" in the breadcrumb: the list came back at the same
+  offset.
   ✓ **macOS, second run** 14 Nov 2026 — the 15.8 VM, the debug bundle with both fixes in it (database backed up and put back): a **right-click on a row's domain text** opened the menu with **no word highlighted**
   (the first run highlighted `pg.rex`); Tab then ↓ ↓ put a **clear brand-coloured ring** round the
   focused row (`l14vm`).

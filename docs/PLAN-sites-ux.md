@@ -17,8 +17,10 @@ is `select-none` now), and a click on the title-bar strip does not release the t
 it would). A second Linux run the same day pressed what
 was left — Duplicate/Delete from the site page, a row's browser and Magic Login, the view across a visit, the list's
 keys, the chord over a dialog, Mod+↵, extra-domain search, the Opened sort, pin → delete, seven pins, a scratch
-site — and ran the web UI over a real tunnel. It found a focus ring invisible on the light theme (fixed). Left
-open: revert-then-delete from the site page (no machine has a connected site), scroll restore on a real app. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
+site — and ran the web UI over a real tunnel. It found a focus ring invisible on the light theme (fixed). A third
+run closed the last two: revert-then-delete from the site page on a site connected for it (config restored
+byte-identical, their database untouched), and scroll restore with the window shrunk. Nothing of this plan is
+open on Linux; macOS and Windows have their own first runs and not the second-run rows. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
 "Sites list and site page" row in `docs/TODO.md` (Now).
 
 ---
