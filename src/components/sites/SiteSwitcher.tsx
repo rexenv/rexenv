@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Check, ChevronDown, Search } from "lucide-react";
 import { allSiteDomains, getSitesServing, listSites, openExternal } from "@/lib/ipc";
 import { isScratch, siteTypeMeta } from "@/lib/siteType";
 import { useSiteUrl } from "@/lib/siteUrl";
+import { useModKey } from "@/lib/useModKey";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import type { Site } from "@/types";
@@ -93,6 +94,7 @@ export function SiteSwitcherPanel({
     queryFn: allSiteDomains,
   });
   const siteUrlOf = useSiteUrl();
+  const mod = useModKey();
   const [query, setQuery] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -208,7 +210,7 @@ export function SiteSwitcherPanel({
           e.preventDefault();
           if (!cursor) return;
           // Mod+Enter: the browser, without leaving the page the user is on.
-          if (e.metaKey || e.ctrlKey) openSiteUrl(cursor);
+          if (mod.pressed(e)) openSiteUrl(cursor);
           else onPick(cursor);
         } else if (e.key === "Escape") {
           e.preventDefault();
@@ -258,6 +260,18 @@ export function SiteSwitcherPanel({
           </>
         )}
       </div>
+      {/* The keys, said where they work. The modifier is the platform's word
+          (`useModKey`), never a "⌘" typed here — that label on Windows names a
+          key the keyboard does not have. */}
+      <div
+        data-switch-keys
+        className="flex items-center gap-3 border-t border-rex-border-strong px-[14px] py-[7px] font-mono text-[0.625rem] text-rex-text-muted"
+      >
+        <span>↑↓ move</span>
+        <span>↵ open</span>
+        <span>{mod.label}↵ in browser</span>
+        <span className="ml-auto">esc</span>
+      </div>
     </div>
   );
 }
@@ -273,6 +287,7 @@ export function SiteBreadcrumb({ site, tab }: { site: Site; tab: SiteTabKey }) {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const mod = useModKey();
   const t = siteTypeMeta(site.type);
 
   useLayoutEffect(() => {
@@ -326,7 +341,7 @@ export function SiteBreadcrumb({ site, tab }: { site: Site; tab: SiteTabKey }) {
         data-site-switch-trigger
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Switch to another site"
+        title={`Switch to another site (${mod.label}K)`}
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "flex min-w-0 items-center gap-1.5 rounded-[6px] border px-1.5 py-[3px] transition-colors hover:border-rex-border-strong hover:bg-rex-surface-2 hover:text-rex-text-bright",
@@ -366,5 +381,89 @@ export function SiteBreadcrumb({ site, tab }: { site: Site; tab: SiteTabKey }) {
           document.body,
         )}
     </div>
+  );
+}
+
+/** A site route's two parameters, read off the path — the host sits ABOVE the
+ *  routes (in the shell), where `useParams` has nothing to say. */
+function siteRouteOf(pathname: string): { id?: string; tab?: string } {
+  const m = /^\/sites\/([^/]+)(?:\/([^/]+))?\/?$/.exec(pathname);
+  return m ? { id: decodeURIComponent(m[1]), tab: m[2] } : {};
+}
+
+/** **Mod+K, from every route: the same list the breadcrumb opens.**
+ *
+ * One component, two doors (owner ruling D1, 14 Nov 2026) — the list, its search
+ * and its keys are `SiteSwitcherPanel` either way, so the two cannot drift. On a
+ * site page the tab comes along, as it does from the breadcrumb; from anywhere
+ * else the site opens on Overview.
+ *
+ * Three places the shortcut is deliberately NOT taken:
+ * - **inside a terminal.** Ctrl+K is the shell's (kill-line in readline, clear in
+ *   others) and ⌘K clears the screen in every macOS terminal. A site shell that
+ *   lost a key to the app around it is a broken shell; the breadcrumb is one
+ *   click away on that same page.
+ * - **while a dialog is open.** A modal asks a question; opening a second layer
+ *   over it that navigates away would abandon the answer half-given.
+ * - **with Shift or Alt held** — those are other chords, and not ours. */
+export function SiteSwitcherHost() {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const mod = useModKey();
+  const [open, setOpen] = useState(false);
+  const here = siteRouteOf(pathname);
+
+  // The listener is registered once and reads the latest `mod` through a ref:
+  // re-registering on every words/transport answer would leave a gap in which a
+  // keystroke reaches nobody.
+  const pressed = useRef(mod.pressed);
+  pressed.current = mod.pressed;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "k" || e.shiftKey || e.altKey) return;
+      if (!pressed.current(e)) return;
+      const target = e.target as Element | null;
+      if (target?.closest?.(".xterm")) return;
+      if (document.querySelector('[role="dialog"]:not([data-site-switcher-dialog])')) return;
+      e.preventDefault();
+      // The breadcrumb's popover is already this list: a second copy over it
+      // would be two cursors in two search boxes.
+      if (document.querySelector("[data-site-switcher]:not([data-site-switcher-dialog] *)")) return;
+      setOpen((o) => !o);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // A navigation by any other means (the tray, a toast's link) closes it.
+  useEffect(() => setOpen(false), [pathname]);
+
+  if (!open) return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 pt-[12vh]"
+      onMouseDown={() => setOpen(false)}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Switch site"
+        data-site-switcher-dialog
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ width: PANEL_WIDTH + 80 }}
+        className="max-w-[calc(100vw-32px)] rounded-[12px] border border-rex-border-strong bg-rex-surface-2 shadow-menu"
+      >
+        <SiteSwitcherPanel
+          currentId={here.id}
+          onClose={() => setOpen(false)}
+          onPick={(target) => {
+            setOpen(false);
+            const tab = here.id && here.tab && here.tab !== "overview" ? `/${here.tab}` : "";
+            navigate(`/sites/${target.id}${tab}`);
+          }}
+        />
+      </div>
+    </div>,
+    document.body,
   );
 }

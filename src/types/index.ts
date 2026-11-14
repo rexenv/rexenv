@@ -1288,6 +1288,10 @@ export interface PlatformWords {
   openlitespeedUnavailable: string;
   /** Why Apache cannot be chosen here — shown only where it is not offered (Linux, for now). */
   apacheUnavailable: string;
+  /** The modifier of this OS's shortcuts, as a label a key is appended to — "⌘" / "Ctrl+". */
+  modKey: string;
+  /** Whether that modifier is Command (macOS) — which key a shortcut listener answers. */
+  modKeyIsCommand: boolean;
 }
 
 /** A detected code editor (mirrors the Rust EditorApp DTO). */

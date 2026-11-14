@@ -147,6 +147,13 @@ pub struct PlatformWords {
     /// (8 Oct 2026). Empty on macOS and Linux: their servers are static or carry their own
     /// libraries, and their loaders report on stderr rather than with a dedicated code.
     pub loader_failures: &'static [(i32, &'static str)],
+    /// The modifier key of this OS's app shortcuts, as a label a key name is appended to — "⌘" +
+    /// "K", "Ctrl+" + "K". The site switcher's hint is built from it (docs/PLAN-sites-ux.md T3).
+    pub mod_key: &'static str,
+    /// Whether that modifier is the Command key (macOS) rather than Control. It decides which
+    /// key the listener ANSWERS, not only what the hint says: in a macOS text field Ctrl+K is
+    /// "delete to the end of the line", so a listener that took either modifier would eat it.
+    pub mod_key_is_command: bool,
 }
 
 pub const MACOS: PlatformWords = PlatformWords {
@@ -189,6 +196,8 @@ pub const MACOS: PlatformWords = PlatformWords {
     openlitespeed_unavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
     apache_unavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
     loader_failures: &[],
+    mod_key: "⌘",
+    mod_key_is_command: true,
 };
 
 pub const WINDOWS: PlatformWords = PlatformWords {
@@ -243,6 +252,8 @@ pub const WINDOWS: PlatformWords = PlatformWords {
              Install the current one from Microsoft (https://aka.ms/vs/17/release/vc_redist.x64.exe), then try again",
         ),
     ],
+    mod_key: "Ctrl+",
+    mod_key_is_command: false,
 };
 
 /// Ubuntu first (docs/PLAN-linux-port.md L3): GNOME's file manager is "Files" (Nautilus), tools
@@ -288,6 +299,8 @@ pub const LINUX: PlatformWords = PlatformWords {
     // macOS's, for a build that ever lacks it. It said "yet" while Linux had no pin.
     apache_unavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
     loader_failures: &[],
+    mod_key: "Ctrl+",
+    mod_key_is_command: false,
 };
 
 impl PlatformWords {
@@ -377,7 +390,7 @@ pub fn current() -> &'static PlatformWords {
 mod tests {
     use super::*;
 
-    fn fields(w: &PlatformWords) -> [&'static str; 22] {
+    fn fields(w: &PlatformWords) -> [&'static str; 23] {
         [
             w.reveal,
             w.file_manager,
@@ -401,6 +414,7 @@ mod tests {
             w.home_prefix,
             w.import_search,
             w.searching_browsers,
+            w.mod_key,
         ]
     }
 
@@ -489,6 +503,20 @@ mod tests {
     /// not know the scheme form at all. The UI built the macOS spelling
     /// everywhere, so on Windows the iframe src resolved to nothing — no
     /// request reached the handler and the panel was empty (#703).
+    /// The shortcut's modifier is the OS's own, and the label agrees with the key the listener
+    /// answers — "⌘K" on a build that listens for Control (or the reverse) is a hint that lies.
+    #[test]
+    fn each_os_names_the_modifier_its_shortcuts_use() {
+        assert_eq!((MACOS.mod_key, MACOS.mod_key_is_command), ("⌘", true));
+        for (words, os) in [(WINDOWS, "windows"), (LINUX, "linux")] {
+            assert_eq!(words.mod_key, "Ctrl+", "{os}");
+            assert!(!words.mod_key_is_command, "{os} has no Command key");
+        }
+        for words in [MACOS, WINDOWS, LINUX] {
+            assert_eq!(words.mod_key.contains('⌘'), words.mod_key_is_command);
+        }
+    }
+
     #[test]
     fn each_os_names_its_own_db_browser_origin() {
         assert_eq!(MACOS.db_browser_origin, "rexdb://localhost");

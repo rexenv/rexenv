@@ -868,6 +868,20 @@ The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #9
 - [ ] "Sites" in the same line goes to the list.
   Open on macOS, Windows and Linux.
 
+## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
+⌘K opens the same list from every screen (ledger #962, `wk-checks/sitekey.js`; Windows and Linux
+use Ctrl+K — their sections).
+- [ ] On **Mail**, press **⌘K**: the switcher opens in the middle of the window, cursor in its
+  search box. Type a few letters of a site, Enter: that site's Overview opens. **Ctrl+K does
+  nothing** here (in a text field it is macOS's delete-to-end-of-line).
+- [ ] On a site's **Logs** tab, ⌘K → another site → its **Logs** tab.
+- [ ] On a site's **Terminal** tab, click into the shell and press ⌘K: the terminal clears (or does
+  what your shell does) — **the switcher does not open**. Click the page header, ⌘K: it opens.
+- [ ] Open **New site**, press ⌘K: nothing opens over the dialog.
+- [ ] The list's last line reads `⌘↵ in browser`; ⌘↵ on a running site opens it in the browser and
+  the app stays where it was.
+  Open on macOS.
+
 ## Site header at a narrow window (27 Oct 2026)
 Nothing overlaps and the name stays readable: when the title and the buttons cannot share a line,
 the buttons go to the line below (ledger #925, `wk-checks/detailheader.js`). Found on the Dell's
@@ -4002,6 +4016,14 @@ Run on the Dell (Win10 22H2, the installed NSIS build), 4 Oct 2026.
   ✓ Dell — after #786. The FIRST run failed: the switch fetched before it refused, and answered
   "1 of 1 downloads failed — fix the connection … no binary manifest for openlitespeed".
 
+### Switch site with the keyboard — Ctrl+K (`docs/PLAN-sites-ux.md` T3, ledger #962)
+- [ ] The main body's "Switch site with the keyboard" with **Ctrl+K** for ⌘K throughout. The list's
+  last line reads `Ctrl+↵ in browser` and the site name's hover says `Ctrl+K` — **never ⌘**, a key
+  this keyboard does not have. In the **Terminal** tab Ctrl+K reaches the shell (PowerShell: nothing
+  visible; a readline shell: deletes to the end of the line) and no switcher opens. **Tell:**
+  WebView2 keeping Ctrl+K for itself and the page never seeing it.
+  Open on Windows (the Dell).
+
 ## Linux — what this checklist means on that OS (reconciled 28 Sep 2026)
 
 Run everything above on Linux too, EXCEPT what this section changes or removes. Ubuntu is the
@@ -4732,3 +4754,11 @@ Result: 5 / 5 pass (28 Oct 2026, arm64; x86_64 not run).  Issues found: none in 
   the binary is the Linux build of the same recipe (glibc 2.35 floor). `openlitespeed_site_check`
   is the headless proof; the adoption-after-relaunch row matters most here, because ownership
   reads `/proc/<pid>/cmdline`, not `ps`.
+
+### Switch site with the keyboard — Ctrl+K (`docs/PLAN-sites-ux.md` T3, ledger #962)
+- [ ] The main body's "Switch site with the keyboard" with **Ctrl+K** for ⌘K throughout. The list's
+  last line reads `Ctrl+↵ in browser` and the site name's hover says `Ctrl+K` — **never ⌘**, a key
+  this keyboard does not have. In the **Terminal** tab Ctrl+K reaches the shell (bash: deletes to the end of the line) and no switcher opens. **Tell:**
+  WebKitGTK or GNOME keeping Ctrl+K for itself and the page never seeing it.
+  Open on Linux (the Ubuntu 22.04 VM).
+

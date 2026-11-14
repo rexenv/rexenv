@@ -1557,6 +1557,8 @@ function ChangeDomainDialog({ site, onClose }: { site: Site; onClose: () => void
       onClick={busy ? undefined : onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
         className="w-[460px] rounded-xl border border-rex-border bg-rex-surface-1 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

@@ -3,7 +3,9 @@
 **Status:** ACCEPTED 14 Nov 2026, BEING BUILT — the owner read the plan and said to build all of it, one task at
 a time; D1–D7 (§6) are taken as recommended on that word (no row was ruled on its own — each stays the owner's to
 reverse at review). **T2 built 14 Nov 2026** (ledger #959–#960, `wk-checks/siteswitch.js`, WebKit only — the
-SMOKE row is open on all three OSes); T3, T1, T4, T5, T6 open. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
+SMOKE row is open on all three OSes). **T3 built 14 Nov 2026** (ledger #961–#962, `wk-checks/sitekey.js` under
+macOS and Windows words, the L0 words test on all three; the SMOKE rows per OS are open — no build has run on the
+Dell or the Ubuntu VM yet). T1, T4, T5, T6 open. The facts in §2 were read from the tree at `919e4a40`. Tracked as the
 "Sites list and site page" row in `docs/TODO.md` (Now).
 
 ---
@@ -273,7 +275,7 @@ D2 and D7; T5 needs D5 and D6.
 |---|---|---|
 | T1 | **Site page: one home per action.** Delete Quick links; Editor split button and `⋯` menu in the header; PHP and server as the select alone; "Site info" to Overview (D4); Stop site per D3. Correct DESIGN.md's stale "opens on Running" paragraph. | Each action in §2.2's table appears once. Header measured at 945 px with `smoke1w`-shaped and long names: nothing overlaps, the name truncates. Rename, Duplicate, Copy domain, Delete work from the site page. Web UI: no editor/folder control rendered. |
 | T2 ✓ | **`SiteSwitcher` + breadcrumb.** The popover, search over name/domain/extra domains, keys, the tab-keeping rule as a pure function. | *(Built: the tree has no TypeScript unit runner, so the rule is proven through the page — `siteswitch.js` legs 2–3; a site whose folder is a checkout is not in the fixture.)* Unit test: the tab rule for every tab × (WordPress, Laravel, Blank PHP, repository or not). wk-check: open, type, Enter lands on the target's same tab; 25 + scratch rows all reachable by scroll; focus returns to the trigger on Esc. |
-| T3 | **Mod+K from every route.** Global listener, not taken inside the Terminal tab or while a dialog is open; label from `PlatformWords`. | Runs on macOS, Windows and Linux builds: the shortcut opens the switcher on Sites, Mail, Settings and a site's Logs tab; in the Terminal tab Ctrl+K reaches the shell. L0 test that all three `PlatformWords` carry the label. |
+| T3 ✓ | **Mod+K from every route.** Global listener, not taken inside the Terminal tab or while a dialog is open; label from `PlatformWords`. | Runs on macOS, Windows and Linux builds: the shortcut opens the switcher on Sites, Mail, Settings and a site's Logs tab; in the Terminal tab Ctrl+K reaches the shell. L0 test that all three `PlatformWords` carry the label. |
 | T4 | **Sites row and header.** Three visible actions, `⋮` + right-click menu, status dot, exception-only lock and chips, `7.4 · nginx`, header per §3.4, list state kept across a site visit, list keys. | wk-check at 945 / 1100 / 1440 with the production-shaped fixture: no row overflows, actions visible at all three. `badges` wk-check green (Setting up / setup incomplete / unknown). Filter → open site → back shows the same filter, sort, search and scroll. Counts rule still holds (existing test). |
 | T5 | **Pinned and recently opened.** Migration, `core/` functions, thin commands, IPC wrappers; pin in both menus; switcher order; "Pinned" group; sidebar entries (D6); sort mode; tray order. | L0: migration on a populated DB keeps every row; ordering function tested. Pin survives an app restart; the web UI and the desktop window show the same pins. Tray submenu lists pinned first on each OS that has a tray. A deleted site leaves no pin behind. |
 | T6 | **Per-OS runs and docs close-out.** | SMOKE-TEST rows run on the Mac, the Dell and the Ubuntu VM; ledger rows name the OS each proof came from. |

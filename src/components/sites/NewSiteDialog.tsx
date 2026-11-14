@@ -459,6 +459,8 @@ export function NewSiteDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
       <div
+        role="dialog"
+        aria-modal="true"
         className="flex max-h-[88vh] w-[516px] flex-col overflow-hidden rounded-xl border border-rex-border bg-rex-surface-1 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >

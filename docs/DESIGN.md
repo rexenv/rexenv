@@ -188,6 +188,16 @@ the shipped UI toward one.
   Overview, so a typed URL gets the same answer (ledger #959, #960). Its search
   matches what the Sites filter matches (name, domain, extra domains): two boxes
   that disagree about whether a site exists is the plugin filter's defect again.
+- **A shortcut answers one modifier, names the one it answers, and leaves the shell
+  its keys.** Mod+K opens the site switcher from every route: ⌘K on macOS, Ctrl+K on
+  Windows and Linux, the label from `PlatformWords` — a "⌘" typed into TSX names a
+  key a Windows keyboard does not have. It is NOT taken inside a terminal (Ctrl+K is
+  readline's, ⌘K clears every macOS terminal), over an open dialog (a modal asks a
+  question), or with Shift/Alt. Over the web UI the words are the server's OS and the
+  keyboard is the visitor's, so there it answers both and says both. **Every modal
+  carries `role="dialog"`** — the shortcut finds an open one by it, and its first
+  check opened the switcher over the New site dialog because four hand-rolled modals
+  had none (ledger #961, #962).
 - **A chosen-one-of-N control shows its choice the way the New-site type cards do:**
   `border-brand` (+ `shadow-glow-primary`) on the chosen card with a filled
   `CheckCircle2` and a `text-brand-tint` label; a segmented pill (`bg-brand-tint-bg

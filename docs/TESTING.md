@@ -691,6 +691,14 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (14 Nov 2026): `sitekey.js`** (#962) — Mod+K, every key leg under BOTH sets of words
+  (`rex-mock-os=windows` answers the modifier as a Windows/Linux build does): the OS's chord
+  opens, the other's does not; not over a dialog, not from a terminal, not a second list; the
+  hints name this OS's key. **What its first run found:** the switcher opened over the New site
+  dialog — the "is a dialog open" test read `role="dialog"`, which one of five modals carried;
+  hence the L0 guard `every_modal_backdrop_holds_a_panel_that_says_it_is_a_dialog` (#961).
+  **What it cannot see:** a live xterm (no PTY on the dev page — the leg builds xterm.js's
+  `.xterm` root), and whether WebView2 / WebKitGTK hand Ctrl+K to the page at all — SMOKE.
 - **Check (14 Nov 2026): `siteswitch.js`** (#959, #960) — the site switcher on a site page: every
   site listed, the tab kept, a tab the target lacks → Overview (typed URLs too), search by
   name/domain/extra domain, keyboard to the last row, focus back on Esc, a 940 px window.

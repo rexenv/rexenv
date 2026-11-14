@@ -15,7 +15,7 @@ import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStat
 import { transport, webInvoke, webListen, webSignOut } from "./transport";
 import {
   mockAppInfo,
-  mockPlatformWords,
+  mockPlatformWordsView,
   mockDatabases,
   mockGlobalStatus,
   mockAddSiteDomain,
@@ -164,7 +164,7 @@ export async function getAppInfo(): Promise<AppInfo> {
 /** The words for this OS's own things — "Show in Finder" / "Show in Explorer", the login item's description.
  *  Use `usePlatformWords()` in components. */
 export async function getPlatformWords(): Promise<PlatformWords> {
-  if (!isTauri()) return mockPlatformWords;
+  if (!isTauri()) return mockPlatformWordsView();
   return invoke<PlatformWords>("platform_words");
 }
 
@@ -1095,6 +1095,13 @@ export async function openExternal(target: string): Promise<void> {
  *  `desktop_only_openers_are_offered_only_with_a_screen`, holds every file to it). */
 export function canOpenOnThisScreen(): boolean {
   return transport() !== "web";
+}
+
+/** Whether the keyboard in front of the person may belong to a different OS than the one
+ *  `getPlatformWords` describes. True over the web transport: the words are the SERVER's, and the
+ *  page is in a browser on whatever machine reached it (`useModKey` is the one caller). */
+export function shortcutsAreTheViewers(): boolean {
+  return transport() === "web";
 }
 
 /** Open a local folder or file with the OS's handler (Finder / Explorer / the file manager). The path

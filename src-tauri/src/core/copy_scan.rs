@@ -618,6 +618,57 @@ const LINK = "https://example.test/a//b";
         assert!(offenders.is_empty(), "{}", offenders.join("\n"));
     }
 
+    /// **Every modal says it is one** — `role="dialog"` on the panel inside each
+    /// `bg-black/50` backdrop (ledger #961).
+    ///
+    /// The site switcher's Mod+K is not taken while a dialog is open: a modal asks a
+    /// question, and a second layer that navigates away abandons the answer half-given.
+    /// It finds an open dialog by its role — and the first run of its WebKit check
+    /// (`wk-checks/sitekey.js`, 14 Nov 2026) pressed the chord over the New site dialog and
+    /// the switcher opened on top of it: four hand-rolled modals (New site, the two
+    /// WordPress database dialogs, Change domain) drew the same backdrop as `ui/dialog.tsx`
+    /// and carried no role, so the rule covered the one component and missed four. A guard
+    /// that reads a mark is only as wide as the mark. So the mark is held here, per file:
+    /// as many `role="dialog"` as backdrops, and the next modal anyone hand-rolls cannot be
+    /// invisible to the shortcut (or to a screen reader, which is what the role is for).
+    #[test]
+    fn every_modal_backdrop_holds_a_panel_that_says_it_is_a_dialog() {
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+            let Ok(entries) = std::fs::read_dir(dir) else { return };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.symlink_metadata().is_ok_and(|m| m.is_dir()) {
+                    walk(&p, root, out);
+                } else if matches!(p.extension().and_then(|x| x.to_str()), Some("tsx")) {
+                    if let Ok(raw) = std::fs::read_to_string(&p) {
+                        let rel = p.strip_prefix(root).unwrap_or(&p).display().to_string().replace('\\', "/");
+                        out.push((rel, strip_ts_comments(&raw)));
+                    }
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src");
+        let mut files = Vec::new();
+        walk(&root, &root, &mut files);
+        assert!(files.len() > 20, "only {} frontend files scanned — the walk is broken", files.len());
+        let mut backdrops = 0;
+        let mut offenders = Vec::new();
+        for (rel, src) in &files {
+            let n = src.matches("bg-black/50").count();
+            let roles = src.matches("role=\"dialog\"").count();
+            backdrops += n;
+            if roles < n {
+                offenders.push(format!("{rel}: {n} modal backdrop(s), {roles} role=\"dialog\""));
+            }
+        }
+        assert!(backdrops >= 5, "{backdrops} backdrops found — the class moved and this guard watches nothing");
+        assert!(
+            offenders.is_empty(),
+            "a modal without role=\"dialog\" is invisible to the site switcher's shortcut, which then opens over it:\n{}",
+            offenders.join("\n")
+        );
+    }
+
     /// **Every IPC wrapper is actually CALLED somewhere.**
     ///
     /// `src/lib/ipc/` is the only door between the UI and the backend, and an

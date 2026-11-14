@@ -37,8 +37,25 @@ export const mockPlatformWords: PlatformWords = {
   pathSep: "/",
   searchingBrowsers: "Chrome and Safari",
   openlitespeedUnavailable: "OpenLiteSpeed is not installed in this build of rexenv — choose Nginx, Apache or FrankenPHP.",
-  apacheUnavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",
+  apacheUnavailable: "Apache is not installed in this build of rexenv — choose Nginx, FrankenPHP or OpenLiteSpeed.",  modKey: "⌘",
+  modKeyIsCommand: true,
 };
+
+/** The dev page's words, with one opt-in: `localStorage["rex-mock-os"] = "windows"` answers
+ *  the shortcut modifier the way a Windows or Linux build does ("Ctrl+", not Command). Without
+ *  it every check of a shortcut would prove the macOS branch only — on the one OS the dev
+ *  machine already is. Only the modifier moves; the other words stay macOS's. */
+export function mockPlatformWordsView(): PlatformWords {
+  let os: string | null = null;
+  try {
+    os = window.localStorage.getItem("rex-mock-os");
+  } catch {
+    // No storage: macOS's words.
+  }
+  return os === "windows"
+    ? { ...mockPlatformWords, modKey: "Ctrl+", modKeyIsCommand: false }
+    : mockPlatformWords;
+}
 
 export const mockAppInfo: AppInfo = {
   name: "rexenv",
