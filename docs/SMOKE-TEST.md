@@ -1052,8 +1052,23 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   nothing opened, the offer back; authenticated → 7/7 in ~8 s, Firefox on **Dashboard ‹ conv71l —
   WordPress**. `lm` stopped: **Start site** with the services on, **Start site and services** with
   them off — pressed, authenticated: 11/11 serving, `lm` among them, no browser.
-  Not run on Windows or Linux: the site PAGE's "Start & open" / "Start & Magic Login" buttons (the
-  row's icons and menu were) and a :443 conflict.
+  ✓ **Windows, the site PAGE and a conflict** (the Dell, later run, the same exe). `smoke1w`'s page:
+  Services off · **Start & open** · Visual Studio Code · **Start & Magic Login**. With `python.exe`
+  holding `127.0.0.1:443`: **Start & Magic Login** → no new Chrome tab; the toast was Start all's
+  own and NAMED the holder — "port 443/tcp (needed by Caddy (HTTPS)) is already in use by python.exe
+  (pid 6832, C:\Python312\python.exe). To free it, run … `Stop-Process -Id 6832`" — the offer
+  still there. Holder gone: **Start & open** → a new tab on `smoke1w.rex`. After `rex stop`:
+  **Start & Magic Login** → Chrome on **Dashboard ‹ smoke1w — WordPress**.
+  ◐ **Linux, the site PAGE and a conflict** (the Ubuntu VM, later run). `conv71l`'s page: Services
+  off · **Start & open** · Editor · **Start & Magic Login**. With a root `python3` on
+  `0.0.0.0:443`: **Start & Magic Login** → "Starting services…" on both buttons, the polkit prompt,
+  then **no Firefox window**; Start all's own toast ("the Caddy edge daemon was installed but its
+  admin socket never came up — check …/caddy-start.log", whose last line is `listen tcp :443: bind:
+  address already in use`); the offer back. Holder gone: **Start & open** → 7/7, Firefox on
+  `conv71l`, the button plain again with its chevron. After Stop all: **Start & Magic Login** →
+  11/11 serving and Firefox launched — but onto its own "Open Firefox in Troubleshoot Mode?" dialog
+  (the run had killed Firefox several times), so **the landing on the Dashboard was not seen** for
+  this button on Linux. The row's icon, which calls the same function, was seen there earlier.
 
 ## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
 One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in

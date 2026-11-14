@@ -162,6 +162,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   all's toast read "services started, but rexenv's edge has not answered port 443 yet — the machine is very busy
   (a boot, a large copy)…", `health.log` said `[edge-blocked]`, and `rex doctor` printed "Ports: no foreign holders
   on rexenv ports". Nothing named the holder or a fix, which the port rule promises (`core/ports::ensure_free`).
+  **Linux, same day (Ubuntu 22.04 VM):** a root `python3` on `0.0.0.0:443` → the toast was "the Caddy edge daemon
+  was installed but its admin socket never came up — check …/caddy-start.log"; the log's last line says `listen
+  tcp :443: bind: address already in use`, and again no holder is named. **Windows names it** (the Dell: "already
+  in use by python.exe (pid 6832, …) … `Stop-Process -Id 6832`") — there the holder ran as the same user.
   Not diagnosed: whether the port gate cannot see a root-owned listener from the user's process, or the
   IPv4/IPv6 split passes it. The shadow-bind family (Herd on 127.0.0.1:443) — same shape, different holder.
 
@@ -169,7 +173,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   2026 and proven in WebKit over a mock stack (`wk-checks/servefirst.js`). ✓ macOS run 14 Nov 2026 on the 15.8 VM — a real Start all inside the click, the
   password prompt mid-click (cancelled and approved), every slot state; it found and fixed a stack-up answer read
   from a mock-only field. ✓ Windows (the Dell) and Linux (the Ubuntu VM) run the same day, and a real :443
-  conflict on macOS — evidence in the SMOKE row. Left unrun: the site PAGE's two buttons on Windows/Linux.
+  conflict on macOS — evidence in the SMOKE row. The site PAGE's two buttons and a conflict then run on Windows and Linux too;
+  one landing unseen (Linux, the page's Start & Magic Login — Firefox showed its Troubleshoot-Mode dialog).
 
 - [x] **Sites list and site page — one home per action, and a way from one site to the next**
   (`docs/PLAN-sites-ux.md`, owner ask 14 Nov 2026; D1–D7 taken as recommended). ✓ T2 the site switcher 14 Nov
