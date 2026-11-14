@@ -84,6 +84,10 @@ module also carries a `//!` doc header stating its job. Quick inventory:
 - `state/`: app (AppState) · db (migrations) · models · store (repo)
 - `src/routes/`: Sites · SiteDetail · Services · Databases · Mail · Tunnels ·
   Import · Settings · Onboarding (+ dev-only `/dev/git-panel`, `/dev/ui-review`)
+  — a site page's tab is `/sites/:id/:tab`, and WHICH tab renders is decided by
+  `resolveSiteTab` (`components/sites/SiteSwitcher.tsx`) from what that site offers,
+  never by the URL alone: the page's breadcrumb switches site and keeps the tab
+  (`docs/PLAN-sites-ux.md`, ledger #959)
 
 ## 2. Request & TLS topology
 

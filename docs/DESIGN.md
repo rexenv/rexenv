@@ -170,12 +170,24 @@ the shipped UI toward one.
   "Laravel 3" directly above an empty list, and the page then argues with itself
   about how many sites the user has. The list's own empty state offers "Show all
   sites" as a BUTTON — advice to go and clear a filter is not a way out.
-- **A default view is chosen once, not re-chosen by a poll.** Sites opens on
-  Running when anything is running (else All), decided on the first load that has
-  both facts in hand — an unanswered serving poll means "not asked yet", not
-  "nothing is running". Re-deciding on the 2s refetch would move the user's tab
-  the moment they stopped their last running site, which is now something they do
-  from this very list.
+- **A default view is never re-chosen by a poll.** Sites opens on **All**, and only
+  a tab the user clicks changes it (owner, 11 Sep 2026 — every site visible on
+  arrival). It opened on Running for a while, decided once on the first load that
+  had both facts in hand; this paragraph went on saying so for two months after
+  the code changed (corrected 14 Nov 2026). The half that still holds: a view must
+  not be re-decided on the 2s refetch, which would move the user's tab the moment
+  they stopped their last running site — something they do from this very list.
+- **One site is one step from any other, and the tab comes along.** The site page's
+  `Sites / [W] name ▾` lists every site, searchable; choosing one keeps the tab
+  (Database → Database). It replaced a lone "‹ All sites" link (owner, 14 Nov 2026):
+  site to site was back → find the row among 25 → click, with the tab lost on the
+  way. Two rules ride on it. **The list is never capped** — it scrolls; a list that
+  looks complete is how someone concludes a site is gone. And **a site page renders
+  only a tab that site offers**: keeping the tab can name one the target lacks
+  (WordPress on a Laravel site), and the page — not the switcher — answers that with
+  Overview, so a typed URL gets the same answer (ledger #959, #960). Its search
+  matches what the Sites filter matches (name, domain, extra domains): two boxes
+  that disagree about whether a site exists is the plugin filter's defect again.
 - **A chosen-one-of-N control shows its choice the way the New-site type cards do:**
   `border-brand` (+ `shadow-glow-primary`) on the chosen card with a filled
   `CheckCircle2` and a `text-brand-tint` label; a segmented pill (`bg-brand-tint-bg

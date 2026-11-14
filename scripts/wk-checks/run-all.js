@@ -24,6 +24,7 @@ const CHECKS = [
   "phppicker.js",
   "serverselect.js",
   "detailheader.js",
+  "siteswitch.js",
   "domains.js",
   "tldconsent.js",
   "tunnelhealth.js",

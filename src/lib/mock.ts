@@ -130,12 +130,79 @@ export const mockSites: Site[] = [
   },
 ];
 
+/** **A list shaped like a real one**, for the checks that a four-site fixture
+ * cannot fail: a switcher that must scroll, a row that must fit. Opt-in through
+ * `localStorage["rex-mock-sites"] = "many"` — storage rather than a query
+ * string, because these checks NAVIGATE between sites and a `?param` is gone
+ * after the first click.
+ *
+ * The four hand-written sites stay first (their ids are what every other check
+ * addresses); after them come 23 more modelled on the owner's own list — short
+ * names, `.test` beside `.rex`, external folders — plus the awkward ones: a
+ * name with no break in it, a very long one, a site stopped by the user, an
+ * insecure one, and two agent scratch sites. A tidy fixture is the one that
+ * hid the Sites header's overflow (16 Oct 2026). */
+export function mockSitesView(): Site[] {
+  let many = false;
+  try {
+    many = window.localStorage.getItem("rex-mock-sites") === "many";
+  } catch {
+    // No storage (a private window): the plain four.
+  }
+  if (!many) return mockSites;
+  const names = [
+    "bl", "bs", "bs2", "doctor", "ea", "ealite", "eapro", "hisab-counter", "hridoy", "lm",
+    "lms", "MS Test", "MSD", "nx", "nxpro", "px", "sandbox", "shop", "wpdev",
+    "clientportalstagingenvironmentfortheacmecorporationwebsiterebuild",
+    "Client portal staging environment for the acme corporation website rebuild",
+  ];
+  const extra: Site[] = names.map((name, i) => {
+    const slug = name.toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+    return {
+      id: `m${i}`,
+      name,
+      domain: `${slug}.${i % 3 === 1 ? "test" : "rex"}`,
+      type: i === 7 ? "laravel" : i === 12 ? "php" : "wordpress",
+      status: i === 9 ? "stopped" : "running",
+      phpVersion: i === 0 ? "7.4" : "8.3",
+      webServer: i === 5 ? "apache" : i === 6 ? "openlitespeed" : "nginx",
+      ssl: i !== 13,
+      path: `~/Sites/${slug}`,
+      createdAt: `2026-07-${String(i + 1).padStart(2, "0")} 09:00:00`,
+      multisite: "none",
+      dbName: `wp_${slug.replace(/-/g, "_")}`,
+      dbEngine: "mysql",
+      xdebug: false,
+      provisioned: true,
+      docrootManaged: i % 3 !== 1,
+      enabled: i !== 9,
+    } as Site;
+  });
+  const scratch: Site[] = ["try-plugin", "repro-4821"].map((name, i) => ({
+    ...mockSites[0],
+    id: `s${i}`,
+    name,
+    domain: `${name}.scratch.rex`,
+    path: `~/Sites/${name}`,
+    dbName: `wp_${name.replace(/-/g, "_")}`,
+    origin: "agent",
+    agentClient: "claude-code",
+    expiresAt: "2099-01-01 00:00:00",
+  }) as Site);
+  return [...mockSites, ...extra, ...scratch];
+}
+
 // Mirrors each mock site's own status so the browser preview shows per-site
 // serving (backend derives this from live upstream + edge state).
 export const mockSitesServing: SiteServing[] = mockSites.map((s) => ({
   domain: s.domain,
   serving: s.status === "running",
 }));
+
+/** `mockSitesServing` over whichever list `mockSitesView` is serving. */
+export function mockSitesServingView(): SiteServing[] {
+  return mockSitesView().map((s) => ({ domain: s.domain, serving: s.status === "running" }));
+}
 
 export const mockServices: ServiceInfo[] = [
   { name: "PHP-FPM 8.3", running: true, pid: 1235, port: 9783, cpuPercent: 0.1, ramMb: 28, kind: "php", version: "8.3.4", isDefault: true },

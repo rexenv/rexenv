@@ -155,6 +155,7 @@ it. Grep less, read this first. Companion docs: `ARCHITECTURE.md` (how the piece
 |---|---|---|
 | Sites list | `/sites` | `src/routes/Sites.tsx`, `src/components/sites/*` |
 | Site detail (tabs: overview, database, logs, terminal, settings, WP) | `/sites/:id/:tab` | `src/routes/SiteDetail.tsx`, `src/components/{sites,wordpress,database,terminal}/*` |
+| Site switcher — one site to the next, the tab kept (`docs/PLAN-sites-ux.md` T2) | the breadcrumb on `/sites/:id/:tab` | `src/components/sites/SiteSwitcher.tsx` (`SiteBreadcrumb`, `SiteSwitcherPanel`, `resolveSiteTab` — the ONE rule for which tab a site page renders, #959); `src/lib/siteType.ts` (`isScratch`); fixture `src/lib/mock.ts` (`mockSitesView`); check `scripts/wk-checks/siteswitch.js` |
 | Services | `/services` | `src/routes/Services.tsx` |
 | Databases | `/databases` | `src/routes/Databases.tsx`, `src/components/database/AdminerFrame.tsx` |
 | Mail | `/mail` | `src/routes/Mail.tsx` |

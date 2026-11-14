@@ -691,6 +691,16 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Check (14 Nov 2026): `siteswitch.js`** (#959, #960) — the site switcher on a site page: every
+  site listed, the tab kept, a tab the target lacks → Overview (typed URLs too), search by
+  name/domain/extra domain, keyboard to the last row, focus back on Esc, a 940 px window.
+  **The fixture is the finding:** the dev routes served four sites, and four rows never scroll — a
+  capped list, an unreachable last row and a breadcrumb that does not truncate all pass on it.
+  `mockSitesView` (opt-in, `localStorage["rex-mock-sites"]="many"`) serves 27 modelled on the
+  owner's list, with the awkward ones: a no-break name, a very long one, a site stopped by the
+  user, an insecure one, two scratch sites. Storage, not a `?param`: these checks NAVIGATE, and a
+  query string is gone after the first click. The tree has no TypeScript unit runner, so the tab
+  rule (a pure function) is proven here, through the page that calls it.
 - **Check (27 Oct 2026): `detailheader.js`** (#925) — the Site page header at 940 (the Dell's width),
   980 and 1180 for the four mock sites plus three injected names (`smoke1w`; a very long spaced one;
   a very long no-break one): name, pill and actions never intersect, the name one line, a name of

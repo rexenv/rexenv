@@ -12,7 +12,7 @@ import { SITE_ENABLED_KEY, useAllSitesEnabled, useSiteEnabled } from "@/lib/useS
 import { usePendingVariables } from "@/lib/usePendingVariables";
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialog";
 import { DeleteSiteDialog } from "@/components/sites/DeleteSiteDialog";
-import { siteTypeMeta } from "@/lib/siteType";
+import { isScratch, siteTypeMeta } from "@/lib/siteType";
 import { StatusPill } from "@/components/common/StatusPill";
 import { Placeholder } from "@/components/common/Placeholder";
 import { NewSiteDialog } from "@/components/sites/NewSiteDialog";
@@ -27,21 +27,6 @@ import { useSiteUrl } from "@/lib/siteUrl";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
 import { useDownloads } from "@/lib/useDownloads";
 import type { DbImportRecord, DriftedTakeover, ScratchPackage, Site, SiteResources, SiteType } from "@/types";
-
-/** **THE scratch predicate — the recorded fact, and nothing else.**
- *
- * `origin === "agent"` is written at creation and is the only thing any policy
- * reads (#204). The `.scratch.<tld>` suffix is UX so a human can scan the list;
- * a site the USER hand-created at `foo.scratch.rex` is an ordinary site of
- * theirs and must appear in their own group. Matching on the name here would be
- * the obvious shortcut and would quietly put someone's real site in the
- * agent's disposable section. Pinned on both sides: `Site::is_scratch` in Rust
- * (`a_stored_origin_that_isnt_exactly_agent_reads_as_the_users_site`) and the L2
- * `scratch-rows` probe here, whose fixture includes a KEPT site and a
- * hand-named `mine.scratch.rex` — both `origin: "user"`, both ending in
- * `.scratch.rex`, so the suffix shortcut fails the probe by name.
- */
-const isScratch = (s: Site) => s.origin === "agent";
 
 /** A scratch site's remaining life, or `null` when it has none.
  *

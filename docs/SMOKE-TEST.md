@@ -854,6 +854,20 @@ the bug — the reporter's did — so this row is the real webview on each OS.
   Open on macOS: the reporter's Mac — macOS Tahoe 26.5.1, where 0.9.2 overflowed. The dev Mac
   (26.7.1) never showed it, so a run there does not close this row.
 
+## Switch from one site to another (14 Nov 2026 — `docs/PLAN-sites-ux.md` T2)
+The site page's `Sites / [W] name ▾` replaces "‹ All sites" (ledger #959, #960,
+`wk-checks/siteswitch.js`). WebKit is proven by the check; the row is the real webview on each OS.
+- [ ] With 5+ sites, open a **WordPress** site's **Database** tab. Click the site name beside
+  "Sites /": a list opens with the cursor in its search box, **every** site in it (scroll to the
+  last), the current one ticked, a dot per site (green = serving). Pick a **Laravel or Blank PHP**
+  site: its **Database** tab opens — the tab came along.
+- [ ] From a WordPress site's **WordPress** tab, switch to a non-WordPress site: its **Overview**
+  opens, and it has no WordPress tab. **Tell:** the WordPress manager on a site that is not one.
+- [ ] Type part of a domain, then of an extra domain (a site with `+1`): the site is found. ↑ ↓
+  move, Enter opens, Esc closes and the next Tab continues from the site name.
+- [ ] "Sites" in the same line goes to the list.
+  Open on macOS, Windows and Linux.
+
 ## Site header at a narrow window (27 Oct 2026)
 Nothing overlaps and the name stays readable: when the title and the buttons cannot share a line,
 the buttons go to the line below (ledger #925, `wk-checks/detailheader.js`). Found on the Dell's

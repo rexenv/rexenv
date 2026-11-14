@@ -8,7 +8,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Code,
   Copy,
@@ -48,6 +47,7 @@ import { CoreFilesBanner } from "@/components/wordpress/CoreFilesBanner";
 import { WorktreeOfLine } from "@/components/sites/WorktreeOfLine";
 import { SiteAgentActivity } from "@/components/mcp/SiteAgentActivity";
 import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
+import { SiteBreadcrumb, resolveSiteTab, type SiteTabKey } from "@/components/sites/SiteSwitcher";
 import { ResolverConsentFor } from "@/routes/Import";
 import { siteTypeMeta } from "@/lib/siteType";
 import { cn, TECH_INPUT } from "@/lib/utils";
@@ -136,7 +136,7 @@ const SERVERS: { value: WebServer; name: string; label: string; note?: string }[
 const SELECT_CLS =
   "h-[30px] rounded border border-rex-border bg-rex-surface-2 px-2 font-mono text-[0.75rem] text-rex-text outline-none transition-colors focus:border-brand disabled:opacity-50";
 
-type TabKey = "overview" | "wordpress" | "repository" | "database" | "live" | "logs" | "terminal" | "settings";
+type TabKey = SiteTabKey;
 
 export function SiteDetail() {
   const { id, tab } = useParams<{ id: string; tab?: TabKey }>();
@@ -264,7 +264,9 @@ export function SiteDetail() {
   // read as not-WordPress, hiding the tab on a site nothing had disproved.
   const isWordpress = wp ? wp.isWordpress : site.type === "wordpress";
   const isServing = servingNow === true;
-  const active: TabKey = tab ?? "overview";
+  // The tab the URL asks for, answered by what THIS site offers — the switcher
+  // keeps the tab across sites, so the URL can name one this site does not have.
+  const active: TabKey = resolveSiteTab(tab, { isWordpress, hasRepo: repoInfo?.present });
   const tabs: { key: TabKey; label: string; show: boolean }[] = [
     { key: "overview", label: "Overview", show: true },
     { key: "wordpress", label: "WordPress", show: isWordpress },
@@ -299,7 +301,7 @@ export function SiteDetail() {
         site={site}
         isWordpress={isWordpress}
         status={isServing ? "running" : "stopped"}
-        onBack={() => navigate("/sites")}
+        tab={active}
         togglePending={toggle.isPending}
         onToggleEnabled={
           site.provisioned ? (enabled) => toggle.mutate({ site, enabled }) : undefined
@@ -316,6 +318,8 @@ export function SiteDetail() {
               return (
                 <button
                   key={t.key}
+                  data-site-tab={t.key}
+                  data-active={isActive ? "" : undefined}
                   onClick={() => navigate(`/sites/${site.id}/${t.key}`)}
                   className={cn(
                     "-mb-px border-b-2 px-3.5 py-2.5 text-[0.84375rem] font-medium transition-colors",
@@ -349,7 +353,9 @@ export function SiteDetail() {
             active === "terminal" ? "h-full" : active === "database" ? "min-h-full" : ""
           }`}
         >
-          {active === "repository" && <SiteRepoTab site={site} />}
+          {/* Held until the filesystem has answered: `resolveSiteTab` keeps
+              "repository" while that is unknown, and the body waits with it. */}
+          {active === "repository" && repoInfo?.present && <SiteRepoTab site={site} />}
           {active === "overview" && (
             <Overview
               site={site}
@@ -408,14 +414,15 @@ function SiteHeader({
   site,
   isWordpress,
   status,
-  onBack,
+  tab,
   onToggleEnabled,
   togglePending,
 }: {
   site: Site;
   isWordpress: boolean;
   status: Site["status"];
-  onBack: () => void;
+  /** The tab on screen — the switcher carries it to the next site. */
+  tab: TabKey;
   /** Start or stop THIS site (v44) — absent while its setup is unfinished,
    *  which is Retry's job, not this button's. */
   onToggleEnabled?: (enabled: boolean) => void;
@@ -443,13 +450,7 @@ function SiteHeader({
       onMouseDown={onTitleBarMouseDown}
       className="drag-region flex-none border-b border-rex-border-subtle px-[22px] pt-[18px]"
     >
-      <button
-        onClick={onBack}
-        className="mb-[13px] inline-flex items-center gap-1.5 text-[0.75rem] text-rex-text-muted transition-colors hover:text-rex-text-bright"
-      >
-        <ChevronLeft className="h-[13px] w-[13px]" strokeWidth={2} />
-        All sites
-      </button>
+      <SiteBreadcrumb site={site} tab={tab} />
       {/* The row WRAPS: the title block asks for 18rem, and when it and the actions cannot
           share a line the actions go to the line below. Truncating alone was not enough —
           on the Dell (~945 px) it left `smoke1w` one letter, "S" (27 Oct 2026). */}

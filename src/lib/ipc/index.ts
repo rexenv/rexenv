@@ -35,8 +35,8 @@ import {
   mockResolverTakeOver,
   mockResolverTldStatus,
   mockServicesView,
-  mockSites,
-  mockSitesServing,
+  mockSitesServingView,
+  mockSitesView,
 } from "@/lib/mock";
 
 /** Whether a REAL backend answers: the app's window (Tauri) or `rexenv --web`'s server. False
@@ -199,14 +199,14 @@ export async function getGlobalStatus(): Promise<GlobalStatus> {
 
 /** List all sites. Falls back to mock data in a plain browser (vite dev). */
 export async function listSites(): Promise<Site[]> {
-  if (!isTauri()) return mockSites;
+  if (!isTauri()) return mockSitesView();
   return invoke<Site[]>("list_sites");
 }
 
 /** Live per-site serving status (edge up AND the site's own upstream up), keyed by
  *  domain. Non-blocking on the backend; mock fallback outside Tauri. */
 export async function getSitesServing(): Promise<SiteServing[]> {
-  if (!isTauri()) return mockSitesServing;
+  if (!isTauri()) return mockSitesServingView();
   return invoke<SiteServing[]>("sites_serving");
 }
 
@@ -1282,7 +1282,7 @@ export async function prefetchCoreBinaries(): Promise<void> {
 /** Detect whether a site runs WordPress (+ version, multisite). Mock outside Tauri. */
 export async function wpInfo(id: string): Promise<WpInfo> {
   if (!isTauri()) {
-    const isWp = mockSites.find((s) => s.id === id)?.type === "wordpress";
+    const isWp = mockSitesView().find((s) => s.id === id)?.type === "wordpress";
     return { isWordpress: isWp, version: isWp ? "6.8" : null, multisite: false };
   }
   return invoke<WpInfo>("wp_info", { id });
