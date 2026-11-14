@@ -165,7 +165,10 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   in the header, Site info on Overview; ledger #963, `wk-checks/siteactions.js`; SMOKE "Site page — one home per
   action" open per OS). ✓ T4 the Sites row and header 14 Nov 2026 (three visible actions, quiet rows, `⋮` =
   right-click, the view kept across a site visit; ledger #964–#965, `wk-checks/sitesrow.js`; SMOKE "Sites list —
-  the row and the header" open per OS). Open: T5 pinned + recently opened, T6 the per-OS runs.
+  the row and the header" open per OS). ✓ T5 pinned + recently opened 14 Nov 2026 (SQLite v46 `site_prefs`, one
+  order in `core::site_shortlist` for the switcher, the list, the sidebar and the tray; ledger #966–#968,
+  `wk-checks/sitepins.js`; SMOKE "Pinned and recently opened sites" open per OS). **Schema v46: a build with this
+  cannot be downgraded over** (the older app refuses the newer database, #593) — a release note. Open: T6 the per-OS runs.
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need

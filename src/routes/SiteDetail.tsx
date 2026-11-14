@@ -16,6 +16,8 @@ import {
   Lock,
   LockOpen,
   MoreHorizontal,
+  Pin,
+  PinOff,
   Play,
   Square,
   Trash2,
@@ -48,7 +50,8 @@ import { SiteRepoTab } from "@/components/sites/SiteRepoTab";
 import { useSiteActions } from "@/components/sites/useSiteActions";
 import { SiteBreadcrumb, resolveSiteTab, type SiteTabKey } from "@/components/sites/SiteSwitcher";
 import { ResolverConsentFor } from "@/routes/Import";
-import { siteTypeMeta } from "@/lib/siteType";
+import { isScratch, siteTypeMeta } from "@/lib/siteType";
+import { SITE_SHORTLIST_KEY, usePinSite, useSiteShortlist } from "@/lib/useSiteShortlist";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import { eolNote, eolTag } from "@/lib/php";
 import {
@@ -60,6 +63,7 @@ import {
   listSiteEnv,
   listSites,
   logTargets,
+  markSiteOpened,
   moveSiteDocroot,
   offeredWebServers,
   openExternal,
@@ -132,6 +136,18 @@ export function SiteDetail() {
   });
 
   const toggle = useSiteEnabled();
+  // Record that this site's page was opened — it orders "Recent" in the switcher,
+  // the sidebar and the tray. Fire-and-forget: the page never waits on it, and a
+  // failure costs an ordering, not the page. Keyed on the id alone, so moving
+  // between this site's tabs is one open, not seven.
+  useEffect(() => {
+    if (!id) return;
+    void markSiteOpened(id)
+      .then(() => qc.invalidateQueries({ queryKey: SITE_SHORTLIST_KEY }))
+      .catch(() => {});
+  }, [id, qc]);
+  const shortlist = useSiteShortlist();
+  const pin = usePinSite();
   // Duplicate and Delete from the site's own page (they were reachable only from
   // the Sites list). A started duplicate is shown by the list, which adopts the
   // job; a deleted site has no page to stay on.
@@ -282,6 +298,10 @@ export function SiteDetail() {
         tab={active}
         onDuplicate={() => actions.duplicate(site)}
         onDelete={() => actions.remove(site)}
+        pinned={shortlist.pinned.includes(site.id)}
+        // A scratch site is not offered the pin: the reaper removes it when it
+        // expires, pinned or not (core refuses it too — `site_shortlist::set_pinned`).
+        onPin={isScratch(site) ? undefined : (pinned) => pin.mutate({ site, pinned })}
         togglePending={toggle.isPending}
         onToggleEnabled={
           site.provisioned ? (enabled) => toggle.mutate({ site, enabled }) : undefined
@@ -395,6 +415,8 @@ function SiteHeader({
   onToggleEnabled,
   onDuplicate,
   onDelete,
+  pinned,
+  onPin,
   togglePending,
 }: {
   site: Site;
@@ -407,6 +429,9 @@ function SiteHeader({
   onToggleEnabled?: (enabled: boolean) => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  pinned: boolean;
+  /** Pin or unpin — absent for a scratch site. */
+  onPin?: (pinned: boolean) => void;
   togglePending?: boolean;
 }) {
   const t = siteTypeMeta(site.type);
@@ -578,6 +603,20 @@ function SiteHeader({
                   : site.enabled === false
                     ? "Start site"
                     : "Stop site"}
+              </MenuItem>
+            )}
+            {onPin && (
+              <MenuItem
+                icon={
+                  pinned ? (
+                    <PinOff className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                  ) : (
+                    <Pin className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                  )
+                }
+                onSelect={() => onPin(!pinned)}
+              >
+                {pinned ? "Unpin" : "Pin to sidebar"}
               </MenuItem>
             )}
             <MenuItem

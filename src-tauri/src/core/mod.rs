@@ -75,6 +75,7 @@ pub mod settings_access;
 pub mod setup;
 pub mod site_env;
 pub mod site_metrics;
+pub mod site_shortlist;
 pub mod sites;
 pub mod stopped_page;
 pub mod ssl;

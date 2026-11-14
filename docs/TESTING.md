@@ -691,6 +691,13 @@ it can:
 
 ### L2 — Render (`scripts/wk-checks/`, Playwright WebKit + mockIPC dev routes)
 
+- **Pinned + recently opened (14 Nov 2026, #966–#968) — which layer holds what.** L0, on any
+  host: `core::site_shortlist` (the order; a scratch site refused a pin; the tray's order),
+  `state::store::a_pin_and_an_open_each_write_only_their_own_column`, `state::db::v46_…` (the
+  migration beside existing rows, the cascade, NOT NULL). L2 `sitepins.js`: the window's
+  surfaces render that order. The dev page's prefs are a `localStorage` mock that MIRRORS
+  core — so L2 says nothing about the rule, and a change to the order is tested in Rust.
+  Nothing automated sees the tray's menu or a pin surviving a restart: SMOKE.
 - **Check (14 Nov 2026): `sitesrow.js`** (#964, #965) — the Sites list over 27 production-shaped
   sites at three widths: row actions visible with no hover, quiet normal rows, the menu equal
   from `⋮` and right-click, the header's counts, the view kept across a site visit, the keys.

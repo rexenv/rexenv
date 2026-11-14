@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, LockOpen, Trash2, LayoutGrid, TerminalSquare, ScrollText, MoreHorizontal, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, Bot, X, Play, Square, GitBranch } from "lucide-react";
+import { AlertCircle, FolderInput, Plus, Globe, FolderOpen, Database, LockOpen, Trash2, LayoutGrid, TerminalSquare, ScrollText, MoreHorizontal, MoreVertical, ArrowDownUp, Pencil, Copy, Code, Link, RefreshCw, Pin as PinIcon, PinOff, Bot, X, Play, Square, GitBranch } from "lucide-react";
 import { WordPressIcon } from "@/components/common/WordPressIcon";
 import { RexLogo } from "@/components/common/RexLogo";
 import { toast, toastBackendError } from "@/lib/toast";
@@ -25,6 +25,7 @@ import { AppIcon } from "@/components/ui/app-icon";
 import { PreferredBrowserIcon } from "@/components/ui/open-in";
 import { useSiteUrl } from "@/lib/siteUrl";
 import { useModKey } from "@/lib/useModKey";
+import { usePinSite, useSiteShortlist } from "@/lib/useSiteShortlist";
 import { openWpAdmin } from "@/lib/wpAdmin";
 import { useSitesListState, type SitesSort, type SitesStatusFilter, type SitesTypeFilter } from "@/lib/sitesListState";
 import { SiteProvisionCard, useSiteProvision } from "@/components/sites/SiteProvisionCard";
@@ -128,15 +129,19 @@ const TYPE_LABEL: Record<TypeFilter, string> = {
 };
 type Sort = SitesSort;
 
+// "Newest" is by creation (it read "Recent" until 14 Nov 2026, when a second
+// kind of recent arrived); "Opened" is by when the site's PAGE was last opened.
 const SORT_LABEL: Record<Sort, string> = {
   name: "Name",
   status: "Status",
-  recent: "Recent",
+  recent: "Newest",
+  opened: "Opened",
 };
 const SORT_CYCLE: Record<Sort, Sort> = {
   name: "status",
   status: "recent",
-  recent: "name",
+  recent: "opened",
+  opened: "name",
 };
 
 /** A segmented control with live counts — status on one axis, site type on the
@@ -212,6 +217,8 @@ export function SiteRow({
   provisioning,
   onKeep,
   onToggleEnabled,
+  pinned,
+  onPin,
   packages,
   reapFailure,
   extraDomains,
@@ -255,6 +262,10 @@ export function SiteRow({
   packages?: ScratchPackage[];
   /** Why the reaper could not remove this expired site, from its own feed row. */
   reapFailure?: string;
+  /** Is this site pinned, and the way to change it — absent for a scratch site
+   *  (the reaper removes it when it expires, pinned or not). */
+  pinned?: boolean;
+  onPin?: (pinned: boolean) => void;
   /** Start or stop THIS site (v44). Absent for a site with nothing to serve. */
   onToggleEnabled?: (enabled: boolean) => void;
   /** The user stopped this site — as opposed to the stack being down. The two
@@ -690,7 +701,21 @@ export function SiteRow({
                   : "Stop site"}
             </MenuItem>
           )}
-          {(onKeep || onToggleEnabled) && <MenuSeparator />}
+          {onPin && (
+            <MenuItem
+              icon={
+                pinned ? (
+                  <PinOff className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                ) : (
+                  <PinIcon className="h-[15px] w-[15px]" strokeWidth={1.7} />
+                )
+              }
+              onSelect={() => onPin(!pinned)}
+            >
+              {pinned ? "Unpin" : "Pin to sidebar"}
+            </MenuItem>
+          )}
+          {(onKeep || onToggleEnabled || onPin) && <MenuSeparator />}
           {/* The site page's tabs, one step from the list. */}
           {isWordpress && (
             <MenuItem
@@ -822,6 +847,8 @@ export function Sites() {
   const statusOf = (site: Site): Site["status"] =>
     servingMap.get(site.domain) ? "running" : "stopped";
 
+  const shortlist = useSiteShortlist();
+  const pin = usePinSite();
   const toggle = useSiteEnabled();
   const togglingSites = usePendingVariables<{ site: Site }>(SITE_ENABLED_KEY);
   const bulk = useAllSitesEnabled();
@@ -961,6 +988,14 @@ export function Sites() {
     });
     return [...list].sort((a, b) => {
       if (sort === "recent") return b.createdAt.localeCompare(a.createdAt);
+      if (sort === "opened") {
+        // Newest open first; a site never opened sorts after every opened one,
+        // by name — "never" is a fact, not the oldest date.
+        const oa = shortlist.openedAt[a.id];
+        const ob = shortlist.openedAt[b.id];
+        if (oa && ob && oa !== ob) return ob.localeCompare(oa);
+        if (!!oa !== !!ob) return oa ? -1 : 1;
+      }
       if (sort === "status") {
         // Serving sites first, then by name (per-site status is meaningful again).
         const rank = (s: Site) => (statusOf(s) === "running" ? 0 : 1);
@@ -972,13 +1007,24 @@ export function Sites() {
     // already a dependency — depending on the FUNCTION would rebuild this list on
     // every render and defeat the memo. The data is the dependency that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sites, filter, typeFilter, query, sort, servingMap]);
+  }, [sites, filter, typeFilter, query, sort, servingMap, shortlist]);
 
   // The render split, on the RECORDED fact only (`isScratch`). Counts and the
   // filter stay over ALL sites: a scratch site is a real site, and grouping is
   // a way of showing them, not a second class of thing.
   const scratchVisible = useMemo(() => visible.filter(isScratch), [visible]);
-  const ownVisible = useMemo(() => visible.filter((s) => !isScratch(s)), [visible]);
+  // Pinned sites lead the list in their own group, whatever the sort — a pin is
+  // "keep this one at hand", and a sort that buried it would unsay that. A
+  // scratch site is never pinned (core refuses it), so the groups cannot overlap.
+  const pinnedSet = useMemo(() => new Set(shortlist.pinned), [shortlist]);
+  const pinnedVisible = useMemo(
+    () => visible.filter((s) => pinnedSet.has(s.id) && !isScratch(s)),
+    [visible, pinnedSet],
+  );
+  const ownVisible = useMemo(
+    () => visible.filter((s) => !isScratch(s) && !pinnedSet.has(s.id)),
+    [visible, pinnedSet],
+  );
 
   // Cloned plugins/themes — one read for the page, only when there is a scratch
   // site to describe, so a user who has never used an agent never pays for it.
@@ -1229,6 +1275,8 @@ export function Sites() {
                 onDuplicate={() => actions.duplicate(site)}
                 onRetry={() => retry.mutate(site)}
                 onKeep={isScratch(site) ? () => setKeepTarget(site) : undefined}
+                pinned={pinnedSet.has(site.id)}
+                onPin={isScratch(site) ? undefined : (pinned) => pin.mutate({ site, pinned })}
                 stoppedByUser={site.enabled === false}
                 togglePending={togglingSites.some((t) => t.site.id === site.id)}
                 onToggleEnabled={
@@ -1243,6 +1291,15 @@ export function Sites() {
             );
             return (
               <div className="flex flex-col">
+                {pinnedVisible.length > 0 && (
+                  <>
+                    <GroupHeading icon={<PinIcon className="h-3.5 w-3.5 flex-none text-rex-text-dim" strokeWidth={1.8} />} label="Pinned" count={pinnedVisible.length} tight />
+                    <div data-sites-group="pinned" className="flex flex-col">{pinnedVisible.map(row)}</div>
+                    {ownVisible.length > 0 && (
+                      <GroupHeading label="All sites" count={ownVisible.length} />
+                    )}
+                  </>
+                )}
                 {ownVisible.map(row)}
                 {scratchVisible.length > 0 && (
                   <>
@@ -1251,7 +1308,7 @@ export function Sites() {
                         telling them the feature exists. */}
                     <ScratchGroupHeading
                       count={scratchVisible.length}
-                      tight={ownVisible.length === 0}
+                      tight={ownVisible.length === 0 && pinnedVisible.length === 0}
                     />
                     {scratchVisible.map(row)}
                   </>
@@ -1274,6 +1331,31 @@ export function Sites() {
         />
       )}
     </>
+  );
+}
+
+/** A plain group heading in the Sites list — "Pinned", and "All sites" beneath
+ *  it. Rendered only when there IS a pinned group: a user who has pinned nothing
+ *  sees the list exactly as it was, with no heading announcing a feature. */
+function GroupHeading({
+  icon,
+  label,
+  count,
+  tight,
+}: {
+  icon?: React.ReactNode;
+  label: string;
+  count: number;
+  tight?: boolean;
+}) {
+  return (
+    <div className={cn("flex items-center gap-2 px-3 pb-1 pt-5", tight && "pt-1")}>
+      {icon}
+      <span className="font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
+        {label}
+      </span>
+      <span className="font-mono text-[0.625rem] text-rex-text-muted">{count}</span>
+    </div>
   );
 }
 

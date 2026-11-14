@@ -9,7 +9,9 @@ import { StatusFooter } from "./StatusFooter";
 import { ThemeToggle } from "./ThemeToggle";
 import { UpdatePill } from "./UpdatePill";
 import { databasesStatus, getGlobalStatus, listSites, mailpitMessages, tunnelsStatus } from "@/lib/ipc";
-import type { GlobalStatus } from "@/types";
+import { siteTypeMeta } from "@/lib/siteType";
+import { useSiteShortlist } from "@/lib/useSiteShortlist";
+import type { GlobalStatus, Site } from "@/types";
 
 /** Neutral placeholder until the first real `global_status` poll — all-zero so the
  *  footer + nav badges never flash fake numbers on first paint. */
@@ -80,6 +82,65 @@ function NavButton({ item }: { item: NavItem }) {
   );
 }
 
+/** How many pinned sites the rail lists before it says how many it left out. */
+const RAIL_PINS = 5;
+
+/** **The pinned sites, under "Sites" — one click from any screen** (ruling D6).
+ *
+ * Core's order (`useSiteShortlist`), the first five. Past five the rail SAYS how
+ * many it left out and links to the list, where the Pinned group holds them all:
+ * a truncated list that looks complete is how someone concludes a site is gone
+ * (the tray's rule). Nothing renders with nothing pinned — a user who has never
+ * pinned a site never sees an empty section telling them the feature exists. */
+function PinnedSites({ sites }: { sites: Site[] }) {
+  const shortlist = useSiteShortlist();
+  const pinned = shortlist.pinned
+    .map((id) => sites.find((s) => s.id === id))
+    .filter((s): s is Site => !!s);
+  if (pinned.length === 0) return null;
+  const shown = pinned.slice(0, RAIL_PINS);
+  return (
+    <div data-rail-pins className="mb-1 flex flex-col gap-px">
+      {shown.map((site) => {
+        const t = siteTypeMeta(site.type);
+        return (
+          <NavLink
+            key={site.id}
+            to={`/sites/${site.id}`}
+            data-rail-pin={site.id}
+            title={`${site.name} — ${site.domain}`}
+            className={({ isActive }) =>
+              cn(
+                "flex items-center gap-2 rounded-[8px] py-[5px] pl-[26px] pr-2.5 text-[0.78125rem] transition-colors",
+                isActive
+                  ? "bg-rex-hover text-rex-text"
+                  : "text-rex-text-muted hover:bg-rex-hover hover:text-rex-text-bright",
+              )
+            }
+          >
+            <span
+              className="flex h-[15px] w-[15px] flex-none items-center justify-center rounded-[4px] border text-[0.5625rem] font-bold"
+              style={{ background: t.bg, color: t.color, borderColor: t.border }}
+            >
+              {t.letter}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{site.name}</span>
+          </NavLink>
+        );
+      })}
+      {pinned.length > RAIL_PINS && (
+        <NavLink
+          to="/sites"
+          data-rail-pins-more
+          className="py-[3px] pl-[26px] pr-2.5 font-mono text-[0.65625rem] text-rex-text-muted hover:text-rex-text-bright"
+        >
+          …and {pinned.length - RAIL_PINS} more pinned
+        </NavLink>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const main = NAV_ITEMS.filter((i) => !i.footer);
   const footer = NAV_ITEMS.filter((i) => i.footer);
@@ -144,7 +205,10 @@ export function Sidebar() {
             {main
               .filter((i) => i.group === group)
               .map((item) => (
-                <NavButton key={item.to} item={withLiveBadge(item)} />
+                <div key={item.to} className="contents">
+                  <NavButton item={withLiveBadge(item)} />
+                  {item.to === "/sites" && <PinnedSites sites={sites} />}
+                </div>
               ))}
           </div>
         ))}

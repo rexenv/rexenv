@@ -133,6 +133,11 @@ mod tests {
         // ── sites
         ("list_sites", Tool("list_sites")),
         ("all_site_domains", Tool("list_sites")),
+        // The person's own shortlist (v46). Which sites a human keeps at hand is theirs
+        // to say; an agent names a site by its domain and needs no list of favourites.
+        ("site_shortlist", Never("the person's pinned and recently opened sites order THEIR screens; an agent addresses a site by domain (list_sites)")),
+        ("set_site_pinned", Never("a pin is the person saying 'I keep this one at hand' — an agent pinning sites would be rearranging someone's desk")),
+        ("mark_site_opened", Never("records that the PERSON opened a site's page; an agent reading a site is not that")),
         ("sites_serving", Tool("site_status")),
         ("offered_web_servers", Never("the New Site dialog's option list. An agent does not pick from a menu: it names a server and core refuses an unavailable one at create time, with the same sentence")),
         ("offered_db_engines", Never("the New Site dialog's other option list, and the same reasoning: an agent names an engine and core refuses one with no pin on this platform, by name")),

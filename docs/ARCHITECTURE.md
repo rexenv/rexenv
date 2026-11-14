@@ -73,7 +73,7 @@ module also carries a `//!` doc header stating its job. Quick inventory:
   dbimport · dbmirror · dbrestore · dbsource · devtools · dist_archive · dns · dotenv ·
   downloads · firefox · frankenphp · laravel · logs · mail · mariadb · monitor · php ·
   php_upstream · phpconf · ports · postgres · proc · proxy · redis · repo · scratch ·
-  service_manager · services · setup · site_env · site_metrics · sites · ssl ·
+  service_manager · services · setup · site_env · site_metrics · site_shortlist · sites · ssl ·
   stack_guard · terminal · tld · tunnels · updates · valet · wordpress · wp_dns ·
   wp_login · wp_mailtag · wp_packages · wp_tunnel · wporg
 - `commands/`: blueprints · database · db_import · downloads · logs · mail · mcp · php ·
@@ -92,7 +92,14 @@ module also carries a `//!` doc header stating its job. Quick inventory:
   Duplicate and Delete run through `components/sites/useSiteActions.tsx` on the Sites
   list and the site page alike (#963). The Sites list's VIEW (status and type filter,
   search, sort, scroll) lives in `lib/sitesListState.ts`, outside the route, so a visit
-  to a site does not reset it — in memory only: a new launch opens on All (#965)
+  to a site does not reset it — in memory only: a new launch opens on All (#965).
+  **Pinned and recently opened sites** are recorded (`site_prefs`, v46) and ORDERED in
+  one place, `core::site_shortlist` — pinned by name, then the five most recently
+  opened that are not pinned — and the switcher, the Sites list's Pinned group, the
+  sidebar and the tray's Sites submenu all render that answer rather than sorting for
+  themselves (four surfaces, one of them Rust: the only way they agree). Opening a
+  site's page records the open, fire-and-forget. A scratch site is never pinned: the
+  reaper removes it when it expires whatever is said about it (#966, #968)
 
 ## 2. Request & TLS topology
 
@@ -1509,7 +1516,7 @@ honest footer —
   sharing a data folder with a newer one — a hand-installed older dmg, or a dev build next
   to a release — would read and write tables whose shape it does not know. Builds up to
   0.7.1 predate the check and never refuse.
-- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 45:
+- **SQLite for all app state** (`state/db.rs`), `user_version` migrations, currently 46:
   v1 `sites` + `settings` · v2 `php_versions` registry · v3 `sites.multisite` ·
   v4 `blueprints` (JSON `spec`) · v5 `php_settings` · v6 `sites.db_name` (stored, never
   re-derived) · v7 `site_env` · v8/v9 `default_tld` seed + `.rex` flip ·
@@ -1567,7 +1574,11 @@ honest footer —
   `docs/archive/PLAN-git-worktrees.md` §2.3: `parent_id`, `shape` asset|site, the worktree path,
   `adopted`; the branch is NOT stored, git answers it live. `parent_id` has no
   `ON DELETE`, so with `foreign_keys=ON` the database itself refuses deleting a parent
-  that still has children, #815)
+  that still has children, #815) · v46 `site_prefs` (what the PERSON has said about a site —
+  `pinned`, `last_opened_at` — kept OFF the site's row: v45's reason, plus that no
+  site-edit writer can then carry an opinion about them; `site_id` cascades, so a
+  deleted site leaves no pin; each fact has its own one-column upsert, #967 —
+  `docs/PLAN-sites-ux.md` T5)
   Per-engine DB versions are settings-KV rows (`db_version_<engine>`), not a migration.
   *(This list read "currently 25" for eight migrations — restored 11 Aug 2026.
   A count is the one part of a list that goes wrong silently, so check it

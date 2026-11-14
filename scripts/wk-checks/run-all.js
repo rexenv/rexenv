@@ -28,6 +28,7 @@ const CHECKS = [
   "sitekey.js",
   "siteactions.js",
   "sitesrow.js",
+  "sitepins.js",
   "domains.js",
   "tldconsent.js",
   "tunnelhealth.js",

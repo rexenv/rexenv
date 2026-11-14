@@ -151,6 +151,18 @@ impl WorktreeShape {
     }
 }
 
+/// What the PERSON has said about a site, kept off the site's own row (v46): a
+/// pin, and when its page was last opened. Only sites with something to say have
+/// one — see `state::db`'s v46 note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SitePref {
+    pub site_id: String,
+    pub pinned: bool,
+    /// `datetime('now')` text (UTC), or `None` when the page was never opened.
+    pub last_opened_at: Option<String>,
+}
+
 /// A site that is a git worktree of another site's checkout (v45).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

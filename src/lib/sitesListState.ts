@@ -3,7 +3,8 @@ import type { SiteType } from "@/types";
 
 export type SitesStatusFilter = "all" | "running" | "stopped";
 export type SitesTypeFilter = "all" | SiteType;
-export type SitesSort = "name" | "status" | "recent";
+/** `recent` = newest created; `opened` = most recently opened page (v46). */
+export type SitesSort = "name" | "status" | "recent" | "opened";
 
 /** **The Sites list's view — filter, type, sort, search, scroll — outlives a visit
  * to a site.**

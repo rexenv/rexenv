@@ -19,7 +19,7 @@
 use crate::error::{Error, Result};
 use crate::state::models::{
     Blueprint, BlueprintSpec, GitAsset, MultisiteMode, PhpVersion, ServiceStatus, Site,
-    ScratchPackage, SiteDbEngine, SiteOrigin, SiteType, SiteWorktree, WebServer, WorktreeShape,
+    ScratchPackage, SiteDbEngine, SiteOrigin, SitePref, SiteType, SiteWorktree, WebServer, WorktreeShape,
 };
 use rusqlite::{params, Connection, Row};
 
@@ -221,6 +221,51 @@ pub fn set_site_enabled(conn: &Connection, id: &str, enabled: bool) -> Result<bo
     let affected = conn
         .execute("UPDATE sites SET enabled = ?1 WHERE id = ?2", params![enabled as i64, id])?;
     Ok(affected > 0)
+}
+
+/// Every site the person pinned or opened (v46). Sites with neither have no row.
+pub fn site_prefs(conn: &Connection) -> Result<Vec<SitePref>> {
+    let mut stmt = conn.prepare("SELECT site_id, pinned, last_opened_at FROM site_prefs")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(SitePref {
+            site_id: r.get(0)?,
+            pinned: r.get::<_, i64>(1)? != 0,
+            last_opened_at: r.get(2)?,
+        })
+    })?;
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
+}
+
+/// Pin or unpin a site (v46). `false` when there is no such site.
+///
+/// The upsert names ONE column on purpose: a pin must not reset when the site was
+/// last opened, and an open must not unpin it. The two facts share a row and
+/// never a clause — the mistake that once cost this project `patch` and
+/// `is_default` together (one `ON CONFLICT` that wrote both).
+pub fn set_site_pinned(conn: &Connection, id: &str, pinned: bool) -> Result<bool> {
+    if get_site(conn, id)?.is_none() {
+        return Ok(false);
+    }
+    conn.execute(
+        "INSERT INTO site_prefs (site_id, pinned) VALUES (?1, ?2)
+         ON CONFLICT(site_id) DO UPDATE SET pinned = excluded.pinned",
+        params![id, pinned as i64],
+    )?;
+    Ok(true)
+}
+
+/// Record that a site's page was opened just now (v46). `false` when there is no
+/// such site. Writes `last_opened_at` and nothing else — see [`set_site_pinned`].
+pub fn touch_site_opened(conn: &Connection, id: &str) -> Result<bool> {
+    if get_site(conn, id)?.is_none() {
+        return Ok(false);
+    }
+    conn.execute(
+        "INSERT INTO site_prefs (site_id, last_opened_at) VALUES (?1, datetime('now'))
+         ON CONFLICT(site_id) DO UPDATE SET last_opened_at = excluded.last_opened_at",
+        params![id],
+    )?;
+    Ok(true)
 }
 
 /// Record whether rexenv owns a site's docroot (v17) — see
@@ -1921,15 +1966,29 @@ mod tests {
     /// question a source scan cannot answer is WHO CALLS IT. Declaring the answer
     /// is the work: if an automatic caller is ever added to one of these, this
     /// line is what makes that a decision instead of an accident.
-    const USER_INITIATED_UPSERTS: &[(&str, &str)] = &[(
-        "blueprints",
-        "`upsert_blueprint` runs only from the blueprint save command — the user is \
-         supplying `name`/`spec`, so overwriting them is what they asked for",
-    )];
+    const USER_INITIATED_UPSERTS: &[(&str, &str)] = &[
+        (
+            "blueprints",
+            "`upsert_blueprint` runs only from the blueprint save command — the user is \
+             supplying `name`/`spec`, so overwriting them is what they asked for",
+        ),
+        (
+            "site_prefs",
+            "two statements, each reached only by the person's own act and each naming ONE \
+             column: `set_site_pinned` from the Pin / Unpin menu item (via \
+             `core::site_shortlist::set_pinned`), `touch_site_opened` from opening a site's \
+             page. Asked per column and per arm: the pin's conflict arm writes `pinned` only \
+             and its INSERT arm leaves `last_opened_at` NULL (never opened — true of a row \
+             that did not exist); the open's conflict arm writes `last_opened_at` only and \
+             its INSERT arm leaves `pinned` at its default 0 (not pinned — equally true). No \
+             launch, sync or background task reaches either \
+             (`a_pin_and_an_open_each_write_only_their_own_column`, ledger #967)",
+        ),
+    ];
 
     /// Upsert statements this codebase is declared to have. Bumping it is the
     /// point: see the failure message.
-    const DECLARED_UPSERTS: usize = 7;
+    const DECLARED_UPSERTS: usize = 9;
 
     /// `INSERT OR REPLACE` statements that deliberately do NOT name every column,
     /// with the reason. REPLACE deletes the row and re-inserts, so any unnamed
@@ -2169,6 +2228,46 @@ has never heard of cannot pass unread.";
             writers[0]
         );
     }
+
+    /// **A pin and an open never write each other's column.** They share a row
+    /// (`site_prefs`), so one upsert that named both would unpin a site every time
+    /// its page was opened, or forget when it was opened every time it was pinned.
+    #[test]
+    fn a_pin_and_an_open_each_write_only_their_own_column() {
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let mut site = scratch(None);
+        site.origin = SiteOrigin::User;
+        site.expires_at = None;
+        insert_site(&conn, &site).unwrap();
+        assert!(site_prefs(&conn).unwrap().is_empty(), "a new site has no row to say anything");
+
+        assert!(touch_site_opened(&conn, &site.id).unwrap());
+        let opened = site_prefs(&conn).unwrap().remove(0).last_opened_at;
+        assert!(opened.is_some(), "the open was not recorded");
+        assert!(!site_prefs(&conn).unwrap()[0].pinned, "opening a site pinned it");
+
+        assert!(set_site_pinned(&conn, &site.id, true).unwrap());
+        let row = site_prefs(&conn).unwrap().remove(0);
+        assert!(row.pinned);
+        assert_eq!(row.last_opened_at, opened, "pinning forgot when the site was opened");
+
+        assert!(touch_site_opened(&conn, &site.id).unwrap());
+        assert!(site_prefs(&conn).unwrap()[0].pinned, "opening a pinned site unpinned it");
+
+        assert!(set_site_pinned(&conn, &site.id, false).unwrap());
+        let row = site_prefs(&conn).unwrap().remove(0);
+        assert!(!row.pinned);
+        assert!(row.last_opened_at.is_some(), "unpinning forgot when the site was opened");
+
+        // A site that does not exist is `false`, not a row and not an error.
+        assert!(!set_site_pinned(&conn, "no-such-site", true).unwrap());
+        assert!(!touch_site_opened(&conn, "no-such-site").unwrap());
+        assert_eq!(site_prefs(&conn).unwrap().len(), 1);
+
+        // And the site's OWN row never moved.
+        assert_eq!(format!("{:?}", get_site(&conn, &site.id).unwrap().unwrap()), format!("{site:?}"));
+    }
+
 
     /// Stop one site, start it again — and prove the switch touches nothing
     /// else on the row. `enabled` is written beside columns whose values a user

@@ -214,6 +214,7 @@ rexenv/
         │   │                   #   every module has a //! doc header; index: docs/MAP.md
         │   ├── service_manager.rs  # owns the stack: dbs, pools, overrides, mail, edge
         │   ├── sites.rs · site_env.rs · site_metrics.rs   # lifecycle, env vars, metrics
+        │   ├── site_shortlist.rs                           # pinned + recently opened, the one order every surface shows
         │   ├── services.rs     # nginx + php-fpm config gen & control
         │   ├── php.rs · phpconf.rs  # multi-version pools (7.4–8.5); wp-config/.env readers
         │   ├── frankenphp.rs · apache.rs · openlitespeed.rs   # per-site override backends (loopback, never the edge)
@@ -261,7 +262,7 @@ rexenv/
         │                       #   `--headless-setup` (sudoers rule + the MCP/Agent-access consent)
         │
         └── state/              # app state
-            ├── db.rs           # SQLite + migrations (v1–v45)
+            ├── db.rs           # SQLite + migrations (v1–v46)
             ├── models.rs · store.rs
             └── app.rs          # AppState (db + platform + CA + ServiceManager + …)
 ```

@@ -2,7 +2,7 @@
  * Mock data for the static shell (Phase 1 task 0.6). Replaced by real IPC data
  * as backend tasks land. Kept in one place so it's easy to delete later.
  */
-import type { AdminerStatus, DbConsoleStatus, AppInfo, AppUpdateState, UpdateInventory, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing , ResolverTldStatus, DriftedTakeover } from "@/types";
+import type { AdminerStatus, DbConsoleStatus, AppInfo, AppUpdateState, UpdateInventory, DbStatus, GlobalStatus, MailDetail, MailList, PhpSetting, PhpVersion, PlatformWords, ServiceInfo, Site, SiteServing, SiteShortlist, ResolverTldStatus, DriftedTakeover } from "@/types";
 
 /** macOS's platform words — the browser shell's answer, and `usePlatformWords`' answer until the backend's
  *  arrives. Must match `src-tauri/src/platform/words.rs` `MACOS` (a test holds them together). */
@@ -210,6 +210,58 @@ export function mockSitesView(): Site[] {
   }) as Site);
   const all = [...mockSites, ...extra, ...scratch];
   return mode === "wponly" ? all.filter((x) => x.type === "wordpress") : all;
+}
+
+/** The dev page's pins and opens, kept in `localStorage` so they survive the
+ *  page loads a check makes. It mirrors `core::site_shortlist` closely enough to
+ *  render — pinned by name, recent newest-first without the pinned, five at most,
+ *  a scratch site refused a pin — and is NOT the rule: the rule is the Rust, with
+ *  its own tests. */
+const PREFS_KEY = "rex-mock-prefs";
+type MockPrefs = Record<string, { pinned?: boolean; openedAt?: string }>;
+function readMockPrefs(): MockPrefs {
+  try {
+    return JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? "{}") as MockPrefs;
+  } catch {
+    return {};
+  }
+}
+function writeMockPrefs(p: MockPrefs) {
+  try {
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  } catch {
+    // No storage: the pin lasts until the next read, which is honest enough for a mock.
+  }
+}
+export function mockSiteShortlist(): SiteShortlist {
+  const prefs = readMockPrefs();
+  const sites = mockSitesView().filter((s) => prefs[s.id]);
+  const byName = (a: Site, b: Site) => a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  const pinned = sites.filter((s) => prefs[s.id].pinned).sort(byName);
+  const recent = sites
+    .filter((s) => !prefs[s.id].pinned && prefs[s.id].openedAt)
+    .sort((a, b) => prefs[b.id].openedAt!.localeCompare(prefs[a.id].openedAt!) || byName(a, b));
+  return {
+    pinned: pinned.map((s) => s.id),
+    recent: recent.slice(0, 5).map((s) => s.id),
+    openedAt: Object.fromEntries(sites.filter((s) => prefs[s.id].openedAt).map((s) => [s.id, prefs[s.id].openedAt!])),
+  };
+}
+export function mockSetSitePinned(id: string, pinned: boolean) {
+  const site = mockSitesView().find((s) => s.id === id);
+  if (pinned && site?.origin === "agent")
+    throw "This is a scratch site an agent made — rexenv removes it when it expires, pinned or not. Keep it first (row menu → Keep this site), then pin it.";
+  const prefs = readMockPrefs();
+  prefs[id] = { ...prefs[id], pinned };
+  writeMockPrefs(prefs);
+}
+let mockOpenSeq = 0;
+export function mockMarkSiteOpened(id: string) {
+  const prefs = readMockPrefs();
+  // Millisecond + a sequence: two opens inside one tick still order.
+  const at = new Date(Date.now() + ++mockOpenSeq).toISOString().replace("T", " ").slice(0, 23);
+  prefs[id] = { ...prefs[id], openedAt: at };
+  writeMockPrefs(prefs);
 }
 
 // Mirrors each mock site's own status so the browser preview shows per-site

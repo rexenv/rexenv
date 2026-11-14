@@ -123,6 +123,9 @@ macro_rules! for_each_command {
             commands::sites::remove_site_domain,
             commands::sites::site_domains,
             commands::sites::all_site_domains,
+            commands::sites::site_shortlist,
+            commands::sites::set_site_pinned,
+            commands::sites::mark_site_opened,
             commands::sites::set_site_xdebug,
             commands::sites::delete_site,
             commands::sites::keep_site,
@@ -2363,6 +2366,23 @@ fn last_menu() -> &'static std::sync::Mutex<LastMenu> {
 /// `service_infos` snapshot the Services screen and the footer use, the same
 /// `summarize`, the same sites table, the same settings row. The tray measures
 /// nothing of its own (`docs/archive/PLAN-menubar-tray.md` §3 rule 1).
+/// The tray's sites: pinned, then recently opened, then the rest. The submenu is
+/// capped (and says what it hid), so what it shows first is what the person is
+/// working on — in core's order, the same one the window shows
+/// (`core::site_shortlist`). A failed read is an empty or unordered list, never a
+/// missing menu.
+fn tray_sites(conn: &rusqlite::Connection) -> Vec<core::tray::TraySite> {
+    let all = core::sites::list(conn).unwrap_or_default();
+    let at_hand = core::site_shortlist::shortlist(
+        &all,
+        &state::store::site_prefs(conn).unwrap_or_default(),
+    );
+    core::site_shortlist::at_hand_first(
+        all.into_iter().map(|s| (s.id, core::tray::TraySite { domain: s.domain })).collect(),
+        &at_hand,
+    )
+}
+
 fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
     use tauri::Manager;
     // `try_state`, never `state`: the tray is installed before `setup` manages
@@ -2385,11 +2405,7 @@ fn tray_model(app: &tauri::AppHandle) -> Option<core::tray::TrayModel> {
     let (sites, mcp_on) = {
         match state.db.lock() {
             Ok(conn) => {
-                let sites = core::sites::list(&conn)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|s| core::tray::TraySite { domain: s.domain })
-                    .collect();
+                let sites = tray_sites(&conn);
                 let mcp_on = matches!(
                     state::store::get_setting(&conn, mcp_server::MCP_ENABLED_KEY),
                     Ok(Some(v)) if v == "true"

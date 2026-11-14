@@ -1294,6 +1294,18 @@ export interface PlatformWords {
   modKeyIsCommand: boolean;
 }
 
+/** Which sites the person keeps at hand (mirrors Rust `core::site_shortlist::SiteShortlist`).
+ *  Ids, in the ONE order every surface shows — the switcher, the Sites list, the sidebar and
+ *  the tray all render core's answer rather than sorting for themselves. */
+export interface SiteShortlist {
+  /** Pinned sites, by name. */
+  pinned: string[];
+  /** Recently opened sites that are not pinned, newest first, capped by core. */
+  recent: string[];
+  /** site id → when its page was last opened (UTC `YYYY-MM-DD HH:MM:SS`). */
+  openedAt: Record<string, string>;
+}
+
 /** A detected code editor (mirrors the Rust EditorApp DTO). */
 export interface EditorApp {
   id: string; // stable key stored as the preferred_editor setting

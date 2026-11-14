@@ -731,6 +731,29 @@ const MIGRATIONS: &[&str] = &[
         created_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX idx_site_worktrees_parent ON site_worktrees(parent_id);",
+    // v46 — which sites the PERSON keeps at hand: a pin, and when each site's page
+    // was last opened (`docs/PLAN-sites-ux.md` T5). They order the site switcher,
+    // the Sites list, the sidebar and the tray's Sites submenu.
+    //
+    // A table of its own rather than two columns on `sites`, for v45's reason (a
+    // `sites` column is threaded through every `Site { … }` literal for a field
+    // most sites do not have) and for a second one: these are the USER's facts
+    // about a site, not the site's. Kept off the row, no site-edit writer can
+    // carry an opinion about them — the per-column ownership rule (`enabled`,
+    // v44) kept by structure instead of by a test that counts writers.
+    //
+    // `site_id` cascades: a deleted site leaves no pin and no "recent" behind,
+    // and no code has to remember to clean one up.
+    //
+    // `pinned` is NOT NULL DEFAULT 0 — two states, not three. `last_opened_at`
+    // is NULL for "never opened", which is a fact and not a missing value.
+    // Only rows that say something exist: a site nobody pinned or opened has
+    // no row at all.
+    "CREATE TABLE site_prefs (
+        site_id        TEXT PRIMARY KEY REFERENCES sites(id) ON DELETE CASCADE,
+        pinned         INTEGER NOT NULL DEFAULT 0,
+        last_opened_at TEXT
+    );",
 ];
 
 /// Open the app database at `path`, creating parent dirs and applying migrations.
@@ -1443,6 +1466,52 @@ mod tests {
             conn.execute("UPDATE sites SET enabled = NULL", []).is_err(),
             "`enabled` must be NOT NULL — a null would be a third state nobody renders"
         );
+    }
+
+    /// v46 lands on a database that already has sites, changes none of them, and
+    /// the new table lets go of a site's row when the site goes — the pin of a
+    /// deleted site must not survive to be "restored" onto whatever takes its id.
+    #[test]
+    fn v46_adds_site_prefs_beside_existing_sites_and_a_deleted_site_leaves_no_pin() {
+        let conn = Connection::open_in_memory().unwrap();
+        for (i, stmt) in MIGRATIONS[..45].iter().enumerate() {
+            conn.execute_batch(stmt).unwrap();
+            conn.pragma_update(None, "user_version", (i + 1) as i64).unwrap();
+        }
+        configure(&conn).unwrap();
+        let id = "7f3a1c02-9d51-4d2e-8b77-2c9a4e6f1b30";
+        conn.execute(
+            "INSERT INTO sites (id, name, domain, type, php_version, path)
+             VALUES (?1, 'Shop', 'shop.rex', 'laravel', '8.3',
+                     '/Users/x/Library/Application Support/dev.rexenv.rexenv/Sites/shop.rex')",
+            [id],
+        )
+        .unwrap();
+        let before: String = conn
+            .query_row("SELECT name || domain || enabled FROM sites", [], |r| r.get(0))
+            .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let after: String = conn
+            .query_row("SELECT name || domain || enabled FROM sites", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(before, after, "v46 touched an existing site row");
+        let rows: i64 = conn.query_row("SELECT COUNT(*) FROM site_prefs", [], |r| r.get(0)).unwrap();
+        assert_eq!(rows, 0, "no site is pinned or opened by a migration");
+
+        conn.execute("INSERT INTO site_prefs (site_id, pinned) VALUES (?1, 1)", [id]).unwrap();
+        assert!(
+            conn.execute("INSERT INTO site_prefs (site_id, pinned) VALUES ('no-such-site', 1)", []).is_err(),
+            "a pin for a site that does not exist was accepted — the foreign key is not enforced"
+        );
+        assert!(
+            conn.execute("UPDATE site_prefs SET pinned = NULL", []).is_err(),
+            "`pinned` must be NOT NULL — pinned, or not"
+        );
+        conn.execute("DELETE FROM sites WHERE id = ?1", [id]).unwrap();
+        let left: i64 = conn.query_row("SELECT COUNT(*) FROM site_prefs", [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0, "a deleted site left its pin behind");
     }
 
     #[test]

@@ -6,7 +6,7 @@
  * During early scaffolding the app runs in a plain browser (vite dev) where the
  * Tauri runtime is absent; `isTauri()` lets callers fall back to mock data.
  */
-import type { UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
+import type { SiteShortlist, UpdateInventory, UpdateKind, UpdateRun, StartupNotice, AdminerStatus, DbConsole, DbConsoleStatus, AppInfo, AppUpdateState, AppUpdateOutcome, AppUpdateReadiness, AgentAction, AgentAccess,
   AgentAccessLevel,
   AgentAccessMode, Blueprint, BrowserApp, DbImportJobState, DbImportRecord, RewriteApplied, RewritePreview, RewriteRevertOutcome, LeftoverDump, GitAsset, McpStatus, RepoAssetStatus, RepoBranches, RepoGitOp, RepoJobState, RepoKind, RepoPullRef, RepoStashEntry, WpInstallState, RepoLinkResult, RepoProbeResult, RepoScriptsInfo, RepoToolStatus, RepoWatchState, UnmanagedRepo, CliStatus, DbStatus, DnsStatus, RepairOutcome, DomainChange, DownloadsSnapshot, EditorApp, EnvVar, PlatformWords, FirefoxTrustStatus, GlobalStatus, ImportOutcome, ImportProgress, ImportRequest, ImportResult, ImportScan, LinkedFolderInfo, LogTarget, MailDetail, MailList, MailpitStatus, NewSiteInput, PhpSetting, PhpUpdateOutcome, PhpVersion, PlannedDownload, RuntimeProblem, ServiceInfo, Site, SiteCertInfo, SiteDbEngine, SiteProvisionState, SiteRepoInfo, SiteResources, SiteServing, ResolverPlan, ResolverTldStatus, DriftedTakeover, ScratchPackage, TeardownReport, TerminalApp, TldPolicy, TunnelInfo, WebServer, WpChecksumCleanup, WpChecksumReport, WpCoreSwitch, WpCoreVersion, WpCutNameReport, WpCronEvent, WpDebugLogStatus, WpInfo, WpInstallInput, WpLanguage, WpNetworkSite, WpOptionsForm, WpOrgPlugin, WpOrgTheme, WpPlugin, WpTheme, WpUpdateProgress, WpUser, UnresolvableTld, WorktreeRequest, WorktreePreview, WorktreeView, WorktreeRelation, LiveSyncPairing, LiveSyncPaired, LiveSyncHistory,
   LiveSyncOptions,
@@ -35,6 +35,9 @@ import {
   mockResolverTakeOver,
   mockResolverTldStatus,
   mockServicesView,
+  mockMarkSiteOpened,
+  mockSetSitePinned,
+  mockSiteShortlist,
   mockSitesServingView,
   mockSitesView,
 } from "@/lib/mock";
@@ -507,6 +510,25 @@ export async function repairResolver(tld: string): Promise<RepairOutcome> {
 export async function allSiteDomains(): Promise<Record<string, string[]>> {
   if (!isTauri()) return mockAllSiteDomains();
   return invoke<Record<string, string[]>>("all_site_domains");
+}
+
+/** Which sites the person keeps at hand — pinned, recently opened, and when each was opened —
+ *  as ids in the one order every surface shows (core computes it; the tray reads the same). */
+export async function siteShortlist(): Promise<SiteShortlist> {
+  if (!isTauri()) return mockSiteShortlist();
+  return invoke<SiteShortlist>("site_shortlist");
+}
+
+/** Pin or unpin a site. Rejects for a scratch site, with core's sentence (Keep it first). */
+export async function setSitePinned(id: string, pinned: boolean): Promise<void> {
+  if (!isTauri()) return mockSetSitePinned(id, pinned);
+  await invoke("set_site_pinned", { id, pinned });
+}
+
+/** Record that a site's page was opened. Fire-and-forget: the page never waits on it. */
+export async function markSiteOpened(id: string): Promise<void> {
+  if (!isTauri()) return mockMarkSiteOpened(id);
+  await invoke("mark_site_opened", { id });
 }
 
 /** Every hostname a site answers on — its own domain FIRST, then its extra

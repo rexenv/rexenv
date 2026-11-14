@@ -234,6 +234,18 @@ the shipped UI toward one.
   scroll. It was route state and reset on every return: filter to "lms", open one,
   come back to all 25 at the top. In memory only, so a new launch still opens on All
   (ledger #965).
+- **A pin is a promise, so it is only offered where it can be kept — and a section
+  nobody has used does not render.** Pinned sites lead the switcher and the Sites list
+  (in their own group, under EVERY sort — a sort that buried a pin would unsay it) and
+  sit under "Sites" in the sidebar, one click from any screen. With nothing pinned,
+  none of the three draws a heading or an empty group. The sidebar shows five and
+  SAYS how many it left out ("…and 2 more pinned"), linking to the list whose Pinned
+  group holds them all — a truncated list that looks complete is how someone concludes
+  a site is gone. **A scratch site is never offered a pin**: rexenv removes it when
+  it expires, pinned or not, so the pin would be a promise in the sidebar that
+  vanishes overnight; and pinning must not quietly adopt it — adoption is Keep, on
+  purpose. Core refuses it too, with the sentence that says where Keep is. A site is
+  in ONE group: pinned sites are not also "Recent" (ledger #966, #968).
 - **A shortcut answers one modifier, names the one it answers, and leaves the shell
   its keys.** Mod+K opens the site switcher from every route: ⌘K on macOS, Ctrl+K on
   Windows and Linux, the label from `PlatformWords` — a "⌘" typed into TSX names a

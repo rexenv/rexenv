@@ -127,6 +127,30 @@ pub fn all_site_domains(
     crate::state::store::all_site_aliases(&conn)
 }
 
+/// Which sites the person keeps at hand — pinned, recently opened, and when each
+/// was opened — in the one order every surface shows (`core::site_shortlist`).
+#[tauri::command]
+pub fn site_shortlist(state: State<'_, AppState>) -> Result<crate::core::site_shortlist::SiteShortlist> {
+    let conn = lock(&state)?;
+    crate::core::site_shortlist::read(&conn)
+}
+
+/// Pin or unpin a site. Core refuses to pin a scratch site (it says why).
+#[tauri::command]
+pub fn set_site_pinned(state: State<'_, AppState>, id: String, pinned: bool) -> Result<()> {
+    let conn = lock(&state)?;
+    crate::core::site_shortlist::set_pinned(&conn, &id, pinned)
+}
+
+/// Record that a site's page was opened. Nothing is returned and nothing waits on
+/// it: the page calls this on the way in and does not hold for the answer.
+#[tauri::command]
+pub fn mark_site_opened(state: State<'_, AppState>, id: String) -> Result<()> {
+    let conn = lock(&state)?;
+    crate::state::store::touch_site_opened(&conn, &id)?;
+    Ok(())
+}
+
 /// Honest per-site resource attribution (Sites page). A site is NOT a process
 /// here — default sites share nginx + a per-version php-fpm pool — so the shape
 /// is explicit about what each number IS:

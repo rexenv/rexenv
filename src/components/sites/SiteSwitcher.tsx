@@ -7,6 +7,7 @@ import { allSiteDomains, getSitesServing, listSites, openExternal } from "@/lib/
 import { isScratch, siteTypeMeta } from "@/lib/siteType";
 import { useSiteUrl } from "@/lib/siteUrl";
 import { useModKey } from "@/lib/useModKey";
+import { groupByShortlist, useSiteShortlist } from "@/lib/useSiteShortlist";
 import { toast, toastBackendError } from "@/lib/toast";
 import { cn, TECH_INPUT } from "@/lib/utils";
 import type { Site } from "@/types";
@@ -103,17 +104,30 @@ export function SiteSwitcherPanel({
     [serving],
   );
 
-  // The user's sites by name, then the agent's scratch sites under the same
-  // heading the Sites list gives them — on the recorded fact only (`isScratch`).
-  const { own, scratch, flat } = useMemo(() => {
+  // Pinned, then recently opened, then everything else by name, then the agent's
+  // scratch sites under the heading the Sites list gives them. The first two are
+  // core's order (`useSiteShortlist`) — the same one the sidebar and the tray
+  // show — and a site is in exactly ONE group: a pinned site is not also recent,
+  // and a scratch site that was opened is under Recent, not twice.
+  const shortlist = useSiteShortlist();
+  const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const hit = sites
       .filter((s) => matches(s, extraDomains[s.id], q))
       .sort((a, b) => a.name.localeCompare(b.name));
-    const own = hit.filter((s) => !isScratch(s));
-    const scratch = hit.filter(isScratch);
-    return { own, scratch, flat: [...own, ...scratch] };
-  }, [sites, extraDomains, query]);
+    const g = groupByShortlist(hit, shortlist);
+    const own = g.rest.filter((s) => !isScratch(s));
+    const scratch = g.rest.filter(isScratch);
+    return [
+      { key: "pinned", label: "Pinned", sites: g.pinned },
+      { key: "recent", label: "Recent", sites: g.recent },
+      // The label only when something sits above it: with nothing pinned or
+      // opened the list is just the sites, as it was.
+      { key: "all", label: g.pinned.length + g.recent.length > 0 ? "All sites" : "", sites: own },
+      { key: "scratch", label: "Scratch", sites: scratch },
+    ].filter((x) => x.sites.length > 0);
+  }, [sites, extraDomains, query, shortlist]);
+  const flat = useMemo(() => groups.flatMap((g) => g.sites), [groups]);
 
   // The cursor is a site ID, not an index: the list is re-sorted and re-filtered
   // under it (a poll, a keystroke), and an index would then point at a different
@@ -249,15 +263,16 @@ export function SiteSwitcherPanel({
             {query ? `No sites match “${query}”` : "No sites yet"}
           </div>
         ) : (
-          <>
-            {own.map(row)}
-            {scratch.length > 0 && (
-              <div className="px-[9px] pb-1 pt-2.5 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted">
-                Scratch
-              </div>
-            )}
-            {scratch.map(row)}
-          </>
+          groups.map((g) => (
+            <div key={g.key} data-switch-group={g.key}>
+              {g.label && (
+                <div className="px-[9px] pb-1 pt-2.5 font-mono text-[0.625rem] uppercase tracking-[0.1em] text-rex-text-muted first:pt-1">
+                  {g.label}
+                </div>
+              )}
+              {g.sites.map(row)}
+            </div>
+          ))
         )}
       </div>
       {/* The keys, said where they work. The modifier is the platform's word

@@ -909,6 +909,27 @@ A quiet row with three actions, one menu two ways, a view that survives (ledger 
   opens, **⌘↵** (Ctrl+↵ on Windows and Linux) opens it in the browser.
   Open on macOS, Windows and Linux.
 
+## Pinned and recently opened sites (14 Nov 2026 — `docs/PLAN-sites-ux.md` T5)
+One order on four surfaces (ledger #966–#968; `wk-checks/sitepins.js` proves the window's three in
+WebKit, the Rust tests the order and the storage — the TRAY and a restart are this row's).
+- [ ] With nothing pinned: no "Pinned" heading in the Sites list, nothing under **Sites** in the
+  sidebar.
+- [ ] Row menu → **Pin to sidebar** on two sites: both move to a **Pinned** group at the top (by
+  name), an "All sites" heading above the rest, both under **Sites** in the sidebar and at the top
+  of the switcher. Change the sort: the Pinned group still leads. Click a sidebar pin from **Mail**:
+  that site opens.
+- [ ] **Quit and reopen rexenv**: the pins are still there. (The list's filter is not — it opens on All.)
+- [ ] Open three other sites' pages one after another. The switcher's **Recent** lists them newest
+  first, without the pinned ones. Sort → **Opened**: the same three lead the unpinned rows.
+- [ ] **The tray / menu-bar Sites submenu**: pinned sites first, then the recently opened, then the
+  rest. With more than 8 sites its "…and N more" line is still there.
+- [ ] A **scratch** site's menu has no Pin. Keep it (row menu → Keep this site): now it has.
+- [ ] Pin a site, then **delete** it: it is gone from the sidebar, and a new site made with the same
+  domain is not pinned.
+- [ ] Pin seven sites: the sidebar shows five and "…and 2 more pinned".
+  Open on macOS, Windows and Linux (the tray is each OS's own: menu bar / notification area / the
+  desktop's indicator).
+
 ## Switch site with the keyboard (14 Nov 2026 — `docs/PLAN-sites-ux.md` T3)
 ⌘K opens the same list from every screen (ledger #962, `wk-checks/sitekey.js`; Windows and Linux
 use Ctrl+K — their sections).
