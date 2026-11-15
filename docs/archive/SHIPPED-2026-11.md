@@ -392,3 +392,82 @@ their full text as it stood is kept here.
   web UI over a real tunnel (evidence in each SMOKE row). ✓ closed 14 Nov 2026 — the second-run rows ran on Linux
   only; macOS and Windows carry their first runs.
 
+
+## Reconcile of 15 Nov 2026
+
+### From “Now — actionable code/test work”
+
+- [x] **Start all under a foreign :443 holder says the machine is busy, and `rex doctor` sees no holder** ✓ 15 Nov
+  2026 — ledger #970. The cause was neither guess in the row (a root listener the gate cannot see; the IPv4/IPv6
+  split): `prepare_edge` SKIPPED the port gate whenever the edge daemon was installed, which on macOS and Linux
+  is always. It now gates the port when no edge of ours could be the holder (no live admin socket, no supervised
+  process), and `rex doctor` lists 80/443 under Ports while no edge of ours is up. L0
+  `prepare_edge_gates_the_port_under_an_installed_daemon_that_runs_no_edge` (planted); run on the macOS 15.8 VM
+  and the Ubuntu 22.04 VM with a root `python3` on :443 — the port error and its sudo command, no password
+  prompt, no edge started; holder gone → started. Windows never skipped the gate (the Dell named `python.exe`,
+  14 Nov). A root holder is not named on macOS/Linux — unprivileged `lsof`/`ss` has no pid for it.
+
+- [x] **A foreign holder that takes :443 while a boot-started edge is ALIVE is still called a busy machine** ✓ 15 Nov
+  2026 — ledger #971. Reproduced on the macOS 15.8 VM (0.9.7): a root `python3` on IPv4 `*:443` before the edge
+  daemon → Start all and the watchdog said "very busy", and `rex doctor` offered the blanket `sudo kill` that
+  kills rexenv's own edge. Now an unreadable IPv4 wire beside our marker on `[::1]` is said as what it is, at all
+  three doors: a named holder with its command, an unnamed one with a listing command, never a kill. Run on the
+  same VM with a root and a user-owned holder; the holder gone, the edge answers with no Start all. L0
+  `a_v4_holder_beside_our_edge_is_named_or_listed_never_blanket_killed`,
+  `an_unreadable_v4_wire_alone_is_not_a_holder`. Linux and Windows cannot reach the state (read, not run).
+
+
+## Judgement moves — reconcile of 15 Nov 2026
+
+### From “Now — actionable code/test work” — the macOS 13 floor row, as it stood (still open there for the macOS 14 VM)
+
+- [ ] **macOS 13 floor — three tiers, T0–T6 landed, T7 RUN on a 13.6 VM and its in-place 15.8 upgrade (six real defects found and fixed; 14-VM left), T8 SHIPPED as 0.8.7** (owner ruled 23 Sep 2026):
+  macOS 15 stays the STANDARD (every feature, latest pins); the app also RUNS on 13 and 14
+  with a per-host pin set (`BinaryTier`, derived from the host every launch) and a
+  "needs macOS 14" refusal for PostgreSQL and PHP 8.0 on 13; self-builds
+  (`rexenv/runtimes`) flip refusals to pins later. Every `minos` measured both slices,
+  the pin set, the design and the task list T0–T8: `docs/PLAN-macos-13-floor.md` §6–§7.
+  Ship line is T0–T8; proof is a real 13 + 14 VM (T7), never `minos` alone.
+  ✓ **T0** 23 Sep 2026 — `BinaryTier` + `Platform::binary_tier()` (default `Standard`,
+  macOS override) + `install_tier` at launch; ledger #707; no consumer reads it yet.
+  ✓ **T1** 23 Sep 2026 — `PinSet` + `pins()`; the `*_VERSION` constants are private, so the
+  guard is the compiler (135 files migrated); every tier still answers the Standard set;
+  ledger #708.
+  ✓ **T2** 23 Sep 2026 — Legacy13/14 pin sets with digests (cloudflared 2025.4.0; MySQL
+  8.4.3/8.0.40 `macos14`; ventura blobs for Redis 8.2.1, MariaDB 12.0.2/11.4.8, httpd 2.4.65,
+  Xdebug 3.4.5 for 8.1–8.4, none loads for 8.5; PostgreSQL 16.4.0 on 14 only); `manifest_sweep_check` sweeps every tier;
+  `legacy_pins_check` resolves + runs each here; ledger #709.
+  ✓ **T3** 23 Sep 2026 — refusals: `php_minor_needs_macos` / `engine_needs_macos` (derived:
+  the lowest tier that offers it), ONE sentence from `words.rs`, listed-disabled on Settings /
+  Databases / New Site, the same words from `rex` and MCP through the core gates; ledger #710.
+  ✓ **T4** 23 Sep 2026 — `minimumSystemVersion` 13.0; `default_stack(tier)`; `macos_floor_check`
+  per tier (each stack ≤ its floor, stated == lowest); the onboarding legacy note
+  (`legacy_notice`, derived from the refusals); INSTALL / SMOKE (Legacy section) / RELEASING
+  (manifest floor must follow the conf) / PORTS / TESTING; ledger #433 re-shaped.
+  ✓ **T5** 23 Sep 2026 — catalog `minMacos`: a legacy host is offered only an entry that
+  declares a floor it meets (undeclared = not offered there; Standard takes all); both
+  accessors gate; runtimes' publisher emits it from `vtool` (runtimes `05220a5`, pushed);
+  **serial 7 published 23 Sep 2026** — `minMacos: "12.0"` on all 20 PHP entries; ledger #711.
+  ✓ **T6** 23 Sep 2026 — `legacy_upgrade_check` (network tier): MySQL 8.4.3→8.4.6, 8.0.40→8.0.44,
+  MariaDB 12.0.2→12.3.2 (default→default, one `mariadb/data`), 11.4.8→11.4.12 — legacy writes,
+  standard reads, same datadir; ALL PASS here; ledger #712.
+  ◐ **T7** 23 Sep 2026, clean macOS 13.6 VM over ssh + `rex`: the first build ABORTED at launch
+  (`NSApplication.activate` is 14+ — ledger #713, gated by `respondsToSelector:`), and
+  `rex db versions --set postgres` said the platform sentence (a second copy of the engine
+  gate — folded into `DbEngine::ensure_available_on`, #710). With both fixed: legacy pins
+  offered and RUN (mysql-8.4.3, nginx, php-fpm 8.3 + the 3.4.5 Xdebug pool, Caddy, Mailpit),
+  a Blank-PHP, a WordPress and a Laravel site were created and served HTTPS 200, both refusals
+  say the tier sentence, the app swap adopted the running services. Eyes-on (JXA clicks +
+  screenshots) the same day: onboarding legacy note, the branded keychain prompt, muted
+  PostgreSQL row, New Site's tier note, the 8.0 chip — all as designed after two TSX fixes
+  found there (a PDO note firing beside the tier note; 8.0 appended out of order); a public
+  share ran on **cloudflared 2025.4.0** and answered 200 from the host. With CLT installed on
+  the VM: Apache 2.4.65 served, MariaDB 12.0.2 ran; **Redis 8.2.1 died on the session's
+  `LANG=C.UTF-8`** (a locale macOS 13 lacks) — fixed by spawning with `LC_ALL=C` (#714).
+  **The in-place upgrade to 15 ran the same day** (that VM, `startosinstall` to 15.8): MySQL
+  8.4.6 / MariaDB 12.3.2 / Redis 8.8.0 came up on the datadirs the legacy pins wrote, markers
+  and rows intact, PostgreSQL and PHP 8.0 ordinary rows — and it found the `DnsMode::Down`
+  latch (#442 leg 4). **Still open:** the macOS **14** VM. `docs/SMOKE-TEST.md` "macOS 13 and 14".
+  ✓ **T8** 23 Sep 2026 — 0.8.7 published (`docs/PUBLISH-TESTING.md` §A 0.8.7): tap release +
+  cask `:ventura`, app-manifest serial 13, source `34bd0d7e`. The row stays open for the 14 VM
+  and for §6.6's self-build follow-ups, listed below it.
