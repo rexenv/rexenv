@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) 🚧 0.9.8 — DRAFTED 15 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender green · Publish, the six descriptors, cask and apt open
+## A) ✅ 0.9.8 — PUBLISHED 15 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M, winget and the cask audit open
 
 **Run 43713376367, source `a1312cd1` (tag `v0.9.8`), every lane green first time, 16 assets.**
 setup.exe `ff8bf4fb…`, zip `980655e7…`, arm64 deb `a16651a6…`, dmg `4cf72867…`, app.tar.gz `aea2fe4e…`; each passed its
@@ -138,6 +138,18 @@ rexenv 0.9.8 (a1312cd)`, the agent kickstarted, "adopted 7", every pid in `rex s
 when; the fixture needs rebuilding.
 **Not run on this draft:** the AppImage, the x86_64 Linux lane's artefacts, §M (the in-app update — it needs the
 published descriptors), the 24.04 server through apt.
+**Published by the owner 15 Nov 2026 13:15 UTC.** `Release published` green; the tap's Update cask ran on the dispatch:
+cask `0.9.8`, sha256 `4cf72867…` equal to the dmg's digest; Install scripts and Notify the website green. The six
+descriptors (runtimes runs 43718219576, 43718229458, 43718239294, 43718249345, 43718259193, 43718269339, each approved;
+a dry run 43718172294 before them — it waits for the same approval) → `check-app-manifest.sh` all green once the CDN
+caught up (minutes — the first pass read "the publish already happened — only the CDN is behind"): macOS serial 29,
+Windows 24, Linux deb/AppImage × x86_64/aarch64 15, every one signed and naming 0.9.8. **A trap met here:** the six
+checks were first run from a zsh loop over `"--linux deb x86_64"`-style strings; zsh does not split an unquoted variable,
+the script took the one long argument as none, and four "Linux" checks were the macOS document read four times (serial
+28 where Linux was at 14 gave it away) — pass the words as separate arguments. apt (run 43718304722) →
+`check-apt-repo.sh` all green, amd64 and arm64 0.9.8.
+**Open:** `brew audit --cask --online` could not run on the dev Mac ("Your Command Line Tools (CLT) does not support
+macOS 27" — brew's refusal, not a verdict on the cask); winget not rendered or submitted; §M not run.
 
 ## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov · the 24.04 server 10 Nov
 
