@@ -103,7 +103,7 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
-## A) ✅ 0.9.8 — PUBLISHED 15 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M, winget and the cask audit open
+## A) ✅ 0.9.8 — PUBLISHED 15 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · winget submitted · §M and the cask audit open
 
 **Run 43713376367, source `a1312cd1` (tag `v0.9.8`), every lane green first time, 16 assets.**
 setup.exe `ff8bf4fb…`, zip `980655e7…`, arm64 deb `a16651a6…`, dmg `4cf72867…`, app.tar.gz `aea2fe4e…`; each passed its
@@ -149,7 +149,11 @@ the script took the one long argument as none, and four "Linux" checks were the 
 28 where Linux was at 14 gave it away) — pass the words as separate arguments. apt (run 43718304722) →
 `check-apt-repo.sh` all green, amd64 and arm64 0.9.8.
 **Open:** `brew audit --cask --online` could not run on the dev Mac ("Your Command Line Tools (CLT) does not support
-macOS 27" — brew's refusal, not a verdict on the cask); winget not rendered or submitted; §M not run.
+macOS 27" — brew's refusal, not a verdict on the cask); §M not run.
+**winget (16 Nov 2026):** rendered from the published setup.exe (`FF8BF4FB…`, the asset's API digest the same),
+`winget validate` on the Dell "Manifest validation succeeded", microsoft/winget-pkgs#481040 — open, not merged (0.9.7's
+#474252 merged). The branch is cut from the fork's own master, as before. `scp -O` to a folder made through the elevated
+ssh token answered "No such file or directory" twice; the files went to the home folder and were moved in.
 
 ## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov · the 24.04 server 10 Nov
 
