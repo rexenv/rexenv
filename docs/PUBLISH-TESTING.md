@@ -103,6 +103,42 @@ strips exactly one component and both other shapes produce a broken install.
 If it fails, do not publish: the dmg would install fine and every in-app update from it
 would break.
 
+## A) 🚧 0.9.8 — DRAFTED 15 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender green · Publish, the six descriptors, cask and apt open
+
+**Run 43713376367, source `a1312cd1` (tag `v0.9.8`), every lane green first time, 16 assets.**
+setup.exe `ff8bf4fb…`, zip `980655e7…`, arm64 deb `a16651a6…`, dmg `4cf72867…`, app.tar.gz `aea2fe4e…`; each passed its
+`.sha256`. `verify-full` on the bump: verify green (windows-check and linux-check ran), the sandbox tier green, wk-checks
+ALL PASS, first run.
+What 0.9.8 changes: the site switcher and Mod+K (#959–#962), the site page's one home per action (#963), the quiet Sites
+row (#964, #965), pinned and recent sites on SQLite v46 (#966–#968), "Start & open" / "Start & Magic Login" (#969), the
+:443 holder named before the password prompt (#970) and the IPv4 holder beside a live edge (#971), a dead share's closing
+line (#430), the 7 Nov review's eight findings. **v46 is one-way:** each machine below was migrated by this run and an
+older rexenv refuses that database — the tag's notes say so.
+**Defender ✅ on the Dell, signatures `1.463.311.0`:** "found no threats" for the setup.exe AND the zip, exit 0.
+**Windows ✅ on the Dell (reached through the tunnel; .107 refused), over the installed 0.9.7 with its stack started
+first:** `setup.exe /S` from the desktop session → the exe 0.9.8; **40/40 service pids KEPT**; `rex 0.9.8 (a1312cd) · app
+rexenv 0.9.8 (a1312cd)`, "adopted 9", DNS on the agent; `apw`, `fpw` (FrankenPHP), `conv71w`, `smoke1w`, `gitw` 200,
+`w7check` 200 on its second probe (the first, cold, ran out its 20 s). **The installer's exit code was NOT read:** the
+wrapper waited on `Start-Process -Wait`, which also waits for the DNS agent the installer starts, so it never returned.
+**§A0 ✅ by hand on the dmg:** `rexenv` and `rex` both `x86_64 arm64`; `Dist_Archive_Command` ×5 in EACH slice of
+`rexenv`; `minos 13.0` both; `codesign --verify --deep --strict` valid; Info.plist `0.9.8`.
+**§A ✅ on the 15.8 VM, from the PUBLISHED 0.9.7, stack started first:** `conv71`, `gitp`, `wtp`, `l14vm`, `sm763`, `php74`,
+`smoke-pg`, `smoke1` 200 (`smoke-lv` 503 — "Stopped by you", before and after); app quit; the new app over
+`/Applications` (ditto to a temp, `mv`) with a synthetic quarantine → the Gatekeeper sheet ("rexenv" Not Opened, `Done` /
+`Move to Bin`) → Done (System Events, by name) → no app process; `xattr -rd` → `rex 0.9.8 (a1312cd) · app rexenv 0.9.8
+(a1312cd)`, "the resolver agent is running 0.9.7 2e92c00 but this build is 0.9.8 a1312cd — kickstarting it", "adopted
+8"; **7/7 masters KEPT**; the same eight sites 200; `user_version` 46, 9 sites; `rex doctor` "Edge answering as rexenv on
+:443"; the new Sites list drawn (the row's browser / Magic Login / editor buttons, "Stopped by you" in words).
+**Linux ✅ on the 22.04 arm64 VM (192.168.64.7), over the installed 0.9.7, stack running:** `dpkg -i` → 0.9.8, **20/20
+service pids KEPT**; the 0.9.7 app ended by exact pid, 0.9.8 relaunched from the GNOME shell → `rex 0.9.8 (a1312cd) · app
+rexenv 0.9.8 (a1312cd)`, the agent kickstarted, "adopted 7", every pid in `rex status` the same; `conv71l`, `l16lx`,
+`gitl` 200; the new Sites list drawn. **Not a verdict on the rest of that VM's sites:** `lm`, `lv`, `guard`, `l14lx`,
+`live-sync` answer "File not found." and `wtl` 403 — their folders are gone from `~/rexenv/Sites` (only `conv71l`,
+`feature-x.wtl`, `gitl`, `l16lx`, `wtl` are there), and they were not probed before the install, so this run cannot say
+when; the fixture needs rebuilding.
+**Not run on this draft:** the AppImage, the x86_64 Linux lane's artefacts, §M (the in-app update — it needs the
+published descriptors), the 24.04 server through apt.
+
 ## A) ✅ 0.9.7 — PUBLISHED 7 Nov 2026 — §A0, §A (15.8 VM), the deb (22.04 VM), the setup.exe (Dell), Defender, the six descriptors, cask and apt green · §M on macOS + Linux 8 Nov · the 24.04 server 10 Nov
 
 **Run 42377911543, source `2e92c00b` (tag `v0.9.7`), every lane green first time, 16 assets, the body the tag's verbatim.**
