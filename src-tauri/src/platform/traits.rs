@@ -487,6 +487,15 @@ pub trait ProcessSupervisor: Send + Sync {
         PortConflictHelp::default()
     }
 
+    /// A command the USER runs to LIST every listener on TCP `port`, root-owned ones included —
+    /// for a holder this lookup cannot name while rexenv's own edge is one of the listeners, where
+    /// a command that frees the port would kill the edge with the rest (ledger #971). `None` where
+    /// that never arises: Windows names every holder unelevated, and its edge has no listener
+    /// beside a holder to protect.
+    fn port_listeners_command(&self, _port: u16) -> Option<String> {
+        None
+    }
+
     /// [`port_conflict_help`](Self::port_conflict_help), naming only a holder bound to a LOOPBACK
     /// address when `loopback_only` — for a refusal already known to be a socket on `127.0.0.1`
     /// itself (the resolver's exclusive loopback bind met address-in-use), where a wildcard listener

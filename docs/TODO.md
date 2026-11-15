@@ -172,13 +172,14 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   prompt, no edge started; holder gone → started. Windows never skipped the gate (the Dell named `python.exe`,
   14 Nov). A root holder is not named on macOS/Linux — unprivileged `lsof`/`ss` has no pid for it.
 
-- [ ] **A foreign holder that takes :443 while a boot-started edge is ALIVE is still called a busy machine**
-  (the remainder of #970, NOT reproduced — read off the code, 15 Nov 2026). The gate added in #970 runs only
-  when no edge of ours is up. If the holder binds IPv4 `*:443` before the LaunchDaemon's caddy at boot, the edge
-  is alive on IPv6 alone, its admin socket answers, `prepare_edge` reloads it and returns — and `verify_edge_wire`
-  reads the holder's non-TLS answer as `Unreadable` → "the machine is very busy". An unprivileged tell exists:
-  our marker answers on `[::1]` and not on `127.0.0.1`. Reproduce first (a root holder started before the edge
-  on the macOS VM), then decide.
+- [x] **A foreign holder that takes :443 while a boot-started edge is ALIVE is still called a busy machine** ✓ 15 Nov
+  2026 — ledger #971. Reproduced on the macOS 15.8 VM (0.9.7): a root `python3` on IPv4 `*:443` before the edge
+  daemon → Start all and the watchdog said "very busy", and `rex doctor` offered the blanket `sudo kill` that
+  kills rexenv's own edge. Now an unreadable IPv4 wire beside our marker on `[::1]` is said as what it is, at all
+  three doors: a named holder with its command, an unnamed one with a listing command, never a kill. Run on the
+  same VM with a root and a user-owned holder; the holder gone, the edge answers with no Start all. L0
+  `a_v4_holder_beside_our_edge_is_named_or_listed_never_blanket_killed`,
+  `an_unreadable_v4_wire_alone_is_not_a_holder`. Linux and Windows cannot reach the state (read, not run).
 
 - [ ] **One update channel — open for the three SMOKE rows live per OS** ("Every kind of update is noticed the
   same way", "Settings → Updates installs every kind from one page", "Update all" — macOS, Windows, Linux). They need

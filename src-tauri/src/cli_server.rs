@@ -2047,8 +2047,27 @@ where
             // green while a foreign 127.0.0.1:443 listener answers all sites.
             let caddy_running = services.iter().any(|s| s.name == "Caddy" && s.running);
             let edge = commands::services::edge_ports(&state);
-            let wire = crate::core::proxy::edge_wire(crate::core::adminer::ADMINER_HOST, edge.https).await;
+            let reading = crate::core::proxy::edge_wire_reading(crate::core::adminer::ADMINER_HOST, edge.https).await;
+            let wire = reading.wire();
             let wire_ours = wire == crate::core::proxy::EdgeWire::Ours;
+            // An edge of ours that is up — by its row, or by its admin socket: a BLOCKED edge's
+            // row says not running (`edge_blocked` folds into it), and "not running — Start all"
+            // beside a live edge was the wrong advice (#971).
+            let edge_is_up = caddy_running || crate::core::proxy::admin_alive(state.platform.as_ref());
+            // A program on the port's IPv4 side beside our live edge (#971): its own sentence,
+            // the one Start all and the watchdog use.
+            let edge_note = if edge_is_up
+                && crate::core::proxy::v4_taken_beside_our_edge(crate::core::adminer::ADMINER_HOST, edge.https, reading).await
+            {
+                let supervisor = state.platform.supervisor();
+                Some(crate::core::proxy::v4_holder_sentence(
+                    edge.https,
+                    supervisor.port_conflict_help(edge.https, false),
+                    supervisor.port_listeners_command(edge.https),
+                ))
+            } else {
+                None
+            };
             // NOTHING listening while our Caddy is running is not a conflict —
             // it is our edge failing to serve, which has a different fix. The
             // old code reported both as a conflict and named a holder from a
@@ -2061,7 +2080,11 @@ where
                     .platform
                     .supervisor()
                     .port_conflict_help(edge.https, false);
-                json!({ "holder": help.holder, "app": help.app, "fix": help.free_command })
+                // A command only for a NAMED holder: our own edge is one of the port's listeners,
+                // and the unnamed fallback is the blanket kill that takes it with the rest (#811 —
+                // doctor was the third door, found with #971).
+                let fix = help.free_command.filter(|_| help.holder.is_some());
+                json!({ "holder": help.holder, "app": help.app, "fix": fix })
             });
             // Foreign holders on rexenv's fixed ports. Ours-by-marker is fine
             // (running services); 80/443 are judged by the wire probe above
@@ -2070,7 +2093,6 @@ where
             // …while an edge of ours is up. With none, a holder of 80/443 is what the next
             // Start all will be refused over, and "no foreign holders" beside it was false
             // (a root `python3` on :443, the 15.8 VM, 14 Nov 2026 — ledger #970).
-            let edge_is_up = caddy_running || crate::core::proxy::admin_alive(state.platform.as_ref());
             let marker = state
                 .platform
                 .paths()
@@ -2194,8 +2216,10 @@ where
                 "dns": to_value(&dns)?,
                 "services": to_value(&services)?,
                 "edge": {
-                    "running": caddy_running,
+                    "running": caddy_running || edge_note.is_some(),
                     "wireOurs": wire_ours,
+                    // The whole finding, as a sentence (#971) — printed in place of `conflict`.
+                    "note": edge_note,
                     "conflict": edge_conflict,
                     // Distinct from `conflict`: our edge is up and answering
                     // nothing, so there is no third party to name.

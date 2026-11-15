@@ -2935,7 +2935,10 @@ impl ServiceManager {
             // An UNREADABLE poll (listening, no exchange in time) is no evidence of another
             // proxy: it leaves the foreign count where it was and feeds its own, slower one
             // (#811 — a busy machine's slow edge was announced as a proxy in front of it).
-            let unreadable = reading == proxy::WireReading::Unreadable;
+            // …unless OUR marker answers IPv6 loopback beside it: then a program holds the port's
+            // IPv4 side, which IS evidence, counted on the fast debounce like any other (#971).
+            let v4_taken = proxy::v4_taken_beside_our_edge(adminer::ADMINER_HOST, self.ports.https, reading).await;
+            let unreadable = reading == proxy::WireReading::Unreadable && !v4_taken;
             self.edge_wire_slow = wire_misses_after(self.edge_wire_slow, !unreadable);
             // Debounced (`EDGE_WIRE_MISS_POLLS`): the app's own reload and a launch still
             // adopting a boot-started edge each miss ONE poll, and naming a proxy that is
@@ -2959,6 +2962,13 @@ impl ServiceManager {
                          copy) can cause it; if it does not clear by itself, Stop all then Start \
                          all rebuilds the edge.",
                         self.ports.https
+                    )
+                } else if v4_taken {
+                    let supervisor = platform.supervisor();
+                    proxy::v4_holder_sentence(
+                        self.ports.https,
+                        supervisor.port_conflict_help(self.ports.https, false),
+                        supervisor.port_listeners_command(self.ports.https),
                     )
                 } else if wire == proxy::EdgeWire::NoAnswer {
                     format!(

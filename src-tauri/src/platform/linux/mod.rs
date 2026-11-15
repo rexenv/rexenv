@@ -733,6 +733,9 @@ impl ProcessSupervisor for LinuxSupervisor {
         let rows = ss_rows(&["-Htn", "state", "established"])?;
         Some(rows.iter().filter(|r| r.local_port == port).count())
     }
+    fn port_listeners_command(&self, port: u16) -> Option<String> {
+        Some(format!("sudo ss -ltnp 'sport = :{port}'"))
+    }
     fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
         let rows = ss_rows(&[if udp { "-Hlunp" } else { "-Hltnp" }]).unwrap_or_default();
         let row = rows.into_iter().find(|r| r.local_port == port);

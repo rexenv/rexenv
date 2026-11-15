@@ -268,6 +268,16 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     if wire == core::proxy::EdgeWire::Ours {
         return Ok(());
     }
+    // Unreadable on IPv4 while OUR marker answers IPv6: a program holds the port's IPv4 side beside
+    // a live edge — not a busy machine, and Start all again rebuilds nothing (#971).
+    if core::proxy::v4_taken_beside_our_edge(core::adminer::ADMINER_HOST, https, reading).await {
+        let supervisor = state.platform.supervisor();
+        return Err(Error::Other(core::proxy::v4_holder_sentence(
+            https,
+            supervisor.port_conflict_help(https, false),
+            supervisor.port_listeners_command(https),
+        )));
+    }
     if reading == core::proxy::WireReading::Unreadable {
         return Err(Error::Other(format!(
             "services started, but rexenv's edge has not answered port {https} yet — the machine is \

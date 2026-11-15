@@ -4433,6 +4433,10 @@ fn cmd_doctor(json_output: bool) {
     if edge["running"] == json!(true) {
         if edge["wireOurs"] == json!(true) {
             line(true, false, "Edge", "answering as rexenv on :443".into());
+        } else if let Some(note) = edge["note"].as_str() {
+            // The app's own sentence for a holder beside a live edge; its trailing command
+            // goes under the message column like every other fix here.
+            line(false, false, "Edge", note.replace("\n$ ", "\n            $ "));
         } else if edge["silent"] == json!(true) {
             // Our edge is up and NOTHING is on the port. Not a conflict — there
             // is no one to quit, and saying there is sends the reader hunting

@@ -2167,6 +2167,18 @@ honest footer —
   holder is still not named there — unprivileged `lsof`/`ss` has no pid for it — but the
   error carries the port and the sudo command that finds it. `rex doctor` lists a holder of
   80/443 under Ports while no edge of ours is up (with one up, the wire probe judges them).
+  **A holder that got there BEFORE a live edge is named by the IPv6 wire** (#971, 15 Nov 2026).
+  #970's gate runs only while no edge of ours is up. On macOS a program that binds IPv4 `*:443`
+  before the edge daemon at boot leaves the edge alive on the IPv6 wildcard alone: the admin
+  socket answers, the reload succeeds, and the IPv4 probe is merely unreadable — which Start
+  all and the watchdog read as a busy machine, and `rex doctor` as a proxy to `sudo kill`
+  (the blanket command, which kills rexenv's own edge). `proxy::v4_taken_beside_our_edge`
+  asks `[::1]` for our marker and re-reads IPv4 after it; when that holds, all three doors say
+  one sentence (`v4_holder_sentence`): a named holder with its command, an unnamed (root) one
+  with the platform's LISTING command (`port_listeners_command`) — never a kill. Stopping the
+  holder is the whole fix: the edge's dual-stack socket takes IPv4 again with no Start all.
+  Linux cannot reach the state (the edge's bind fails, #970's case) and Windows' edge has no
+  IPv6 listener, so the branch is macOS's in practice and common in code.
   **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another

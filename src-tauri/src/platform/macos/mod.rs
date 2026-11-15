@@ -739,6 +739,10 @@ impl ProcessSupervisor for MacosSupervisor {
         Some(lsof_established_local(&String::from_utf8_lossy(&out.stdout), port))
     }
 
+    fn port_listeners_command(&self, port: u16) -> Option<String> {
+        Some(format!("sudo lsof -nP -iTCP:{port} -sTCP:LISTEN"))
+    }
+
     fn port_conflict_help(&self, port: u16, udp: bool) -> PortConflictHelp {
         // `-i` selector for the port; UDP has no LISTEN state to filter on.
         let (sel, state): (String, &[&str]) = if udp {

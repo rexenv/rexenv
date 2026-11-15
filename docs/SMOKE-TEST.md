@@ -1041,6 +1041,14 @@ With rexenv's services stopped, a site's actions start them first and say so (le
   the answer is "port 443/tcp (needed by Caddy (HTTPS)) is already in use. To free it, run … `$ sudo
   kill $(sudo lsof -t -iTCP:443 -sTCP:LISTEN)`", with NO password prompt and no edge started; `rex
   doctor` lists the port under Ports.)*
+  ✓ **The same holder started BEFORE the edge** (same VM, 15 Nov 2026, ledger #971): edge daemon
+  booted out, a root `python3 -m http.server 443 --bind 0.0.0.0`, daemon bootstrapped — the edge
+  alive on IPv6 alone. On 0.9.7: `rex start` → "the machine is very busy", `rex doctor` → "another
+  proxy answers :443 IN FRONT" with the blanket `sudo kill`. On this tree's debug build: `rex
+  start`, `rex doctor` and the watchdog's `edge-blocked` all say "another program holds port 443
+  on IPv4 … `$ sudo lsof -nP -iTCP:443 -sTCP:LISTEN`"; the holder killed → `edge-unblocked` with
+  no Start all. A user-owned holder is named ("Python (pid …)") with its own quit command.
+  Not a Windows or Linux row: the state does not arise there (ledger #971 says why).
   ✓ **Windows** 14 Nov 2026 — the Dell (Win 10 22H2, WebView2), this tree's debug exe at 85c902b5
   over 0.9.7's data (13 sites, services stopped; database backed up and put back). Every row
   **Services off** with live Chrome and WordPress icons; a row's menu led with **Start services**.

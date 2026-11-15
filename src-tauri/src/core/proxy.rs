@@ -205,7 +205,71 @@ impl WireReading {
 }
 
 pub async fn edge_wire_reading(host: &str, https_port: u16) -> WireReading {
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], https_port));
+    wire_reading_at(host, std::net::SocketAddr::from(([127, 0, 0, 1], https_port))).await
+}
+
+/// **Our edge answers IPv6 loopback while IPv4 loopback will not complete an exchange: another
+/// program holds the port's IPv4 side, and our edge is up beside it** (ledger #971). An
+/// [`WireReading::Unreadable`] IPv4 wire alone says nothing about who listens, and was read as a
+/// busy machine. On macOS a program that binds IPv4 `*:443` before the edge daemon at boot leaves
+/// the edge alive on the IPv6 wildcard alone — its admin socket answers, the reload succeeds, and
+/// Start all, the watchdog and `rex doctor` each blamed a boot or a large copy, the last one
+/// offering the blanket `sudo kill $(sudo lsof -t …)` that kills rexenv's own edge (a root
+/// `python3`, the 15.8 VM, 15 Nov 2026).
+///
+/// IPv4 is read AGAIN after the IPv6 answer: a loaded machine can miss one probe and answer the
+/// next, and one miss beside one answer would name a program that is not there. Only an IPv4
+/// wire that fails on both sides of a marker-carrying IPv6 answer counts.
+///
+/// Never true where the edge has no IPv6 listener to answer (Windows binds `127.0.0.1` only),
+/// nor where a taken IPv4 side stops the edge binding at all (Linux: `bind: address already in
+/// use`, the #970 gate's case).
+pub async fn v4_taken_beside_our_edge(host: &str, https_port: u16, v4: WireReading) -> bool {
+    if v4 != WireReading::Unreadable {
+        return false;
+    }
+    let v6 = std::net::SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, https_port));
+    wire_reading_at(host, v6).await == WireReading::Ours
+        && matches!(
+            edge_wire_reading(host, https_port).await,
+            WireReading::Unreadable | WireReading::AnsweredNotOurs
+        )
+}
+
+/// What Start all, the watchdog and `rex doctor` say for [`v4_taken_beside_our_edge`] — one
+/// sentence, three doors. A NAMED holder gets the command that stops it; an unnamed one (a root
+/// listener an unprivileged lookup cannot see) gets the platform's LISTING command and never a
+/// blanket kill: our own edge is one of the port's listeners (#811).
+pub fn v4_holder_sentence(
+    https_port: u16,
+    help: crate::platform::traits::PortConflictHelp,
+    listing: Option<String>,
+) -> String {
+    let lead = |holder: &str| {
+        format!(
+            "rexenv's edge is running, but {holder} holds port {https_port} on IPv4 — it took the port before the edge started, so no site loads."
+        )
+    };
+    match help.holder {
+        Some(holder) => {
+            let quit = help.app.unwrap_or_else(|| "it".into());
+            let fix = help.free_command.map(|c| format!("\n$ {c}")).unwrap_or_default();
+            format!("{} Stop {quit}; the edge then answers by itself, with no Start all.{fix}", lead(&holder))
+        }
+        None => {
+            let how = listing
+                .map(|c| format!(" This lists what listens on the port — the entry that is not caddy is the one:\n$ {c}"))
+                .unwrap_or_default();
+            format!(
+                "{} Stop that program; the edge then answers by itself, with no Start all.{how}",
+                lead("another program")
+            )
+        }
+    }
+}
+
+async fn wire_reading_at(host: &str, addr: std::net::SocketAddr) -> WireReading {
+    let https_port = addr.port();
     // A REFUSED connect is the only proof that nothing is listening. A timeout
     // proves nothing, so it resolves toward `Foreign` with every other
     // ambiguous case — which is why the wait must outlast how long THIS OS
@@ -1194,6 +1258,54 @@ mod tests {
             "a second probe client appeared in proxy.rs — `edge_wire` is the one place the \
              wire is identified"
         );
+    }
+
+    /// Ledger #971 — the sentence for a holder on the port's IPv4 side beside a live edge: a NAMED
+    /// holder gets its own command; an unnamed one gets the LISTING command and never a kill (our
+    /// edge is one of the listeners); neither blames a busy machine nor offers Start all as a fix.
+    #[test]
+    fn a_v4_holder_beside_our_edge_is_named_or_listed_never_blanket_killed() {
+        use crate::platform::traits::PortConflictHelp;
+        let named = v4_holder_sentence(
+            443,
+            PortConflictHelp { holder: Some("python3 (pid 7)".into()), app: None, free_command: Some("sudo kill 7".into()) },
+            Some("LIST".into()),
+        );
+        assert!(named.contains("python3 (pid 7) holds port 443 on IPv4"), "{named}");
+        assert!(named.ends_with("\n$ sudo kill 7"), "the toast's command block: {named}");
+        assert!(!named.contains("LIST"), "a named holder needs no listing: {named}");
+        let unnamed = v4_holder_sentence(
+            443,
+            // What macOS answers for a root holder: nobody named, and the blanket command.
+            PortConflictHelp { holder: None, app: None, free_command: Some("sudo kill $(sudo lsof -t -iTCP:443 -sTCP:LISTEN)".into()) },
+            Some("LIST".into()),
+        );
+        assert!(unnamed.contains("another program holds port 443 on IPv4"), "{unnamed}");
+        assert!(unnamed.ends_with("\n$ LIST"), "{unnamed}");
+        assert!(!unnamed.contains("kill"), "the blanket command kills rexenv's own edge: {unnamed}");
+        let bare = v4_holder_sentence(443, PortConflictHelp::default(), None);
+        assert!(!bare.contains('$'), "no command at all where the platform has none: {bare}");
+        for s in [&named, &unnamed, &bare] {
+            assert!(!s.contains("  "), "a continuation's indentation leaked into the sentence: {s}");
+            assert!(!s.contains("busy"), "{s}");
+            assert!(s.contains("with no Start all"), "{s}");
+        }
+    }
+
+    /// Ledger #971 — an unreadable IPv4 wire is a holder ONLY with our marker answering IPv6
+    /// beside it: with nothing on `[::1]` it stays what it was (a slow edge), and a reading that
+    /// is not unreadable is never re-judged. The positive leg needs our edge's TLS on `[::1]` —
+    /// the macOS VM run is its proof.
+    #[tokio::test]
+    async fn an_unreadable_v4_wire_alone_is_not_a_holder() {
+        // Accepts and never speaks TLS: what the root `python3` did.
+        let holder = std::net::TcpListener::bind("127.0.0.1:0").expect("a held port");
+        let port = holder.local_addr().unwrap().port();
+        assert_eq!(edge_wire_reading("adminer.rex", port).await, WireReading::Unreadable, "fixture: listening, no exchange");
+        assert!(!v4_taken_beside_our_edge("adminer.rex", port, WireReading::Unreadable).await, "nothing answers [::1]");
+        for other in [WireReading::Ours, WireReading::AnsweredNotOurs, WireReading::NoAnswer] {
+            assert!(!v4_taken_beside_our_edge("adminer.rex", port, other).await, "{other:?}");
+        }
     }
 
     /// The probe's wait has to outlast how long the OS takes to REFUSE a closed
