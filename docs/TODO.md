@@ -393,8 +393,9 @@ nobody can see from the list is indistinguishable from a gate nobody ran.
   `docs/CLI-ROADMAP.md`'s live-run record; `php install` ran on the Linux VM 24 Sep and on the Win11 VM
   9 Oct. ✓ **7 Nov 2026, the Dell:** `php uninstall`, `php settings set`, `db versions --set`, `site
   server/domain/move`, `mail clear` and `site restart`'s backend outcome all RUN (CLI-ROADMAP's record; the
-  move found and fixed #953). Still owed: CLI-ROADMAP's `tld --remove` real-removal leg (UAC — the owner's)
-  and `site restart`'s refusal outcome.)
+  move found and fixed #953). Still owed: CLI-ROADMAP's `tld --remove` real-removal leg (UAC — the owner's).
+  ✓ **16 Nov 2026:** `site restart`'s refusal outcome RUN on macOS — `site_restart_refusal_check` (sandbox tier,
+  plant-proven ×2, ledger #444).)
   `site create --starter-db` (**RUN 3 Sep 2026** — the seed is real: table
   `starter_items`, a `db.php`, the page renders "connected" and one row) —
   plus the packaged-GUI walks still noted inside their shipped entries: MariaDB

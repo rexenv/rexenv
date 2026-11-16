@@ -28,26 +28,26 @@ App version **0.9.8** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:377` Release 5.4 — clean-Mac smoke test
 - `TODO.md:384` Tunnel probe session
 - `TODO.md:388` In-app verifies owed
-- `TODO.md:406` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:418` The live pool swap is still L3
-- `TODO.md:422` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:430` Install WordPress into an empty LINKED folder
-- `TODO.md:437` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:407` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:419` The live pool swap is still L3
+- `TODO.md:423` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:431` Install WordPress into an empty LINKED folder
+- `TODO.md:438` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:444` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:484` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:495` Xdebug on PHP 8.0
-- `TODO.md:500` SMAppService privileged helper
-- `TODO.md:502` Developer ID signing + notarization
+- `TODO.md:445` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:485` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:496` Xdebug on PHP 8.0
+- `TODO.md:501` SMAppService privileged helper
+- `TODO.md:503` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 4
 
-- `TODO.md:507` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
-- `TODO.md:520` Headless rexenv on a VPS — open: the rest of Phase 1b
-- `TODO.md:534` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
-- `TODO.md:541` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:508` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
+- `TODO.md:521` Headless rexenv on a VPS — open: the rest of Phase 1b
+- `TODO.md:535` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
+- `TODO.md:542` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

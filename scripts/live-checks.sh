@@ -208,6 +208,7 @@ site_cert_gen                  system  all
 site_matrix_check              network macos
 site_provision_check           network all
 site_resources_check           stack   all
+site_restart_refusal_check     sandbox macos
 site_stop_start_check          sandbox all
 sites_folder_check             sandbox all
 starter_seed_check             sandbox all

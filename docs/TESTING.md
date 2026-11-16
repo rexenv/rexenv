@@ -391,6 +391,17 @@ it can:
   which "the shim was there" cannot be told from "this PHP had it anyway"), then ON, and
   asserts `ini_get` verbatim, `getenv`/`$_ENV`, and a real `mail()` that ran a fake
   sendmail at a path WITH A SPACE with sendmail's argv and the message on stdin.
+  **`site_restart_refusal_check` (sandbox tier, 16 Nov 2026, ledger #444) holds the one
+  outcome no other layer can reach.** `restart_site_backend` answers `Refused` only for an
+  ADOPTED backend asked by a process the stack guard does not trust — and the guard is always
+  open under `cfg(test)` while the real app is never refused, so neither a unit test nor a
+  `rex site restart` can meet it. A live-check example is exactly the process the guard exists
+  to stop, so it is also the only one that can prove it: a real FrankenPHP on a fixture port,
+  adopted through `adopt_startup`, refused twice (same pid, still answering — the second call
+  proves the backend was put back), then the control on the same manager with the guard
+  opened (`Backend`, a different pid). Opening the guard in an example is safe only on a
+  `common::sandbox` platform: the ownership marker is the sandbox's app-data dir, so nothing
+  of the user's can be adopted, and `stop_all` is never called.
   Leg 4 (3 Sep 2026) hands the guard a LIVE stand-in parent with a start time that is not
   its own — the recycled-pid shape, reproduced without recycling a pid — and requires the
   share to end while the stand-in survives. `valet_import_check` gained step 3b the same
