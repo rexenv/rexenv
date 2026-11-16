@@ -101,7 +101,7 @@ fn start_inputs(
     let db_versions = crate::core::db::DbEngine::ALL
         .into_iter()
         .filter(|e| e.available())
-        .map(|e| (e, e.effective_version(&conn)))
+        .map(|e| (e, e.effective_version(state.platform.as_ref(), &conn)))
         .collect::<std::collections::HashMap<_, _>>();
     // The user's Update choices, already floored by the pin. Snapshotted with
     // everything else so the pool manager is handed one consistent view and never

@@ -441,7 +441,7 @@ async fn run_one(
         let state = handle.state::<AppState>();
         let version = {
             let conn = state.db.lock().unwrap();
-            engine.effective_version(&conn)
+            engine.effective_version(state.platform.as_ref(), &conn)
         };
         engine.sql_client_bins(state.platform.as_ref(), &version).await.ok().map(|(c, _)| c)
     };

@@ -71,7 +71,7 @@ pub(crate) fn effective_db_version(state: &AppState, engine: DbEngine) -> Result
         .db
         .lock()
         .map_err(|_| Error::Other("database lock poisoned".into()))?;
-    Ok(engine.effective_version(&conn))
+    Ok(engine.effective_version(state.platform.as_ref(), &conn))
 }
 
 fn engine_from_key(key: &str) -> Result<DbEngine> {

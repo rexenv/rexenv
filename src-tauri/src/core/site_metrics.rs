@@ -91,7 +91,7 @@ pub fn resources_of(
             .filter_map(|e| {
                 let version = {
                     let conn = state.db.lock().ok()?;
-                    e.effective_version(&conn)
+                    e.effective_version(state.platform.as_ref(), &conn)
                 };
                 let client = e.cached_sql_client(state.platform.as_ref(), &version)?;
                 let sizes = e.db_sizes(&client, e.port()).ok()?;

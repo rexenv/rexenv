@@ -262,7 +262,7 @@ async fn main() {
         // default pin.
         let version = {
             let conn = state.db.lock().unwrap();
-            engine.effective_version(&conn)
+            engine.effective_version(state.platform.as_ref(), &conn)
         };
         let (client, _) = engine
             .sql_client_bins(state.platform.as_ref(), &version)
@@ -312,7 +312,7 @@ async fn main() {
         // default pin.
         let version = {
             let conn = state.db.lock().unwrap();
-            engine.effective_version(&conn)
+            engine.effective_version(state.platform.as_ref(), &conn)
         };
         if let Ok((client, _)) = engine.sql_client_bins(state.platform.as_ref(), &version).await {
             let left = engine

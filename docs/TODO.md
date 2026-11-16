@@ -219,7 +219,7 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   tests in `core::binaries`), `legacy_pins_check` (ours downloaded, prepared, `initdb` run under an
   installed legacy tier on the macOS 26 dev Mac), `manifest_sweep_check`. **Not proven: a load on a
   real macOS 13 or 14 host — none exists** (`docs/SMOKE-TEST.md` "macOS 13 and 14" carries both rows).
-- [ ] **PostgreSQL datadir across a tier move — the default series changes under the same
+- [x] **PostgreSQL datadir across a tier move — the default series changes under the same
   directory** (found 16 Nov 2026 building the row above; older than it). `DbEngine::data_dir` gives
   the unversioned `postgres/data` to the DEFAULT pin's series. Legacy14's default is series 16
   (16.4.0 before, 16.15.0 now), Standard's is 18: a macOS 14 host with a PostgreSQL cluster that
@@ -234,6 +234,15 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Standard tier, and PostgreSQL 16 still starts on it while 18 gets its own directory. MySQL and
   MariaDB are not affected the same way (`legacy_upgrade_check`: the newer server opens the older
   files).
+  ✓ 16 Nov 2026, ledger #973 — as proposed: `DbEngine::data_dir` reads the owner of `postgres/data`
+  from its `PG_VERSION` (an empty path still falls to the default's series), and
+  `effective_version` (now taking the platform; 5 callers, not 29 — the count had included
+  Adminer's and phpMyAdmin's functions of the same name) follows the existing cluster when no
+  version was chosen. L0 planted ×3; L1 `postgres_tier_move_check` is this row's *Done when*, plus
+  a control (the 18 server refuses the 16 cluster), planted ×2. **Not proven: a real in-place OS
+  upgrade** (no 13 or 14 host — SMOKE "macOS 13 and 14"). **Left as it is, on purpose:** a host
+  the old rule already gave a second cluster of the same major keeps the one it runs; its older
+  cluster stays in `postgres/data`, unread, and nothing in the UI says so.
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).

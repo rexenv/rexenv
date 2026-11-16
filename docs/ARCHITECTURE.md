@@ -1205,9 +1205,15 @@ Live-proven end to end by `site_stop_start_check`.
   `db_version_<engine>` settings KV (validated in core; an orphaned selection falls
   back to the default pin). **Each version SERIES keeps its OWN datadir** — never an
   in-place upgrade/downgrade (PG major datadirs are mutually incompatible;
-  MySQL/MariaDB downgrades unsupported): the default pin's series keeps the legacy
+  MySQL/MariaDB downgrades unsupported): ONE series keeps the legacy
   `<engine>/data` path (existing data never moves), other series live under
-  `<engine>/<series>/data` (`DbEngine::series_of`/`data_dir`). One server per engine
+  `<engine>/<series>/data` (`DbEngine::series_of`/`data_dir`). **For PostgreSQL the series
+  that owns `postgres/data` is read from the cluster in it (`PG_VERSION`), and only an empty
+  path falls to the default pin's series; with no version chosen, the effective version is
+  the one that cluster was written by** (ledger #973, 16 Nov 2026). The default is a per-host
+  pin and it moves across a major under the same directory — 16 on macOS 14, 18 on 15 — which
+  handed a 16 cluster to an 18 server that refuses it. MySQL and MariaDB keep the default's
+  rule on purpose: their newer server opens the older series' files (#712). One server per engine
   at a time, always on the engine's fixed port — adoption/status stay version-agnostic.
 - **MariaDB has no `--initialize-insecure`** and its `mariadb-install-db` is a shell
   script full of baked brew paths — `core/mariadb.rs::initialize` drives

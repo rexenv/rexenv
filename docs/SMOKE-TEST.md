@@ -3562,6 +3562,16 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       2026). What has run: the same resolve → prepare → `initdb` on the macOS 26 dev Mac under an
       installed Legacy13 tier (`legacy_pins_check`), which proves the bytes and the `minos 13.0`
       header, not a load on 13.
+- [ ] **PostgreSQL survives the OS upgrade — 14 → 15 (and 13 → 14)** (ledger #973). On a
+      macOS 14 host with PostgreSQL started and a site's database in it (no version ever picked
+      in Databases), upgrade macOS to 15 in place, launch rexenv, Start all → the Databases row
+      still reads **16.15.0** `running` (not 18.6.0), the site loads with its data, and
+      `postgres.log` has no `database files are incompatible with server`. Then pick 18.6.0 in
+      the version list → it starts EMPTY on `postgres/18/data`; pick 16.15.0 back → the site's
+      data is there again. `cat "$HOME/Library/Application Support/dev.rexenv.rexenv/postgres/data/PG_VERSION"`
+      → `16` throughout. **Open: no macOS 14 host exists.** What has run (16 Nov 2026, dev Mac):
+      `postgres_tier_move_check` — the same move with the tier installed instead of the OS
+      upgraded, real servers, plus the control that 18 refuses a 16 cluster.
 - [ ] **PostgreSQL on 14 — an existing 16.4.0 cluster opens on 16.15.0.** On a macOS 14 host
       that ran a build before this one with PostgreSQL started (so `postgres/data` holds a
       16.4.0 cluster with a site's database in it): install this build, Start PostgreSQL → the

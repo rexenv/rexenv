@@ -186,6 +186,7 @@ php_update_check               network macos
 port_check                     sandbox all
 postgres_site_db_check         network all
 postgres_site_lifecycle_check  network all
+postgres_tier_move_check       network macos
 postgres_admin_token_check     service all
 prefetch_responsiveness_check  network all
 priv_check                     system  macos

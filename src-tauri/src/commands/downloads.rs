@@ -46,7 +46,7 @@ fn core_plan(state: &State<'_, AppState>) -> Result<Vec<PlannedBinary>> {
             crate::core::db::DbEngine::ALL
                 .into_iter()
                 .filter(|e| e.available())
-                .map(|e| (e, e.effective_version(&conn)))
+                .map(|e| (e, e.effective_version(state.platform.as_ref(), &conn)))
                 .collect::<std::collections::HashMap<_, _>>(),
             crate::core::adminer::effective_version(state.platform.as_ref(), &conn),
         )

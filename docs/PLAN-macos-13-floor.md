@@ -288,8 +288,9 @@ own datadir; MariaDB 12.0.2 → 12.3.2 and 11.4.8 → 11.4.12 likewise; Redis an
 hold no state. PostgreSQL was refused, so there is no datadir to carry (**true of 13 on 23 Sep
 2026 and wrong about 14 from the start**: a 14 host had 16.4.0 as its default, so its cluster
 sits in the unversioned `postgres/data`, and on 15 that path belongs to the 18 default — a
-major PostgreSQL will not open. Found 16 Nov 2026 while building §6.6 item 1; not fixed by it —
-`docs/TODO.md`, "PostgreSQL datadir across a tier move"). The reverse move
+major PostgreSQL will not open. Found 16 Nov 2026 while building §6.6 item 1 and fixed the same day: the unversioned path
+belongs to the cluster in it, and a host that chose no version runs its data's — ledger #973,
+`postgres_tier_move_check`). The reverse move
 never happens (macOS does not downgrade), so no engine is ever handed a NEWER datadir than
 it can read. The forward path gets one L1 proof per engine (start a 13-pinned datadir on
 the standard binary) before this ships.

@@ -1002,7 +1002,13 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   `docs/PLAN-macos-13-floor.md`). `legacy_upgrade_check` (network tier, ledger #712) is the
   OS-upgrade half: each legacy engine writes a row into a sandbox datadir on a fixture port,
   and the standard pin of the same series starts on that directory and reads it back —
-  MySQL 8.4 / 8.0, MariaDB 12 / 11.4, all four on 23 Sep 2026.
+  MySQL 8.4 / 8.0, MariaDB 12 / 11.4, all four on 23 Sep 2026. **PostgreSQL is the opposite case and has its
+  own check, `postgres_tier_move_check` (network tier, ledger #973)**: a major does NOT open another major's files,
+  so the proof is that the cluster KEEPS its server — 16 writes a row as a Legacy14 default, the tier becomes
+  Standard, 16 still starts on the same directory and reads it, 18 gets its own, and the control runs the 18
+  server on the 16 cluster to show the refusal is real. Its L0 twin plants `PG_VERSION` files under a platform
+  that owns only a temp app-data root — `platform::current()` there would read the developer's own cluster,
+  which since #973 decides the answer.
 - **The design system's colour contrast was asserted in one comment and checked
   nowhere** (#337, scan landed 16 Aug 2026). `every_text_on_surface_pairing_meets_wcag_aa`
   and `every_rex_colour_class_names_a_token_that_exists` in `core::copy_scan` derive

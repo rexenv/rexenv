@@ -230,7 +230,7 @@ impl<'a> ReadCtx<'a> {
         let engines = core::db::DbEngine::ALL
             .into_iter()
             .filter(|e| e.available())
-            .map(|e| StackEngine { key: e.key(), label: e.label(), selected: e.effective_version(&conn), offered: e.versions().to_vec() })
+            .map(|e| StackEngine { key: e.key(), label: e.label(), selected: e.effective_version(self.state.platform.as_ref(), &conn), offered: e.versions().to_vec() })
             .collect();
         let platform = self.state.platform.as_ref();
         let unresolvable_tlds = core::dns::unresolvable_tlds_in_use(&conn, platform, core::dns::DEFAULT_DNS_PORT)

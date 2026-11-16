@@ -175,13 +175,26 @@ impl DbEngine {
     }
 
     /// The engine's EFFECTIVE version: the stored selection when it's still an
-    /// offered pin, else the default (a selection orphaned by a pin bump falls
-    /// back safely — its per-series datadir stays on disk, never deleted).
-    pub fn effective_version(&self, conn: &Connection) -> String {
+    /// offered pin; else the offered version of the series that already has a
+    /// cluster in the unversioned datadir ([`Self::legacy_owner_series`]); else
+    /// the default (a selection orphaned by a pin bump falls back safely — its
+    /// per-series datadir stays on disk, never deleted).
+    ///
+    /// **A default is what a FRESH install runs, never a reason to leave existing
+    /// data behind** (ledger #973). The default is a per-host pin, and it moves:
+    /// a macOS 14 host defaults to PostgreSQL 16, the same Mac on macOS 15 to 18.
+    /// Read as "the version to run", that move started an empty 18 cluster beside
+    /// every site's database — so a host that never chose a version runs the one
+    /// its data was written by, for as long as that series is offered.
+    pub fn effective_version(&self, platform: &dyn Platform, conn: &Connection) -> String {
         crate::state::store::get_setting(conn, &self.version_setting_key())
             .ok()
             .flatten()
             .filter(|v| self.versions().contains(&v.as_str()))
+            .or_else(|| {
+                let owner = self.legacy_owner_series(platform)?;
+                self.versions().iter().find(|v| self.series_of(v) == owner).map(|v| v.to_string())
+            })
             .unwrap_or_else(|| self.default_version().to_string())
     }
 
@@ -209,9 +222,41 @@ impl DbEngine {
         }
     }
 
-    /// The datadir for a VERSION: the default pin's series keeps the legacy
-    /// path (`<engine>/data` — existing installs are never moved), other
-    /// series live under `<engine>/<series>/data`.
+    /// The series whose cluster already sits in the unversioned datadir
+    /// (`<engine>/data`), read from the directory itself — `None` when nothing is
+    /// there yet, or for an engine whose newer server opens an older series' files.
+    ///
+    /// PostgreSQL only: a major refuses another major's files ("database files are
+    /// incompatible with server"), and `initdb` writes the major into `PG_VERSION`.
+    /// MySQL and MariaDB are deliberately not asked — their default's datadir IS
+    /// handed from one series to the next and the newer server upgrades it
+    /// (`legacy_upgrade_check`, ledger #712).
+    pub fn legacy_owner_series(&self, platform: &dyn Platform) -> Option<String> {
+        match self {
+            DbEngine::Postgres => {
+                let marker = postgres::data_dir(platform).ok()?.join("PG_VERSION");
+                let major = std::fs::read_to_string(marker).ok()?.trim().to_string();
+                (!major.is_empty() && major.bytes().all(|b| b.is_ascii_digit())).then_some(major)
+            }
+            _ => None,
+        }
+    }
+
+    /// The datadir for a VERSION: ONE series keeps the unversioned path
+    /// (`<engine>/data` — existing installs are never moved), the others live
+    /// under `<engine>/<series>/data`.
+    ///
+    /// **Which series owns the unversioned path is read from the cluster in it,
+    /// and only an EMPTY path falls to the default pin's series** (ledger #973).
+    /// It was the default's series outright, and the default is per host: on a
+    /// macOS 14 → 15 move it goes 16 → 18 under the same directory, so the 18
+    /// server was handed a 16 cluster and refused it, while 16 itself was sent to
+    /// an empty `postgres/16/data`. Nothing was deleted and nothing could be read.
+    ///
+    /// A series that ALREADY has an initialized directory of its own keeps it,
+    /// even when the unversioned path holds the same series: that is a host which
+    /// lived through the old rule and was given a second cluster. Moving it back
+    /// would swap a running database for an older one without a word.
     pub fn data_dir(&self, platform: &dyn Platform, version: &str) -> Result<PathBuf> {
         let legacy = match self {
             DbEngine::Mysql => database::data_dir(platform)?,
@@ -220,16 +265,13 @@ impl DbEngine {
             DbEngine::Redis => redis::data_dir(platform)?,
         };
         let series = self.series_of(version);
-        if series == self.series_of(self.default_version()) {
-            Ok(legacy)
-        } else {
-            Ok(platform
-                .paths()
-                .app_data_dir()?
-                .join(self.key())
-                .join(series)
-                .join("data"))
-        }
+        let own = platform.paths().app_data_dir()?.join(self.key()).join(&series).join("data");
+        let owner = self.legacy_owner_series(platform);
+        let owns_legacy = match &owner {
+            Some(owner) => *owner == series && !postgres::is_initialized(&own),
+            None => series == self.series_of(self.default_version()),
+        };
+        Ok(if owns_legacy { legacy } else { own })
     }
 
     /// Whether this engine has a working macOS binary + lifecycle (so it can be
@@ -817,26 +859,140 @@ mod tests {
         }
     }
 
+    /// A `Platform` that owns nothing but an app-data root. `platform::current()`
+    /// would read the DEVELOPER'S `postgres/data/PG_VERSION`, and since ledger #973
+    /// that file decides both answers these tests ask for.
+    struct DataPaths(std::path::PathBuf);
+    impl crate::platform::traits::Paths for DataPaths {
+        fn app_data_dir(&self) -> Result<PathBuf> {
+            Ok(self.0.clone())
+        }
+        fn config_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn log_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn bin_dir(&self) -> Result<PathBuf> { unimplemented!() }
+        fn hosts_file(&self) -> PathBuf { unimplemented!() }
+    }
+    struct DataPlatform(DataPaths);
+    impl Platform for DataPlatform {
+        fn paths(&self) -> &dyn crate::platform::traits::Paths {
+            &self.0
+        }
+        fn binaries(&self) -> &dyn crate::platform::traits::BinaryProvider { unimplemented!() }
+        fn supervisor(&self) -> &dyn crate::platform::traits::ProcessSupervisor { unimplemented!() }
+        fn dns(&self) -> &dyn crate::platform::traits::DnsManager { unimplemented!() }
+        fn cert_trust(&self) -> &dyn crate::platform::traits::CertTrustManager { unimplemented!() }
+        fn privileges(&self) -> &dyn crate::platform::traits::PrivilegeManager { unimplemented!() }
+        fn autostart(&self) -> &dyn crate::platform::traits::AutostartManager { unimplemented!() }
+        fn permissions(&self) -> &dyn crate::platform::traits::PermissionManager { unimplemented!() }
+        fn shell(&self) -> &dyn crate::platform::traits::ShellRunner { unimplemented!() }
+        fn edge(&self) -> &dyn crate::platform::traits::EdgeSupervisor { unimplemented!() }
+        fn dns_agent(&self) -> &dyn crate::platform::traits::DnsAgentManager { unimplemented!() }
+        fn app_bundle(&self) -> &dyn crate::platform::traits::AppBundle { unimplemented!() }
+    }
+    fn data_fixture(tag: &str) -> (DataPlatform, PathBuf) {
+        let root = std::env::temp_dir().join(format!("rexenv-dbdata-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        (DataPlatform(DataPaths(root.clone())), root)
+    }
+    /// What `initdb` leaves behind, as far as these rules read it.
+    fn plant_cluster(datadir: &Path, major: &str) {
+        std::fs::create_dir_all(datadir).unwrap();
+        std::fs::write(datadir.join("PG_VERSION"), format!("{major}\n")).unwrap();
+    }
+
     #[test]
     fn effective_version_persists_validates_and_falls_back() {
+        let (plat, root) = data_fixture("effective");
         let conn = crate::state::db::open_in_memory().unwrap();
         // Unset → the default pin.
         assert_eq!(
-            DbEngine::Postgres.effective_version(&conn),
+            DbEngine::Postgres.effective_version(&plat, &conn),
             DbEngine::Postgres.default_version()
         );
         // Stored + offered → the selection.
         DbEngine::Postgres.set_version(&conn, "17.11.0").unwrap();
-        assert_eq!(DbEngine::Postgres.effective_version(&conn), "17.11.0");
+        assert_eq!(DbEngine::Postgres.effective_version(&plat, &conn), "17.11.0");
         // Not offered → refused at write.
         assert!(DbEngine::Postgres.set_version(&conn, "15.0.0").is_err());
         // A selection orphaned by a future pin bump falls back to the default
         // (simulated by writing the raw setting directly).
         crate::state::store::set_setting(&conn, "db_version_postgres", "9.9.9").unwrap();
         assert_eq!(
-            DbEngine::Postgres.effective_version(&conn),
+            DbEngine::Postgres.effective_version(&plat, &conn),
             DbEngine::Postgres.default_version()
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ledger #973 — **the unversioned PostgreSQL datadir belongs to the cluster IN it,
+    /// and a host that never chose a version runs the one its data was written by.**
+    /// Each block is a host that exists: the tier moves under a directory that does not.
+    #[test]
+    fn the_unversioned_postgres_datadir_belongs_to_the_cluster_in_it() {
+        use crate::core::binaries::{install_tier, BinaryTier};
+        let pg = DbEngine::Postgres;
+        let (plat, root) = data_fixture("pgowner");
+        let conn = crate::state::db::open_in_memory().unwrap();
+        let legacy = root.join("postgres").join("data");
+        let own = |major: &str| root.join("postgres").join(major).join("data");
+
+        // A fresh install: nothing on disk, so the DEFAULT's series takes the path —
+        // 18 on Standard, 16 on a macOS 14 host.
+        assert_eq!(pg.legacy_owner_series(&plat), None);
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), legacy);
+        assert_eq!(pg.data_dir(&plat, "16.15.0").unwrap(), own("16"));
+        install_tier(BinaryTier::Legacy14);
+        assert_eq!(pg.default_version(), "16.15.0");
+        assert_eq!(pg.data_dir(&plat, "16.15.0").unwrap(), legacy);
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), own("18"));
+
+        // macOS 14 → 15: the 16 cluster that host wrote, now under an 18 default.
+        plant_cluster(&legacy, "16");
+        install_tier(BinaryTier::Standard);
+        assert_eq!(pg.default_version(), "18.6.0");
+        assert_eq!(pg.legacy_owner_series(&plat).as_deref(), Some("16"));
+        assert_eq!(pg.data_dir(&plat, "16.15.0").unwrap(), legacy, "16 was sent to an empty postgres/16/data");
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), own("18"), "an 18 server was handed a 16 cluster");
+        assert_eq!(pg.effective_version(&plat, &conn), "16.15.0", "the default left the data behind");
+        // A CHOICE still wins over the data.
+        pg.set_version(&conn, "18.6.0").unwrap();
+        assert_eq!(pg.effective_version(&plat, &conn), "18.6.0");
+        crate::state::store::set_setting(&conn, "db_version_postgres", "").unwrap();
+
+        // macOS 13 → 14: the same move the other way (18 → a 16 default).
+        plant_cluster(&legacy, "18");
+        install_tier(BinaryTier::Legacy14);
+        assert_eq!(pg.effective_version(&plat, &conn), "18.6.0");
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), legacy);
+        assert_eq!(pg.data_dir(&plat, "16.15.0").unwrap(), own("16"));
+        install_tier(BinaryTier::Standard);
+
+        // A host that lived through the old rule: 16 in the unversioned path AND a
+        // second 16 cluster of its own. The one it is running stays.
+        plant_cluster(&legacy, "16");
+        plant_cluster(&own("16"), "16");
+        assert_eq!(pg.data_dir(&plat, "16.15.0").unwrap(), own("16"));
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), own("18"));
+        std::fs::remove_dir_all(own("16")).unwrap();
+
+        // A series no pin offers any more: the default runs, in a directory of its
+        // own — never on the stranger's files.
+        plant_cluster(&legacy, "15");
+        assert_eq!(pg.effective_version(&plat, &conn), pg.default_version());
+        assert_eq!(pg.data_dir(&plat, pg.default_version()).unwrap(), own("18"));
+
+        // A marker that is not a major is not an owner.
+        std::fs::write(legacy.join("PG_VERSION"), "../18\n").unwrap();
+        assert_eq!(pg.legacy_owner_series(&plat), None);
+        assert_eq!(pg.data_dir(&plat, "18.6.0").unwrap(), legacy);
+
+        // MySQL and MariaDB hand the default's directory across series on purpose
+        // (#712): no owner is read, whatever is on disk.
+        std::fs::create_dir_all(root.join("mysql").join("data").join("mysql")).unwrap();
+        assert_eq!(DbEngine::Mysql.legacy_owner_series(&plat), None);
+        assert_eq!(DbEngine::Mysql.data_dir(&plat, DbEngine::Mysql.default_version()).unwrap(), root.join("mysql").join("data"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
