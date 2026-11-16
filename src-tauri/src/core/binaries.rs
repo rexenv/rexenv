@@ -275,7 +275,9 @@ const STANDARD_PINS: PinSet = PinSet {
 
 /// macOS 14: the standard set except the two rows whose standard pin declares
 /// `minos 15.0` — cloudflared and PostgreSQL. Every other standard pin is 14.0
-/// or lower on both slices (`docs/PORTS.md`).
+/// or lower on both slices (`docs/PORTS.md`). PostgreSQL's VERSIONS are the
+/// standard three; what differs is the DEFAULT (see [`LEGACY14_POSTGRES_VERSION`])
+/// and the bytes — rexenv's own `minos 13.0` build, chosen in [`manifest`] by tier.
 const LEGACY14_PINS: PinSet = PinSet {
     cloudflared: LEGACY_CLOUDFLARED_VERSION,
     postgres: LEGACY14_POSTGRES_VERSION,
@@ -283,18 +285,18 @@ const LEGACY14_PINS: PinSet = PinSet {
     ..STANDARD_PINS
 };
 
-/// macOS 13: `docs/PLAN-macos-13-floor.md` §6.2, row for row. PostgreSQL has
-/// NO build that loads on Apple Silicon at 13, so its offered set is empty — the
-/// refusal that explains it to the user is T3's. (PHP 8.0 was refused here too
-/// while static-php.dev's `minos 14.0` build was pinned; ours is 12.0.) `postgres` keeps a version that exists so nothing here is a
-/// sentinel string; an empty `postgres_versions` is what says "not offered".
+/// macOS 13: `docs/PLAN-macos-13-floor.md` §6.2, row for row. PostgreSQL was
+/// REFUSED here until rexenv built its own (§6.6 item 1): no upstream build loads
+/// on Apple Silicon at 13. Its pins are the STANDARD ones now, default included —
+/// no 13 install has a PostgreSQL datadir to stay compatible with, so nothing
+/// argues for macOS 14's older default (see [`LEGACY14_POSTGRES_VERSION`]); the
+/// bytes are ours, chosen in [`manifest`] by tier. (PHP 8.0 was refused here too
+/// while static-php.dev's `minos 14.0` build was pinned; ours is 12.0.)
 const LEGACY13_PINS: PinSet = PinSet {
     cloudflared: LEGACY_CLOUDFLARED_VERSION,
     php_versions: LEGACY13_PHP_VERSIONS,
     mysql: LEGACY13_MYSQL_VERSION,
     mysql_versions: LEGACY13_MYSQL_VERSIONS,
-    postgres: LEGACY14_POSTGRES_VERSION,
-    postgres_versions: &[],
     redis: LEGACY13_REDIS_VERSION,
     redis_versions: LEGACY13_REDIS_VERSIONS,
     mariadb: LEGACY13_MARIADB_VERSION,
@@ -874,8 +876,6 @@ fn postgres_sha256(version: &str, arch: Arch) -> Option<&'static str> {
         "18.6.0" => (POSTGRES_18_6_0_MAC_ARM64_SHA256, POSTGRES_18_6_0_MAC_AMD64_SHA256),
         "17.11.0" => (POSTGRES_17_11_0_MAC_ARM64_SHA256, POSTGRES_17_11_0_MAC_AMD64_SHA256),
         "16.15.0" => (POSTGRES_16_15_0_MAC_ARM64_SHA256, POSTGRES_16_15_0_MAC_AMD64_SHA256),
-        // Legacy14 — see LEGACY14_POSTGRES_VERSIONS.
-        "16.4.0" => (POSTGRES_16_4_0_MAC_ARM64_SHA256, POSTGRES_16_4_0_MAC_AMD64_SHA256),
         _ => return None,
     };
     Some(match arch {
@@ -1187,15 +1187,66 @@ const MYSQL_8_4_3_MAC_AMD64_SHA256: &str = "b690dfaad2108889390d40df388c16453e34
 const MYSQL_8_0_40_MAC_ARM64_SHA256: &str = "a0b8449c19ef59ca688c93ffd89d42f5d78abe6cc136c0d754c6ccb3b202fb9a";
 const MYSQL_8_0_40_MAC_AMD64_SHA256: &str = "a416ee86e72f22089c41911bfee08be0d4dab3b816923be7b465f65df555b36d";
 
-/// theseus-rs builds arm64 on Apple Silicon runners that were never older than
-/// macOS 14, so NO PostgreSQL build loads on an Apple Silicon Mac at 13 — that
-/// engine is refused there (T3). 16.4.0 is the newest at 14.0 arm64 / 13.0
-/// x86_64; the 16.6.0+ builds are 15.0 on arm64. Published `.sha256` cross-checked
-/// against a fresh download of each slice.
-const LEGACY14_POSTGRES_VERSION: &str = "16.4.0";
-const LEGACY14_POSTGRES_VERSIONS: &[&str] = &["16.4.0"];
-const POSTGRES_16_4_0_MAC_ARM64_SHA256: &str = "0ec91e77eff381e43e3963f012aff3acb9de12ad3739a625e57cce9671b28b0f";
-const POSTGRES_16_4_0_MAC_AMD64_SHA256: &str = "3193b9747c610139990c9913ff5fd5ad73cd38cefcd5ffcdc46079fd1479406e";
+/// PostgreSQL on macOS 13 and 14 is rexenv's OWN build (`rexenv/runtimes`,
+/// `scripts/build-postgres.sh`; `docs/PLAN-macos-13-floor.md` §6.6 item 1).
+/// theseus-rs builds arm64 on runners that were never older than macOS 14 — and on
+/// 15 since 16.6.0 — so macOS 14 had one 2024 patch (16.4.0) and macOS 13 had a
+/// "needs macOS 14" refusal. Ours are the standard three versions with upstream's
+/// configure flags at `minos 13.0` on every Mach-O, OpenSSL linked in static.
+///
+/// **On macOS 14 the DEFAULT is the 16 series, not the standard 18 — and that is
+/// about data, not taste.** The default's series owns the unversioned datadir
+/// (`DbEngine::data_dir`: `postgres/data`), and every macOS 14 install made
+/// before this pin has a PostgreSQL **16** cluster there, initialised by 16.4.0.
+/// Defaulting to 18 would point PostgreSQL 18 at that directory — a major it
+/// refuses to open — and the user's databases would be "gone". 16.15.0 opens it
+/// in place (run 16 Nov 2026: a theseus 16.4.0 datadir started on our 16.15.0,
+/// rows and index intact). macOS 13 has no such history and takes the standard
+/// default. What this does NOT solve is the day a 14 host becomes a 15 host —
+/// the default moves 16 → 18 over the same directory, as it always did
+/// (16.4.0 → 18.6.0) — nor a 13 host becoming a 14 one: `docs/TODO.md` has the row.
+const LEGACY14_POSTGRES_VERSION: &str = "16.15.0";
+const LEGACY14_POSTGRES_VERSIONS: &[&str] = &["16.15.0", "18.6.0", "17.11.0"];
+
+/// The `rexenv/runtimes` release holding our macOS build of a PostgreSQL version
+/// — one immutable release per version, the full tag in the pinned URL (see
+/// [`php_self_hosted_tag`] for why).
+fn postgres_macos_self_tag(version: &str) -> Option<&'static str> {
+    match version {
+        "18.6.0" => Some("postgresql-18.6.0-1"),
+        "17.11.0" => Some("postgresql-17.11.0-1"),
+        "16.15.0" => Some("postgresql-16.15.0-1"),
+        _ => None,
+    }
+}
+
+/// SHA-256 of our macOS PostgreSQL tree, `(arm64, x86_64)` — the digests the
+/// publishing workflow printed, cross-checked against a download of each.
+fn postgres_macos_self_sha256(version: &str, arch: Arch) -> Option<&'static str> {
+    let (arm, amd) = match version {
+        "18.6.0" => (POSTGRES_18_6_0_SELF_MAC_ARM64_SHA256, POSTGRES_18_6_0_SELF_MAC_AMD64_SHA256),
+        "17.11.0" => (POSTGRES_17_11_0_SELF_MAC_ARM64_SHA256, POSTGRES_17_11_0_SELF_MAC_AMD64_SHA256),
+        "16.15.0" => (POSTGRES_16_15_0_SELF_MAC_ARM64_SHA256, POSTGRES_16_15_0_SELF_MAC_AMD64_SHA256),
+        _ => return None,
+    };
+    Some(match arch {
+        Arch::Arm64 => arm,
+        Arch::X86_64 => amd,
+    })
+}
+const POSTGRES_18_6_0_SELF_MAC_ARM64_SHA256: &str = "ee4500bdd024b66d3a00a23ac16fa7242510193e35042108482e619b11dc0061";
+const POSTGRES_18_6_0_SELF_MAC_AMD64_SHA256: &str = "bfa3d0094f06f5ed11fa870a28cde7081c3166159cf65a2eca278fcdb8d8b47b";
+const POSTGRES_17_11_0_SELF_MAC_ARM64_SHA256: &str = "f2483e01144a8598393702b17c388b4926d0b6c9806975cdb64f90e073c9559b";
+const POSTGRES_17_11_0_SELF_MAC_AMD64_SHA256: &str = "14f4cf81fa4ec140ad5d04535aeee7194b80decc090bd0f88964ada0260361d7";
+const POSTGRES_16_15_0_SELF_MAC_ARM64_SHA256: &str = "aa98b39d4fe542663b69d3fb87dfd267b43d187dd893747a74cda8c269769a81";
+const POSTGRES_16_15_0_SELF_MAC_AMD64_SHA256: &str = "2a1f2530e631369850cb12a74954530eb0dd72d68eac0c839a9d346fd6a3ed05";
+/// Their licence archives (the PostgreSQL Licence + OpenSSL's Apache-2.0, static).
+const POSTGRES_18_6_0_LICENSES_MAC_ARM64_SHA256: &str = "ed8e333499be6f9090bdc7b6bae90cec302ef0164b772a2f7dc3a553f472ef0a";
+const POSTGRES_18_6_0_LICENSES_MAC_AMD64_SHA256: &str = "6ac906a0064dce5f4a870c498fb759bd0193354182ef94af5c35dd2312154c3b";
+const POSTGRES_17_11_0_LICENSES_MAC_ARM64_SHA256: &str = "6063c468cec6e92a27fe2a251cb82d40069024ace93c143690036c98896452b4";
+const POSTGRES_17_11_0_LICENSES_MAC_AMD64_SHA256: &str = "aeccebacb97e0d558a8f7a04bceb858a147d2ad557c6b05dd55366086a28faf5";
+const POSTGRES_16_15_0_LICENSES_MAC_ARM64_SHA256: &str = "babc3793be2adcfd75561eabfc7f106fdd4e25d25494853bb0b2a18a1ef5f4b9";
+const POSTGRES_16_15_0_LICENSES_MAC_AMD64_SHA256: &str = "dfa61b4a0ace99237d5246d9ae6ade305630fc607d5db0d2a0eeddf4ea5341ed";
 
 // Homebrew stopped building for macOS 13 in 2025; `formulae.brew.sh` lists no
 // `ventura` bottle for any of these formulas today. The rows below are the NEWEST
@@ -2669,6 +2720,22 @@ fn licenses_spec(url: &str, name: &str, version: &str, arch: Arch) -> Result<Opt
             FRANKENPHP_1_13_3_LICENSES_MAC_AMD64_SHA256,
             format!("licenses-frankenphp-{version}-mac-{}.tar.gz", match arch { Arch::Arm64 => "arm64", Arch::X86_64 => "x86_64" }),
         ),
+        // Our macOS PostgreSQL (the legacy tiers): one release per version, both arches in it.
+        ("postgres", "18.6.0") => (
+            POSTGRES_18_6_0_LICENSES_MAC_ARM64_SHA256,
+            POSTGRES_18_6_0_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-postgresql-{version}-macos-{}.tar.gz", php_arch(arch)),
+        ),
+        ("postgres", "17.11.0") => (
+            POSTGRES_17_11_0_LICENSES_MAC_ARM64_SHA256,
+            POSTGRES_17_11_0_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-postgresql-{version}-macos-{}.tar.gz", php_arch(arch)),
+        ),
+        ("postgres", "16.15.0") => (
+            POSTGRES_16_15_0_LICENSES_MAC_ARM64_SHA256,
+            POSTGRES_16_15_0_LICENSES_MAC_AMD64_SHA256,
+            format!("licenses-postgresql-{version}-macos-{}.tar.gz", php_arch(arch)),
+        ),
         ("nginx", "1.30.4") => (
             NGINX_1_30_4_LICENSES_MAC_ARM64_SHA256,
             NGINX_1_30_4_LICENSES_MAC_AMD64_SHA256,
@@ -3033,6 +3100,22 @@ pub fn manifest(name: &str, version: &str, os: &str, arch: Arch) -> Option<Binar
             checksum: Checksum::Sha256(mysql_sha256(v, arch).unwrap().to_string()),
             archive: Archive::TarGzTree { strip: 1 },
             member: "bin/mysqld", // primary binary within the extracted tree
+        }),
+        // THE ONE TIER-AWARE ARM. Every other row is keyed by version alone ("a legacy
+        // row is its own version"); PostgreSQL cannot be, because the legacy tiers
+        // run the SAME versions as the standard set from DIFFERENT bytes — ours, at
+        // `minos 13.0`. Read from `tier()`, so a sweep or a test that wants a legacy
+        // tier's artifact installs that tier first. A macOS 15+ host never takes this
+        // arm: its PostgreSQL stays upstream's (owner ruling, 16 Nov 2026).
+        ("postgres", "macos", v) if tier() != BinaryTier::Standard && postgres_macos_self_sha256(v, arch).is_some() => Some(BinarySpec {
+            url: format!(
+                "{RUNTIMES_RELEASE_BASE}/{}/postgresql-{v}-macos-{}.tar.gz",
+                postgres_macos_self_tag(v)?,
+                php_arch(arch)
+            ),
+            checksum: Checksum::Sha256(postgres_macos_self_sha256(v, arch).unwrap().to_string()),
+            archive: Archive::TarGzTree { strip: 1 },
+            member: "bin/postgres",
         }),
         ("postgres", "macos", v) if postgres_sha256(v, arch).is_some() => Some(BinarySpec {
             // theseus-rs portable PostgreSQL — a bin/lib/share tree (one top dir).
@@ -5142,14 +5225,22 @@ mod tier_tests {
         assert_eq!(php_minor_needs_macos("8.3"), None, "offered here");
         assert_eq!(php_minor_needs_macos("7.4"), None, "offered here");
         assert_eq!(php_minor_needs_macos("9.9"), None, "shipped nowhere — not a tier refusal");
-        assert_eq!(engine_needs_macos("postgres"), Some(14), "16.4.0 is the Legacy14 pin");
+        // PostgreSQL WAS the engine refusal ("needs macOS 14", while upstream's builds
+        // were the only ones); rexenv's own is `minos 13.0`, so nothing real is refused
+        // on any tier now. The derivation itself is still held, on a row that does
+        // differ between tiers: the standard MySQL is offered on 14 and 15, not on 13.
+        assert_eq!(engine_needs_macos("postgres"), None, "ours loads on 13");
+        assert_eq!(super::needs_macos_for(|p| p.mysql == super::STANDARD_PINS.mysql), Some(14), "the LOWEST tier that offers it");
+        assert_eq!(super::needs_macos_for(|p| p.cloudflared == super::STANDARD_PINS.cloudflared), Some(15));
+        assert_eq!(super::needs_macos_for(|p| p.cloudflared == super::LEGACY_CLOUDFLARED_VERSION), None, "offered here");
         assert_eq!(engine_needs_macos("mysql"), None);
         assert_eq!(engine_needs_macos("mariadb"), None);
         assert_eq!(engine_needs_macos("redis"), None);
         assert_eq!(engine_needs_macos("nosuch"), None);
         assert!(refused_php_minors().is_empty(), "no PHP minor needs a newer macOS");
         // Plant: with `needs_macos_for` returning the HIGHEST tier instead of the
-        // lowest, PostgreSQL read `Some(15)` here and this line failed.
+        // lowest, the MySQL line above reads `Some(15)` and fails (it was PostgreSQL's
+        // line when this was written, 23 Sep 2026).
         install_tier(BinaryTier::Legacy14);
         assert_eq!(php_minor_needs_macos("8.0"), None);
         assert_eq!(engine_needs_macos("postgres"), None);
@@ -5233,20 +5324,53 @@ mod tier_tests {
             let s = manifest("cloudflared", std.cloudflared, "macos", Arch::Arm64).unwrap();
             assert_ne!(hex(&a.checksum), hex(&s.checksum));
         }
-        // Legacy14: PostgreSQL 16.4.0, and NOTHING else moves.
+        // Legacy14: PostgreSQL's default is the 16 series (the datadir every 14
+        // install already has), the versions are the standard three, and NOTHING
+        // else moves.
         let l14 = PinSet::for_tier(BinaryTier::Legacy14);
-        assert_eq!(l14.postgres_versions, &["16.4.0"]);
+        assert_eq!(l14.postgres, "16.15.0");
+        assert_eq!(l14.postgres_versions[0], l14.postgres, "default first");
+        let mut offered = l14.postgres_versions.to_vec();
+        offered.sort_unstable();
+        let mut standard = std.postgres_versions.to_vec();
+        standard.sort_unstable();
+        assert_eq!(offered, standard, "the same versions as a macOS 15 host, from our bytes");
         assert_eq!(PinSet { cloudflared: std.cloudflared, postgres: std.postgres, postgres_versions: std.postgres_versions, ..l14 }, std);
         // Legacy13: every engine row, both slices, own bytes.
         let l13 = PinSet::for_tier(BinaryTier::Legacy13);
         assert!(l13.php_versions.contains(&"8.0.30"), "ours is minos 12.0 (php-8x-11)");
         assert!(l13.php_versions.contains(&"7.4.33") && l13.php_versions.contains(&"8.5.12"));
-        for (name, versions) in [("mysql", l13.mysql_versions), ("postgres", &["16.4.0"][..])] {
-            for v in versions {
-                let a = manifest(name, v, "macos", Arch::Arm64).unwrap();
-                let x = manifest(name, v, "macos", Arch::X86_64).unwrap();
-                assert_ne!(hex(&a.checksum), hex(&x.checksum), "{name} {v}");
+        for v in l13.mysql_versions {
+            let a = manifest("mysql", v, "macos", Arch::Arm64).unwrap();
+            let x = manifest("mysql", v, "macos", Arch::X86_64).unwrap();
+            assert_ne!(hex(&a.checksum), hex(&x.checksum), "mysql {v}");
+        }
+        // PostgreSQL on 13: the standard pins, default included (no datadir history
+        // to honour there). On BOTH legacy tiers the bytes are OURS — while a
+        // standard host asking for the very same version gets upstream's: the
+        // manifest's one tier-aware arm.
+        assert_eq!((l13.postgres, l13.postgres_versions), (std.postgres, std.postgres_versions));
+        for tier in [BinaryTier::Legacy13, BinaryTier::Legacy14] {
+            install_tier(tier);
+            for v in PinSet::for_tier(tier).postgres_versions {
+                let a = manifest("postgres", v, "macos", Arch::Arm64).unwrap();
+                let x = manifest("postgres", v, "macos", Arch::X86_64).unwrap();
+                assert!(super::is_self_distributed(&a.url) && super::is_self_distributed(&x.url), "{tier:?} {v}: {}", a.url);
+                assert!(a.url.ends_with(&format!("/postgresql-{v}-1/postgresql-{v}-macos-aarch64.tar.gz")), "{}", a.url);
+                assert_ne!(hex(&a.checksum), hex(&x.checksum), "postgres {v}");
+                assert_eq!(hex(&a.checksum).len(), 64, "postgres {v}: a real digest, not a placeholder");
+                for (spec, arch) in [(&a, Arch::Arm64), (&x, Arch::X86_64)] {
+                    let lic = super::licenses_spec(&spec.url, "postgres", v, arch).expect("licences named").expect("owed: we distribute it");
+                    assert!(lic.url.ends_with(&format!("/postgresql-{v}-1/licenses-postgresql-{v}-macos-{}.tar.gz", super::php_arch(arch))), "{}", lic.url);
+                    assert_eq!(hex(&lic.checksum).len(), 64);
+                }
             }
+        }
+        install_tier(BinaryTier::Standard);
+        for v in std.postgres_versions {
+            let s = manifest("postgres", v, "macos", Arch::Arm64).unwrap();
+            assert!(s.url.contains("theseus-rs/postgresql-binaries"), "a macOS 15+ host keeps upstream's: {}", s.url);
+            assert!(super::licenses_spec(&s.url, "postgres", v, Arch::Arm64).unwrap().is_none(), "upstream distributes that one");
         }
         for (name, versions) in [("redis", l13.redis_versions), ("mariadb", l13.mariadb_versions), ("httpd", &[l13.httpd][..])] {
             for v in versions {
@@ -7621,6 +7745,9 @@ mod tests {
         // offers a version the manifest cannot resolve is the exact failure
         // this test exists for, and the standard constants would never show it.
         for tier in PinSet::ALL_TIERS {
+            // Installed, not merely read: PostgreSQL's manifest arm is tier-aware, so
+            // only the tier itself resolves the artifact that tier downloads.
+            install_tier(tier);
             let p = PinSet::for_tier(tier);
             for arch in [Arch::Arm64, Arch::X86_64] {
                 for v in p.mysql_versions {
@@ -7644,20 +7771,13 @@ mod tests {
                 assert!(bundle_manifest("httpd", p.httpd, "macos", arch).is_some(), "{tier:?}");
                 assert!(manifest("cloudflared", p.cloudflared, "macos", arch).is_some(), "{tier:?}");
             }
-            // Defaults are members of their offered sets — where a set exists.
-            // Legacy13 offers NO PostgreSQL (no build loads on arm64 there); its
-            // `postgres` field names a real pin so nothing is a sentinel, and the
-            // empty set is the fact T3's refusal renders.
+            // Defaults are members of their offered sets, on every tier.
             assert!(p.mysql_versions.contains(&p.mysql), "{tier:?}");
             assert!(p.mariadb_versions.contains(&p.mariadb), "{tier:?}");
             assert!(p.redis_versions.contains(&p.redis), "{tier:?}");
-            if tier == BinaryTier::Legacy13 {
-                assert!(p.postgres_versions.is_empty());
-                assert!(manifest("postgres", p.postgres, "macos", Arch::Arm64).is_some());
-            } else {
-                assert!(p.postgres_versions.contains(&p.postgres), "{tier:?}");
-            }
+            assert!(p.postgres_versions.contains(&p.postgres), "{tier:?}");
         }
+        install_tier(BinaryTier::Standard);
         assert_eq!(mysql_macos_build("8.4.6"), "macos15");
         assert_eq!(mysql_macos_build("8.4.3"), "macos14");
         assert_eq!(mysql_macos_build("8.0.40"), "macos14");

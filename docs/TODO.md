@@ -204,12 +204,36 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   real defects found and fixed) — ledger #707–#714. The proof is a real VM, never `minos` alone, and no 14 VM has
   run it. Plan: `docs/PLAN-macos-13-floor.md` §6–§7; the T0–T8 log moved to `docs/archive/SHIPPED-2026-11.md`
   ("Judgement moves — reconcile of 15 Nov 2026"). §6.6's self-build follow-ups are the rows below.
-- [ ] **PostgreSQL self-build for macOS 13/14** (`docs/PLAN-macos-13-floor.md` §6.6 rule 3, item 1
+- [x] **PostgreSQL self-build for macOS 13/14** (`docs/PLAN-macos-13-floor.md` §6.6 rule 3, item 1
   — opened at T8, 23 Sep 2026). Both slices, `MACOSX_DEPLOYMENT_TARGET=13.0`, in `rexenv/runtimes`
   on the nginx recipe; ships as a Legacy13/Legacy14 pin and flips the "Needs macOS 14/15" refusal
   on the Databases page, New Site and `rex db versions`. Items 2 (PHP 8.0 — blocked on
   static-php-cli's x86_64 abort) and 3 (Redis/MariaDB/httpd — the Intel bottle row) stay where
   §6.6 leaves them.
+  ✓ 16 Nov 2026 — runtimes PR #59 (`scripts/build-postgres.sh`, `postgres.yml`), immutable releases
+  `postgresql-18.6.0-1`, `postgresql-17.11.0-1`, `postgresql-16.15.0-1` (both slices each, every
+  Mach-O `minos 13.0`, OpenSSL 3.6.5 static, parity with theseus's tree of the same version as a
+  build gate). In the app: Legacy13 offers 18.6.0 (default) / 17.11.0 / 16.15.0, Legacy14 16.15.0
+  (default) / 18.6.0 / 17.11.0, Standard unchanged (theseus); the manifest arm is tier-aware and no
+  tier refuses an engine now (ledger #972; #709, #710, #712 corrected). Proof: L0 (the three tier
+  tests in `core::binaries`), `legacy_pins_check` (ours downloaded, prepared, `initdb` run under an
+  installed legacy tier on the macOS 26 dev Mac), `manifest_sweep_check`. **Not proven: a load on a
+  real macOS 13 or 14 host — none exists** (`docs/SMOKE-TEST.md` "macOS 13 and 14" carries both rows).
+- [ ] **PostgreSQL datadir across a tier move — the default series changes under the same
+  directory** (found 16 Nov 2026 building the row above; older than it). `DbEngine::data_dir` gives
+  the unversioned `postgres/data` to the DEFAULT pin's series. Legacy14's default is series 16
+  (16.4.0 before, 16.15.0 now), Standard's is 18: a macOS 14 host with a PostgreSQL cluster that
+  upgrades to 15 hands that 16 datadir to an 18 server, which refuses it (`database files are
+  incompatible with server`), while 16 itself now looks in an empty `postgres/16/data`. Nothing is
+  deleted — the data sits unread until the files are moved by hand. Legacy13 → 14 is the same
+  move the other way (18 → 16) since the row above. Ledger #712 said "no directory is handed
+  over"; corrected. **Proposed fix (needs a design read — `effective_version` has 29 callers):**
+  who owns `postgres/data` is read from the directory's own `PG_VERSION` file rather than from
+  the tier's default, and the effective version of a host with an existing cluster follows that
+  cluster. *Done when:* an L1 example inits a 16 cluster as a Legacy14 default, installs the
+  Standard tier, and PostgreSQL 16 still starts on it while 18 gets its own directory. MySQL and
+  MariaDB are not affected the same way (`legacy_upgrade_check`: the newer server opens the older
+  files).
 - [ ] **Windows: PHP's own curl has no CA bundle** — a plugin's bare `curl_init("https://…")` to a
   public host fails certificate verification (nothing sets `curl.cainfo`/`openssl.cafile`). Needs a
   pinned CA bundle shipped as an artifact. Owner ruled "not now" (Windows launch row).

@@ -126,7 +126,7 @@ fn is_macho(p: &Path) -> bool {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let (plat, _guard) = common::sandbox("legacy-pins");
+    let (plat, guard) = common::sandbox("legacy-pins");
     let plat: &dyn Platform = &*plat;
     let mut ok = true;
 
@@ -154,13 +154,51 @@ async fn main() -> ExitCode {
             Err(e) => check_line(&mut ok, &format!("mysql {v}"), false, &e.to_string()),
         }
     }
-    // Legacy14's one engine row: PostgreSQL 16.4.0 (refused on 13, offered on 14).
+    // PostgreSQL: rexenv's own `minos 13.0` build on both legacy tiers (the same
+    // three versions on 13 and 14; resolved as Legacy13, installed above). Through a
+    // PRIVATE binary cache: the shared one already holds upstream's tree of the same
+    // versions on any standard Mac, and would be handed back as if it were ours
+    // (`common::sandbox_platform_private_bin_at`). So each leg is a real download,
+    // and each asks the tree to prove whose it is before it is run.
+    let pg_root = guard.root().join("pg");
+    let pg_plat = common::sandbox_platform_private_bin_at(pg_root.clone());
+    let pg_plat: &dyn Platform = &*pg_plat;
+    assert_eq!(l13.postgres_versions.len(), l14.postgres_versions.len(), "the same set on both legacy tiers");
     for v in l14.postgres_versions {
-        match binaries::resolve_dir(plat, "postgres", v).await {
+        match binaries::resolve_dir(pg_plat, "postgres", v).await {
             Ok(dir) => {
                 let banner = probe(&dir.join("bin/postgres"), &["--version"]);
                 let want = v.trim_end_matches(".0");
-                check_line(&mut ok, &format!("postgres {v} (Legacy14)"), banner.contains(want), banner.trim());
+                // Whose tree: ours carries no OpenSSL dylib (static), declares 13.0,
+                // and has its licence texts unpacked beside it (we distribute it).
+                let no_ssl_dylib = !dir.join("lib/libssl.3.dylib").exists() && !dir.join("lib/libcrypto.3.dylib").exists();
+                let otool = probe(Path::new("/usr/bin/otool"), &["-l", &dir.join("bin/postgres").display().to_string()]);
+                let minos = otool
+                    .lines()
+                    .skip_while(|l| !l.contains("LC_BUILD_VERSION"))
+                    .find(|l| l.trim_start().starts_with("minos"))
+                    .map(|l| l.split_whitespace().nth(1).unwrap_or("").to_string())
+                    .unwrap_or_default();
+                let licences = dir.join("licenses/postgresql.COPYRIGHT").is_file() && dir.join("licenses/openssl.LICENSE.txt").is_file();
+                check_line(
+                    &mut ok,
+                    &format!("postgres {v} is OURS"),
+                    banner.contains(want) && no_ssl_dylib && minos == "13.0" && licences,
+                    &format!("{} · minos {minos} · no OpenSSL dylib={no_ssl_dylib} · licences={licences}", banner.trim()),
+                );
+                // …and the prepared tree WORKS from an app-data-shaped path: initdb
+                // runs the backend in bootstrap mode and reads share/ relative to bin/.
+                let data = pg_root.join(format!("data {v}"));
+                let init = probe(
+                    &dir.join("bin/initdb"),
+                    &["-D", &data.display().to_string(), "-U", "postgres", "--auth=trust", "-E", "UTF8", "--locale=C"],
+                );
+                check_line(
+                    &mut ok,
+                    &format!("postgres {v} initdb"),
+                    data.join("PG_VERSION").is_file() && init.contains("Success"),
+                    init.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim(),
+                );
             }
             Err(e) => check_line(&mut ok, &format!("postgres {v}"), false, &e.to_string()),
         }

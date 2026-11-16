@@ -76,9 +76,10 @@ launch** — see below. The one-command install above and Homebrew need none.
   On 15+ every feature and the newest build of every component. On **13 and 14** rexenv
   runs with the last build of each component that loads there (older MySQL, Redis,
   MariaDB, Apache, Xdebug and tunnel client — `docs/PORTS.md` §"Legacy tiers" has the
-  versions) and **without PostgreSQL and PHP 8.0 on 13** (PostgreSQL 16.4 only on 14):
-  the app says so once at first launch, and each missing item stays listed with the
-  reason. Nothing older than 13 is offered a download. (History: the stated floor was
+  versions). **Nothing is missing there since 16 Nov 2026**: PostgreSQL (18, 17 and 16) and
+  PHP 8.0 run on 13 and 14 from rexenv's own builds — before that 13 had neither and 14
+  had PostgreSQL 16.4 only. The app says once at first launch that it runs older
+  components, and anything a future tier cannot run stays listed with the reason. Nothing older than 13 is offered a download. (History: the stated floor was
   "11" until 15 Aug 2026 — never true; 15 from then to 23 Sep 2026, when the tiers
   landed: `docs/PLAN-macos-13-floor.md`.)
 - **Intel or Apple Silicon** — this is a **universal** build, it runs natively on both.

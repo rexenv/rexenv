@@ -1,6 +1,6 @@
 # PLAN — lowering the macOS floor from 15 to 13: every component's `minos`, measured, and the pin each would need
 
-**Status:** IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade, T8 shipped as 0.8.7 (23 Sep 2026); open: the macOS 14 VM run, the row in `docs/TODO.md` § Now (reconciled 15 Nov 2026). Was: PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
+**Status:** IN PROGRESS — T0–T6 landed, T7 run on the 13.6 VM and its in-place 15.8 upgrade, T8 shipped as 0.8.7 (23 Sep 2026); open: the macOS 14 VM run, the row in `docs/TODO.md` § Now (reconciled 15 Nov 2026). **§6.6 item 1 landed 16 Nov 2026: PostgreSQL is rexenv's own build on 13 and 14 (ledger #972) — every "PostgreSQL refused on 13" / "16.4.0 on 14" below is the 23 Sep design, kept as the record, and no tier refuses anything now.** Was: PLANNED — 23 Sep 2026. Measurement done (§1–§5, both slices, every component);
 **the owner ruled the shape the same day (§6)**: macOS 15 stays the STANDARD — every feature,
 every latest pin — and the app additionally RUNS on macOS 13 and 14 with a per-host pin set
 and a per-feature refusal where no build exists. Task list in §7; **T0–T6 landed 23 Sep 2026** (ledger #707–#713; #433 re-shaped). **T7 part-run the same day on a macOS 13.6 VM** — it found two real defects (the 14-only `activate` selector, #713; a second copy of the engine gate, #710) and, with them fixed, the legacy stack ran and served; the GUI-only rows, the bundles (no CLT on the VM), the 15-upgrade and the macOS 14 VM remain (`docs/SMOKE-TEST.md`).
@@ -227,6 +227,9 @@ BinaryTier::Legacy14   host 14.x        cloudflared 2025.4.0; PostgreSQL 16.4.0;
 BinaryTier::Legacy13   host 13.x        the §6.2 set; PostgreSQL + PHP 8.0 refused
 ```
 
+(As designed on 23 Sep 2026. Today: PHP 8.0 is ours and offered on 13 since 24 Oct 2026; PostgreSQL is
+ours on both legacy tiers since 16 Nov 2026 — 18.6.0 / 17.11.0 / 16.15.0, default 18 on 13 and 16 on 14.)
+
 - Derived from the host version by the PLATFORM (`Platform::binary_tier()`, a capability
   in `platform/traits.rs`; macOS reads `core::macho::host_macos()`, Windows and Linux return
   `Standard` — a tier is a macOS fact and `core/` may not name an OS). Below 13.0 the app
@@ -252,13 +255,18 @@ BinaryTier::Legacy13   host 13.x        the §6.2 set; PostgreSQL + PHP 8.0 refu
 | MariaDB (+ openssl@3, pcre2) | 12.3.2 / 11.4.12 | **12.0.2 / 11.4.8** (+ 3.5.2, 10.46), ventura blobs |
 | Apache httpd (+ apr, apr-util, pcre2) | 2.4.68 (+ 1.7.6, 1.6.3, 10.47) | **2.4.65** (+ 1.7.6 ventura, 1.6.3_1, 10.46) |
 | Xdebug 8.1–8.4 / 8.5 / 7.4 | 3.5.3 / 3.5.3 / 3.1.6 | **3.4.5 / none (NotPinned) / no row either way** — 8.5's ventura blobs predate 8.5 GA and load into no 8.5 |
-| **PostgreSQL** | 18.6.0 / 17.11.0 / 16.15.0 | **refused — "needs macOS 14"** (rule 2; rule 3 later) |
+| **PostgreSQL** | 18.6.0 / 17.11.0 / 16.15.0 (theseus) | ~~refused — "needs macOS 14"~~ → **18.6.0 / 17.11.0 / 16.15.0, rexenv's own build** (rule 3, 16 Nov 2026, §6.6 item 1) |
 | **PHP 8.0.30** | static-php.dev | **refused — "needs macOS 14"** (arm64 is 14.0; the x86_64 slice would run, but one rule per feature beats a per-arch feature — owner may relax) |
 | WP-CLI, Composer, Adminer | as today | same (no floor) |
 
 Legacy14 differs from Standard in exactly two rows: cloudflared 2025.4.0 and PostgreSQL
 16.4.0 (arm64 14.0 / x86_64 13.0 — the newest theseus build that runs on 14). Every other
-standard pin is already 14.0 or lower.
+standard pin is already 14.0 or lower. **Since 16 Nov 2026 the PostgreSQL row is rexenv's own
+build instead: the standard VERSIONS (16.15.0 default, 18.6.0, 17.11.0) from different bytes.**
+The default stays series 16 on 14 on purpose — a 14 install already has a PostgreSQL 16
+cluster in the unversioned `postgres/data`, and only the default's series owns that path
+(`DbEngine::data_dir`); defaulting to 18 would hand a 16 datadir to an 18 server, which
+refuses it.
 
 ### 6.3 Refusals are data the UI renders, not strings the UI owns
 
@@ -277,7 +285,11 @@ the existing shape). Onboarding says ONCE, on a legacy host, what the subset is
 A Legacy13 install that upgrades to macOS 15 resolves the standard pins on next launch:
 MySQL 8.4.3 → 8.4.6 and 8.0.40 → 8.0.44 are in-series upgrades `mysqld` performs on its
 own datadir; MariaDB 12.0.2 → 12.3.2 and 11.4.8 → 11.4.12 likewise; Redis and cloudflared
-hold no state. PostgreSQL was refused, so there is no datadir to carry. The reverse move
+hold no state. PostgreSQL was refused, so there is no datadir to carry (**true of 13 on 23 Sep
+2026 and wrong about 14 from the start**: a 14 host had 16.4.0 as its default, so its cluster
+sits in the unversioned `postgres/data`, and on 15 that path belongs to the 18 default — a
+major PostgreSQL will not open. Found 16 Nov 2026 while building §6.6 item 1; not fixed by it —
+`docs/TODO.md`, "PostgreSQL datadir across a tier move"). The reverse move
 never happens (macOS does not downgrade), so no engine is ever handed a NEWER datadir than
 it can read. The forward path gets one L1 proof per engine (start a 13-pinned datadir on
 the standard binary) before this ships.
@@ -301,6 +313,17 @@ the standard binary) before this ships.
 
 1. **PostgreSQL, both slices, `MACOSX_DEPLOYMENT_TARGET=13.0`**, `rexenv/runtimes`, the
    nginx recipe. Flips §6.2's PostgreSQL row from refused to a pin on 13 AND 14.
+   ✓ **16 Nov 2026** — `scripts/build-postgres.sh` + `postgres.yml` (runtimes PR #59), releases
+   `postgresql-18.6.0-1`, `-17.11.0-1`, `-16.15.0-1`; theseus's own configure flags, OpenSSL
+   3.6.5 static, `minos 13.0` on every Mach-O, a parity diff against theseus's tree of the
+   same version (programs, modules, extension controls, flags) as a build gate. Three things
+   the recipe did not predict: (a) libpq's "must not call exit" check fails on a static
+   libcrypto until the shared libs are linked with `-dead_strip`; (b) the tree must be
+   relocated to `@loader_path/../lib` and proven from a path with a space AFTER the build
+   prefix is deleted, or it passes by finding its own build directory; (c) theseus's 12 Nov
+   2026 builds (18.7.0 …) added ICU, LZ4, zstd, Python and LLVM, so parity is held against
+   the pinned versions, not the newest. In the app the arm is tier-aware (ledger #972) —
+   the one manifest row that is, because the version string is the standard one.
 2. **PHP 8.0.30** — blocked on static-php-cli's x86_64 abort (`binaries.rs`,
    `php_self_hosted_tag`); an arm64-only self-build would need a per-arch feature, which
    §6.2 declines. Stays refused until the abort is fixed upstream or worked around.
@@ -348,7 +371,8 @@ re-hashes every Legacy artifact; the bundles relink and load-test (`prepare_bina
 on this Mac.
 
 **T3 — the refusals.** ✓ 23 Sep 2026, ledger #710 — `Availability` became two derived accessors (`php_minor_needs_macos`, `engine_needs_macos`) rather than an enum; the test tier is thread-local under `cfg(test)`.
-`Availability::NeedsMacos` on PostgreSQL (13) and PHP 8.0 (13); the sentence in
+`Availability::NeedsMacos` on PostgreSQL (13) and PHP 8.0 (13) (neither is refused any more —
+24 Oct and 16 Nov 2026; the mechanism stays, with nothing in it); the sentence in
 `platform/words.rs`; every list site in §6.3 renders it disabled-with-reason; `rex` and
 MCP refuse with the same words (parity test). Copy-scan guard covers the new sentence.
 *Done when:* an L0 test drives each list site with a fixture tier and asserts the row is

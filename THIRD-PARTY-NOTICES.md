@@ -63,7 +63,9 @@ driver and prove it in CI against a real cluster. 8.0 joined last (24 Oct 2026),
 for its CVE-2026-109618/109619 fix, which exists only as a source backport. nginx joined for
 yet another reason — upstream's darwin builds moved to a macOS 26
 deployment target, which would have locked out every Intel user below macOS 26 —
-and it carries the same obligations. Every other row in
+and it carries the same obligations. **PostgreSQL joined on 16 Nov 2026, for macOS 13 and 14
+ONLY**: theseus-rs's builds need macOS 14 or 15, so those two hosts get rexenv's own build of
+the same versions, while macOS 15+, Windows and Linux still download theseus's. Every other row in
 `docs/PORTS.md` names somebody else's build; this one names ours. The PHP
 License 3.01 §2/§6 obligation attaches to us for it, and so do the licences of
 every dependency statically linked into the binary — they travel inside the
@@ -195,6 +197,30 @@ asserted in the build, not assumed.
 refuses to resolve an artifact served from rexenv's own infrastructure unless a
 licence archive is pinned beside it — build 1 of this release shipped without
 one and the app would not load it, which is how the rule proved itself.
+
+## PostgreSQL 18.6.0 / 17.11.0 / 16.15.0 for macOS 13 and 14 — rexenv's own build (downloaded at runtime, distributed BY US)
+
+Built and hosted since 16 Nov 2026, and downloaded ONLY by a Mac on macOS 13 or 14. The
+builds rexenv uses everywhere else (theseus-rs) declare `minos 15.0` — 14.0 at best on
+Apple Silicon for older patches — so macOS 13 had no PostgreSQL at all and 14 had one
+frozen patch. A Mac on 15 or later, and every Windows and Linux host, still downloads
+theseus-rs's build and rexenv is not its distributor there.
+
+| | |
+|---|---|
+| Artifacts | `postgresql-<version>-macos-{aarch64,x86_64}.tar.gz` (the whole tree: `bin/`, `lib/`, `share/`) |
+| Built by | `rexenv/runtimes` (public), `scripts/build-postgres.sh`, GitHub Actions (`postgres.yml`) |
+| Source | PostgreSQL's release tarball (postgresql.org) + OpenSSL 3.6.5 — both mirrored as assets in the same release, so the build is reproducible from URLs alone |
+| Releases | `postgresql-18.6.0-1`, `postgresql-17.11.0-1`, `postgresql-16.15.0-1` — immutable, never re-uploaded; a rebuild is the next build number |
+| Pinned in | `core/binaries.rs` (`POSTGRES_*_SELF_MAC_*_SHA256`, `postgres_macos_self_tag`) |
+| Licence | **PostgreSQL License** (`licenses/postgresql.COPYRIGHT`) |
+
+**OpenSSL is compiled INTO `libpq`, `postgres` and `pgcrypto`** (static, no `libssl` or
+`libcrypto` dylib in the tree — asserted by the build), so its licence travels with them:
+`licenses-postgresql-<version>-macos-<arch>.tar.gz` carries `openssl.LICENSE.txt`
+(**Apache-2.0**) beside PostgreSQL's own. Everything else the tree links is macOS's own
+(`/usr/lib`: libxml2, libxslt, libedit, zlib) — the build fails on any other load path. The
+same refusal as nginx's applies: no pinned licence archive, no resolve.
 
 ## Apache httpd 2.4.69 for Windows — Apache Lounge's build, MIRRORED (downloaded at runtime, distributed BY US)
 

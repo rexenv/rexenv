@@ -3186,24 +3186,18 @@ mod tests {
         {
             assert!(ensure_engine_available_on(engine, os).is_ok(), "{engine:?} ships on {os}");
         }
-        // §6.3 (ledger #710): on a macOS 13 host PostgreSQL is refused with the
-        // macOS it needs — the Databases page, New Site, `rex` and the MCP server
-        // all read this one gate, so this sentence is the one they all show.
+        // §6.3 (ledger #710): a macOS 13 host REFUSED PostgreSQL ("Needs macOS 14")
+        // until rexenv built its own at `minos 13.0` (§6.6 item 1, 16 Nov 2026). Both
+        // doors — this gate and the engine's own, which `rex db versions --set` once
+        // answered differently (23 Sep 2026) — now open on every tier.
         {
             use crate::core::binaries::{install_tier, BinaryTier};
-            install_tier(BinaryTier::Legacy13);
-            let err = ensure_engine_available_on(E::Postgres, "macos").expect_err("no build loads on 13").to_string();
-            let os = crate::platform::words::current().os_name;
-            assert!(err.starts_with(&format!("PostgreSQL: Needs {os} 14")), "{err}");
-            // …and the engine's OWN door says the same words: `rex db versions --set
-            // postgres` on the 13.6 VM answered "not available on this platform yet"
-            // because that command had a second copy of the gate (23 Sep 2026).
-            let own = crate::core::db::DbEngine::Postgres.ensure_available_on("macos").expect_err("refused").to_string();
-            assert_eq!(own, err, "two doors, one sentence");
-            assert!(!offered_db_engines_on("macos").contains(&E::Postgres));
-            assert!(ensure_engine_available_on(E::Mysql, "macos").is_ok());
-            install_tier(BinaryTier::Legacy14);
-            assert!(ensure_engine_available_on(E::Postgres, "macos").is_ok(), "16.4.0 loads on 14");
+            for tier in [BinaryTier::Legacy13, BinaryTier::Legacy14] {
+                install_tier(tier);
+                assert!(ensure_engine_available_on(E::Postgres, "macos").is_ok(), "{tier:?}");
+                assert!(crate::core::db::DbEngine::Postgres.ensure_available_on("macos").is_ok(), "{tier:?}: the engine's own door");
+                assert!(offered_db_engines_on("macos").contains(&E::Postgres), "{tier:?}");
+            }
             install_tier(BinaryTier::Standard);
         }
         // D4: MariaDB has no Windows pin — MySQL 8.4 and 8.0 both ship there, so it is out of v1.

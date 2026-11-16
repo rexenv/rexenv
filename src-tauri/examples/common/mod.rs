@@ -868,6 +868,25 @@ pub fn sandbox_platform_at(root: PathBuf) -> Box<dyn Platform> {
     Box::new(SandboxPlatform { inner: real, paths: SandboxPaths { root, bin, hosts } })
 }
 
+/// [`sandbox_platform_at`] with a PRIVATE, empty binary cache under `root` — for a
+/// check that must prove WHICH bytes a pin resolves, where the shared cache would
+/// answer for it.
+///
+/// The cache is keyed by name and version, and one version can now come from two
+/// places: PostgreSQL 18.6.0 is upstream's tree on a macOS 15 host and rexenv's own
+/// on 13/14 (`binaries::manifest`'s tier-aware arm). A developer's Mac already holds
+/// upstream's `postgres-18.6.0`, so a legacy-tier check resolving through the shared
+/// cache was handed THAT tree and would have "proven" ours by running theirs (found
+/// writing the check, 16 Nov 2026 — before it ever ran). Costs a real download per
+/// run; the caller owns `root` and removes it.
+pub fn sandbox_platform_private_bin_at(root: PathBuf) -> Box<dyn Platform> {
+    let real = rexenv_lib::platform::current();
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).expect("private binary cache");
+    let hosts = real.paths().hosts_file();
+    Box::new(SandboxPlatform { inner: real, paths: SandboxPaths { root, bin, hosts } })
+}
+
 /// A `Platform` whose app data is a throwaway directory.
 ///
 /// Use this in ANY example that generates configs or spawns services. The

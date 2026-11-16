@@ -89,6 +89,10 @@ async fn main() -> ExitCode {
     //    version, arch): a version two tiers share is one artifact.
     let mut targets: Vec<Target> = Vec::new();
     for tier in PinSet::ALL_TIERS {
+        // INSTALLED, not only read: PostgreSQL's manifest arm is tier-aware (the
+        // legacy tiers run the standard VERSIONS from rexenv's own bytes), so the
+        // artifact a macOS 13/14 host downloads is only resolvable as that tier.
+        binaries::install_tier(tier);
         let p = PinSet::for_tier(tier);
         for arch in [Arch::Arm64, Arch::X86_64] {
             push_single(&mut targets, "macos", "caddy", p.caddy, arch);
@@ -127,9 +131,13 @@ async fn main() -> ExitCode {
             }
         }
     }
+    binaries::install_tier(binaries::BinaryTier::Standard);
     let before = targets.len();
-    targets.sort_by(|a, b| a.label.cmp(&b.label));
-    targets.dedup_by(|a, b| a.label == b.label);
+    // By label AND url: "postgres 18.6.0 macos/Arm64" is two artifacts — upstream's
+    // on a standard host, ours on a legacy one — and a label-only dedup would drop
+    // whichever sorted second without probing it.
+    targets.sort_by(|a, b| (&a.label, &a.url).cmp(&(&b.label, &b.url)));
+    targets.dedup_by(|a, b| a.label == b.label && a.url == b.url);
     eprintln!("targets: {} unique of {before} enumerated across {} tiers", targets.len(), PinSet::ALL_TIERS.len());
     // Windows x64 (port W2). ONE target per pin: every `Arch` resolves the same x64
     // URL there, so asking for both would probe it twice. The .phar/.php artifacts

@@ -990,7 +990,12 @@ commands/ 9 — commands/ is 1.7% of tests for ~20 files of orchestration):
   First run: 100 assets matched, every URL answered (Windows FrankenPHP and httpd joined the list).
   **Since 23 Sep 2026 it enumerates EVERY tier's pin set** (`PinSet::ALL_TIERS`, deduped by
   label — 130 targets, 23 Sep 2026): the Legacy13/14 rows a macOS 13/14 host resolves are probed and hashed from a
-  standard host, which is the only place a sweep runs. `legacy_pins_check` (network tier) is
+  standard host, which is the only place a sweep runs. **Since 16 Nov 2026 the sweep installs each tier before it
+  enumerates and dedups by label AND url** — PostgreSQL's legacy rows carry the standard version string and differ
+  only in the bytes (ledger #972), so a label-only dedup swept theseus's three times and ours never. For the same
+  reason `legacy_pins_check`'s PostgreSQL leg resolves into a PRIVATE binary cache
+  (`common::sandbox_platform_private_bin_at`): `common::sandbox` shares the real cache on purpose, and this Mac's
+  already holds theseus's `postgres-18.6.0`, which a legacy resolve would have been handed and called ours. `legacy_pins_check` (network tier) is
   the RUN half: each legacy artifact resolved through the real download/relink/re-sign path
   into a sandbox platform and answering `--version` — on THIS macOS, so it proves the bytes
   and the relink, not the load on 13 itself (that is `minos` + T7's VM,

@@ -3549,7 +3549,30 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       spawning with `LC_ALL=C` — the fixed build's Redis reached "Ready to accept connections"
       on the same VM minutes later). Without CLT the bundles refuse with the `xcode-select
       --install` sentence, as on 15.
-- [x] **PostgreSQL on 13**: the Databases page lists it as a muted row reading "Needs macOS 14
+- [ ] **PostgreSQL on 13 — offered, from rexenv's own build** (since 16 Nov 2026, ledger #972;
+      supersedes the refusal row below). The Welcome note reads "…with older versions of some
+      components." with NO "without …"; the Databases page lists PostgreSQL 18.6.0 like the other
+      engines (Install / Start, no muted row); Start → `running`, Adminer opens it; the version
+      list offers 18.6.0 / 17.11.0 / 16.15.0 and a switch to 17 starts on `postgres/17/data`;
+      New Site → Laravel offers PostgreSQL and `php artisan migrate` runs; `rex site create …
+      --db postgres` creates the site. The cache dir must hold OUR tree:
+      `ls "$HOME/Library/Application Support/dev.rexenv.rexenv/bin/postgres-18.6.0/licenses"` →
+      `postgresql.COPYRIGHT`, `openssl.LICENSE.txt`, and `lib/` has no `libssl.3.dylib`.
+      **Open: no run on a macOS 13 host** — the only 13 VM was upgraded in place to 15.8 (23 Sep
+      2026). What has run: the same resolve → prepare → `initdb` on the macOS 26 dev Mac under an
+      installed Legacy13 tier (`legacy_pins_check`), which proves the bytes and the `minos 13.0`
+      header, not a load on 13.
+- [ ] **PostgreSQL on 14 — an existing 16.4.0 cluster opens on 16.15.0.** On a macOS 14 host
+      that ran a build before this one with PostgreSQL started (so `postgres/data` holds a
+      16.4.0 cluster with a site's database in it): install this build, Start PostgreSQL → the
+      Databases row reads 16.15.0 `running`, the site's tables and rows are there, `postgres.log`
+      has no `database files are incompatible` and no collation-version warning. 18.6.0 and
+      17.11.0 are offered and each starts on its own `postgres/<major>/data`. **Open: no macOS 14
+      host exists** (the dev Mac's disk cannot hold a 14 VM). What has run (16 Nov 2026, dev
+      Mac): a datadir `initdb`'d and filled by theseus's 16.4.0 (500 rows + an index) started on
+      our 16.15.0 — rows and index identical, `CREATE EXTENSION pgcrypto` worked, no warning.
+- [x] **PostgreSQL on 13 (the 23 Sep 2026 REFUSAL — superseded 16 Nov 2026 by the row above; kept
+      as the record of what that build did)**: the Databases page lists it as a muted row reading "Needs macOS 14
       or later — this Mac runs macOS 13.x."; New Site → Laravel/Blank shows the same sentence
       under the engine picker and offers no PostgreSQL option; `rex db versions --set postgres …`
       refuses with the same words. ✓ 23 Sep 2026 (clean UTM VM, macOS 13.6 arm64, CLT-less,
@@ -3565,8 +3588,10 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       the same day:** the dialog ALSO showed the PDO note ("the PHP 8.3 build has no working
       pdo_pgsql") because one boolean carried both reasons; and the PHP list appended 8.0 after
       8.5 instead of in order.
-- [ ] **The MCP create tool refuses PostgreSQL on 13** with the same words. **Open: no run
-      recorded** (the 23 Sep legs were `rex` and the GUI).
+- **The MCP create tool refuses PostgreSQL on 13** with the same words — **never run, and
+      obsolete since 16 Nov 2026**: PostgreSQL is offered on 13 (two rows up), so there is no
+      refusal left to ask the tool for. Not ticked: no run exists (the 23 Sep legs were `rex`
+      and the GUI).
 - [x] **PHP 8.0 on 13**: Settings → PHP keeps the 8.0 row, dot grey, Install disabled, a chip
       with the sentence; `rex php install 8.0` refuses with it. ✓ 23 Sep 2026 (clean UTM VM,
       macOS 13.6 arm64, CLT-less, build 2d1e1bc4 + the activation/gate fixes, driven over ssh +
@@ -3612,7 +3637,8 @@ Environment: macOS 13.6 (22G120) arm64, UTM (CLT-less at first, CLT installed la
       site creates must raise NO `edge-blocked` toast, while a Herd-style `127.0.0.1:443` bind
       still raises one within ~20 s).
 - [ ] **The whole list above on a clean macOS 14 VM** — the Welcome note without "…without
-      PostgreSQL…", PostgreSQL 16.4 offered, PHP 8.0 not refused, and the legacy-pins row as it
+      PostgreSQL…", PostgreSQL **16.15.0 (default) / 18.6.0 / 17.11.0 offered from rexenv's own
+      build** (16.4 only, before 16 Nov 2026), PHP 8.0 not refused, and the legacy-pins row as it
       reads on 14 ("On 14 only cloudflared moves"). **Open: the macOS 14 VM has not been run** (`docs/TODO.md`'s "macOS
       13 floor" row stays open for it).
 
