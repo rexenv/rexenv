@@ -291,13 +291,14 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     // for a program that is not running, in the one situation where the thing
     // that failed is ours. Different problem, different fix.
     if wire == core::proxy::EdgeWire::NoAnswer {
-        return Err(Error::Other(
-            format!(
-                "services started, but nothing is answering port {https} — rexenv's edge did not come \
-                 up. Nothing else is holding the port, so this is ours to fix: check the edge log \
-                 (Services → Caddy → Logs), then Start all again."
-            ),
-        ));
+        // The path of the file THIS edge writes — never a UI tab: the Logs tab shows the child
+        // edge's file only, and a supervised edge's output is somewhere else (ledger #974).
+        let log = state.services.lock().await.edge_log_path(state.platform.as_ref());
+        return Err(Error::Other(format!(
+            "services started, but nothing is answering port {https} — rexenv's edge did not come \
+             up. Nothing else is holding the port, so this is ours to fix: Start all again, and if \
+             it repeats the edge's own log has the reason — {log}"
+        )));
     }
     let help = state
         .platform

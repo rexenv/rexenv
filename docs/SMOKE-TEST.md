@@ -3401,6 +3401,16 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   inside the user's app data. ✓ **15.8 VM, 5 Nov 2026** (a `tauri build --debug` bundle of `3ccab205` — this Mac's ld-27106 writes release proc-macro dylibs dyld refuses, `mis-aligned LINKEDIT string pool`): `rex stop`/`rex start` reinstalled the daemon (plist now names `/Library/Logs/rexenv/caddy-start.log`, the folder root:wheel), `wtp.rex` 200; app quit, data folder moved aside, `launchctl kickstart -k` the daemon → caddy failed 6 times on the missing Caddyfile over ~40 s and the folder never came back; moved back → 0 root-owned files in it, 200, the app re-adopted the edge. Not run: opening rexenv on a fresh folder while the old one is aside.
   Linux/Windows: no step (systemd fails the unit `209/STDOUT` instead
   of creating the folder; Windows runs no root daemon).
+- [ ] **The no-answer toast names the edge's real log** (ledger #974): with the stack up, make
+  IPv4 loopback refuse the port while the edge stays alive — `echo 'block return in quick on lo0
+  proto tcp from any to 127.0.0.1 port 443' | sudo pfctl -ef -` (recipe NOT run yet; undo with
+  `sudo pfctl -F rules -d`) — then Start all. It ends "nothing is answering port 443 … the edge's
+  own log has the reason — <path>", and `ls -l <path>` shows a file the edge wrote today:
+  `/Library/Logs/rexenv/caddy-start.log`. **Tell:** "Services → Caddy → Logs", or a path whose
+  file is missing or days old. Linux: the same with `sudo iptables -I INPUT -p tcp -d 127.0.0.1
+  --dport 443 -j REJECT --reject-with tcp-reset` (not run), path = the app data's
+  `logs/caddy-start.log`. Windows: no supervised edge — the path is `logs\caddy-stdout.log`,
+  the file it always meant; no step.
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The

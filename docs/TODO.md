@@ -219,6 +219,22 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   tests in `core::binaries`), `legacy_pins_check` (ours downloaded, prepared, `initdb` run under an
   installed legacy tier on the macOS 26 dev Mac), `manifest_sweep_check`. **Not proven: a load on a
   real macOS 13 or 14 host — none exists** (`docs/SMOKE-TEST.md` "macOS 13 and 14" carries both rows).
+- [x] **The "nothing is answering port 443" toast sent macOS users to the wrong log** ✓ 18 Nov 2026 —
+  it said "Services → Caddy → Logs" (the child edge's `caddy-stdout.log`); the root daemon writes
+  `/Library/Logs/rexenv/caddy-start.log`. Start all and the watchdog now name the path of the file
+  the running edge writes (`ServiceManager::edge_log_path`). L0
+  `the_edge_log_named_is_the_one_this_edge_writes`, planted x2; ledger #974; SMOKE row owed (macOS, Linux).
+- [ ] **A user's Mac refused `127.0.0.1:443` beside a healthy edge** (0.9.8, macOS 26.5.2, Apple
+  silicon, 16 Nov 2026; 11 sites, all made in rexenv). Start all: "nothing is answering port 443 —
+  rexenv's edge did not come up", no site loaded, a reboot cleared it. Their `caddy-start.log` for the
+  window shows the edge starting in 3 ms with `server running` on `:443`, no bind error, no crash
+  loop; after the reboot `lsof` shows the usual dual-stack `IPv6 *:443`. So the edge was up and IPv4
+  loopback did not reach it. UNEXPLAINED. Suspected, no evidence: a `pf` rule / VPN / network filter
+  on the machine. Asked of the user: when the toast appeared, `logs/rexenv.log` + `logs/health.log`,
+  the whole `caddy-start.log`, what VPN/firewall/dev tools are installed, and — on a repeat, BEFORE
+  rebooting — `nc -vz 127.0.0.1 443`, `nc -vz ::1 443`, `sudo pfctl -s info`, `sudo pfctl -s nat`.
+  If `::1` answers while `127.0.0.1` refuses, `verify_edge_wire` can say so (the #971 shape, for a
+  refusal instead of a silence).
 - [x] **PostgreSQL datadir across a tier move — the default series changes under the same
   directory** (found 16 Nov 2026 building the row above; older than it). `DbEngine::data_dir` gives
   the unversioned `postgres/data` to the DEFAULT pin's series. Legacy14's default is series 16

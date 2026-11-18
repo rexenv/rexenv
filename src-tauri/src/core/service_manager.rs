@@ -1035,6 +1035,31 @@ impl ServiceManager {
         matches!(self.caddy, CaddyHandle::Daemon)
     }
 
+    /// **The file the edge's own output is in — the one path a message may send someone to**
+    /// (ledger #974). It depends on HOW the edge runs, and the two answers are different files in
+    /// different folders: a supervised edge writes where its supervisor was told to
+    /// (`EdgeSupervisor::start_log_path` — on macOS `/Library/Logs/rexenv/caddy-start.log`, outside
+    /// the app's log folder since 4 Nov 2026), a child edge writes `logs/caddy-stdout.log`. Start
+    /// all's "nothing is answering port 443" said "check the edge log (Services → Caddy → Logs)",
+    /// which shows only the child's file: a macOS user was sent to a log their edge had never
+    /// written to (0.9.8, 16 Nov 2026). A `Stopped` handle is a belief that can lag the fact
+    /// (#790), so it asks whether a supervisor is installed.
+    pub fn edge_log_path(&self, platform: &dyn Platform) -> String {
+        let Ok(dir) = platform.paths().log_dir() else {
+            return proxy::EDGE_CHILD_LOG.to_string();
+        };
+        let supervised = match self.caddy {
+            CaddyHandle::Daemon => true,
+            CaddyHandle::Stopped => platform.edge().is_installed(),
+            // The legacy osascript edge logs beside the child's file (`proxy::start_privileged`).
+            CaddyHandle::Privileged => return dir.join("caddy-start.log").display().to_string(),
+            CaddyHandle::Child(_) => false,
+        };
+        if supervised { platform.edge().start_log_path(&dir) } else { dir.join(proxy::EDGE_CHILD_LOG) }
+            .display()
+            .to_string()
+    }
+
     /// Whether Stop all must stop the edge's OS supervisor: the handle says so, OR the daemon is
     /// installed and its supervisor will run it (macOS: the plist is there and its keep-alive
     /// switch is up). The handle is a BELIEF and can lag the fact — after a slow boot the login
@@ -2974,8 +2999,9 @@ impl ServiceManager {
                     format!(
                         "the edge process is running but nothing is answering port {} — no \
                          other app is holding it, so this is rexenv's own edge failing to \
-                         serve. Its log has the reason; Stop all then Start all rebuilds it.",
-                        self.ports.https
+                         serve. Its log is {}; Stop all then Start all rebuilds it.",
+                        self.ports.https,
+                        self.edge_log_path(platform)
                     )
                 } else {
                     let help = platform.supervisor().port_conflict_help(self.ports.https, false);
@@ -4076,6 +4102,37 @@ mod tests {
         );
         drop(holder);
         assert!(prepare("gate-free", None).expect("prepare_edge").is_some(), "a free port is a start plan");
+    }
+
+    /// Ledger #974 — a message names the file THIS edge writes: the supervisor's for a supervised
+    /// edge (also when the handle lags as Stopped over an installed daemon), the child's otherwise.
+    #[test]
+    fn the_edge_log_named_is_the_one_this_edge_writes() {
+        let installed = edge_test_platform("edge-log-installed", true, true);
+        let bare = edge_test_platform("edge-log-bare", false, false);
+        let logs = |p: &EdgeTestPlatform| p.paths().log_dir().expect("a log dir");
+        let supervised = |p: &EdgeTestPlatform| p.edge().start_log_path(&logs(p)).display().to_string();
+        let child = |p: &EdgeTestPlatform| logs(p).join(proxy::EDGE_CHILD_LOG).display().to_string();
+        assert_ne!(supervised(&installed), child(&installed), "fixture: two different files");
+
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        assert_eq!(mgr.edge_log_path(&installed), supervised(&installed), "Stopped handle, installed daemon: the supervisor's log");
+        assert_eq!(mgr.edge_log_path(&bare), child(&bare), "nothing installed: the child's log");
+        mgr.set_edge_daemon();
+        assert_eq!(mgr.edge_log_path(&bare), supervised(&bare), "a Daemon handle: the supervisor's log");
+        let spawned = std::process::Command::new(std::env::current_exe().unwrap()).arg("--list").stdout(std::process::Stdio::null()).spawn().expect("a child");
+        mgr.set_edge_child(spawned);
+        assert_eq!(mgr.edge_log_path(&installed), child(&installed), "a Child handle: the child's log, daemon installed or not");
+
+        // Both doors that send someone to the edge's log ask this, and neither names a UI tab.
+        let cmd = include_str!("../commands/services.rs");
+        let gate = &cmd[cmd.find("async fn verify_edge_wire(").expect("verify_edge_wire")..];
+        let gate = &gate[..gate.find("\n}\n").expect("its end")];
+        assert!(gate.contains("edge_log_path("), "Start all's no-answer sentence names the edge's real log");
+        assert!(!gate.contains("Caddy → Logs"), "the Logs tab shows only the child edge's file");
+        let own = include_str!("service_manager.rs");
+        let watchdog = &own[own.find("the edge process is running but nothing is answering port").expect("the watchdog sentence")..];
+        assert!(watchdog[..400].contains("self.edge_log_path(platform)"), "the watchdog names it too");
     }
 
     /// Ledger #790 — Stop all asks the FACT (daemon installed + enabled), not only the handle.

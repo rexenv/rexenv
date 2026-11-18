@@ -520,9 +520,13 @@ pub fn start(platform: &dyn Platform, caddy_bin: &Path, caddyfile: &Path) -> Res
         "caddyfile".to_string(),
     ];
     // Caddy logs (JSON) to stderr — capture it to a per-service log file.
-    let log = platform.paths().log_dir()?.join("caddy-stdout.log");
+    let log = platform.paths().log_dir()?.join(EDGE_CHILD_LOG);
     platform.supervisor().spawn_logged(caddy_bin, &args, &log)
 }
+
+/// The file a CHILD edge's output goes to, in the app's log folder. A supervised edge writes
+/// elsewhere — `ServiceManager::edge_log_path` answers for whichever edge is running.
+pub const EDGE_CHILD_LOG: &str = "caddy-stdout.log";
 
 /// Wait, without blocking a thread, for a just-spawned child edge's admin socket to answer
 /// (ledger #853) — so Start all says "done" only for an edge that is up. Returns `Ok` once it
