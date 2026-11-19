@@ -3417,12 +3417,15 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   `fa58f9ab` + this change): all three doors; unblocked 22 s after the rule went. 0.9.8 on the same
   rule gave the old sentence. Linux: `sudo iptables -I INPUT -p tcp -d 127.0.0.1 --dport 443 -j
   REJECT --reject-with tcp-reset` — NOT run. Windows: cannot arise (the edge has no IPv6 listener).
-- [ ] **The Logs tab shows the edge service's log** (ledger #976): a site → Logs → Server →
+- [x] **The Logs tab shows the edge service's log** (ledger #976): a site → Logs → Server →
   "Caddy (edge service)" lists lines the edge wrote today and its path row reads
   `/Library/Logs/rexenv/caddy-start.log`; Download copies it; Clear answers "only it may clear it".
   **Tell:** the source missing, empty beside a running edge, or a bare `Permission denied`. Linux:
   the same, path = the app data's `logs/caddy-start.log`, and Clear works (the user's file).
   Windows: no such source — "Caddy (edge)" is the edge's log there.
+  ✓ **15.8 VM, 19 Nov 2026** (a `tauri build --debug` bundle of `b95b0c38`): the source listed, the
+  path row and that minute's lines shown, Clear refused in those words with the file untouched.
+  Download not pressed. Linux NOT run.
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The

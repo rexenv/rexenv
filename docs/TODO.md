@@ -232,8 +232,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [x] **The Logs tab never showed a supervised edge's log** ✓ 19 Nov 2026 — "Caddy (edge service)"
   added where an edge supervisor is installed, resolved to the platform's path by an exact key
   (`core::logs::path_of`); a root-owned file's Clear is refused in words. L0
-  `the_supervised_edge_log_is_offered_and_resolved_only_where_there_is_one`; ledger #976; not seen in
-  the tab on any OS — SMOKE row owed (macOS, Linux).
+  `the_supervised_edge_log_is_offered_and_resolved_only_where_there_is_one`; ledger #976; seen in the
+  tab on the 15.8 VM (source, path, lines, Clear's refusal); Linux not run.
 - [ ] **`rex doctor` calls an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** (seen
   once, the 15.8 VM, 19 Nov 2026, ~35 s after a `pf` rule was removed and the watchdog had already
   logged `[edge-unblocked]`; three reads right after said "answering as rexenv"; only rexenv's caddy
