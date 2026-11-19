@@ -3419,16 +3419,24 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   Start all shows Caddy NOT running and `health.log` already has ONE `[edge-blocked]` line with
   Start all's sentence — ✓ same VM, same day: refused 08:19:50, line 08:19:50.222, one line 25 s
   later. **Tell:** "All running" under the toast. Linux: `sudo iptables -I INPUT -p tcp -d 127.0.0.1 --dport 443 -j
-  REJECT --reject-with tcp-reset` — NOT run. Windows: cannot arise (the edge has no IPv6 listener).
+  REJECT --reject-with tcp-reset` (undo with `-D`) — ✓ **Ubuntu 22.04 VM, 19 Nov 2026** (a container
+  debug build of `f4e76349` over the 0.9.8 deb): `nc 127.0.0.1 443` refused, `::1` connects; 0.9.8
+  said "rexenv's edge did not come up"; the new build said the IPv6/IPv4 sentence at all three doors;
+  rule on then `rex start` at once → refused 09:00:26.58, `[edge-blocked]` 09:00:26.581, Caddy idle,
+  one line 25 s later; rule off → `[edge-unblocked]` 27 s after. Windows: cannot arise (the edge has
+  no IPv6 listener).
 - [x] **The Logs tab shows the edge service's log** (ledger #976): a site → Logs → Server →
   "Caddy (edge service)" lists lines the edge wrote today and its path row reads
   `/Library/Logs/rexenv/caddy-start.log`; Download copies it; Clear answers "only it may clear it".
   **Tell:** the source missing, empty beside a running edge, or a bare `Permission denied`. Linux:
-  the same, path = the app data's `logs/caddy-start.log`, and Clear works (the user's file).
+  the same, path = `~/.local/share/rexenv/logs/caddy-start.log` — root's file there too (the unit
+  appends to it), so Clear is refused in the same words.
   Windows: no such source — "Caddy (edge)" is the edge's log there.
   ✓ **15.8 VM, 19 Nov 2026** (a `tauri build --debug` bundle of `b95b0c38`): the source listed, the
   path row and that minute's lines shown, Clear refused in those words with the file untouched.
-  Download not pressed. Linux NOT run.
+  Download not pressed. ✓ **Ubuntu 22.04 VM, 19 Nov 2026** (the same container build): the source
+  listed under "Caddy (edge)", that path, that minute's lines, Clear refused in those words (979471
+  bytes before and after). Download not pressed.
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The

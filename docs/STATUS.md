@@ -9,47 +9,47 @@ App version **0.9.8** (`src-tauri/tauri.conf.json`). Open rows in `docs/TODO.md`
 - `TODO.md:174` One update channel — open for the three SMOKE rows live per OS
 - `TODO.md:184` Windows Defender flags the PUBLISHED 0.8.11 `setup.exe` as `Trojan:Win32/Bearfoos.B!ml`
 - `TODO.md:201` macOS 13 floor — open: the macOS 14 VM run
-- `TODO.md:247` Start all probes the edge's port ONCE, right after its admin socket answers
-- `TODO.md:252` The edge daemon's log opens every start with two harmless errors
-- `TODO.md:257` A user's Mac refused `127.0.0.1:443` beside a healthy edge
-- `TODO.md:293` Windows: PHP's own curl has no CA bundle
-- `TODO.md:296` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
-- `TODO.md:299` A public tunnel for `mstest.rex` was running that this session never started
-- `TODO.md:332` Private-window flags for Arc, ChatGPT Atlas, Orion
-- `TODO.md:343` Radicle-hosted repos are unverified
-- `TODO.md:348` Why that `rex` instance went deaf was never diagnosed
-- `TODO.md:351` Windows `setup.exe /S` over a running app + agent sometimes exits 2
+- `TODO.md:249` Start all probes the edge's port ONCE, right after its admin socket answers
+- `TODO.md:254` The edge daemon's log opens every start with two harmless errors
+- `TODO.md:259` A user's Mac refused `127.0.0.1:443` beside a healthy edge
+- `TODO.md:295` Windows: PHP's own curl has no CA bundle
+- `TODO.md:298` Windows: WebView2's `downloadBootstrapper` on a PC without WebView2
+- `TODO.md:301` A public tunnel for `mstest.rex` was running that this session never started
+- `TODO.md:334` Private-window flags for Arc, ChatGPT Atlas, Orion
+- `TODO.md:345` Radicle-hosted repos are unverified
+- `TODO.md:350` Why that `rex` instance went deaf was never diagnosed
+- `TODO.md:353` Windows `setup.exe /S` over a running app + agent sometimes exits 2
 
 ### Ledger-driven proof backlog — 1
 
-- `TODO.md:374` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
+- `TODO.md:376` `wp_plugins_check` failed its deactivate assertion once and has not reproduced — the product-bug flag raise…
 
 ### Release gates (human, scripted — see the docs named) — 9
 
-- `TODO.md:447` The in-app update's remaining human rows (macOS)
-- `TODO.md:457` Release 5.4 — clean-Mac smoke test
-- `TODO.md:464` Tunnel probe session
-- `TODO.md:468` In-app verifies owed
-- `TODO.md:487` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
-- `TODO.md:499` The live pool swap is still L3
-- `TODO.md:503` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
-- `TODO.md:511` Install WordPress into an empty LINKED folder
-- `TODO.md:518` `rex` design-first set — ONE item left: raw `wp` passthrough
+- `TODO.md:449` The in-app update's remaining human rows (macOS)
+- `TODO.md:459` Release 5.4 — clean-Mac smoke test
+- `TODO.md:466` Tunnel probe session
+- `TODO.md:470` In-app verifies owed
+- `TODO.md:489` Windows: the Sites takeback banner names Valet/Herd and a "resolver file"
+- `TODO.md:501` The live pool swap is still L3
+- `TODO.md:505` SMOKE §M1/§M2a/§M2b — the MCP human gates, PARTLY RUN
+- `TODO.md:513` Install WordPress into an empty LINKED folder
+- `TODO.md:520` `rex` design-first set — ONE item left: raw `wp` passthrough
 
 ### Blocked on external work — 5
 
-- `TODO.md:525` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
-- `TODO.md:565` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
-- `TODO.md:576` Xdebug on PHP 8.0
-- `TODO.md:581` SMAppService privileged helper
-- `TODO.md:583` Developer ID signing + notarization
+- `TODO.md:527` The pinned wp-cli phar (2.12.0) is not PHP 8.5-clean
+- `TODO.md:567` Homebrew publishes NO Intel macOS bottle for `redis` or `mariadb` any more
+- `TODO.md:578` Xdebug on PHP 8.0
+- `TODO.md:583` SMAppService privileged helper
+- `TODO.md:585` Developer ID signing + notarization
 
 ### Phase 4+ (next era) — 4
 
-- `TODO.md:588` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
-- `TODO.md:601` Headless rexenv on a VPS — open: the rest of Phase 1b
-- `TODO.md:615` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
-- `TODO.md:622` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
+- `TODO.md:590` The web UI's sign-in — one hardening item owed before Phase 1b is called done: (3) the stack is open to eve…
+- `TODO.md:603` Headless rexenv on a VPS — open: the rest of Phase 1b
+- `TODO.md:617` Headless mode on macOS and Windows — open: a fresh Windows PC's first headless setup
+- `TODO.md:624` WordPress live ↔ local sync — open: the owner's read of L13's agent pass; the GUI presses of the 16 Oct row…
 
 ## Claim ledger (`scripts/ledger-tally.sh`)
 

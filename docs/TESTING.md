@@ -1415,6 +1415,15 @@ restart` (no prompt, the sudoers set), on macOS the admin prompt for `kickstart 
 does not carry to a later `sudo -n` over a non-tty SSH: pipe the password to every `sudo -S`, or the resume
 never comes and the run turns into the wedge case.
 
+**IPv4 loopback turned away from a live edge, on purpose** (19 Nov 2026, #975/#978 — macOS too): a
+packet-filter rule that RESETS `127.0.0.1:443` leaves the edge listening and `[::1]` answering, which
+is the state a user's Mac was in. Linux: `sudo iptables -I INPUT -p tcp -d 127.0.0.1 --dport 443 -j
+REJECT --reject-with tcp-reset`, undone with the same line and `-D`. macOS: `echo 'block return in quick
+on lo0 proto tcp from any to 127.0.0.1 port 443' > /tmp/p.conf; sudo pfctl -ef /tmp/p.conf`, undone with
+`sudo pfctl -f /etc/pf.conf; sudo pfctl -d`. Check it took with `nc -vz 127.0.0.1 443` (refused) and
+`nc -vz ::1 443` (connects) before reading anything rexenv says. A rule that DROPS instead gives a
+timeout — the unreadable reading, a different branch.
+
 **A power cut, on purpose** (29 Sep 2026, #740): `utmctl stop Ubuntu --kill` is a cut, not a
 shutdown. A root file written by a plain `cp` and killed 10 s later reliably comes back ZERO bytes
 (ext4 delalloc — the inode is journaled at the 5 s commit, the data is not written until ~30 s);

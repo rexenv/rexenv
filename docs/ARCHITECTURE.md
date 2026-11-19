@@ -1052,7 +1052,8 @@ Live-proven end to end by `site_stop_start_check`.
 - **The supervised edge's log is a Logs-tab source of its own** (#976): "Caddy (edge)" is
   `caddy-stdout.log`, which only a CHILD edge writes; a supervised edge (macOS's root daemon,
   Linux's unit) writes where `EdgeSupervisor::start_log_path` says — on macOS
-  `/Library/Logs/rexenv/caddy-start.log`, outside `log_dir` and root-owned. Where a supervisor
+  `/Library/Logs/rexenv/caddy-start.log`, outside `log_dir`; on Linux `log_dir`'s own
+  `caddy-start.log`. Root owns the file on both. Where a supervisor
   is installed the tab adds "Caddy (edge service)" (`logs::with_supervised_edge`); its key is
   the one key `logs::path_of` resolves outside `log_dir`, by exact match, after the same
   `is_safe_key` gate. Clear on a file its supervisor owns is refused in words. Until 19 Nov

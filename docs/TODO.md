@@ -228,12 +228,13 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   2026 — `proxy::v4_refused_beside_our_edge` asks `[::1]` for our marker; Start all, the watchdog and
   `rex doctor` say one sentence that names the refusal and no fix that rebuilds nothing. L0
   `a_refused_v4_wire_alone_is_an_edge_that_is_not_up`; run on the 15.8 VM with a `pf` rule (all three
-  doors, self-recovery 22 s after the rule went); ledger #975. Linux not run, Windows cannot arise.
+  doors, self-recovery 22 s after the rule went) and on the Ubuntu VM with an `iptables` REJECT;
+  ledger #975. Windows cannot arise.
 - [x] **The Logs tab never showed a supervised edge's log** ✓ 19 Nov 2026 — "Caddy (edge service)"
   added where an edge supervisor is installed, resolved to the platform's path by an exact key
   (`core::logs::path_of`); a root-owned file's Clear is refused in words. L0
   `the_supervised_edge_log_is_offered_and_resolved_only_where_there_is_one`; ledger #976; seen in the
-  tab on the 15.8 VM (source, path, lines, Clear's refusal); Linux not run.
+  tab on the 15.8 VM and the Ubuntu VM (source, path, lines, Clear's refusal).
 - [x] **`rex doctor` called an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** ✓ 19
   Nov 2026 — seen once on the 15.8 VM 35 s after the edge had recovered, only rexenv's caddy
   listening. Doctor now says a slow probe as one (`proxy::unreadable_wire_note`, through the note the
@@ -243,7 +244,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   Start all's wire gate now marks the edge blocked and writes the health line itself for every
   refusal that is not a slow probe (`ServiceManager::block_edge_now`); the watchdog used to do it two
   polls (~20 s) later. L0 `a_refused_wire_gate_blocks_the_edge_row_at_once`, planted; run on the 15.8
-  VM (row idle and the line in the same second, no second line, self-recovery); ledger #978.
+  VM and the Ubuntu VM (row idle and the line in the same second, no second line, self-recovery);
+  ledger #978.
 - [ ] **Start all probes the edge's port ONCE, right after its admin socket answers** — not measured
   as a fault. Caddy opens the admin socket before it binds `:443` (3 ms apart in a user's log, 16 Nov
   2026), so a slow bind could read as "nothing is answering" for one probe; no sighting. #978 raises
