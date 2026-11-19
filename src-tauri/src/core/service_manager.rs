@@ -1169,6 +1169,20 @@ impl ServiceManager {
         self.edge_blocked
     }
 
+    /// Start all's wire gate just read the port as not ours (and not merely slow): mark the edge
+    /// blocked NOW and record it, instead of leaving its row "running" until the watchdog's
+    /// second miss (ledger #978). The watchdog still owns the way back — it clears the flag and
+    /// logs `edge-unblocked` when our marker answers. Nothing to mark with no edge handle (the
+    /// row already says not running) or when already blocked (one event per transition).
+    pub fn block_edge_now(&mut self, platform: &dyn Platform, detail: &str) {
+        if self.edge_blocked || matches!(self.caddy, CaddyHandle::Stopped) {
+            return;
+        }
+        self.edge_blocked = true;
+        self.edge_wire_misses = EDGE_WIRE_MISS_POLLS;
+        log_health_events(platform, &[HealthEvent { service: "Caddy".into(), action: "edge-blocked", detail: detail.to_string() }]);
+    }
+
     pub fn is_running(&self) -> bool {
         self.nginx.is_some()
     }
@@ -4107,6 +4121,35 @@ mod tests {
         );
         drop(holder);
         assert!(prepare("gate-free", None).expect("prepare_edge").is_some(), "a free port is a start plan");
+    }
+
+    /// Ledger #978 — the wire gate's refusal marks the edge blocked at once, once, and writes the
+    /// health line; a Stopped handle and an already-blocked edge are left alone; an unreadable
+    /// probe never reaches it.
+    #[test]
+    fn a_refused_wire_gate_blocks_the_edge_row_at_once() {
+        let platform = edge_test_platform("block-now", true, true);
+        let log = platform.paths().log_dir().unwrap().join("health.log");
+        let _ = std::fs::remove_file(&log);
+        let lines = || std::fs::read_to_string(&log).unwrap_or_default().lines().count();
+        let mut mgr = ServiceManager::with_ports(Ports::default());
+        mgr.block_edge_now(&platform, "x");
+        assert!(!mgr.edge_blocked() && lines() == 0, "no edge handle: nothing to mark");
+        mgr.set_edge_daemon();
+        mgr.block_edge_now(&platform, "the gate's sentence");
+        assert!(mgr.edge_blocked(), "blocked in the same breath as the error");
+        assert!(wire_blocked_after(mgr.edge_wire_misses), "the watchdog's count agrees, so its next poll adds no second event");
+        let text = std::fs::read_to_string(&log).expect("the health log");
+        assert!(text.contains("[edge-blocked] Caddy: the gate's sentence"), "{text}");
+        mgr.block_edge_now(&platform, "again");
+        assert_eq!(lines(), 1, "one event per transition");
+        let cmd = include_str!("../commands/services.rs");
+        let gate = &cmd[cmd.find("async fn verify_edge_wire(").expect("the gate")..];
+        let gate = &gate[..gate.find("\n}\n").expect("its end")];
+        assert_eq!(gate.matches("edge_not_serving(state, ").count(), 4, "holder on IPv4, refused IPv4, no answer, answered not ours");
+        let slow = gate.find("WireReading::Unreadable {").expect("the slow branch");
+        let slow = &gate[slow..slow + gate[slow..].find("\n    }\n").expect("its end")];
+        assert!(!slow.contains("edge_not_serving("), "a slow probe is the watchdog's to judge:\n{slow}");
     }
 
     /// Ledger #974 — a message names the file THIS edge writes: the supervisor's for a supervised

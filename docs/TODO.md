@@ -239,6 +239,21 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   listening. Doctor now says a slow probe as one (`proxy::unreadable_wire_note`, through the note the
   CLI already prints). L0 `doctor_does_not_call_a_slow_probe_another_proxy`, planted; ledger #977; the
   state was not forced on any OS.
+- [x] **The card said "All running" under a toast saying the edge was not serving** ✓ 19 Nov 2026 —
+  Start all's wire gate now marks the edge blocked and writes the health line itself for every
+  refusal that is not a slow probe (`ServiceManager::block_edge_now`); the watchdog used to do it two
+  polls (~20 s) later. L0 `a_refused_wire_gate_blocks_the_edge_row_at_once`, planted; run on the 15.8
+  VM (row idle and the line in the same second, no second line, self-recovery); ledger #978.
+- [ ] **Start all probes the edge's port ONCE, right after its admin socket answers** — not measured
+  as a fault. Caddy opens the admin socket before it binds `:443` (3 ms apart in a user's log, 16 Nov
+  2026), so a slow bind could read as "nothing is answering" for one probe; no sighting. #978 raises
+  the cost of a false one (the row flips at once; the watchdog flips it back within a poll). If it
+  is ever seen: `verify_edge_wire` re-reads a refusal once after a short wait before believing it.
+- [ ] **The edge daemon's log opens every start with two harmless errors** (macOS: `$HOME is not
+  defined` → `mkdir caddy: read-only file system`, `could not clean default/global storage`). They
+  are why a log tail was NOT added to the no-answer toast (#974). Fixing them means changing the
+  launcher, and a changed launcher is a privileged reinstall for every Mac — not worth it for noise;
+  fold it into the next change that has to touch the launcher anyway.
 - [ ] **A user's Mac refused `127.0.0.1:443` beside a healthy edge** (0.9.8, macOS 26.5.2, Apple
   silicon, 16 Nov 2026; 11 sites, all made in rexenv). Start all: "nothing is answering port 443 —
   rexenv's edge did not come up", no site loaded, a reboot cleared it. Their `caddy-start.log` for the

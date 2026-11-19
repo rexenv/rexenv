@@ -2213,6 +2213,11 @@ honest footer —
   `rex doctor` reads the same fine `WireReading`: one probe that completed no exchange beside a
   live edge is said as a slow probe (`unreadable_wire_note`, #977), not as "another proxy" — it
   was the last door still folding the two.
+  **The gate that refuses also marks** (#978): for every refusal that is not a slow probe,
+  `verify_edge_wire` calls `ServiceManager::block_edge_now` — the edge's row reads not-running
+  and `health.log` has the `edge-blocked` line in the same second as the toast, instead of the
+  watchdog's two polls later (a card saying "All running" under an error saying no site loads).
+  The watchdog still owns the way back.
   **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another

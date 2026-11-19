@@ -3415,7 +3415,10 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   pfctl -d` → `[edge-unblocked]` by itself, no Start all. **Tell:** "rexenv's edge did not come up",
   or advice to Start all again. ✓ **15.8 VM, 19 Nov 2026** (a `tauri build --debug` bundle of
   `fa58f9ab` + this change): all three doors; unblocked 22 s after the rule went. 0.9.8 on the same
-  rule gave the old sentence. Linux: `sudo iptables -I INPUT -p tcp -d 127.0.0.1 --dport 443 -j
+  rule gave the old sentence. **And at once (ledger #978):** `rex status` right after the refused
+  Start all shows Caddy NOT running and `health.log` already has ONE `[edge-blocked]` line with
+  Start all's sentence — ✓ same VM, same day: refused 08:19:50, line 08:19:50.222, one line 25 s
+  later. **Tell:** "All running" under the toast. Linux: `sudo iptables -I INPUT -p tcp -d 127.0.0.1 --dport 443 -j
   REJECT --reject-with tcp-reset` — NOT run. Windows: cannot arise (the edge has no IPv6 listener).
 - [x] **The Logs tab shows the edge service's log** (ledger #976): a site → Logs → Server →
   "Caddy (edge service)" lists lines the edge wrote today and its path row reads

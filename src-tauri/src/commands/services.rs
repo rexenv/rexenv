@@ -272,16 +272,17 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     // a live edge — not a busy machine, and Start all again rebuilds nothing (#971).
     if core::proxy::v4_taken_beside_our_edge(core::adminer::ADMINER_HOST, https, reading).await {
         let supervisor = state.platform.supervisor();
-        return Err(Error::Other(core::proxy::v4_holder_sentence(
+        let said = core::proxy::v4_holder_sentence(
             https,
             supervisor.port_conflict_help(https, false),
             supervisor.port_listeners_command(https),
-        )));
+        );
+        return edge_not_serving(state, said).await;
     }
     // Refused on IPv4 while OUR marker answers IPv6: the edge IS up, and Start all again rebuilds
     // nothing — not "the edge did not come up" (#975).
     if core::proxy::v4_refused_beside_our_edge(core::adminer::ADMINER_HOST, https, reading).await {
-        return Err(Error::Other(core::proxy::v4_refused_sentence(https)));
+        return edge_not_serving(state, core::proxy::v4_refused_sentence(https)).await;
     }
     if reading == core::proxy::WireReading::Unreadable {
         return Err(Error::Other(format!(
@@ -298,12 +299,16 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     if wire == core::proxy::EdgeWire::NoAnswer {
         // The path of the file THIS edge writes — never a UI tab: the Logs tab shows the child
         // edge's file only, and a supervised edge's output is somewhere else (ledger #974).
-        let log = state.services.lock().await.edge_log_path(state.platform.as_ref());
-        return Err(Error::Other(format!(
+        let log = {
+            let mgr = state.services.lock().await;
+            mgr.edge_log_path(state.platform.as_ref())
+        };
+        let said = format!(
             "services started, but nothing is answering port {https} — rexenv's edge did not come \
              up. Nothing else is holding the port, so this is ours to fix: Start all again, and if \
              it repeats the edge's own log has the reason — {log}"
-        )));
+        );
+        return edge_not_serving(state, said).await;
     }
     let help = state
         .platform
@@ -319,11 +324,23 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
     // (lib/toast.ts toastBackendError) — supervisor-aware, so it QUITS a managed
     // app instead of killing a worker its supervisor would respawn.
     let fix = help.free_command.filter(|_| named).map(|c| format!("\n$ {c}")).unwrap_or_default();
-    Err(Error::Other(format!(
+    let said = format!(
         "services are running, but {holder} answers port {https} in front of rexenv — \
          sites cannot load until you quit {quit} (then Start all again, or just \
          wait: rexenv re-checks automatically).{fix}"
-    )))
+    );
+    edge_not_serving(state, said).await
+}
+
+/// The wire gate's refusal for a reading that is NOT a slow probe: the edge's row stops saying
+/// "running" in the same breath as the error, and the health log gets the line (ledger #978).
+/// Before it the gate only returned the sentence — the watchdog marked the edge blocked two
+/// polls later, so for ~20 s the card read "All running" under a toast saying no site loads
+/// (a user's screenshot, 0.9.8, 16 Nov 2026; measured on the 15.8 VM, 19 Nov: toast, then
+/// `[edge-blocked]` ~20 s after). An unreadable probe is left to the watchdog's slow count.
+async fn edge_not_serving(state: &AppState, said: String) -> Result<()> {
+    state.services.lock().await.block_edge_now(state.platform.as_ref(), &said);
+    Err(Error::Other(said))
 }
 
 /// Stop the shared stack.
