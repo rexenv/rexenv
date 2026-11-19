@@ -238,8 +238,8 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
 - [x] **`rex doctor` called an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** ✓ 19
   Nov 2026 — seen once on the 15.8 VM 35 s after the edge had recovered, only rexenv's caddy
   listening. Doctor now says a slow probe as one (`proxy::unreadable_wire_note`, through the note the
-  CLI already prints). L0 `doctor_does_not_call_a_slow_probe_another_proxy`, planted; ledger #977; the
-  state was not forced on any OS.
+  CLI already prints). L0 `doctor_does_not_call_a_slow_probe_another_proxy`, planted; run on the
+  Ubuntu VM with the root caddy under `kill -STOP`; ledger #977.
 - [x] **The card said "All running" under a toast saying the edge was not serving** ✓ 19 Nov 2026 —
   Start all's wire gate now marks the edge blocked and writes the health line itself for every
   refusal that is not a slow probe (`ServiceManager::block_edge_now`); the watchdog used to do it two

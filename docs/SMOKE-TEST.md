@@ -3436,7 +3436,7 @@ update to 0.7.2; the macOS 15.8 arm64 UTM VM, 27 Sep 2026 — the public 0.8.7 d
   path row and that minute's lines shown, Clear refused in those words with the file untouched.
   Download not pressed. ✓ **Ubuntu 22.04 VM, 19 Nov 2026** (the same container build): the source
   listed under "Caddy (edge)", that path, that minute's lines, Clear refused in those words (979471
-  bytes before and after). Download not pressed.
+  bytes before and after); Download → `~/Downloads/caddy-start.log`, the user's file, `cmp`-identical.
 - [x] **A power cut right after Start all** (ledger #740, 0.8.11): Start all (the edge prompt),
   then `utmctl stop macOS --kill` within 10 s → boot → `/Library/LaunchDaemons/dev.rexenv.rexenv.edge.plist`
   whole, the edge up on :443 without the app, and the login toggle's Start all silent. The
