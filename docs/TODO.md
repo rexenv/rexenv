@@ -224,6 +224,18 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   `/Library/Logs/rexenv/caddy-start.log`. Start all and the watchdog now name the path of the file
   the running edge writes (`ServiceManager::edge_log_path`). L0
   `the_edge_log_named_is_the_one_this_edge_writes`, planted x2; ledger #974; SMOKE row owed (macOS, Linux).
+- [x] **A refused IPv4 loopback beside a live edge was called "the edge did not come up"** ✓ 19 Nov
+  2026 — `proxy::v4_refused_beside_our_edge` asks `[::1]` for our marker; Start all, the watchdog and
+  `rex doctor` say one sentence that names the refusal and no fix that rebuilds nothing. L0
+  `a_refused_v4_wire_alone_is_an_edge_that_is_not_up`; run on the 15.8 VM with a `pf` rule (all three
+  doors, self-recovery 22 s after the rule went); ledger #975. Linux not run, Windows cannot arise.
+- [ ] **`rex doctor` calls an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** (seen
+  once, the 15.8 VM, 19 Nov 2026, ~35 s after a `pf` rule was removed and the watchdog had already
+  logged `[edge-unblocked]`; three reads right after said "answering as rexenv"; only rexenv's caddy
+  listened). Doctor's `edge_conflict` folds `WireReading::Unreadable` into `Foreign` — the fold the
+  watchdog dropped in #811 and Start all in #958. It offers no command for an unnamed holder (#971),
+  so the cost is a wrong sentence, not a kill. Fix shape: doctor reads the fine `reading` and says
+  "has not answered yet" for Unreadable, as `verify_edge_wire` does.
 - [ ] **A user's Mac refused `127.0.0.1:443` beside a healthy edge** (0.9.8, macOS 26.5.2, Apple
   silicon, 16 Nov 2026; 11 sites, all made in rexenv). Start all: "nothing is answering port 443 —
   rexenv's edge did not come up", no site loaded, a reboot cleared it. Their `caddy-start.log` for the
@@ -233,8 +245,9 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   on the machine. Asked of the user: when the toast appeared, `logs/rexenv.log` + `logs/health.log`,
   the whole `caddy-start.log`, what VPN/firewall/dev tools are installed, and — on a repeat, BEFORE
   rebooting — `nc -vz 127.0.0.1 443`, `nc -vz ::1 443`, `sudo pfctl -s info`, `sudo pfctl -s nat`.
-  If `::1` answers while `127.0.0.1` refuses, `verify_edge_wire` can say so (the #971 shape, for a
-  refusal instead of a silence).
+  **19 Nov 2026:** a `pf` rule (`block return … to 127.0.0.1 port 443`) on the 15.8 VM gives 0.9.8
+  this user's sentence word for word beside a listening edge — the CLASS is reproduced, their cause is
+  still not known. What rexenv says in that state is fixed (#975); this row stays for the cause.
 - [x] **PostgreSQL datadir across a tier move — the default series changes under the same
   directory** (found 16 Nov 2026 building the row above; older than it). `DbEngine::data_dir` gives
   the unversioned `postgres/data` to the DEFAULT pin's series. Legacy14's default is series 16

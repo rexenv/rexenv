@@ -2065,6 +2065,11 @@ where
                     supervisor.port_conflict_help(edge.https, false),
                     supervisor.port_listeners_command(edge.https),
                 ))
+            } else if edge_is_up
+                && crate::core::proxy::v4_refused_beside_our_edge(crate::core::adminer::ADMINER_HOST, edge.https, reading).await
+            {
+                // Refused on IPv4 beside our marker on IPv6 (#975): the same sentence, third door.
+                Some(crate::core::proxy::v4_refused_sentence(edge.https))
             } else {
                 None
             };

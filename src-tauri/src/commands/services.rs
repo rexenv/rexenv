@@ -278,6 +278,11 @@ async fn verify_edge_wire(state: &AppState) -> Result<()> {
             supervisor.port_listeners_command(https),
         )));
     }
+    // Refused on IPv4 while OUR marker answers IPv6: the edge IS up, and Start all again rebuilds
+    // nothing — not "the edge did not come up" (#975).
+    if core::proxy::v4_refused_beside_our_edge(core::adminer::ADMINER_HOST, https, reading).await {
+        return Err(Error::Other(core::proxy::v4_refused_sentence(https)));
+    }
     if reading == core::proxy::WireReading::Unreadable {
         return Err(Error::Other(format!(
             "services started, but rexenv's edge has not answered port {https} yet — the machine is \

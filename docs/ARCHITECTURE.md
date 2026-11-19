@@ -2190,6 +2190,17 @@ honest footer —
   holder is the whole fix: the edge's dual-stack socket takes IPv4 again with no Start all.
   Linux cannot reach the state (the edge's bind fails, #970's case) and Windows' edge has no
   IPv6 listener, so the branch is macOS's in practice and common in code.
+  **A REFUSED IPv4 loopback beside our marker on IPv6 is an edge that is up** (#975, 19 Nov
+  2026). A refused connect is the proof that nothing listens — except when the edge's one
+  dual-stack listener is answering `[::1]`: then something on the machine (a packet-filter rule,
+  a VPN, a network filter) turns IPv4 loopback away from it. `proxy::v4_refused_beside_our_edge`
+  reads IPv4 twice around the IPv6 answer; Start all, the watchdog and `rex doctor` then say
+  `v4_refused_sentence` — no holder, no command, and no "Start all again", which rebuilds
+  nothing here. Before it, that state read "rexenv's edge did not come up … ours to fix" (a
+  user's 0.9.8 Mac whose edge had logged `server running`; reproduced on the VM with a `pf`
+  `block return` rule). The edge answers by itself once the rule is gone. Where nothing of ours
+  answers `[::1]` (Windows, or an edge that really is down) a refusal names the file the running
+  edge writes, as a path (`ServiceManager::edge_log_path`, #974) — never a UI tab.
   **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another

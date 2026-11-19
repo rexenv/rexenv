@@ -2964,6 +2964,9 @@ impl ServiceManager {
             // IPv4 side, which IS evidence, counted on the fast debounce like any other (#971).
             let v4_taken = proxy::v4_taken_beside_our_edge(adminer::ADMINER_HOST, self.ports.https, reading).await;
             let unreadable = reading == proxy::WireReading::Unreadable && !v4_taken;
+            // Refused on IPv4 beside our marker on IPv6: the edge serves, IPv4 loopback is turned
+            // away from it — its own sentence, on the fast debounce (#975).
+            let v4_refused = proxy::v4_refused_beside_our_edge(adminer::ADMINER_HOST, self.ports.https, reading).await;
             self.edge_wire_slow = wire_misses_after(self.edge_wire_slow, !unreadable);
             // Debounced (`EDGE_WIRE_MISS_POLLS`): the app's own reload and a launch still
             // adopting a boot-started edge each miss ONE poll, and naming a proxy that is
@@ -2995,6 +2998,8 @@ impl ServiceManager {
                         supervisor.port_conflict_help(self.ports.https, false),
                         supervisor.port_listeners_command(self.ports.https),
                     )
+                } else if v4_refused {
+                    proxy::v4_refused_sentence(self.ports.https)
                 } else if wire == proxy::EdgeWire::NoAnswer {
                     format!(
                         "the edge process is running but nothing is answering port {} — no \

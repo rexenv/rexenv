@@ -236,6 +236,41 @@ pub async fn v4_taken_beside_our_edge(host: &str, https_port: u16, v4: WireReadi
         )
 }
 
+/// **Our edge answers IPv6 loopback while IPv4 loopback REFUSES the port: the edge is up, and
+/// something on the machine turns IPv4 loopback away from it** (ledger #975). A refused connect
+/// is the proof that nothing is listening ([`EdgeWire::NoAnswer`]) — except beside an edge whose
+/// one dual-stack listener is answering `[::1]` at that moment. Start all read the refusal alone
+/// and said "rexenv's edge did not come up … this is ours to fix: Start all again", to a user
+/// whose edge had logged `server running` three milliseconds after its start and went on
+/// refusing until a reboot (0.9.8, macOS 26.5, 16 Nov 2026): the sentence named a failure that
+/// had not happened and a fix that rebuilds nothing.
+///
+/// IPv4 is read AGAIN after the IPv6 answer, as [`v4_taken_beside_our_edge`] does and for its
+/// reason: an edge still binding refuses one probe and answers the next.
+///
+/// Never true where the edge has no IPv6 listener to answer (Windows binds `127.0.0.1` only):
+/// there a refusal stays what it was.
+pub async fn v4_refused_beside_our_edge(host: &str, https_port: u16, v4: WireReading) -> bool {
+    if v4 != WireReading::NoAnswer {
+        return false;
+    }
+    let v6 = std::net::SocketAddr::from((std::net::Ipv6Addr::LOCALHOST, https_port));
+    wire_reading_at(host, v6).await == WireReading::Ours && edge_wire_reading(host, https_port).await == WireReading::NoAnswer
+}
+
+/// What Start all, the watchdog and `rex doctor` say for [`v4_refused_beside_our_edge`]. It names
+/// no program and offers no command: nothing is listening in front of the edge, so there is
+/// nobody to look up, and what refuses the connection (a packet-filter rule, a VPN, a network
+/// filter) is not something rexenv can see or should switch off.
+pub fn v4_refused_sentence(https_port: u16) -> String {
+    format!(
+        "rexenv's edge is running and answers on IPv6 loopback (::1), but 127.0.0.1:{https_port} refuses \
+         connections — something on this machine is turning IPv4 loopback away from it (a firewall or \
+         packet-filter rule, a VPN, a network filter). No site loads while it does. Start all rebuilds \
+         nothing here; the edge answers by itself once that is off."
+    )
+}
+
 /// What Start all, the watchdog and `rex doctor` say for [`v4_taken_beside_our_edge`] — one
 /// sentence, three doors. A NAMED holder gets the command that stops it; an unnamed one (a root
 /// listener an unprivileged lookup cannot see) gets the platform's LISTING command and never a
@@ -1293,6 +1328,34 @@ mod tests {
             assert!(!s.contains("  "), "a continuation's indentation leaked into the sentence: {s}");
             assert!(!s.contains("busy"), "{s}");
             assert!(s.contains("with no Start all"), "{s}");
+        }
+    }
+
+    /// Ledger #975 — a refused IPv4 wire is "the edge is up, IPv4 loopback is turned away" ONLY
+    /// with our marker answering IPv6 beside it: with nothing on `[::1]` it stays an edge that did
+    /// not come up, and a reading that is not a refusal is never re-judged. The positive leg needs
+    /// our edge's TLS on `[::1]` — a run on a real machine is its proof.
+    #[tokio::test]
+    async fn a_refused_v4_wire_alone_is_an_edge_that_is_not_up() {
+        // Bound then dropped: a port nothing listens on, on either family.
+        let port = std::net::TcpListener::bind("127.0.0.1:0").expect("a port").local_addr().unwrap().port();
+        assert_eq!(edge_wire_reading("adminer.rex", port).await, WireReading::NoAnswer, "fixture: refused");
+        assert!(!v4_refused_beside_our_edge("adminer.rex", port, WireReading::NoAnswer).await, "nothing answers [::1]");
+        for other in [WireReading::Ours, WireReading::AnsweredNotOurs, WireReading::Unreadable] {
+            assert!(!v4_refused_beside_our_edge("adminer.rex", port, other).await, "{other:?}");
+        }
+        let said = v4_refused_sentence(443);
+        assert!(said.contains("127.0.0.1:443 refuses") && said.contains("(::1)"), "{said}");
+        assert!(!said.contains("  "), "a continuation's indentation leaked into the sentence: {said}");
+        assert!(!said.contains('$') && !said.contains("kill"), "nobody to name, nothing to run: {said}");
+        assert!(!said.contains("did not come up"), "the edge IS up: {said}");
+        // All three doors ask it before they call a refusal an edge that is not serving.
+        for (door, src) in [
+            ("Start all", include_str!("../commands/services.rs")),
+            ("the watchdog", include_str!("service_manager.rs")),
+            ("rex doctor", include_str!("../cli_server.rs")),
+        ] {
+            assert!(src.contains("v4_refused_beside_our_edge(") && src.contains("v4_refused_sentence("), "{door} does not ask");
         }
     }
 
