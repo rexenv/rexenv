@@ -1049,6 +1049,15 @@ Live-proven end to end by `site_stop_start_check`.
   "Only this site" toggle is a client-side filter by the site's ID (both line shapes),
   the chip shows `shown/total`, and its empty state says the other lines exist
   (`agentlog.js`).
+- **The supervised edge's log is a Logs-tab source of its own** (#976): "Caddy (edge)" is
+  `caddy-stdout.log`, which only a CHILD edge writes; a supervised edge (macOS's root daemon,
+  Linux's unit) writes where `EdgeSupervisor::start_log_path` says — on macOS
+  `/Library/Logs/rexenv/caddy-start.log`, outside `log_dir` and root-owned. Where a supervisor
+  is installed the tab adds "Caddy (edge service)" (`logs::with_supervised_edge`); its key is
+  the one key `logs::path_of` resolves outside `log_dir`, by exact match, after the same
+  `is_safe_key` gate. Clear on a file its supervisor owns is refused in words. Until 19 Nov
+  2026 the tab showed nothing of a daemon edge, and a message that said "check the edge log"
+  sent a Mac user to a file their edge had never written.
 - **rexenv's OWN log is `<log_dir>/rexenv.log`**, in every build, and it has its own
   Logs tab (`LogCategory::App`) — when a service did not start, the reason is there and
   not in that service's empty file. Its own tab because every other source reports what a
@@ -2754,8 +2763,8 @@ IPC surface — which is how a reader ends up designing against a system with on
   is an explicit SYMLINK — D14, the S1 question re-run for Composer and ruled the other way
   because the site is the user's and `run` was their answer; the name read from the source's
   manifest, the source behind the scratch clone's blast-radius rule, the write-back truth
-  said in the reply), `site_logs` (every source the site's Logs tab shows, by key
-  from the site's own closed list, under `read`) and `mail_inbox` (the user's whole
+  said in the reply), `site_logs` (every source the site's Logs tab shows except the
+  supervised edge's own log (#976), by key from the site's own closed list, under `read`) and `mail_inbox` (the user's whole
   Mailpit inbox: `read` on rexenv itself for list/get/raw — free at the dial's Read
   since D16, no switch in front — `manage`/`destroy` for mark-read/delete/clear; the
   one scrubber redacts login tokens, WordPress reset keys and cookie headers and the

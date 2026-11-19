@@ -181,6 +181,52 @@ pub fn remove_run_logs(platform: &dyn Platform, domain: &str, other_domains: &[S
     }
 }
 
+/// The Logs tab's key for the SUPERVISED edge's own output (ledger #976). The file is wherever
+/// the platform's edge supervisor writes it (`EdgeSupervisor::start_log_path`) — on macOS outside
+/// the app's log folder, in a root-owned one — so this key, alone among them, is not a name inside
+/// `log_dir`: [`path_of`] resolves it. Until this existed the tab offered `caddy-stdout.log` as
+/// "Caddy (edge)" on every OS, a file only a child edge writes: on a Mac whose edge is the root
+/// daemon the tab showed nothing or a months-old file, and the edge's real log could be read only
+/// from a terminal (a user's 0.9.8, 16 Nov 2026 — the owner had to ask for the file by path).
+pub const SUPERVISED_EDGE_LOG_KEY: &str = "caddy-start.log";
+
+/// Where the supervised edge's output is, when this machine has a supervised edge at all.
+fn supervised_edge_log(platform: &dyn Platform) -> Option<PathBuf> {
+    let edge = platform.edge();
+    edge.is_installed().then(|| platform.paths().log_dir().map(|d| edge.start_log_path(&d)).ok()).flatten()
+}
+
+/// `targets` with the supervised edge's log added beside the child edge's, on a machine that has
+/// one. For the Logs tab only: MCP `site_logs` keeps its own closed set (#565).
+pub fn with_supervised_edge(targets: Vec<LogTarget>, platform: &dyn Platform) -> Vec<LogTarget> {
+    add_supervised_edge(targets, supervised_edge_log(platform))
+}
+
+fn add_supervised_edge(mut targets: Vec<LogTarget>, log: Option<PathBuf>) -> Vec<LogTarget> {
+    let Some(log) = log else { return targets };
+    let at = targets.iter().position(|t| t.key == crate::core::proxy::EDGE_CHILD_LOG).map_or(targets.len(), |i| i + 1);
+    targets.insert(
+        at,
+        LogTarget {
+            key: SUPERVISED_EDGE_LOG_KEY.into(),
+            label: "Caddy (edge service)".into(),
+            category: LogCategory::Server,
+            path: log.to_string_lossy().into_owned(),
+        },
+    );
+    targets
+}
+
+/// The file a (gated) key names: a name inside `log_dir`, except the supervised edge's key on a
+/// machine with a supervised edge. The key never reaches a path — the exception is a path the
+/// PLATFORM answers, chosen by an exact match.
+fn path_of(log_dir: &Path, key: &str, supervised_edge: Option<PathBuf>) -> PathBuf {
+    match supervised_edge {
+        Some(log) if key == SUPERVISED_EDGE_LOG_KEY => log,
+        _ => log_dir.join(key),
+    }
+}
+
 /// A log key is a plain file name within `log_dir`: ends in `.log`, no path
 /// separators or `..` (so the UI can never escape the log directory).
 fn is_safe_key(key: &str) -> bool {
@@ -219,7 +265,7 @@ pub fn tail(platform: &dyn Platform, key: &str, lines: usize) -> Result<Vec<Stri
     if !is_safe_key(key) {
         return Err(Error::Other(format!("invalid log key: {key}")));
     }
-    tail_file(&platform.paths().log_dir()?.join(key), lines)
+    tail_file(&path_of(&platform.paths().log_dir()?, key, supervised_edge_log(platform)), lines)
 }
 
 /// Truncate the log `key` to empty (same key gate as [`tail`]). Safe in place:
@@ -231,9 +277,18 @@ pub fn clear(platform: &dyn Platform, key: &str) -> Result<()> {
     if !is_safe_key(key) {
         return Err(Error::Other(format!("invalid log key: {key}")));
     }
-    let path = platform.paths().log_dir()?.join(key);
+    let path = path_of(&platform.paths().log_dir()?, key, supervised_edge_log(platform));
     if path.is_file() {
-        std::fs::write(&path, "")?;
+        // The supervised edge's log belongs to its supervisor (root's, on macOS): say whose it
+        // is instead of a bare "Permission denied" (#976).
+        std::fs::write(&path, "").map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => Error::Other(format!(
+                "{} is written by the system service that runs the edge, and only it may clear it — \
+                 Download keeps a copy.",
+                path.display()
+            )),
+            _ => Error::from(e),
+        })?;
     }
     Ok(())
 }
@@ -245,7 +300,7 @@ pub fn download(platform: &dyn Platform, key: &str) -> Result<PathBuf> {
     if !is_safe_key(key) {
         return Err(Error::Other(format!("invalid log key: {key}")));
     }
-    let src = platform.paths().log_dir()?.join(key);
+    let src = path_of(&platform.paths().log_dir()?, key, supervised_edge_log(platform));
     if !src.is_file() {
         return Err(Error::Other(format!("no {key} yet — nothing to download")));
     }
@@ -708,6 +763,33 @@ mod tests {
     /// half that breaks when a fourth function is added and the shape is
     /// copied from the wrong sibling.
     #[test]
+    fn the_supervised_edge_log_is_offered_and_resolved_only_where_there_is_one() {
+        let dir = Path::new("/logs");
+        let root_log = PathBuf::from("/elsewhere/rexenv/caddy-start.log");
+        let base = || targets_for_site(&site(WebServer::Nginx), dir, &[], crate::platform::traits::PoolModel::Fpm);
+        // No supervised edge (Windows; a machine that never started one): nothing added, and the
+        // key is an ordinary name inside the log folder.
+        assert_eq!(add_supervised_edge(base(), None).len(), base().len());
+        assert_eq!(path_of(dir, SUPERVISED_EDGE_LOG_KEY, None), dir.join(SUPERVISED_EDGE_LOG_KEY));
+        // With one: offered right after the child edge's file, with the PLATFORM's path…
+        let with = add_supervised_edge(base(), Some(root_log.clone()));
+        let child = with.iter().position(|t| t.key == crate::core::proxy::EDGE_CHILD_LOG).expect("the child edge's log");
+        assert_eq!(with[child + 1].key, SUPERVISED_EDGE_LOG_KEY);
+        assert_eq!(with[child + 1].path, root_log.to_string_lossy());
+        assert_eq!(with[child + 1].category, LogCategory::Server);
+        assert!(is_safe_key(SUPERVISED_EDGE_LOG_KEY), "it passes the same gate as every key");
+        // …and resolved to it by an exact match only: no other key leaves the folder.
+        assert_eq!(path_of(dir, SUPERVISED_EDGE_LOG_KEY, Some(root_log.clone())), root_log);
+        for other in ["caddy-stdout.log", "nginx-error.log", "xcaddy-start.log"] {
+            assert_eq!(path_of(dir, other, Some(root_log.clone())), dir.join(other), "{other}");
+        }
+        // The three key-taking functions resolve through it, and the Logs tab asks for the target.
+        let src = crate::core::copy_scan::production_source(include_str!("logs.rs"));
+        assert_eq!(src.matches("path_of(&platform.paths().log_dir()?, key, supervised_edge_log(platform))").count(), 3);
+        assert!(include_str!("../commands/logs.rs").contains("with_supervised_edge("), "the Logs tab does not offer it");
+    }
+
+    #[test]
     fn every_key_taking_function_gates_before_it_joins() {
         let src = crate::core::copy_scan::production_source(include_str!("logs.rs"));
         let mut checked = 0usize;
@@ -728,7 +810,7 @@ mod tests {
             });
             // Order, not mere presence: a gate after the path is built is a
             // check on a value something has already used.
-            if let Some(join) = body.find("log_dir()?.join(") {
+            if let Some(join) = body.find("log_dir()?").filter(|_| body.contains("path_of(") || body.contains("log_dir()?.join(")) {
                 assert!(
                     gate < join,
                     "`{name}` builds the path BEFORE gating the key — whatever reads or writes \

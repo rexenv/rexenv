@@ -26,12 +26,14 @@ pub fn log_targets(state: State<'_, AppState>, site_id: String) -> Result<Vec<Lo
         let conn = state.db.lock().map_err(|_| Error::Other("database lock poisoned".into()))?;
         core::sites::other_domains(&conn, &site.id)?
     };
-    Ok(core::logs::targets_for_site(
+    let targets = core::logs::targets_for_site(
         &site,
         &state.platform.paths().log_dir()?,
         &others,
         state.platform.supervisor().php_pool_model(),
-    ))
+    );
+    // Plus the supervised edge's own log, where this machine has one (ledger #976).
+    Ok(core::logs::with_supervised_edge(targets, state.platform.as_ref()))
 }
 
 /// The last `lines` lines of the log identified by `key` (a file name within the
