@@ -234,13 +234,11 @@ Fourth reconcile; each has found the same shapes, so they are the checklist:
   (`core::logs::path_of`); a root-owned file's Clear is refused in words. L0
   `the_supervised_edge_log_is_offered_and_resolved_only_where_there_is_one`; ledger #976; seen in the
   tab on the 15.8 VM (source, path, lines, Clear's refusal); Linux not run.
-- [ ] **`rex doctor` calls an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** (seen
-  once, the 15.8 VM, 19 Nov 2026, ~35 s after a `pf` rule was removed and the watchdog had already
-  logged `[edge-unblocked]`; three reads right after said "answering as rexenv"; only rexenv's caddy
-  listened). Doctor's `edge_conflict` folds `WireReading::Unreadable` into `Foreign` — the fold the
-  watchdog dropped in #811 and Start all in #958. It offers no command for an unnamed holder (#971),
-  so the cost is a wrong sentence, not a kill. Fix shape: doctor reads the fine `reading` and says
-  "has not answered yet" for Unreadable, as `verify_edge_wire` does.
+- [x] **`rex doctor` called an UNREADABLE wire "another proxy answers :443 IN FRONT of rexenv"** ✓ 19
+  Nov 2026 — seen once on the 15.8 VM 35 s after the edge had recovered, only rexenv's caddy
+  listening. Doctor now says a slow probe as one (`proxy::unreadable_wire_note`, through the note the
+  CLI already prints). L0 `doctor_does_not_call_a_slow_probe_another_proxy`, planted; ledger #977; the
+  state was not forced on any OS.
 - [ ] **A user's Mac refused `127.0.0.1:443` beside a healthy edge** (0.9.8, macOS 26.5.2, Apple
   silicon, 16 Nov 2026; 11 sites, all made in rexenv). Start all: "nothing is answering port 443 —
   rexenv's edge did not come up", no site loaded, a reboot cleared it. Their `caddy-start.log` for the

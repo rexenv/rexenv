@@ -2070,6 +2070,9 @@ where
             {
                 // Refused on IPv4 beside our marker on IPv6 (#975): the same sentence, third door.
                 Some(crate::core::proxy::v4_refused_sentence(edge.https))
+            } else if edge_is_up && reading == crate::core::proxy::WireReading::Unreadable {
+                // One probe that completed no exchange is not another proxy (#977).
+                Some(crate::core::proxy::unreadable_wire_note(edge.https))
             } else {
                 None
             };

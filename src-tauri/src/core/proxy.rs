@@ -258,6 +258,20 @@ pub async fn v4_refused_beside_our_edge(host: &str, https_port: u16, v4: WireRea
     wire_reading_at(host, v6).await == WireReading::Ours && edge_wire_reading(host, https_port).await == WireReading::NoAnswer
 }
 
+/// What `rex doctor` says for an edge of ours that is up while one probe of its port completed no
+/// exchange in time ([`WireReading::Unreadable`]) and no IPv4 holder was found beside it (ledger
+/// #977). That reading is no evidence of anyone else on the port; doctor folded it into "another
+/// proxy answers :443 IN FRONT of rexenv" — the fold the watchdog dropped in #811 and Start all
+/// in #958. Seen on the 15.8 VM, 19 Nov 2026: 35 s after the edge had recovered, with only
+/// rexenv's caddy listening, and "answering as rexenv" on the three reads that followed.
+pub fn unreadable_wire_note(https_port: u16) -> String {
+    format!(
+        "rexenv's edge is running but did not answer port {https_port} in time — one slow probe, which a \
+         busy machine gives (a boot, a large copy). Run doctor again in a moment; if it stays, Stop \
+         all then Start all rebuilds the edge."
+    )
+}
+
 /// What Start all, the watchdog and `rex doctor` say for [`v4_refused_beside_our_edge`]. It names
 /// no program and offers no command: nothing is listening in front of the edge, so there is
 /// nobody to look up, and what refuses the connection (a packet-filter rule, a VPN, a network
@@ -1329,6 +1343,24 @@ mod tests {
             assert!(!s.contains("busy"), "{s}");
             assert!(s.contains("with no Start all"), "{s}");
         }
+    }
+
+    /// Ledger #977 — doctor's sentence for one unreadable probe names nobody else, and doctor asks
+    /// for it BEFORE its conflict fold can speak.
+    #[test]
+    fn doctor_does_not_call_a_slow_probe_another_proxy() {
+        let said = unreadable_wire_note(443);
+        assert!(said.contains("port 443") && said.contains("Run doctor again"), "{said}");
+        assert!(!said.contains("proxy") && !said.contains("quit") && !said.contains('$') && !said.contains("  "), "{said}");
+        let src = include_str!("../cli_server.rs");
+        let doctor = &src[src.find("\"doctor\" => {").expect("doctor")..];
+        let note = doctor.find("unreadable_wire_note(").expect("doctor never says the slow sentence");
+        assert!(doctor[..note].contains("WireReading::Unreadable"), "it is said for the unreadable reading");
+        assert!(note < doctor.find("let edge_conflict").expect("the fold"), "the note is decided before the fold");
+        // The CLI prints a note in place of the conflict line.
+        let cli = include_str!("../../../cli/src/main.rs");
+        let edge = &cli[cli.find("let edge = &data[\"edge\"];").expect("the Edge line")..];
+        assert!(edge.find("edge[\"note\"]").expect("note") < edge.find("edge[\"conflict\"]").expect("conflict"), "note first");
     }
 
     /// Ledger #975 — a refused IPv4 wire is "the edge is up, IPv4 loopback is turned away" ONLY

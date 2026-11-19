@@ -2210,6 +2210,9 @@ honest footer —
   `block return` rule). The edge answers by itself once the rule is gone. Where nothing of ours
   answers `[::1]` (Windows, or an edge that really is down) a refusal names the file the running
   edge writes, as a path (`ServiceManager::edge_log_path`, #974) — never a UI tab.
+  `rex doctor` reads the same fine `WireReading`: one probe that completed no exchange beside a
+  live edge is said as a slow probe (`unreadable_wire_note`, #977), not as "another proxy" — it
+  was the last door still folding the two.
   **The gate reads the platform's socket tables before it trusts a trial bind** (#599,
   13 Sep 2026): `ports::is_free(platform, …)` refuses any port `port_holders` lists on ANY
   local address, then binds. On Windows a trial bind on `127.0.0.1` succeeds beside another
